@@ -55,7 +55,6 @@ pub use offload::{failure, run as offload};
 pub use platform::{Display, Headless, Input, InputSink, Platform, Portal, Shared, Window};
 pub use rt::{Msg, current};
 pub use sys::Entry;
-pub use web::app_dir;
 pub use webnative::event_object;
 
 pub const API_LEVEL: u32 = api_level(include_str!("../../../npm/acde-api/api-level"));

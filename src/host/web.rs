@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
@@ -7,19 +6,6 @@ use std::time::Duration;
 
 use crate::host::bind;
 use crate::host::rt::{self, Msg};
-
-pub fn app_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("ACDE_APP") {
-        return PathBuf::from(dir);
-    }
-    let exe = std::env::current_exe().ok().and_then(|e| std::fs::canonicalize(e).ok()).unwrap_or_default();
-    let bin = exe.parent().map(PathBuf::from).unwrap_or_default();
-    let installed = bin.join("app/dist");
-    if installed.join("broker.js").is_file() {
-        return installed;
-    }
-    bin.join("../../web/packages/acde-host/dist")
-}
 
 struct Handle {
     tx: Sender<Msg>,
