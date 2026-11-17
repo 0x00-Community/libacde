@@ -89,6 +89,9 @@ impl Loader for WebLoader {
     }
 
     fn load(&self, url: &str) -> Result<String, String> {
+        if url == crate::host::web::PAGE_URL {
+            return Ok(crate::host::web::PAGE.to_owned());
+        }
         if url.starts_with("file:") {
             return crate::host::sys::FileLoader.load(url);
         }

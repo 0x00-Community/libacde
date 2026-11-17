@@ -8,6 +8,9 @@ use std::time::Duration;
 use crate::host::bind;
 use crate::host::rt::{self, Msg};
 
+pub const PAGE_URL: &str = "acde-runtime:/page.js";
+pub const PAGE: &str = include_str!(concat!(env!("OUT_DIR"), "/page.js"));
+
 pub fn app_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("ACDE_APP") {
         return PathBuf::from(dir);
@@ -482,11 +485,6 @@ impl HeapGuard {
 
 fn run_web(runtime: &mut rt::Runtime, init: Vec<u8>, env: &[(String, String)], grants: Grants, stopping: &Arc<AtomicBool>) -> i32 {
     crate::host::modules::set_loader(std::rc::Rc::new(crate::host::dom::WebLoader));
-    let bundle = app_dir().join("web.js");
-    let Some(url) = std::fs::canonicalize(&bundle).ok().and_then(|p| url::Url::from_file_path(p).ok()) else {
-        log::error!("no web bundle at {}", bundle.display());
-        return 1;
-    };
     let env = env.to_vec();
     runtime.task(move |scope| {
         let natives = v8::Object::new(scope);
@@ -518,7 +516,7 @@ fn run_web(runtime: &mut rt::Runtime, init: Vec<u8>, env: &[(String, String)], g
         if let Some(own) = v8::Function::builder(own_env).data(env.into()).build(scope) {
             bind::set(scope, sys, "env", own.into());
         }
-        crate::host::sys::boot_module(scope, url.as_str(), natives.into());
+        crate::host::sys::boot_module(scope, PAGE_URL, natives.into());
     });
     runtime.lp.keep_alive(true);
     runtime.run_until(|| stopping.load(Ordering::SeqCst))

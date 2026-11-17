@@ -7,12 +7,8 @@ fn runtime_bundles() -> &'static [String] {
     URLS.get_or_init(|| {
         let dir = crate::host::web::app_dir();
         let dirs = [Some(dir.clone()), std::fs::canonicalize(&dir).ok()];
-        dirs.into_iter()
-            .flatten()
-            .flat_map(|dir| ["web.js", "broker.js"].map(|name| dir.join(name)))
-            .filter_map(|path| url::Url::from_file_path(path).ok())
-            .map(String::from)
-            .collect()
+        let files = dirs.into_iter().flatten().map(|dir| dir.join("broker.js")).filter_map(|path| url::Url::from_file_path(path).ok()).map(String::from);
+        std::iter::once(crate::host::web::PAGE_URL.to_owned()).chain(files).collect()
     })
 }
 
@@ -60,9 +56,9 @@ mod tests {
 
     #[test]
     fn only_runtime_bundles_without_their_own_map_get_one() {
-        let bundle = runtime_bundles().first().cloned().expect("the app directory has a URL");
+        let bundle = crate::host::web::PAGE_URL.to_owned();
         assert!(map_for(&bundle, "a()\nb()", 3).is_some());
-        assert!(map_for(&bundle, "a()\n//# sourceMappingURL=web.js.map\n", 3).is_none(), "a dev build's own map wins");
+        assert!(map_for(&bundle, "a()\n//# sourceMappingURL=page.js.map\n", 3).is_none(), "a dev build's own map wins");
         assert!(map_for("file:///elsewhere/app.js", "a()", 1).is_none(), "page scripts are left alone");
     }
 }
