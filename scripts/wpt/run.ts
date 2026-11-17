@@ -30,7 +30,7 @@ const { values } = parseArgs({
 })
 const [SHARD, SHARDS] = values.shard!.split('/').map(Number) as [number, number]
 if (!(SHARDS >= 1 && SHARD >= 1 && SHARD <= SHARDS)) throw new Error(`--shard ${values.shard}: want i/n with 1 <= i <= n`)
-if (!values.acdert) throw new Error('--acdert <path to acdebin-dbg> (or ACDEV_RUNTIME) is required')
+if (!values.acdert) throw new Error('--acdert <path to acdev runtime> (or ACDEV_RUNTIME) is required')
 if (!existsSync(join(values.app!, 'broker.js'))) throw new Error(`${values.app}: no broker.js; build acdert's web (cd web && bun run build) or pass --app <acde-host dist>`)
 const WORKERS = Number(values.workers)
 const FIRST = Number(values.first)
