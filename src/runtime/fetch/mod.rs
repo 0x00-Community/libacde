@@ -475,8 +475,8 @@ async fn over<F: Filter + 'static>(io: Io<F>, uri: String, config: ntex::SharedC
 
 async fn direct(url: &str, config: ntex::SharedCfg) -> std::result::Result<Handshake, String> {
     if url.starts_with("wss:") {
-        let tls = crate::runtime::http::tls().map_err(|error| error.to_string())?;
-        let (io, codec, response) = WsClient::new(url, config).openssl(tls).connect().await.map_err(|error| crate::runtime::http::chain(&error))?.into_inner();
+        let tls = crate::runtime::http::tls()?;
+        let (io, codec, response) = WsClient::new(url, config).rustls(tls).connect().await.map_err(|error| crate::runtime::http::chain(&error))?.into_inner();
         return Ok((io.seal(), codec, response));
     }
     let (io, codec, response) = WsClient::new(url, config).connect().await.map_err(|error| crate::runtime::http::chain(&error))?.into_inner();

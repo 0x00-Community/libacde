@@ -2,11 +2,12 @@
 //! request), or SOCKS4a / SOCKS5 with the name resolved by the proxy; then TLS with the target for https and wss.
 
 use super::{Endpoint, Hop, Target};
-use ntex::connect::openssl::{SslConnector, SslFilter};
+use ntex::connect::rustls::TlsClientFilter;
 use ntex::connect::{Connect, ConnectError, Connector};
 use ntex::io::{Io, IoBoxed, Layer};
 use ntex::time::Millis;
 use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
 
 /// connecting to the hop and opening the tunnel; TLS with the target has `tls_config`'s 30 seconds of its own
 const SETUP: Millis = Millis(30_000);
@@ -14,7 +15,7 @@ const HEAD: usize = 16 << 10;
 
 pub(crate) enum Tunnel {
     Plain(Io),
-    Tls(Io<Layer<SslFilter>>),
+    Tls(Io<Layer<TlsClientFilter>>),
 }
 
 impl Tunnel {
@@ -28,12 +29,16 @@ impl Tunnel {
 
 /// Tries the hops in order; the error names every hop that failed and why.
 pub(crate) async fn open(hops: &[Hop], target: &Target) -> Result<Tunnel, String> {
+    open_with(hops, target, crate::runtime::http::tls()?).await
+}
+
+pub(crate) async fn open_with(hops: &[Hop], target: &Target, tls: Arc<rustls::ClientConfig>) -> Result<Tunnel, String> {
     let cfg: ntex::SharedCfg = ntex::SharedCfg::new("acde-proxy").add(crate::runtime::http::tls_config()).into();
     let mut failures = Vec::new();
     for hop in hops {
         let opened = ntex::time::timeout(SETUP, through(hop, target, &cfg)).await.unwrap_or_else(|()| Err("timed out".into()));
         match opened {
-            Ok(io) => return secure(io, hop, target, &cfg).await,
+            Ok(io) => return secure(io, hop, target, tls).await,
             Err(error) => failures.push(match hop {
                 Hop::Direct => format!("cannot connect to {}: {error}", target.endpoint()),
                 _ => format!("cannot reach {} through the proxy {hop}: {error}", target.endpoint()),
@@ -43,16 +48,21 @@ pub(crate) async fn open(hops: &[Hop], target: &Target) -> Result<Tunnel, String
     Err(failures.join("; "))
 }
 
-async fn secure(io: Io, hop: &Hop, target: &Target, cfg: &ntex::SharedCfg) -> Result<Tunnel, String> {
+async fn secure(io: Io, hop: &Hop, target: &Target, tls: Arc<rustls::ClientConfig>) -> Result<Tunnel, String> {
     if !target.secure {
         return Ok(Tunnel::Plain(io));
     }
-    let tls = crate::runtime::http::tls().map_err(|error| error.to_string())?;
-    let connector = SslConnector::<Connector<String>>::new(tls);
-    connector.connect(io, &target.host, cfg).await.map(Tunnel::Tls).map_err(|error| match hop {
-        Hop::Direct => format!("TLS with {}: {}", target.endpoint(), reason(&error)),
-        _ => format!("TLS with {} through the proxy {hop}: {}", target.endpoint(), reason(&error)),
-    })
+    let failed = |why: String| match hop {
+        Hop::Direct => format!("TLS with {}: {why}", target.endpoint()),
+        _ => format!("TLS with {} through the proxy {hop}: {why}", target.endpoint()),
+    };
+    let name = rustls::pki_types::ServerName::try_from(target.host.clone()).map_err(|error| failed(error.to_string()))?;
+    let handshake = crate::runtime::http::tls_config().handshake_timeout();
+    match ntex::time::timeout(handshake, TlsClientFilter::create(io, tls, name)).await {
+        Ok(Ok(io)) => Ok(Tunnel::Tls(io)),
+        Ok(Err(error)) => Err(failed(crate::runtime::http::chain(&error))),
+        Err(()) => Err(failed("the handshake timed out".into())),
+    }
 }
 
 /// ntex shows an I/O failure only as "Tcp connect"; the cause is in the I/O error

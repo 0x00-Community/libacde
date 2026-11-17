@@ -264,4 +264,4 @@ impl Proxies for Fixed {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

@@ -1,84 +1,20 @@
 use ntex::io::Io;
+use std::sync::{Arc, OnceLock};
 
-pub(crate) fn tls() -> Result<openssl::ssl::SslConnector, openssl::error::ErrorStack> {
-    let mut ssl = openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls())?;
-    _ = ssl.set_alpn_protos(b"\x08http/1.1");
-    cfg_select! {
-        target_os = "linux" => {}
-        _ => {
-            let store = ssl.cert_store_mut();
-            for der in roots() {
-                if let Ok(cert) = openssl::x509::X509::from_der(der) {
-                    _ = store.add_cert(cert);
-                }
-            }
-            #[cfg(windows)]
-            ssl.set_verify_callback(openssl::ssl::SslVerifyMode::PEER, |ok, ctx| ok || system_trusts(ctx));
-        }
-    }
-    Ok(ssl.build())
+pub(crate) fn tls() -> Result<Arc<rustls::ClientConfig>, String> {
+    static CONFIG: OnceLock<Result<Arc<rustls::ClientConfig>, String>> = OnceLock::new();
+    CONFIG.get_or_init(client_config).clone()
 }
 
-#[cfg(windows)]
-fn system_trusts(ctx: &openssl::x509::X509StoreContextRef) -> bool {
-    use std::ptr::{null, null_mut};
-    use windows_sys::Win32::Security::Cryptography::*;
-    let ssl = openssl::x509::X509StoreContext::ssl_idx().ok().and_then(|index| ctx.ex_data(index));
-    let Some(host) = ssl.and_then(|ssl| ssl.servername(openssl::ssl::NameType::HOST_NAME)) else { return false };
-    let ders: Vec<Vec<u8>> = ctx.chain().into_iter().flatten().filter_map(|cert| cert.to_der().ok()).collect();
-    let Some((leaf, rest)) = ders.split_first() else { return false };
-    let mut name: Vec<u16> = host.encode_utf16().chain(Some(0)).collect();
-    let mut usage = [szOID_PKIX_KP_SERVER_AUTH as *mut u8];
-    let para = CERT_CHAIN_PARA {
-        cbSize: size_of::<CERT_CHAIN_PARA>() as u32,
-        RequestedUsage: CERT_USAGE_MATCH { dwType: USAGE_MATCH_TYPE_AND, Usage: CTL_USAGE { cUsageIdentifier: 1, rgpszUsageIdentifier: usage.as_mut_ptr() } },
-        ..Default::default()
-    };
-    let mut server = HTTPSPolicyCallbackData {
-        Anonymous: HTTPSPolicyCallbackData_0 { cbSize: size_of::<HTTPSPolicyCallbackData>() as u32 },
-        dwAuthType: AUTHTYPE_SERVER,
-        fdwChecks: 0,
-        pwszServerName: name.as_mut_ptr(),
-    };
-    let policy = CERT_CHAIN_POLICY_PARA { cbSize: size_of::<CERT_CHAIN_POLICY_PARA>() as u32, dwFlags: 0, pvExtraPolicyPara: (&raw mut server).cast() };
-    let mut status = CERT_CHAIN_POLICY_STATUS { cbSize: size_of::<CERT_CHAIN_POLICY_STATUS>() as u32, ..Default::default() };
-    let store = unsafe { CertOpenStore(CERT_STORE_PROV_MEMORY, 0, 0, 0, null()) };
-    if store.is_null() {
-        return false;
-    }
-    for der in rest {
-        unsafe { CertAddEncodedCertificateToStore(store, X509_ASN_ENCODING, der.as_ptr(), der.len() as u32, CERT_STORE_ADD_ALWAYS, null_mut()) };
-    }
-    let cert = unsafe { CertCreateCertificateContext(X509_ASN_ENCODING, leaf.as_ptr(), leaf.len() as u32) };
-    let mut trusted = false;
-    if !cert.is_null() {
-        let mut chain = null_mut();
-        if unsafe { CertGetCertificateChain(null_mut(), cert, null(), store, &para, 0, null(), &mut chain) } != 0 {
-            trusted = unsafe { CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_SSL, chain, &policy, &mut status) } != 0 && status.dwError == 0;
-            unsafe { CertFreeCertificateChain(chain) };
-        }
-        unsafe { CertFreeCertificateContext(cert) };
-    }
-    unsafe { CertCloseStore(store, 0) };
-    if trusted {
-        log::debug!("TLS: Windows verified {host}, whose root was not among the roots read at startup");
-    }
-    trusted
-}
-
-#[cfg(not(target_os = "linux"))]
-fn roots() -> &'static [Vec<u8>] {
-    static ROOTS: std::sync::OnceLock<Vec<Vec<u8>>> = std::sync::OnceLock::new();
-    ROOTS.get_or_init(|| {
-        let found = rustls_native_certs::load_native_certs();
-        for error in &found.errors {
-            log::warn!("TLS: reading the system's root certificates: {error}");
-        }
-        if found.certs.is_empty() {
-            log::error!("TLS: the system has no root certificates, so no HTTPS server can be verified");
-        }
-        found.certs.iter().map(|cert| cert.as_ref().to_vec()).collect()
-    })
+fn client_config() -> Result<Arc<rustls::ClientConfig>, String> {
+    use rustls_platform_verifier::BuilderVerifierExt;
+    let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
+        .with_safe_default_protocol_versions()
+        .and_then(|builder| builder.with_platform_verifier())
+        .map_err(|error| format!("TLS: {error}"))?
+        .with_no_client_auth();
+    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    Ok(Arc::new(config))
 }
 
 /// An error with its causes, `outer: cause: root`: ntex's outer errors ("Failed to connect to host: Connector has been
@@ -113,9 +49,14 @@ pub(crate) fn tls_config() -> ntex::tls::TlsConfig {
 
 pub(crate) fn client() -> ntex::client::Client {
     thread_local! {
-        static CLIENT: ntex::client::Client = ntex::client::Client::builder().openssl(tls().expect("acde runtime: OpenSSL")).build(ntex::SharedCfg::new("acde-http").add(tls_config()));
+        static CLIENT: ntex::client::Client = build_client();
     }
     CLIENT.with(Clone::clone)
+}
+
+fn build_client() -> ntex::client::Client {
+    let tls = tls().expect("acde runtime: TLS");
+    ntex::client::Client::builder().rustls((*tls).clone()).build(ntex::SharedCfg::new("acde-http").add(tls_config()))
 }
 
 #[cfg(target_os = "linux")]

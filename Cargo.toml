@@ -56,8 +56,11 @@ bitflags = "2"
 jiff = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
-ntex = { version = "4", features = ["openssl"] }
-openssl = "0.10"
+ntex = { version = "4", features = ["rustls"] }
+rustls = "0.23"
+rustls-platform-verifier = "0.6"
+aes = "0.9"
+cbc = { version = "0.2", features = ["alloc"] }
 async-channel = "2"
 futures-lite = "2"
 futures-channel = "0.3"
@@ -100,8 +103,6 @@ libc = "0.2"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 cpal = "0.18"
-openssl = { version = "0.10", features = ["vendored"] }
-rustls-native-certs = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 # src/gpu: Direct3D 12 for the device WebGPU and the compositor share
@@ -137,6 +138,7 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
 
 [dev-dependencies]
 env_logger = "0.11"
+rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs"] }
 naga = { version = "30", features = ["msl-out", "spv-out", "hlsl-out"] }
 
 [target.'cfg(windows)'.dev-dependencies]

@@ -324,3 +324,74 @@ fn fetch_through_socks5() {
     assert_eq!(server.join().expect("proxy"), "named.invalid");
     target.join().expect("target");
 }
+
+fn provider() -> Arc<rustls::crypto::CryptoProvider> {
+    Arc::new(rustls::crypto::aws_lc_rs::default_provider())
+}
+
+pub(crate) fn localhost_tls() -> (Arc<rustls::ServerConfig>, rustls::pki_types::CertificateDer<'static>) {
+    let certified = rcgen::generate_simple_self_signed(vec!["localhost".into()]).expect("a certificate");
+    let cert = certified.cert.der().clone();
+    let key = rustls::pki_types::PrivateKeyDer::Pkcs8(certified.signing_key.serialize_der().into());
+    let config = rustls::ServerConfig::builder_with_provider(provider())
+        .with_safe_default_protocol_versions()
+        .expect("versions")
+        .with_no_client_auth()
+        .with_single_cert(vec![cert.clone()], key)
+        .expect("a server configuration");
+    (Arc::new(config), cert)
+}
+
+fn tls_echo(reply: &'static [u8]) -> (u16, rustls::pki_types::CertificateDer<'static>, std::thread::JoinHandle<Vec<u8>>) {
+    let (config, cert) = localhost_tls();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("address").port();
+    let server = std::thread::spawn(move || {
+        let (stream, _) = listener.accept().expect("accept");
+        let mut tls = rustls::StreamOwned::new(rustls::ServerConnection::new(config).expect("session"), stream);
+        let mut asked = [0u8; 4];
+        tls.read_exact(&mut asked).expect("the request");
+        tls.write_all(reply).expect("the answer");
+        tls.flush().expect("flush");
+        asked.to_vec()
+    });
+    (port, cert, server)
+}
+
+fn through_proxy(proxy: u16, port: u16, tls: Arc<rustls::ClientConfig>) -> Result<Vec<u8>, String> {
+    let target = Target { host: "localhost".into(), port, secure: true, authority: format!("localhost:{port}"), path: "/".into() };
+    let hops = vec![Hop::Http(at("127.0.0.1", proxy))];
+    let opened = crate::runtime::rt::block_on(crate::runtime::rt::local(move || async move {
+        let Tunnel::Tls(io) = tunnel::open_with(&hops, &target, tls).await? else { return Err("not TLS".to_owned()) };
+        io.encode_slice(b"ping").map_err(|error| error.to_string())?;
+        io.flush(true).await.map_err(|error| error.to_string())?;
+        let mut answer = [0u8; 4];
+        io.read_exact(&mut answer).await.map_err(|error| error.to_string())?;
+        Ok(answer.to_vec())
+    }));
+    opened.flatten().expect("the executor")
+}
+
+#[test]
+fn tls_runs_inside_a_connect_tunnel() {
+    let (port, cert, target) = tls_echo(b"pong");
+    let (proxy, proxied) = http_proxy("HTTP/1.1 200 Connection established\r\n\r\n", port);
+    let mut roots = rustls::RootCertStore::empty();
+    roots.add(cert).expect("a root");
+    let tls = rustls::ClientConfig::builder_with_provider(provider())
+        .with_safe_default_protocol_versions()
+        .expect("versions")
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    assert_eq!(through_proxy(proxy, port, Arc::new(tls)).expect("a TLS tunnel"), b"pong");
+    assert_eq!(target.join().expect("the target"), b"ping");
+    assert!(proxied.join().expect("the proxy")[0].starts_with("CONNECT localhost:"), "a CONNECT for the target's name");
+}
+
+#[test]
+fn an_untrusted_target_inside_a_tunnel_is_named() {
+    let (port, _, _target) = tls_echo(b"pong");
+    let (proxy, _) = http_proxy("HTTP/1.1 200 Connection established\r\n\r\n", port);
+    let failed = through_proxy(proxy, port, crate::runtime::http::tls().expect("the system's TLS")).expect_err("no trust");
+    assert!(failed.contains("through the proxy") && failed.contains("certificate"), "{failed}");
+}

@@ -203,29 +203,13 @@ fn a_refused_connection_is_named() {
 
 /// a TLS server with a self-signed certificate for `localhost`, which no client trusts
 fn untrusted() -> (u16, std::thread::JoinHandle<()>) {
-    use openssl::{asn1::Asn1Time, bn::BigNum, ec, hash::MessageDigest, nid::Nid, pkey::PKey, ssl, x509};
-    let key = PKey::from_ec_key(ec::EcKey::generate(&ec::EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).expect("group")).expect("key")).expect("key");
-    let mut name = x509::X509NameBuilder::new().expect("name");
-    name.append_entry_by_text("CN", "localhost").expect("CN");
-    let name = name.build();
-    let mut cert = x509::X509::builder().expect("certificate");
-    cert.set_version(2).expect("version");
-    cert.set_serial_number(&BigNum::from_u32(1).and_then(|n| n.to_asn1_integer()).expect("serial")).expect("serial");
-    cert.set_subject_name(&name).expect("subject");
-    cert.set_issuer_name(&name).expect("issuer");
-    cert.set_pubkey(&key).expect("key");
-    cert.set_not_before(&Asn1Time::days_from_now(0).expect("time")).expect("not before");
-    cert.set_not_after(&Asn1Time::days_from_now(1).expect("time")).expect("not after");
-    cert.sign(&key, MessageDigest::sha256()).expect("sign");
-    let mut acceptor = ssl::SslAcceptor::mozilla_intermediate_v5(ssl::SslMethod::tls()).expect("acceptor");
-    acceptor.set_private_key(&key).expect("key");
-    acceptor.set_certificate(&cert.build()).expect("certificate");
-    let acceptor = acceptor.build();
+    let (config, _) = crate::runtime::proxy::tests::localhost_tls();
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
     let port = listener.local_addr().expect("address").port();
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept");
-        _ = acceptor.accept(stream);
+        let mut tls = rustls::StreamOwned::new(rustls::ServerConnection::new(config).expect("session"), stream);
+        _ = tls.read(&mut [0u8; 1]);
     });
     (port, server)
 }

@@ -196,9 +196,9 @@ impl Asr {
             .and_then(|c| c.set_header("x-custom-keepalive", "true"))
             .map_err(|error| error.to_string())?
             .set_handshake_timeout(Seconds(5));
-        let tls = crate::runtime::http::tls().map_err(|error| error.to_string())?;
+        let tls = crate::runtime::http::tls()?;
         let connection = WsClient::new(url.as_str(), ntex::SharedCfg::new("acde-voice").add(config))
-            .openssl(tls)
+            .rustls(tls)
             .connect()
             .await
             .map_err(|error| format!("cannot reach the speech recognition server: {error}"))?;
@@ -448,17 +448,37 @@ impl Identity {
 fn tt_encrypt(gzip: &[u8]) -> Result<Vec<u8>, String> {
     let mut salt = [0u8; 32];
     rand::rng().fill_bytes(&mut salt);
+    Ok(tt_seal(gzip, &salt))
+}
+
+fn tt_seal(gzip: &[u8], salt: &[u8; 32]) -> Vec<u8> {
+    use aes::cipher::{BlockModeEncrypt, KeyIvInit, block_padding::Pkcs7};
+    use sha2::{Digest, Sha512};
     let constant: Vec<u8> = (0..TT_CONSTANT.len()).step_by(2).filter_map(|i| u8::from_str_radix(&TT_CONSTANT[i..i + 2], 16).ok()).collect();
-    let digest = openssl::sha::sha512(&[openssl::sha::sha512(&salt).as_slice(), &constant].concat());
-    let payload = [openssl::sha::sha512(gzip).as_slice(), gzip].concat();
-    let sealed =
-        openssl::symm::encrypt(openssl::symm::Cipher::aes_128_cbc(), &digest[..16], Some(&digest[16..32]), &payload).map_err(|error| error.to_string())?;
-    Ok([&[0x74, 0x63, 0x05, 0x10, 0x00, 0x00][..], &salt, &sealed].concat())
+    let digest = Sha512::new().chain_update(Sha512::digest(salt)).chain_update(&constant).finalize();
+    let payload = [Sha512::digest(gzip).as_slice(), gzip].concat();
+    let key: [u8; 16] = digest[..16].try_into().expect("16 bytes");
+    let iv: [u8; 16] = digest[16..32].try_into().expect("16 bytes");
+    let sealed = cbc::Encryptor::<aes::Aes128>::new(&key.into(), &iv.into()).encrypt_padded_vec::<Pkcs7>(&payload);
+    [&[0x74, 0x63, 0x05, 0x10, 0x00, 0x00][..], salt, &sealed].concat()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_sealed_registration_matches_openssl_byte_for_byte() {
+        let salt: [u8; 32] = std::array::from_fn(|i| i as u8);
+        let gzip: Vec<u8> = [0x1f, 0x8b].into_iter().chain((0..45u32).map(|i| (i * 7 % 256) as u8)).collect();
+        let expected = concat!(
+            "746305100000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f804e02d4ca27f3c35f9a9ea98ba3abfa1e86ca48b61c1170d9a9",
+            "3913f1f96c1f7390ac858fc2d6ca0d04d34b2d39cb3efe235e90de7454b76ec43b91494477358fa750ab0b39330a8ea95d7c41bbbeb62ec473027b586f6e66e4",
+            "5794043912ce437d51cb1dcfbea7e7f0de3d2c88b431",
+        );
+        let hex: String = tt_seal(&gzip, &salt).iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(hex, expected);
+    }
 
     #[test]
     fn transcript_appends_finished_segments() {
