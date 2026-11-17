@@ -1,0 +1,24 @@
+{
+  "name": "acdert-js",
+  "private": true,
+  "description": "The runtime's own JS, bundled into the acdev runtime by build.rs (not published, not part of the SDK): dom/ is the web platform over the render document, page/ the glue that boots a page in a web",
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.14",
+    "@types/node": "^26.6.5",
+    "@xterm/xterm": "6.0.0",
+    "dompurify": "3.3.3",
+    "esbuild": "^0.28.2",
+    "happy-dom": "20.14.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "typescript": "5.9.3"
+  }
+}
