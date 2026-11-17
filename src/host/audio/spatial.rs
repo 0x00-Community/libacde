@@ -419,8 +419,15 @@ mod tests {
     #[test]
     fn building_the_model_is_cheap_enough_for_the_render_thread() {
         let start = std::time::Instant::now();
-        let _ = HrtfModel::new(48000.0);
-        assert!(start.elapsed() < std::time::Duration::from_millis(3), "{:?}", start.elapsed());
+        let model = HrtfModel::new(48000.0);
+        let took = start.elapsed();
+        assert_eq!(model.rms.len(), ALPHA_STEPS + 1);
+        assert!(model.rms.iter().all(|rms| rms.is_finite() && *rms > 0.0));
+        assert!((model.rms[(1.0 / ALPHA_STEP).round() as usize] - 1.0).abs() < 1e-9);
+        assert!(!model.sinc.is_empty());
+        if cfg!(not(debug_assertions)) {
+            assert!(took < std::time::Duration::from_millis(3), "{took:?}");
+        }
     }
 
     #[test]
