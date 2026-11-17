@@ -106,28 +106,3 @@ impl JsText for str {
         self.char_indices().take_while(|(i, _)| *i < bytes).map(|(_, c)| c.len_utf16()).sum()
     }
 }
-
-#[cfg(all(test, target_os = "linux"))]
-mod napi_stubs {
-    use napi::sys::{Status, napi_env, napi_ref, napi_status, napi_threadsafe_function, napi_threadsafe_function_call_mode};
-
-    fn missing(name: &str) -> napi_status {
-        eprintln!("Node-API {name} called in a test without a host");
-        Status::napi_generic_failure
-    }
-
-    #[unsafe(no_mangle)]
-    extern "C" fn napi_call_threadsafe_function(_: napi_threadsafe_function, _: *mut std::ffi::c_void, _: napi_threadsafe_function_call_mode) -> napi_status {
-        missing("napi_call_threadsafe_function")
-    }
-
-    #[unsafe(no_mangle)]
-    extern "C" fn napi_reference_unref(_: napi_env, _: napi_ref, _: *mut u32) -> napi_status {
-        missing("napi_reference_unref")
-    }
-
-    #[unsafe(no_mangle)]
-    extern "C" fn napi_delete_reference(_: napi_env, _: napi_ref) -> napi_status {
-        missing("napi_delete_reference")
-    }
-}
