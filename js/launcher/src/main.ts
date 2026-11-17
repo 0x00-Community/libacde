@@ -1,5 +1,5 @@
 import { installCore } from '@dopame/acde-dom/core'
-import type { WebGrants } from '../../page/src/sys/natives'
+import type { WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
 import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
 import { readDirOr, readTextOr } from '../../page/src/sys/fs'
 import { xdgHome } from '../../page/src/sys/os'
@@ -9,6 +9,7 @@ import { Rpc } from '../../page/src/rpc'
 import { SessionLanguage } from '../../page/src/language'
 import { AppLookup, webInit, type Found } from './app'
 import { LaunchArgs } from './args'
+import { answer, unsupported } from './calls'
 
 interface Grant {
   readonly window: number
@@ -28,13 +29,17 @@ interface LauncherNatives extends Natives {
 }
 
 const HEAP_MB = 256
-const STOP = new Set(['close', 'exit', 'quit', 'windowcloserequest'])
-const ACKNOWLEDGED = new Set(['window.ready', 'window.setTitle', 'page.shown'])
+const STOP = new Set(['close', 'exit', 'quit'])
+const CLOSE_WAIT_MS = 3000
 
 class Launcher {
   readonly #shell: LauncherShell
   #wake: (() => void) | null = null
   #ended: number | null = null
+  #rpc: Rpc | null = null
+  #thread: WebThreadHandle | null = null
+  #window = 0
+  #closing = false
 
   constructor(natives: LauncherNatives, readonly found: Found, readonly args: LaunchArgs) {
     this.#shell = natives.native.Shell.broker({ title: found.app.label })
@@ -52,15 +57,40 @@ class Launcher {
       navigator: { userAgent: '', platform: process.platform === 'darwin' ? 'MacIntel' : process.platform === 'win32' ? 'Win32' : 'Linux x86_64' },
     })
     const rpc = new Rpc((message) => thread.post(message))
-    rpc.serve((service, method) => {
-      if (ACKNOWLEDGED.has(`${service}.${method}`)) return undefined
-      throw Object.assign(new Error(`acdev: ${service}.${method} is not supported by the single-app launcher`), { status: 501, code: 'unsupported' })
-    })
+    rpc.serve((service, method, args) => this.#serve(service, method, args))
     const env = { ...Launcher.env(), ...(this.#shell.socketName && { WAYLAND_DISPLAY: this.#shell.socketName }) }
     const thread = sys().spawnWeb(init.name, init, app.heapMb ?? HEAP_MB, env, (message) => void rpc.receive(message), (code, reason) => {
       if (reason) process.stderr.write(`acdev: ${init.name} stopped: ${reason}\n`)
       this.#end(code)
     }, this.#grants())
+    this.#rpc = rpc
+    this.#thread = thread
+    this.#window = grant.window
+  }
+
+  #serve(service: string, method: string, args: unknown[]): unknown {
+    switch (answer(service, method, args, this.#window)) {
+      case 'acknowledge':
+        return undefined
+      case 'close':
+        void this.close(true)
+        return true
+      case 'unsupported':
+        throw unsupported(service, method)
+    }
+  }
+
+  async close(force: boolean): Promise<boolean> {
+    if (this.#closing) return true
+    if (!force && this.#rpc) {
+      const asked = this.#rpc.call('window', 'beforeclose').catch(() => true)
+      const waited = new Promise((later) => setTimeout(() => later(true), CLOSE_WAIT_MS))
+      if ((await Promise.race([asked, waited])) === false) return false
+    }
+    this.#closing = true
+    this.#thread?.terminate()
+    this.#end(0)
+    return true
   }
 
   #grants(): WebGrants {
@@ -87,7 +117,10 @@ class Launcher {
     if (this.args.shot) this.#shoot(this.args.shot).catch((error: Error) => process.stderr.write(`acdev: screenshot: ${error.message}\n`))
     if (this.args.seconds !== null) setTimeout(() => this.#end(0), this.args.seconds * 1000)
     while (this.#ended === null) {
-      for (const event of this.#shell.pump()) if (STOP.has(event.type)) this.#end(0)
+      for (const event of this.#shell.pump()) {
+        if (STOP.has(event.type)) this.#end(0)
+        else if (event.type === 'windowcloserequest') void this.close(false)
+      }
       if (this.#ended !== null) break
       await new Promise<void>((wake) => {
         this.#wake = wake

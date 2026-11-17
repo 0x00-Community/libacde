@@ -3,6 +3,7 @@ import { describe, test } from 'node:test'
 import { bindNatives } from '../../page/src/sys/natives.ts'
 import { AppLookup, webInit } from '../src/app.ts'
 import { LaunchArgs } from '../src/args.ts'
+import { answer, unsupported } from '../src/calls.ts'
 
 bindNatives({ host: {}, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
 
@@ -45,5 +46,16 @@ describe('the single-app launcher', () => {
     assert.deepEqual([args.app, args.width, args.height, args.scale, args.seconds, args.shot], ['hello', 640, 480, 1.5, null, '/tmp/s.png'])
     assert.throws(() => LaunchArgs.parse(['desktop', 'dopame']), /desktop is not supported/)
     assert.throws(() => LaunchArgs.parse(['app', 'x', '--size', 'big']), /--size big: WxH/)
+  })
+})
+
+describe('the page calls the single-app launcher answers', () => {
+  test('ready, the title and shown are acknowledged; the window closing itself, or by its own id, closes it', () => {
+    assert.equal(answer('window', 'ready', [], 1), 'acknowledge')
+    assert.equal(answer('window', 'close', [], 1), 'close')
+    assert.equal(answer('windows', 'close', [1], 1), 'close')
+    assert.equal(answer('windows', 'close', [2], 1), 'unsupported')
+    assert.equal(answer('apps', 'list', [], 1), 'unsupported')
+    assert.match(unsupported('apps', 'list').message, /apps\.list is not supported/)
   })
 })
