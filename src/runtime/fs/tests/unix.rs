@@ -221,7 +221,7 @@ fn desktop_override_is_a_clean_absolute_folder_other_than_home() {
     fs::write(listed.join(".config/user-dirs.dirs"), "XDG_DESKTOP_DIR=\"$HOME/\"\n").unwrap();
     let desktop = |home: &str, value: Option<&str>| {
         let mut child = std::process::Command::new(std::env::current_exe().unwrap());
-        child.args(["--exact", "fs::workspace::tests::desktop_override_child", "--nocapture"]).env("HOME", home).env("ACDE_TEST_DESKTOP", "1");
+        child.args(["--exact", "runtime::fs::workspace::tests::desktop_override_child", "--nocapture"]).env("HOME", home).env("ACDE_TEST_DESKTOP", "1");
         match value {
             Some(value) => child.env("XDG_DESKTOP_DIR", value),
             None => child.env_remove("XDG_DESKTOP_DIR"),

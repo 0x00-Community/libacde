@@ -344,7 +344,7 @@ mod tests {
 
         let id = open(&t);
         let s = Seen::follow(&t, &id);
-        t.input(id.clone(), "trap '' HUP; echo TRAPPED; while :; do sleep 1; done\n".into()).unwrap();
+        t.input(id.clone(), "exec /bin/sh -c \"trap '' HUP; echo TRAPPED; while :; do sleep 1; done\"\n".into()).unwrap();
         s.until("trap set", WAIT, |log| log.0.contains("TRAPPED\r\n"));
         let at = Instant::now();
         assert_eq!(t.close(id.clone()), json!({"closed": &id}));

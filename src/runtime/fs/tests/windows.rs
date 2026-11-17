@@ -180,7 +180,7 @@ fn a_missing_parent_still_answers_einval() {
 fn desktop_child(home: &Path, known: &Path, desktop: Option<&str>, expected: &str) {
     let mut child = Command::new(std::env::current_exe().unwrap());
     child
-        .args(["--exact", "fs::workspace::windows_tests::desktop_override_child"])
+        .args(["--exact", "runtime::fs::workspace::windows_tests::desktop_override_child"])
         .env("HOME", home)
         .env("USERPROFILE", home)
         .env("XDG_STATE_HOME", home)

@@ -174,7 +174,7 @@ mod tests {
     use crate::host::audio::mixer::{Cmd, MediaOp, Mixer, Note};
 
     fn mixer_with(name: &str) -> (Mixer, Arc<AtomicU64>) {
-        let bytes = std::fs::read(format!("{}/../media/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap();
+        let bytes = std::fs::read(format!("{}/tests/fixtures/media/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap();
         let player = Arc::new(Player::open(bytes.into()).unwrap());
         player.first_frame(std::time::Duration::from_secs(5)).unwrap();
         let mut mixer = Mixer::default();
