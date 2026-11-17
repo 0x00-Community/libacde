@@ -5,6 +5,7 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
+    "bundle": "bun bundle.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit -p ."
   },

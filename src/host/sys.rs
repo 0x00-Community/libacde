@@ -141,7 +141,7 @@ impl Loader for FileLoader {
 
     fn load(&self, url: &str) -> Result<String, String> {
         if let Some(source) = crate::host::bundle::source(url) {
-            return Ok(source.to_owned());
+            return Ok(source.into_owned());
         }
         let path = url::Url::parse(url).ok().and_then(|u| u.to_file_path().ok()).ok_or_else(|| format!("acdert: {url} is not a file"))?;
         std::fs::read_to_string(&path).map_err(|e| format!("acdert: {}: {e}", path.display()))

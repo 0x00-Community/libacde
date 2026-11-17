@@ -90,7 +90,7 @@ impl Loader for WebLoader {
 
     fn load(&self, url: &str) -> Result<String, String> {
         if let Some(source) = crate::host::bundle::source(url) {
-            return Ok(source.to_owned());
+            return Ok(source.into_owned());
         }
         if url.starts_with("file:") {
             return crate::host::sys::FileLoader.load(url);
