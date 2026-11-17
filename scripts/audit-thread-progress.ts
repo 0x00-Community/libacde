@@ -48,7 +48,7 @@ const env = { ...process.env }
 delete env['ACDE_HEADLESS']
 delete env['ACDE_DEV']
 delete env['ACDE_BACKEND']
-const runtime = process.env['ACDERT'] ?? resolve('target', 'release', 'acdert.exe')
+const runtime = process.env['ACDEV_RUNTIME'] ?? resolve('target', 'release', 'acdert.exe')
 const host = process.env['ACDE_APP'] ?? resolve('web/packages/acde-host/dist')
 const child = Bun.spawn([runtime, 'desktop', 'audit', '--seconds', '75'], {
   env: { ...env, ACDE_PATH: fixture, ACDE_APP: host,

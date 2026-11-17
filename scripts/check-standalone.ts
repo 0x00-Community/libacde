@@ -11,7 +11,7 @@ const unversioned = join(run, 'fixture-unversioned')
 const debug = join(run, 'debug')
 const home = join(run, 'home')
 const binary = process.platform === 'win32' ? 'acdert.exe' : 'acdert'
-const runtime = process.env['ACDERT'] ?? resolve('target', 'release', binary)
+const runtime = process.env['ACDEV_RUNTIME'] ?? resolve('target', 'release', binary)
 const host = process.env['ACDE_APP'] ?? resolve('web', 'packages', 'acde-host', 'dist')
 
 interface FixtureState {

@@ -18,7 +18,7 @@ const { values } = parseArgs({
     tests: { type: 'string', default: '' },
     limit: { type: 'string', default: '0' },
     chunk: { type: 'string', default: '40' },
-    acdert: { type: 'string', default: process.env.ACDERT ?? '' },
+    acdert: { type: 'string', default: process.env.ACDEV_RUNTIME ?? '' },
     app: { type: 'string', default: process.env.ACDE_APP ?? join(ROOT, 'web', 'packages', 'acde-host', 'dist') },
     'timeout-scale': { type: 'string', default: '1' },
     retry: { type: 'boolean', default: false },
@@ -30,7 +30,7 @@ const { values } = parseArgs({
 })
 const [SHARD, SHARDS] = values.shard!.split('/').map(Number) as [number, number]
 if (!(SHARDS >= 1 && SHARD >= 1 && SHARD <= SHARDS)) throw new Error(`--shard ${values.shard}: want i/n with 1 <= i <= n`)
-if (!values.acdert) throw new Error('--acdert <path to acdebin-dbg> (or ACDERT) is required')
+if (!values.acdert) throw new Error('--acdert <path to acdebin-dbg> (or ACDEV_RUNTIME) is required')
 if (!existsSync(join(values.app!, 'broker.js'))) throw new Error(`${values.app}: no broker.js; build acdert's web (cd web && bun run build) or pass --app <acde-host dist>`)
 const WORKERS = Number(values.workers)
 const FIRST = Number(values.first)
@@ -140,7 +140,10 @@ class Worker {
       headless: true,
       force: true,
       timeout: 20000,
-      env: { ACDERT: values.acdert!, ACDE_APP: values.app!, XDG_DATA_HOME: data, XDG_CONFIG_HOME: join(data, 'config'), XDG_CACHE_HOME: join(data, 'cache') },
+      env: {
+        ACDEV_RUNTIME: values.acdert!, ACDE_APP: values.app!,
+        XDG_DATA_HOME: data, XDG_CONFIG_HOME: join(data, 'config'), XDG_CACHE_HOME: join(data, 'cache'),
+      },
     })
     const webs = await this.acde.webs()
     const web = webs.find((w) => w.app === `wpt${this.n}`)

@@ -9,7 +9,7 @@ assert.ok(artifacts, 'Run this check through scripts/check-backends.sh')
 const run = resolve(artifacts)
 const pkg = join(run, 'fixture')
 const fixture = import.meta.dir
-const runtime = process.env['ACDERT'] ?? resolve('target', 'release', 'acdert.exe')
+const runtime = process.env['ACDEV_RUNTIME'] ?? resolve('target', 'release', 'acdert.exe')
 const host = process.env['ACDE_APP'] ?? resolve('web', 'packages', 'acde-host', 'dist')
 const base = join(process.env['XDG_RUNTIME_DIR'] || process.env['TMP'] || process.env['TEMP'] || '', 'acde', 'b')
 const report: Record<string, unknown> = { runtime, base }

@@ -9,7 +9,7 @@ const binary = process.platform === 'win32' ? 'acdert.exe' : 'acdert'
 const defaultRuntime = resolve('target', 'release', binary)
 const defaultApp = resolve('web', 'packages', 'acde-host', 'dist')
 const sides = [
-  { name: 'candidate', runtime: process.env['ACDERT'] ?? defaultRuntime, app: process.env['ACDE_APP'] ?? defaultApp },
+  { name: 'candidate', runtime: process.env['ACDEV_RUNTIME'] ?? defaultRuntime, app: process.env['ACDE_APP'] ?? defaultApp },
   ...(process.env['BASE_ACDERT'] || process.env['BASE_APP']
     ? [{ name: 'base', runtime: process.env['BASE_ACDERT'] ?? defaultRuntime, app: process.env['BASE_APP'] ?? defaultApp }]
     : []),
@@ -69,7 +69,7 @@ async function session(side: (typeof sides)[number], index: number): Promise<Res
   const state = join(dir, 'state')
   await Promise.all([debug, home, state].map((path) => mkdir(path, { recursive: true })))
   const env = { ...process.env }
-  for (const name of ['ACDE_STORAGE', 'ACDE_BACKEND', 'ACDE_DEV', 'ACDERT']) delete env[name]
+  for (const name of ['ACDE_STORAGE', 'ACDE_BACKEND', 'ACDE_DEV', 'ACDEV_RUNTIME']) delete env[name]
   const child = Bun.spawn([side.runtime, 'app', 'dom-perf', '--seconds', '180'], {
     env: {
       ...env,

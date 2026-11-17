@@ -8,7 +8,7 @@ const run = resolve(artifacts)
 const hosts = (process.env['BENCH_HOSTS'] ?? 'dist,dist-release').split(',').map((name) => name.trim())
 const rounds = Number(process.env['BENCH_ROUNDS'] ?? 5)
 const binary = process.platform === 'win32' ? 'acdert.exe' : 'acdert'
-const runtime = process.env['ACDERT'] ?? resolve('target', 'release', binary)
+const runtime = process.env['ACDEV_RUNTIME'] ?? resolve('target', 'release', binary)
 const pkgRoot = join(run, 'package')
 await mkdir(pkgRoot, { recursive: true })
 await Bun.write(join(pkgRoot, 'package.json'), JSON.stringify({ name: 'perf-probe', acde: {

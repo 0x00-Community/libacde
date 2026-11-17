@@ -34,7 +34,7 @@ delete env['ACDE_STORAGE']
 delete env['ACDE_BACKEND']
 delete env['ACDE_DEV']
 const binary = process.platform === 'win32' ? 'acdert.exe' : 'acdert'
-const runtime = env['ACDERT'] ?? resolve('target', 'release', binary)
+const runtime = env['ACDEV_RUNTIME'] ?? resolve('target', 'release', binary)
 const host = env['ACDE_APP'] ?? resolve('web/packages/acde-host/dist')
 const child = Bun.spawn([runtime, 'app', 'picker-probe', '--seconds', '50'], {
   env: { ...env, ACDE_APP: host, ACDE_PATH: pkg, ACDE_DEBUG_DIR: debug, ACDE_HEADLESS: '1',
