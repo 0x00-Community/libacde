@@ -1,26 +1,10 @@
-[workspace]
-resolver = "3"
-exclude = ["vendor"]
-
-[workspace.package]
-version = "0.0.11"
-edition = "2024"
-repository = "https://github.com/dopame-org/acdert"
-publish = ["ac"]
-
-[workspace.dependencies]
-# blitz: our fork (submodule vendor/blitz, Gitea AC/blitz), published to ac with the same names
-blitz-dom = { path = "vendor/blitz/packages/blitz-dom", version = "=0.3.0-beta.5", registry = "ac", default-features = false }
-blitz-paint = { path = "vendor/blitz/packages/blitz-paint", version = "=0.3.0-beta.5", registry = "ac", default-features = false }
-blitz-traits = { path = "vendor/blitz/packages/blitz-traits", version = "=0.3.0-beta.5", registry = "ac", default-features = false }
-
 # 对外唯一的包: src/ 下的模块 (host / render / runtime / webgl / …) (gpu 是 detour 之上的设备注册表和合成器接口) 平铺导出 (Rust 用 rlib), 并以 cdylib 出 libacdert.so
-# (C 接口在 src/ffi.rs, 头文件 include/acdert.h 由 build.rs 经 cbindgen 生成)
+# (C 接口在 src/ffi.rs, 头文件 include/acdert.h 由 build.rs 经 cbindgen 生成); 工作区、blitz 的 workspace.dependencies 和 profile 在仓库根的 Cargo.toml
 [package]
 name = "acdert"
 version.workspace = true
 edition.workspace = true
-publish.workspace = true
+publish = ["ac"]
 # the package is the library: its sources, the header, the Wayland protocols, and the API level src/host reads from web/
 include = ["/src/**", "/build.rs", "/cbindgen.toml", "/include/**", "/protocol/**", "/LICENSE", "/web/packages/acde-api/src/runtime/level.js"]
 
@@ -164,17 +148,3 @@ phase-times = ["blitz-dom/log-phase-times"]
 
 [build-dependencies]
 cbindgen = { version = "0", default-features = false }
-
-[profile.release]
-opt-level = "s"
-debug = 0
-strip = true
-lto = "thin"
-
-[profile.dist]
-inherits = "release"
-debug = "line-tables-only"
-split-debuginfo = "packed"
-strip = "symbols"
-lto = "fat"
-codegen-units = 1
