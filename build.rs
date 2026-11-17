@@ -50,25 +50,27 @@ fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         println!("cargo:rustc-link-arg=-Wl,-undefined,dynamic_lookup");
     }
-    bundle_page(&dir, &out);
+    bundle_js(&dir, &out);
 }
 
-fn bundle_page(dir: &Path, out: &Path) {
+fn bundle_js(dir: &Path, out: &Path) {
     let level_file = dir.join("../npm/acde-api/api-level");
-    for watched in ["js/page/src", "js/dom/src", "js/tsconfig.json", "../npm/src/manifest", "../npm/acde-api/api-level"] {
+    for watched in ["js/page/src", "js/dom/src", "js/launcher/src", "js/tsconfig.json", "../npm/src/manifest", "../npm/acde-api/api-level"] {
         println!("cargo:rerun-if-changed={watched}");
     }
     println!("cargo:rerun-if-env-changed=ACDEV_BUN");
     let level = std::fs::read_to_string(&level_file).expect("npm/acde-api/api-level");
     let version = std::env::var("CARGO_PKG_VERSION").expect("CARGO_PKG_VERSION");
     let bun = std::env::var("ACDEV_BUN").unwrap_or_else(|_| "bun".into());
-    let status = std::process::Command::new(&bun)
-        .current_dir(dir.join("js"))
-        .args(["build", "page/src/worker.ts", "--format", "esm", "--target", "browser", "--minify-whitespace", "--minify-syntax", "--keep-names"])
-        .args(["--conditions", "source", "--define", &format!("ACDEV_API_LEVEL={}", level.trim())])
-        .args(["--define", &format!("ACDEV_RUNTIME_VERSION=\"{version}\""), "--outfile"])
-        .arg(out.join("page.js"))
-        .status()
-        .unwrap_or_else(|e| panic!("{bun}: {e}; bundling js/page needs bun (set ACDEV_BUN to its path)"));
-    assert!(status.success(), "{bun} build js/page/src/worker.ts failed ({status})");
+    for (entry, name) in [("page/src/worker.ts", "page.js"), ("launcher/src/main.ts", "launcher.js")] {
+        let status = std::process::Command::new(&bun)
+            .current_dir(dir.join("js"))
+            .args(["build", entry, "--format", "esm", "--target", "browser", "--minify-whitespace", "--minify-syntax", "--keep-names"])
+            .args(["--conditions", "source", "--define", &format!("ACDEV_API_LEVEL={}", level.trim())])
+            .args(["--define", &format!("ACDEV_RUNTIME_VERSION=\"{version}\""), "--outfile"])
+            .arg(out.join(name))
+            .status()
+            .unwrap_or_else(|e| panic!("{bun}: {e}; bundling js/ needs bun (set ACDEV_BUN to its path)"));
+        assert!(status.success(), "{bun} build js/{entry} failed ({status})");
+    }
 }

@@ -8,9 +8,6 @@ use std::time::Duration;
 use crate::host::bind;
 use crate::host::rt::{self, Msg};
 
-pub const PAGE_URL: &str = "acde-runtime:/page.js";
-pub const PAGE: &str = include_str!(concat!(env!("OUT_DIR"), "/page.js"));
-
 pub fn app_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("ACDE_APP") {
         return PathBuf::from(dir);
@@ -516,7 +513,7 @@ fn run_web(runtime: &mut rt::Runtime, init: Vec<u8>, env: &[(String, String)], g
         if let Some(own) = v8::Function::builder(own_env).data(env.into()).build(scope) {
             bind::set(scope, sys, "env", own.into());
         }
-        crate::host::sys::boot_module(scope, PAGE_URL, natives.into());
+        crate::host::sys::boot_module(scope, crate::host::bundle::PAGE_URL, natives.into());
     });
     runtime.lp.keep_alive(true);
     runtime.run_until(|| stopping.load(Ordering::SeqCst))

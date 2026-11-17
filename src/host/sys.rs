@@ -140,6 +140,9 @@ impl Loader for FileLoader {
     }
 
     fn load(&self, url: &str) -> Result<String, String> {
+        if let Some(source) = crate::host::bundle::source(url) {
+            return Ok(source.to_owned());
+        }
         let path = url::Url::parse(url).ok().and_then(|u| u.to_file_path().ok()).ok_or_else(|| format!("acdert: {url} is not a file"))?;
         std::fs::read_to_string(&path).map_err(|e| format!("acdert: {}: {e}", path.display()))
     }
@@ -591,20 +594,15 @@ pub enum Entry {
 }
 
 pub fn start(entry: Entry, args: &[String], platform: crate::host::platform::Shared) -> i32 {
-    let (file, globals) = match entry {
-        Entry::Script(file) => (PathBuf::from(file), true),
-        Entry::Broker => (crate::host::web::app_dir().join("broker.js"), false),
-    };
-    let url = match std::fs::canonicalize(&file) {
-        Ok(path) => url::Url::from_file_path(path).map(String::from).unwrap_or_default(),
-        Err(e) if globals => {
-            log::error!("{}: {e}", file.display());
-            return 1;
-        }
-        Err(_) => {
-            log::error!("no broker bundle at {} (set ACDE_APP to the app directory)", file.display());
-            return 1;
-        }
+    let (url, globals) = match entry {
+        Entry::Script(file) => match std::fs::canonicalize(&file) {
+            Ok(path) => (url::Url::from_file_path(path).map(String::from).unwrap_or_default(), true),
+            Err(e) => {
+                log::error!("{file}: {e}");
+                return 1;
+            }
+        },
+        Entry::Broker => (crate::host::bundle::LAUNCHER_URL.to_owned(), false),
     };
     let mut runtime = rt::Runtime::new(None, "broker", platform);
     crate::host::modules::set_loader(Rc::new(FileLoader));

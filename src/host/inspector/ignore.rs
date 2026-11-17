@@ -1,19 +1,7 @@
-use std::sync::OnceLock;
-
 use base64::Engine;
 
-fn runtime_bundles() -> &'static [String] {
-    static URLS: OnceLock<Vec<String>> = OnceLock::new();
-    URLS.get_or_init(|| {
-        let dir = crate::host::web::app_dir();
-        let dirs = [Some(dir.clone()), std::fs::canonicalize(&dir).ok()];
-        let files = dirs.into_iter().flatten().map(|dir| dir.join("broker.js")).filter_map(|path| url::Url::from_file_path(path).ok()).map(String::from);
-        std::iter::once(crate::host::web::PAGE_URL.to_owned()).chain(files).collect()
-    })
-}
-
 pub(super) fn map_for(url: &str, source: &str, lines: usize) -> Option<String> {
-    if !runtime_bundles().iter().any(|bundle| bundle == url) {
+    if !crate::host::bundle::is_bundle(url) {
         return None;
     }
     let last = source.trim_end().rsplit('\n').next().unwrap_or_default();
@@ -56,9 +44,9 @@ mod tests {
 
     #[test]
     fn only_runtime_bundles_without_their_own_map_get_one() {
-        let bundle = crate::host::web::PAGE_URL.to_owned();
-        assert!(map_for(&bundle, "a()\nb()", 3).is_some());
-        assert!(map_for(&bundle, "a()\n//# sourceMappingURL=page.js.map\n", 3).is_none(), "a dev build's own map wins");
+        let bundle = crate::host::bundle::PAGE_URL;
+        assert!(map_for(bundle, "a()\nb()", 3).is_some());
+        assert!(map_for(bundle, "a()\n//# sourceMappingURL=page.js.map\n", 3).is_none(), "a dev build's own map wins");
         assert!(map_for("file:///elsewhere/app.js", "a()", 1).is_none(), "page scripts are left alone");
     }
 }

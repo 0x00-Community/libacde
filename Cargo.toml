@@ -8,7 +8,7 @@ publish = ["ac"]
 # the package is the library: its sources, the header and the Wayland protocols; src/host reads the contract level from
 # npm/acde-api/api-level and build.rs bundles js/ with npm/src/manifest, both outside this package, so the package builds
 # only inside the acdev workspace
-include = ["/src/**", "/build.rs", "/cbindgen.toml", "/include/**", "/protocol/**", "/js/tsconfig.json", "/js/dom/src/**", "/js/page/src/**", "/LICENSE"]
+include = ["/src/**", "/build.rs", "/cbindgen.toml", "/include/**", "/protocol/**", "/js/tsconfig.json", "/js/dom/src/**", "/js/page/src/**", "/js/launcher/src/**", "/LICENSE"]
 
 [lib]
 crate-type = ["rlib", "cdylib"]

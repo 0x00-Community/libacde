@@ -21,5 +21,5 @@
       "@dopame/acde-api/manifest": ["../../npm/src/manifest/index.ts"]
     }
   },
-  "include": ["dom/src", "dom/test", "page/src", "page/test"]
+  "include": ["dom/src", "dom/test", "page/src", "page/test", "launcher/src", "launcher/test"]
 }
