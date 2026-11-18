@@ -3,7 +3,7 @@
 - **后端** (单应用启动器 `js/launcher/src/backend.ts` 的 `AppBackend`, 原 acde-host `backend.ts` 改写; unix): PATH 上有 `bun` 就 `bun --preload acde-listen.js server.js`, 否则 `node --import <acde-listen.js 的 file: URL> server.js`
   (Node ≥ 22.3; `ACDE_RUNTIME=node` (acdev dev 按工程的运行时设) 时先找 node, 没有再 bun; 两样都没有不起, 打一行 warn; 同一份构建产物两边都能跑, 见 acdev 的「和运行时的契约」), 随应用起, 应用退出时停, 重载 (`acdev dev` 的 `devreload` 和 `window.reload`) 时先停再起 (SIGTERM 进程组,
   3 秒后 SIGKILL); 意外退出时打 warn `[<app>#backend] stopped (exit N); starting it again`, 0.5 秒后重起, 一分钟内第 4 次崩溃后打 warn 不再起, 直到下次重载.
-  这些行的目标是 `acde_host`, 后端自己的输出是 `acde::child` (Windows `acde::backends`) 的 `[<app>#backend] …`, `acdev dev` 都留下. `child.rs` 起: 自己的会话和进程组, 环境从零建 (`ACDE_APP_ID` / `ACDE_APP_DATA` /
+  这些行的目标是 `acde_host`, 后端自己的输出是 `acde::host::child` (Windows `acde::host::backends`, 日志目标是模块路径) 的 `[<app>#backend] …`, `acdev dev` 都留下. `child.rs` 起: 自己的会话和进程组, 环境从零建 (`ACDE_APP_ID` / `ACDE_APP_DATA` /
   `ACDE_APP_SOCKETS` / `PORT` / `NODE_ENV=production` + 会话的 HOME、PATH、LANG 等), 工作目录 `$XDG_DATA_HOME/acde/apps/<id>/`, 输出前缀
   `[<app>#backend]`, `PR_SET_PDEATHSIG` (子进程都由 `acde-fork` 线程 fork). preload 把 listen 换成 unix socket (`<acdev 的运行时目录>/<运行时的 pid>/<id>/`, acdev 的运行时目录是 `sys/os.ts` `ownRuntimeDir`: 有 `XDG_RUNTIME_DIR` 或在 Linux 上是那里的 `acde/`, 别处 `$TMPDIR/acde-<uid>` 本身就是 acdev 的, 不再套一层 (macOS 的 `TMPDIR` 很长, 104 字节里每个字都要省; 这样应用 id 能比 0.0.9 长 4 个字): 每个会话一份, acdev dev 和 acdev test 同时跑
   同一个应用不再互相删 socket; 应用的后端停了删它的目录, 启动器退出时删整个 pid 目录, 第一次起后端时扫掉进程已不在的 pid 目录;
