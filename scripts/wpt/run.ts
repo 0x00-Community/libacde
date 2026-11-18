@@ -19,7 +19,7 @@ const { values } = parseArgs({
     limit: { type: 'string', default: '0' },
     chunk: { type: 'string', default: '40' },
     acdert: { type: 'string', default: process.env.ACDEV_RUNTIME ?? '' },
-    app: { type: 'string', default: process.env.ACDE_APP ?? join(ROOT, 'web', 'packages', 'acde-host', 'dist') },
+    app: { type: 'string', default: process.env.ACDE_APP ?? '' },
     'timeout-scale': { type: 'string', default: '1' },
     retry: { type: 'boolean', default: false },
     flag: { type: 'string', default: '' },
@@ -31,7 +31,9 @@ const { values } = parseArgs({
 const [SHARD, SHARDS] = values.shard!.split('/').map(Number) as [number, number]
 if (!(SHARDS >= 1 && SHARD >= 1 && SHARD <= SHARDS)) throw new Error(`--shard ${values.shard}: want i/n with 1 <= i <= n`)
 if (!values.acdert) throw new Error('--acdert <path to acdev runtime> (or ACDEV_RUNTIME) is required')
-if (!existsSync(join(values.app!, 'broker.js'))) throw new Error(`${values.app}: no broker.js; build acdert's web (cd web && bun run build) or pass --app <acde-host dist>`)
+if (values.app && !existsSync(join(values.app, 'broker.js'))) {
+  throw new Error(`--app ${values.app}: no broker.js (the runtime bundles its page files; --app is only for an older runtime)`)
+}
 const WORKERS = Number(values.workers)
 const FIRST = Number(values.first)
 const SCALE = Number(values['timeout-scale'])
@@ -141,7 +143,7 @@ class Worker {
       force: true,
       timeout: 20000,
       env: {
-        ACDEV_RUNTIME: values.acdert!, ACDE_APP: values.app!,
+        ACDEV_RUNTIME: values.acdert!, ...(values.app ? { ACDE_APP: values.app } : {}),
         XDG_DATA_HOME: data, XDG_CONFIG_HOME: join(data, 'config'), XDG_CACHE_HOME: join(data, 'cache'),
       },
     })
