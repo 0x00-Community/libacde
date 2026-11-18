@@ -39,7 +39,10 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 - 系统调用走 rustix, 不直接依赖 libc; rustix 没有的用专门的 crate (signal-hook、jiff). 按平台的代码用 `#[cfg]` / `cfg_select!`, 先用 std.
 - 依赖版本 1.0 及以上只写主版本号 (`wgpu = "30"`), 0.x 写到次版本 (`log = "0.4"`), 用最新的; 例外是换成 `vendor/` 的 crate 和配套的 (blitz-*、stylo*、
   parley、html5ever、cssparser) 用 `=` 钉住.
-- `Cargo.lock` 不进 git (`.gitignore`): 依赖按 Cargo.toml 解析到最新. 本地留下的 `Cargo.lock` 不会自己跟上: 拉取之后先 `cargo update` (或删掉它) 再编.
+- `Cargo.lock` 进 git (用户定 2026-11-18, 同 acdev): 依赖只在主动更新时变. 更新时 `cargo update` 单独一个提交, 测过再推; 改了依赖的提交
+  同时更新锁文件. 前端 (acdev、acdes) 以 path 链本仓库时用的是它们自己的锁文件: 本仓库改了依赖, 它们要 `cargo update -p libacde` 跟上.
+  `mach-dxcompiler-rs` (wgpu-hal 在 Windows 的静态 DXC) 锁在 0.1.4: 0.1.6、0.1.7 的 build.rs 编译时匿名查 GitHub API, 被限流就失败
+  (acdev `docs/runtime-build.md`「DXC 钉版本」); 更新依赖后若它变了, 用 `cargo update -p mach-dxcompiler-rs --precise 0.1.4+2024.11.22-df583a3.1` 退回.
   0.x 写到次版本正是因为这个: 只写 `"0"` 时, workspace 的版本号一变, cargo 会重新解析这些 crate 的依赖, 它们会落到旧锁里已有的老版本上, 只在 Linux
   编的 `voice`、`office` 就编不过 (`rand::rng` 找不到, `Hmac<Sha256>` 的 trait 对不上); macOS 和 Windows 不编这两个模块, 看不到这个错.
 - `js/bun.lock`、`scripts/wpt/bun.lock` 进 git, 改依赖时放在同一个提交里.

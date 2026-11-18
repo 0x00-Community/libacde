@@ -9,5 +9,3 @@ logs/
 # macos desktop files
 .DS_Store
 
-# resolved fresh by every build
-Cargo.lock
