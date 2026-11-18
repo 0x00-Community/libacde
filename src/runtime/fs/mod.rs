@@ -39,6 +39,7 @@ impl<T: Serialize> IntoJson for Outcome<T> {
 pub(crate) struct Shared {
     pub(crate) fs: WorkspaceFs,
     grants: Arc<Grants>,
+    lent: std::sync::Mutex<std::collections::HashMap<String, Vec<LentRoot>>>,
 }
 
 #[derive(Clone, Copy)]
@@ -60,7 +61,24 @@ impl Shared {
 
     fn files_roots(&self, owner: Option<&str>, files: &Files) -> Outcome<Vec<FinderRoot>> {
         let owner = owner.ok_or_else(|| Failure::invalid("private folders belong to an app"))?;
-        files.roots(&self.fs, owner, self.grants.folders(owner))
+        files.roots(&self.fs, owner, self.lent_to(owner), self.grants.folders(owner))
+    }
+
+    fn lent_to(&self, owner: &str) -> Vec<LentRoot> {
+        self.lent.lock().unwrap_or_else(|e| e.into_inner()).get(owner).cloned().unwrap_or_default()
+    }
+
+    fn lend(&self, owner: &str, root: LentRoot) -> Outcome<String> {
+        if !Grants::valid_owner(owner) {
+            return Err(Failure::invalid("folders are lent to an app"));
+        }
+        let root = root.checked()?;
+        let name = root.name.clone();
+        let mut lent = self.lent.lock().unwrap_or_else(|e| e.into_inner());
+        let roots = lent.entry(owner.to_owned()).or_default();
+        roots.retain(|known| known.name != name);
+        roots.push(root);
+        Ok(name)
     }
 
     fn root_in(roots: &[FinderRoot], view: View, id: &str) -> Outcome<FinderRoot> {
@@ -177,12 +195,12 @@ impl FsCall {
 impl Shared {
     fn new() -> Self {
         static GRANTS: OnceLock<Arc<Grants>> = OnceLock::new();
-        Self { fs: WorkspaceFs::new(), grants: Arc::clone(GRANTS.get_or_init(|| Arc::new(Grants::from_env()))) }
+        Self { fs: WorkspaceFs::new(), grants: Arc::clone(GRANTS.get_or_init(|| Arc::new(Grants::from_env()))), lent: Default::default() }
     }
 
     #[cfg(test)]
     fn with(grants: Grants) -> Self {
-        Self { fs: WorkspaceFs::new(), grants: Arc::new(grants) }
+        Self { fs: WorkspaceFs::new(), grants: Arc::new(grants), lent: Default::default() }
     }
 
     fn call(&self, call: &FsCall, owner: Option<&str>, view: View, roots: &[FinderRoot], writes: &Writes) -> Outcome<FsReply> {
@@ -329,12 +347,16 @@ impl Workspace {
 
     #[cfg(test)]
     pub(crate) fn at(home: &str) -> Self {
-        Self::on(Arc::new(Shared { fs: WorkspaceFs::at(home), grants: Arc::new(Grants::new(None)) }))
+        Self::on(Arc::new(Shared { fs: WorkspaceFs::at(home), grants: Arc::new(Grants::new(None)), lent: Default::default() }))
     }
 
     pub fn scoped(&self, roots: Option<Vec<String>>, owner: Option<&str>) -> Self {
         let owner = owner.filter(|owner| Grants::valid_owner(owner)).map(Into::into);
         Self { roots: roots.map(Into::into), owner, ..Self::on(Arc::clone(&self.shared)) }
+    }
+
+    pub(crate) fn lend(&self, owner: &str, root: LentRoot) -> Outcome<String> {
+        self.shared.lend(owner, root)
     }
 
     pub fn files(&self, files: Files, owner: &str) -> Self {

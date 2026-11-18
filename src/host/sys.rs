@@ -174,6 +174,7 @@ pub fn object<'s>(scope: &mut v8::PinScope<'s, '_>, argv: &[String]) -> v8::Loca
         "run" => run,
         "onSignal" => on_signal,
         "spawnWeb" => crate::host::web::spawn_web,
+        "lendRoot" => crate::host::web::lend_root,
     );
     #[cfg(target_os = "linux")]
     crate::methods!(scope, obj,

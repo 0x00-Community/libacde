@@ -12,7 +12,8 @@ import { PageSource } from '../../page/src/page'
 import { AppLookup, desktopInit, webInit, type Found, type Place } from './app'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported } from './calls'
-import { sessionOf, type ManagerLink, type Session } from './manager'
+import type { LentRoot } from '@dopame/acde-api'
+import { sessionOf, type ManagerEvent, type ManagerLink, type Session } from './manager'
 import { toDesktop, type ShellEvent } from './events'
 
 interface Grant {
@@ -305,9 +306,24 @@ class Launcher {
   #managerEvents(): void {
     for (const event of this.manager?.pump() ?? []) {
       if (event.type === 'managerclosed') this.#end(0)
-      else if (event.type === 'request' && !this.#desktop) void this.#rpc?.call('window', 'request', [event['request']]).catch(() => undefined)
+      else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
       else if (this.#desktop) this.#thread?.post(event)
     }
+  }
+
+  #deliver(event: ManagerEvent): void {
+    const request = event['request'] as Record<string, unknown> | undefined
+    const lend = event['lend'] as LentRoot | undefined
+    let root: string | undefined
+    if (lend) {
+      try {
+        root = sys().lendRoot?.(this.session.found!.app.id, lend)
+      } catch (error) {
+        process.stderr.write(`acdev: the lent folder ${lend.dir}: ${(error as Error).message}\n`)
+      }
+    }
+    const handed = root === undefined ? request : { ...request, root }
+    void this.#rpc?.call('window', 'request', [handed]).catch(() => undefined)
   }
 
   async run(): Promise<number> {

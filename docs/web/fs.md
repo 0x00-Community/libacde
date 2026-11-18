@@ -19,11 +19,14 @@ root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOW
 把它从 `roots()` 里去掉, 以它为 root 的调用 reject 403 `denied` (`AcdePermissionError`). `fs.revoke(令牌)` 收回选择的文件夹, `acde:permissions` 也列出和收回它 (见 `docs/runtime/webs.md`「批准」). Broker 交给 web 的授权是
 `fs: {places, paths}` (src/host `web.rs` → `Workspace::files`). 下面按路径的根只给桌面页面.
 
-**临时借出的根** (daily-desktop 12, 用户 2026-11-18 定方案 A): 管家可给某一次拉起的应用临时追加根, 放在 welcome 的 `grants.fs.roots`
-(`[{name, dir, label?}]`, 只认对象形式的 `fs`). 运行时把它们排在私有文件夹和公共位置之后, `roots()` 里是 `{id: name, label: label 或目录名,
-source: 'lent'}`, 可读写, 按 `name` 当 root 用; `name` 不能是 `private` 或公共位置名, `dir` 要是绝对路径, 不合的丢掉 (`access/files.rs` 的
-`with_lent`). 只在这个进程里有效, 不记进批准. 桌面经 `acde:apps` 的 `open(app, request, {root: {name, dir, label?}})` 请管家借出
-(SDK `OpenWindowOptions.root`, 只给桌面用), 管家决定给不给.
+**临时借出的根** (daily-desktop 12, 用户 2026-11-18 定方案 A, 名字 `lent`): 管家可给应用的某一次拉起借出文件夹.
+- 拉起时: welcome 的 `grants.fs.roots` (`[{name, dir, label?}]`, 只认对象形式的 `fs`) 在起页面线程时登记.
+- 运行中: 目标应用不多开且已在运行时, 管家把请求推给它并附 `lend: {name, dir, label?}`; 启动器先经 `sys.lendRoot(应用编号, lend)` 登记,
+  再把请求交给页面 (`window.request`), 请求里补 `root: <name>`.
+- 登记的根放在进程内 (`fs/mod.rs` 的 `Shared.lent`, 按应用编号), 同一应用同名的后来的替换先前的, 进程结束就没了, 不记进批准.
+  `roots()` 里排在私有文件夹和公共位置之后: `{id: name, label: label 或目录名, source: 'lent'}`, 可读写, 按 `name` 当 root 用.
+  `name` 不能是 `private`、公共位置名或 `folder-` 开头, `dir` 要是绝对路径, 不合的拒绝 (`LentRoot::checked`).
+- 桌面经 `acde:apps` 的 `open(app, request, {root: {name, dir, label?}})` 请管家借出 (SDK `OpenWindowOptions.root`, 只给桌面用), 管家决定给不给.
 
 **拖放和打开请求的句柄** (#68): 用户交给应用的文件和文件夹是标准的 `FileSystemHandle`, 页面拿不到路径.
 - 系统拖放: `dnddrop` 的 `files` 里每个路径 (acde-host `dnd.ts` `DragDrop`, 链接和别的类型跳过): 不超过 64 MiB 的普通文件进 `dataTransfer.files` (内容在 drop 时读进来),

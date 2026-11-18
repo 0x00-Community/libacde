@@ -22,23 +22,29 @@ pub struct LentRoot {
     pub label: Option<String>,
 }
 
+impl LentRoot {
+    pub(crate) fn checked(self) -> Outcome<Self> {
+        let taken = self.name == "private" || PLACES.iter().any(|(place, _)| *place == self.name);
+        if self.name.is_empty() || taken || self.name.starts_with("folder-") {
+            return Err(Failure::invalid(format!("{:?} cannot name a lent folder (private, the shared places and folder- are taken)", self.name)));
+        }
+        if !Path::new(&self.dir).is_absolute() {
+            return Err(Failure::invalid(format!("{}: a lent folder is an absolute path", self.dir)));
+        }
+        Ok(self)
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Files {
     places: Vec<&'static str>,
     paths: bool,
-    lent: Vec<LentRoot>,
 }
 
 impl Files {
     pub fn new(places: &[String], paths: bool) -> Self {
         let places = PLACES.iter().map(|(name, _)| *name).filter(|name| places.iter().any(|place| place == name)).collect();
-        Self { places, paths, lent: Vec::new() }
-    }
-
-    pub fn with_lent(self, lent: Vec<LentRoot>) -> Self {
-        let taken = |name: &str| name == "private" || PLACES.iter().any(|(place, _)| *place == name);
-        let lent = lent.into_iter().filter(|root| !taken(&root.name) && !root.name.is_empty() && Path::new(&root.dir).is_absolute()).collect();
-        Self { lent, ..self }
+        Self { places, paths }
     }
 
     pub fn paths(&self) -> bool {
@@ -51,7 +57,7 @@ impl Files {
         format!("folder-{hex}")
     }
 
-    pub(in crate::runtime::fs) fn roots(&self, fs: &WorkspaceFs, owner: &str, granted: Vec<Granted>) -> Outcome<Vec<FinderRoot>> {
+    pub(in crate::runtime::fs) fn roots(&self, fs: &WorkspaceFs, owner: &str, lent: Vec<LentRoot>, granted: Vec<Granted>) -> Outcome<Vec<FinderRoot>> {
         let private = fs.private_dir(owner);
         std::fs::DirBuilder::new().recursive(true).create(&private)?;
         let mut roots = vec![self.root("private".into(), private, "App data", RootSource::Private)];
@@ -60,7 +66,7 @@ impl Files {
             let root = self.root(name.into(), path, label, RootSource::Place);
             roots.push(FinderRoot { place: Some(name), ..Self::checked(root, "the folder does not exist") });
         }
-        for lent in &self.lent {
+        for lent in &lent {
             let label = lent.label.clone().unwrap_or_else(|| Self::label(&lent.dir));
             let root = self.root(lent.name.clone(), lent.dir.clone(), &label, RootSource::Lent);
             roots.push(Self::checked(root, "the folder does not exist"));
@@ -167,9 +173,12 @@ mod tests {
         std::fs::create_dir_all(&work).unwrap();
         std::fs::write(work.join("plan.md"), "plan").unwrap();
         let all = Workspace::at(&home.text());
-        let lent = LentRoot { name: "work".into(), dir: work.to_string_lossy().into_owned(), label: Some("Project".into()) };
-        let shadowing = LentRoot { name: "documents".into(), dir: work.to_string_lossy().into_owned(), label: None };
-        let app = all.files(Files::new(&[], false).with_lent(vec![lent, shadowing]), "agent");
+        let dir = work.to_string_lossy().into_owned();
+        let lent = LentRoot { name: "work".into(), dir: dir.clone(), label: Some("Project".into()) };
+        assert_eq!(all.lend("agent", lent).unwrap(), "work");
+        assert!(all.lend("agent", LentRoot { name: "documents".into(), dir: dir.clone(), label: None }).is_err());
+        assert!(all.lend("agent", LentRoot { name: "rel".into(), dir: "project".into(), label: None }).is_err());
+        let app = all.files(Files::new(&[], false), "agent");
         let roots = json(app.call(FsCall::Roots));
         let ids: Vec<&str> = roots.as_array().unwrap().iter().map(|root| root["id"].as_str().unwrap()).collect();
         assert_eq!(ids, ["private", "work"]);
