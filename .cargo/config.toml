@@ -1,0 +1,12 @@
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/PDBALTPATH:%_PDB%"]
+
+# ac: the AC organisation's cargo registry on gitea.dopamine, where acdert, its crates, the blitz fork and taffy are published
+[registries.ac]
+index = "sparse+http://gitea.dopamine/api/packages/AC/cargo/"
+credential-provider = "cargo:token"
+
+# rusty_v8 prebuilt archives from the intranet copy (Gitea generic package mirror/rusty_v8, one version per v8 release),
+# not GitHub releases; the build never falls back to GitHub (no RUSTY_V8_MIRROR_FALLBACK)
+[env]
+RUSTY_V8_MIRROR = "http://gitea.dopamine/api/packages/mirror/generic/rusty_v8"
