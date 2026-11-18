@@ -44,7 +44,9 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
   编的 `voice`、`office` 就编不过 (`rand::rng` 找不到, `Hmac<Sha256>` 的 trait 对不上); macOS 和 Windows 不编这两个模块, 看不到这个错.
 - `js/bun.lock`、`scripts/wpt/bun.lock` 进 git, 改依赖时放在同一个提交里.
 - 诊断用 `log` 的宏, 不用 `eprintln!` (测试、命令行输出除外).
-- 格式化: Rust 用 `cargo fmt --all` (根目录 `rustfmt.toml`: 宽 160, `use_small_heuristics = "Max"`; `vendor/` 不在 workspace 里, 不碰).
+- 格式化: Rust 只格式化自己改的文件: `rustfmt --edition 2024 --config-path rustfmt.toml <文件...>`, 或加 `--check` 只看不改 (根目录
+  `rustfmt.toml`: 宽 160, `use_small_heuristics = "Max"`). 不要不带参数跑 `cargo fmt` / `cargo fmt --all`: blitz 是路径依赖,
+  `vendor/blitz` 会被一起改写 (2026-11-18 总仓检出里出过一次, 用户定).
   Guard 的行宽同为 160 (`git config --local akira.guardMaxLineLength 160`, 全仓).
 - 构建不从外网取东西 (2026-11-14): 依赖都从内网 Gitea 取 (blitz 子模块、rusty_v8 预编译库、CI 的 action), 见 `docs/dev/build-run.md`「构建不从外网取东西」.
   Cargo.toml / package.json 里的仓库地址写 gitea (`http://gitea.dopamine/AC/libacde`).
@@ -60,7 +62,8 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
   `../libacde` 的 main 编, 没有钉住的版本.
 - 不 force push, 不 amend / rebase 已推送的提交.
 - 提交信息英文, Conventional Commits, 每行不超过 72 字符, 正文写原因和验证情况 (性能数字注明负载), 不加 Co-Authored-By.
-- 提交前: `cargo fmt --all`; 改了 `js/` 时在 `js/` 跑 `bun run typecheck`; 总仓的质量检查 `bun scripts/quality/check.ts <本仓库> origin/main`
+- 不在总仓的 libacde 检出 (`<总仓>/libacde`) 里改动或格式化任何文件, 改就开工作树 (用户定 2026-11-18): 那个检出是总仓记录的版本, 也给测试联调用.
+- 提交前: 按上面的写法格式化自己改的文件; 改了 `js/` 时在 `js/` 跑 `bun run typecheck`; 总仓的质量检查 `bun scripts/quality/check.ts <本仓库> origin/main`
   (在总仓跑, 结果须为 0 条); 提交时 Guard 的暂存检查.
 - 构建、运行和测试按工程需要直接做 (见 `docs/dev/testing.md`), 做了就在提交信息里写清已验证 / 未验证. 汇报时也分开写「已验证 / 未验证」.
 
