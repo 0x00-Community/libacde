@@ -16,7 +16,9 @@ import type { LentRoot } from '@dopame/acde-api'
 import { sessionOf, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager'
 import { toDesktop, type ShellEvent } from './events'
 import { ServiceHost } from './service'
-import { DevChannel, type DevTarget } from './dev'
+import { DevChannel, type DevShell, type DevTarget } from './dev'
+import { Inspect, type InspectShell } from './inspect'
+import { Frame } from '../../page/src/frame'
 
 interface Grant {
   readonly window: number
@@ -32,7 +34,7 @@ interface GrantOptions {
   readonly host?: boolean
 }
 
-interface LauncherShell {
+interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState' | 'windows' | 'inject'> {
   readonly socketName?: string
   pump(): ShellEvent[]
   onEvents(callback: () => void): void
@@ -42,8 +44,9 @@ interface LauncherShell {
   release(window: number): void
   focus(window: number): void
   close(window: number): void
-  setState?(window: number, state: string): void
-  windows(): unknown[]
+  setState?(window: number, state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
+  windows(): ReturnType<InspectShell['windows']>
+  inject(event: Parameters<InspectShell['inject']>[0]): void
   screenshot(path: string): Promise<{ width: number; height: number }>
   animate?(window: number, options: object): void
   shortcut?(combo: string, scope: string, owner: number): void
@@ -53,7 +56,6 @@ interface LauncherShell {
   removeDesk?(desk: number, into: number): unknown
   showDesk?(desk: number): unknown
   moveToDesk?(window: number, desk: number): unknown
-  devRespond?(id: number, ok: boolean, payload: string): void
 }
 
 interface LauncherNatives extends Natives {
@@ -66,7 +68,8 @@ interface LauncherNatives extends Natives {
 const HEAP_MB = 256
 const STOP = new Set(['close', 'exit', 'quit'])
 const CLOSE_WAIT_MS = 3000
-const STATES = ['normal', 'minimized', 'filled', 'fullscreen']
+type WindowState = 'normal' | 'minimized' | 'filled' | 'fullscreen'
+const STATES: readonly string[] = ['normal', 'minimized', 'filled', 'fullscreen'] satisfies WindowState[]
 
 function grantsFor(found: Found): WebGrants {
   const { app } = found
@@ -105,13 +108,35 @@ class Launcher {
   readonly #panels = new Set<number>()
   #services: Readonly<Record<string, ServiceShape>> = {}
   readonly #dev: DevChannel
+  #inspect: Inspect | null = null
+  #devState: unknown = null
 
   constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
     this.#shell = natives.native.Shell.broker({ title: session.label })
     this.#shell.onEvents(() => this.#wake?.())
     manager?.onEvents(() => this.#wake?.())
     this.#services = session.services
-    this.#dev = new DevChannel(this.#shell, () => this.#target())
+    this.#dev = new DevChannel({
+      shell: this.#shell,
+      page: () => this.#target(),
+      inspect: () => this.#inspector(),
+      reload: () => this.#devReload(false),
+    }, process.env['ACDE_COLOR_SCHEME'] === 'dark')
+  }
+
+  #inspector(): Inspect {
+    this.#inspect ??= new Inspect({
+      shell: this.#shell,
+      web: (window) => (window === this.#window ? this.#rpc : null),
+      record: (window) => (window === this.#window ? { kind: 'web', app: this.session.found?.app.id ?? null, title: this.session.label } : null),
+      panel: (window) => this.#panels.has(window),
+      close: (window) => (window === this.#window ? this.close(true) : Promise.resolve(this.#shell.close(window))),
+      hide: (window, hidden) => this.#shell.hide(window, hidden),
+      open: () => Promise.reject(new Error(`open: ${DevChannel.SINGLE}`)),
+      accessibility: () => Promise.resolve(null),
+      records: () => [this.#window],
+    })
+    return this.#inspect
   }
 
   #target(): DevTarget | null {
@@ -122,7 +147,9 @@ class Launcher {
     const kind = desktop ? 'desktop' as const : 'app' as const
     const app = desktop ? null : (this.session.found?.app.id ?? null)
     const call = (service: string, method: string, args: readonly unknown[]) => rpc.call(service, method, args)
-    return { name: init.name, app, kind, window: this.#window, title: this.session.label, call }
+    const post = (message: Record<string, unknown>) => this.#thread?.post(message)
+    const frame = desktop ? 0 : Frame.height(this.session.found?.app)
+    return { name: init.name, app, kind, window: this.#window, title: this.session.label, frame, call, post }
   }
 
   get #desktop(): boolean {
@@ -155,7 +182,11 @@ class Launcher {
     this.#spawn(init)
   }
 
-  #spawn(init: WebInit): void {
+  #spawn(given: WebInit): void {
+    const app = this.#desktop ? null : (this.session.found?.app.id ?? null)
+    const state = this.#devState
+    this.#devState = null
+    const init: WebInit = { ...given, ...this.#dev.prepare(given.name, app), ...(state ? { devState: state } : {}) }
     const rpc = new Rpc((message) => thread.post(message))
     rpc.serve((service, method, args) => this.#serve(service, method, args))
     const env = { ...Launcher.env(), ...(this.#shell.socketName && { WAYLAND_DISPLAY: this.#shell.socketName }) }
@@ -217,6 +248,18 @@ class Launcher {
     return true
   }
 
+  async #devReload(hot: boolean): Promise<void> {
+    if (hot) return void this.#thread?.post({ type: 'devhot' })
+    if (this.#closing || this.#reloading) return
+    this.#devState = await this.#dev.snapshot()
+    if (!this.manager && this.session.found) {
+      const fresh = standalone(this.args)
+      this.#init = webInit(fresh.found!, 0n, this.#place(), { tier: null, request: null, services: {} }, this.#window)
+    }
+    this.#reloading = true
+    this.#thread?.terminate()
+  }
+
   #respawn(): void {
     this.#reloading = false
     const grant = this.#grant()
@@ -270,7 +313,7 @@ class Launcher {
       case 'requestState':
         if (!STATES.includes(String(args[1]))) throw refused(`no window state ${String(args[1])} (${STATES.join(', ')})`)
         if (!shell.setState) throw unsupported('windows', method)
-        return shell.setState(id, String(args[1]))
+        return shell.setState(id, String(args[1]) as WindowState)
       case 'screenshot':
         return shell.screenshot(String(args[0]))
       case 'animate':
@@ -331,6 +374,7 @@ class Launcher {
       if (STOP.has(event.type)) this.#end(0)
       else if (event.type === 'windowcloserequest') void this.close(false)
       else if (event.type === 'devrequest') void this.#dev.request(String(event['key'] ?? ''))
+      else if (event.type === 'devreload') void this.#devReload(event['title'] === 'hot')
       else if (this.#desktop) this.#thread?.post(toDesktop(event))
     }
   }
