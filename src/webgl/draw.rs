@@ -913,6 +913,7 @@ impl Context {
             (Some((v, f)), true) => (v, f),
             _ => (&linked.vertex, &linked.fragment),
         };
+        let started = std::time::Instant::now();
         let result = self.scoped(|device| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("acde webgl"),
@@ -941,6 +942,7 @@ impl Context {
         });
         match result {
             Ok(p) => {
+                log::debug!(target: "perf::webgl", "pipeline program={} cached={} ms={:.1} key={key:?}", key.program, self.caches.pipelines.len(), crate::log::since_ms(started));
                 if self.caches.pipelines.len() > 2048 {
                     self.caches.pipelines.clear();
                 }

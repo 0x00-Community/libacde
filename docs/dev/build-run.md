@@ -89,6 +89,7 @@ Rust 一律 `log` 的宏, `src/log` (`acde-log`) 装 env_logger: `RUST_LOG` 追�
 | `perf::latency` | acdebin-system 的 crates/window | 输入到上屏: `<kind> owner= ms=`, 分段 `queue` `js` `render` `raster` `present` |
 | `perf::task` | src/host | 事件循环里超过 8 ms 的任务: `task ms= hook=`, V8 自己的 `v8` |
 | `perf::frame` | render | `<web> commit= resolve= paint= finish= ms=`, 面板的 `panel <id> commands= damage ms=` |
+| `perf::webgl` | src/webgl | 新建的渲染管线: `pipeline program= cached= ms= key=` (着色器缓存冷时 Metal 在这里同步编译, 一条几十毫秒) |
 | `perf::raster` | acdebin-system 的 crates/paint、crates/window, acdev runtime 的 hostwin | `job surfaces= wait= record= ms=`, `surface owner= ms=` |
 | `perf::layers` | hostwin `present.rs` | 有 layers 的页面 / 面板: `window= region= layers=重画的/全部 ms=` |
 | `perf::compose` | shell | `<输出> elements= ms=`, `rdp elements= rects= ms=`, `plan inputs= layers= damage= route=`, `backdrop window= w= h= blur= ms=` |
