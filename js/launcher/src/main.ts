@@ -24,6 +24,7 @@ import { toDesktop, type ShellEvent } from './app/events'
 import { ServiceHost } from './manager/service'
 import { DevChannel, type DevShell, type DevTarget } from './dev/dev'
 import { DevToolsEndpoint, type NativeDevTools } from './dev/devtools'
+import { managerRelay } from './dev/relay'
 import { Inspect, type InspectShell } from './dev/inspect'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
@@ -171,16 +172,19 @@ class Launcher {
       chooser: () => chooser?.open() ?? null,
       ...(this.#shell.notify && { notify: (title: string, body: string, subtitle: string) => this.#shell.notify!(title, body, subtitle) }),
     })
-    this.#devtools = new DevToolsEndpoint(natives.native.DevTools, this.#shell, () => {
+    const relay = managerRelay(manager)
+    const page = () => {
       const target = this.#target()
       return target && { ...target, url: this.#init?.url ?? null }
-    })
+    }
+    this.#devtools = new DevToolsEndpoint(natives.native.DevTools, relay ?? this.#shell, page, relay?.announce)
     this.#dev = new DevChannel({
       shell: this.#shell,
       devtools: this.#devtools,
       page: () => this.#target(),
       inspect: () => this.#inspector(),
       reload: () => this.#devReload(false),
+      ...(relay && { respond: relay.respond }),
     }, process.env['ACDE_COLOR_SCHEME'] === 'dark')
     this.#backend = session.kind === 'app' && session.found?.app.backend ? new AppBackend(session.found) : null
   }
@@ -476,6 +480,8 @@ class Launcher {
     for (const event of this.manager?.pump() ?? []) {
       if (event.type === 'managerclosed') this.#end(0)
       else if (event.type === 'services') this.#replaceServices(event['services'] as Readonly<Record<string, ServiceShape>> | undefined)
+      else if (event.type === 'devrequest') void this.#dev.request(String(event['key'] ?? ''))
+      else if (event.type === 'devreload') void this.#devReload(event['hot'] === true)
       else if (event.type === 'invoke') this.#thread?.post({ rpc: 'invoke', fn: event['fn'], args: event['args'] ?? [] })
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
       else if (this.#desktop) this.#thread?.post(event)

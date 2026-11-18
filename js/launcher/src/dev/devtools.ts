@@ -32,9 +32,11 @@ export class DevToolsEndpoint {
   readonly #native: NativeDevTools | null
   #published = ''
 
-  constructor(native: NativeDevTools | undefined, readonly shell: DevToolsShell, readonly page: () => DevToolsPage | null) {
-    this.#native = native?.open() ? native : null
-    if (!this.#native) return
+  constructor(native: NativeDevTools | undefined, readonly shell: DevToolsShell, readonly page: () => DevToolsPage | null, announce?: (port: number) => void) {
+    const endpoint = native?.open() ?? null
+    this.#native = endpoint ? native! : null
+    if (!endpoint) return
+    announce?.(endpoint.port)
     const timer = setInterval(() => this.publish(), DevToolsEndpoint.TARGETS_MS) as unknown as { unref?: () => void }
     timer.unref?.()
   }

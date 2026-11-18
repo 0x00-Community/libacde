@@ -114,3 +114,13 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
    正式构建的文件本身不变. 前端的“自动把已知第三方脚本加入忽略列表”关掉时不起作用.
 3. 整页重载保留状态 (所有 reload): 关窗口前问旧页面要快照 (`dev.state`, 最多 0.5 秒, `devstate.ts`): 表单值、滚动位置、焦点和选区, 元素按 id
    或 `nth-child` 路径认; 新页面加载完在 0 / 50 / 200 / 600 / 1500 ms 各放回一次, 值经原型上的 setter 写再发 `input` / `change`.
+
+**客户机里 (有会话管家时)** (单应用 15, 和 acdes 管家对齐, 2026-11-19): 运行时不听 `ACDE_DEV`, 调试请求由 acdes 管家的调试服务端
+(`$XDG_RUNTIME_DIR/acde/dev.sock`, 只在开发客户机里建, 判断依据是 `/sys/firmware/qemu_fw_cfg/by_name/opt/acdev/key/raw` 存在; 启动器自己不判断,
+管家不开就收不到) 按 `web` 分给各进程的启动器, 经管家通道 (`ACDE_MANAGER_FD`) 往来 (`dev/relay.ts` `managerRelay`):
+
+- 管家 → 启动器: `{type:'devrequest', key}`, `key` 是一行请求原文, id 已换成管家的号, 走和宿主同一个 `DevChannel.request`;
+  `{type:'devreload', hot?}` 走 `devReload` (管家按 `app` 只发给那个应用的进程, 没有 app 时发给桌面).
+- 启动器 → 管家: `{devresponse:{id, ok, payload}}` 代替 `Shell.devRespond` (管家按号找回连接、换回原 id); `{devevent:'<json>'}` 代替
+  `Shell.devEvent` (F12 等事件, 管家转给发过 hello role=dev 的连接); DevTools 端点开成时主动报一次 `{devtools:{port}}`, 管家按进程记下,
+  客户机里 `devtools` 请求由管家回 `{ports:[{web, app, port}]}`. `webs` 由管家向各进程逐个发再合并, 不另加消息.

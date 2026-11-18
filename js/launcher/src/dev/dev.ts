@@ -40,6 +40,7 @@ export interface DevHost {
   page(): DevTarget | null
   inspect(): Inspect
   reload(): Promise<void>
+  respond?(id: number, ok: boolean, payload: string): void
 }
 
 interface DevInit {
@@ -120,7 +121,8 @@ export class DevChannel {
       payload = (error as Error)?.message ?? String(error)
     }
     if (id === null) return
-    this.#host.shell.devRespond?.(id, ok, payload)
+    if (this.#host.respond) this.#host.respond(id, ok, payload)
+    else this.#host.shell.devRespond?.(id, ok, payload)
   }
 
   async answer(request: Request): Promise<unknown> {
