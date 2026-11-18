@@ -228,6 +228,7 @@ impl From<&AcdertEvent> for Event {
             mime: Texts(event.mime, event.mime_len).into(),
             files: Texts(event.files, event.files_len).into(),
             data: keys.zip(values).map(|(keys, values)| keys.into_iter().zip(values).collect()),
+            instance: None,
         }
     }
 }

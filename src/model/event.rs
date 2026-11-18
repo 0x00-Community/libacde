@@ -29,6 +29,7 @@ pub struct Event {
     pub stamp: Option<f64>,
     pub state: Option<String>,
     pub previous: Option<String>,
+    pub instance: Option<u32>,
 }
 
 impl Event {
