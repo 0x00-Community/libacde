@@ -6,7 +6,7 @@ import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/calls.ts'
 import { sessionOf, type Welcome } from '../src/manager.ts'
 import { toDesktop } from '../src/events.ts'
-import { incomingCall, released, shapeOf, withCallbacks } from '../src/service.ts'
+import { incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/service.ts'
 
 bindNatives({ host: {}, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
 
@@ -144,3 +144,33 @@ describe('the service mode', () => {
     assert.equal(released({ type: 'x', release: { fn: 3 } } as never), 3)
   })
 })
+
+describe('a service process stays up while its manager channel is open', () => {
+  test('the event loop is held from run() until managerclosed, then let go', async () => {
+    const events: { type: string }[][] = [[]]
+    let wake: (() => void) | null = null
+    const sent: object[] = []
+    const manager = {
+      welcome: { kind: 'service', name: 'desks' },
+      call: async () => undefined,
+      onEvents: (callback: () => void) => {
+        wake = callback
+      },
+      pump: () => events.shift() ?? [],
+      send: (frame: object) => void sent.push(frame),
+    }
+    const held: string[] = []
+    const host = new ServiceHost(manager as never, manager.welcome as never, {}, () => {
+      held.push('held')
+      return () => void held.push('released')
+    })
+    const running = host.run()
+    await new Promise((later) => setTimeout(later, 10))
+    assert.deepEqual(held, ['held'])
+    events.push([{ type: 'managerclosed' }])
+    wake!()
+    assert.equal(await running, 0)
+    assert.deepEqual(held, ['held', 'released'])
+  })
+})
+

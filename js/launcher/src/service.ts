@@ -6,6 +6,14 @@ import type { ManagerEvent, ManagerLink, ServiceShape, Welcome } from './manager
 
 const FN = '__acdeFn'
 const STOP_MS = 3000
+const HOLD_MS = 1 << 30
+
+export type Hold = () => () => void
+
+export const holdTheLoop: Hold = () => {
+  const timer = setInterval(() => {}, HOLD_MS)
+  return () => clearInterval(timer)
+}
 const FUNCTION_KEYS = ['length', 'name', 'prototype', 'caller', 'arguments']
 
 export interface IncomingCall {
@@ -86,7 +94,12 @@ export class ServiceHost {
   #wake: (() => void) | null = null
   #ended: number | null = null
 
-  constructor(readonly manager: ManagerLink, readonly welcome: Welcome, readonly native: Readonly<Record<string, unknown>>) {
+  constructor(
+    readonly manager: ManagerLink,
+    readonly welcome: Welcome,
+    readonly native: Readonly<Record<string, unknown>>,
+    readonly hold: Hold = holdTheLoop,
+  ) {
     if (!manager.send) throw new Error('this native.Manager cannot answer as a service (no send)')
     manager.onEvents(() => this.#wake?.())
   }
@@ -185,6 +198,15 @@ export class ServiceHost {
   }
 
   async run(): Promise<number> {
+    const release = this.hold()
+    try {
+      return await this.#serveUntilClosed()
+    } finally {
+      release()
+    }
+  }
+
+  async #serveUntilClosed(): Promise<number> {
     while (this.#ended === null) {
       for (const event of this.manager.pump()) {
         if (event.type === 'managerclosed') this.#ended = 0
