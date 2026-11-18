@@ -24,7 +24,7 @@ import { toDesktop, type ShellEvent } from './app/events'
 import { ServiceHost } from './manager/service'
 import { DevChannel, type DevShell, type DevTarget } from './dev/dev'
 import { DevToolsEndpoint, type NativeDevTools } from './dev/devtools'
-import { managerRelay } from './dev/relay'
+import { managerRelay, type DevRelay } from './dev/relay'
 import { Inspect, type InspectHost, type InspectShell } from './dev/inspect'
 import { GuestWindows } from './dev/guest'
 import { Frame } from '../../page/src/frame'
@@ -157,6 +157,7 @@ class Launcher {
   readonly #devtools: DevToolsEndpoint
   #inspect: Inspect | null = null
   readonly #guest: GuestWindows | null
+  readonly #relay: DevRelay | null
   #devState: unknown = null
   readonly #backend: AppBackend | null
 
@@ -175,6 +176,7 @@ class Launcher {
       ...(this.#shell.notify && { notify: (title: string, body: string, subtitle: string) => this.#shell.notify!(title, body, subtitle) }),
     })
     const relay = managerRelay(manager)
+    this.#relay = relay
     this.#guest = manager ? new GuestWindows(process.pid, session.kind === 'desktop') : null
     const page = () => {
       const target = this.#target()
@@ -206,7 +208,7 @@ class Launcher {
       accessibility: () => Promise.resolve(null),
       records: () => [this.#window],
     }
-    this.#inspect = new Inspect(this.#guest ? this.#guest.host(host, () => this.#window) : host)
+    this.#inspect = new Inspect(this.#guest ? this.#guest.host(host, () => this.#window, this.#relay?.inject) : host)
     return this.#inspect
   }
 

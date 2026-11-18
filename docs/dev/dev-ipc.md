@@ -134,3 +134,6 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
   所以管家按 ref 的窗口号 (w0 给桌面进程, 其余按 pid 找进程) 转发 act 和带 ref 的 snapshot / query.
 - 页面名: 管家的 app welcome 带 `instance` (同一应用从 1 起的编号, 和管家 `instances` / `instancegone` 里的一致) 时, 应用的页面名是 `<应用 id>#<instance>`;
   没有时照旧用 `<应用 id>#<本地窗口号>` (宿主上的单应用).
+- 指针和按键 (2026-11-20): 有窗口表时, Inspect 的 act (click、double、right、hover、scroll、drag、key) 不经本进程的 shell, 而是发
+  `{devinject: {type: move | down | up | wheel | keydown | keyup, x?, y?, button?, dx?, dy?, source?, code?}}` 给管家, 由管家交 winman 注入成真实输入;
+  坐标是 winman 的屏幕坐标 (窗口表的 x、y 加元素在页面里的位置), `button` 和 `code` 是 evdev 码 (左键 0x110, 右键 0x111).

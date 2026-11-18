@@ -52,3 +52,18 @@ describe('the window table the session manager sends along', () => {
     assert.equal(desktop.mine(), 0)
   })
 })
+
+describe('pointer and keys in the guest', () => {
+  test('go to the manager once a window table came, before that to the local shell', () => {
+    const local: object[] = []
+    const sent: object[] = []
+    const guest = new GuestWindows(42, false)
+    const plain = base(1, [])
+    const host = guest.host({ ...plain, shell: { ...plain.shell, inject: (e) => void local.push(e) } }, () => 1, (e) => void sent.push(e))
+    host.shell.inject({ type: 'move', x: 1, y: 2 })
+    guest.place([row(7, 42)])
+    host.shell.inject({ type: 'down', x: 1, y: 2, button: 0x110 })
+    assert.deepEqual(local, [{ type: 'move', x: 1, y: 2 }])
+    assert.deepEqual(sent, [{ type: 'down', x: 1, y: 2, button: 0x110 }])
+  })
+})

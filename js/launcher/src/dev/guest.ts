@@ -63,7 +63,7 @@ export class GuestWindows {
     }))
   }
 
-  host(base: InspectHost, local: () => number): InspectHost {
+  host(base: InspectHost, local: () => number, inject?: InspectShell['inject']): InspectHost {
     const own = (id: number) => this.placed && id === this.mine()
     const to = (id: number) => (own(id) ? local() : id)
     const shell: InspectShell = {
@@ -71,7 +71,7 @@ export class GuestWindows {
       focus: (id) => base.shell.focus(to(id)),
       ...(base.shell.setState && { setState: (id, state) => base.shell.setState!(to(id), state) }),
       windows: () => (this.placed ? this.shellWindows() : base.shell.windows()),
-      inject: (event) => base.shell.inject(event),
+      inject: (event) => (this.placed && inject ? inject(event) : base.shell.inject(event)),
     }
     return {
       ...base,
