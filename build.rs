@@ -54,7 +54,7 @@ fn main() {
 }
 
 fn bundle_js(dir: &Path, out: &Path) {
-    for watched in ["js/bundle.ts", "js/page/src", "js/dom/src", "js/launcher/src", "js/tsconfig.json", "../npm/src/manifest", "../npm/acde-api/api-level"] {
+    for watched in ["js/bundle.ts", "js/page/src", "js/dom/src", "js/launcher/src", "js/tsconfig.json", "manifest", "acde-api/api-level"] {
         println!("cargo:rerun-if-changed={watched}");
     }
     println!("cargo:rerun-if-env-changed=ACDEV_BUN");

@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 const ENTRIES = [['page/src/worker.ts', 'page.js'], ['launcher/src/main.ts', 'launcher.js']] as const
 
 const [out = join(import.meta.dir, 'dist'), version = '0.0.0-dev'] = process.argv.slice(2)
-const level = readFileSync(join(import.meta.dir, '../../npm/acde-api/api-level'), 'utf8').trim()
+const level = readFileSync(join(import.meta.dir, '../acde-api/api-level'), 'utf8').trim()
 mkdirSync(resolve(out), { recursive: true })
 for (const [entry, name] of ENTRIES) {
   const built = Bun.spawnSync([

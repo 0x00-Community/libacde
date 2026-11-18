@@ -17,8 +17,8 @@
     "paths": {
       "@dopame/acde-dom": ["./dom/src/index.ts"],
       "@dopame/acde-dom/core": ["./dom/src/core/index.ts"],
-      "@dopame/acde-api": ["../../npm/acde-api/src/index.d.ts"],
-      "@dopame/acde-api/manifest": ["../../npm/src/manifest/index.ts"]
+      "@dopame/acde-api": ["../acde-api/src/index.d.ts"],
+      "@dopame/acde-api/manifest": ["../manifest/index.ts"]
     }
   },
   "include": ["dom/src", "dom/test", "page/src", "page/test", "launcher/src", "launcher/test"]

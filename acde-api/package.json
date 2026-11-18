@@ -1,0 +1,31 @@
+{
+  "name": "@dopame/acde-api",
+  "version": "0.0.11",
+  "private": true,
+  "description": "acde SDK: type declarations only (no JavaScript). Types of acde.config.jsonc, the package manifest, the services, the capabilities and the acde:* modules the runtime injects into a page.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "http://gitea.dopamine/AC/libacde",
+    "directory": "acde-api"
+  },
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts"
+    },
+    "./app": {
+      "types": "./src/app.d.ts"
+    },
+    "./shell": {
+      "types": "./src/shell.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "api-level"
+  ]
+}

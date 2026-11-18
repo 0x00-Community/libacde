@@ -57,7 +57,7 @@ pub use rt::{Msg, current};
 pub use sys::Entry;
 pub use webnative::event_object;
 
-pub const API_LEVEL: u32 = api_level(include_str!("../../../npm/acde-api/api-level"));
+pub const API_LEVEL: u32 = api_level(include_str!("../../acde-api/api-level"));
 
 const fn api_level(source: &str) -> u32 {
     let bytes = source.as_bytes();
@@ -71,7 +71,7 @@ const fn api_level(source: &str) -> u32 {
         }
         i += 1;
     }
-    assert!(level > 0, "npm/acde-api/api-level holds no positive contract level");
+    assert!(level > 0, "acde-api/api-level holds no positive contract level");
     level
 }
 
