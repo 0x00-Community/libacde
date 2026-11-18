@@ -76,6 +76,7 @@ describe('the single-app dev channel', () => {
     const { dev, posted, calls, ask, reloads } = channel()
     await ask({ id: 12, op: 'init', code: 'window.a = 1', once: true })
     await ask({ id: 13, op: 'init', code: 'window.b = 2', web: 'notes' })
+    await ask({ id: 24, op: 'unroute' })
     assert.deepEqual(dev.prepare('notes#1', 'notes').devInit, ['window.a = 1', 'window.b = 2'])
     assert.deepEqual(dev.prepare('notes#1', 'notes').devInit, ['window.b = 2'])
     assert.deepEqual((await ask({ id: 14, op: 'reload', web: 'notes' })).payload, { web: 'notes#1' })

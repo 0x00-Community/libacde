@@ -92,10 +92,19 @@ export class DevChannel {
   }
 
   prepare(name: string, app: string | null): { devRoutes: DevRoute[]; devInit: string[] } {
-    const mine = (web: string | null) => web === null || web === name || (app !== null && web === app)
+    const mine = DevChannel.#mine(name, app)
     const used = this.#inits.filter((i) => mine(i.web))
     this.#inits = this.#inits.filter((i) => !(i.once && used.includes(i)))
-    return { devRoutes: this.#routes.filter((r) => mine(r.web)), devInit: used.map((i) => i.code) }
+    return { devRoutes: this.#routesFor(name, app), devInit: used.map((i) => i.code) }
+  }
+
+  #routesFor(name: string, app: string | null): DevRoute[] {
+    const mine = DevChannel.#mine(name, app)
+    return this.#routes.filter((r) => mine(r.web))
+  }
+
+  static #mine(name: string, app: string | null): (web: string | null) => boolean {
+    return (web) => web === null || web === name || (app !== null && web === app)
   }
 
   async request(line: string): Promise<void> {
@@ -342,7 +351,7 @@ export class DevChannel {
 
   #push(): void {
     const page = this.#host.page()
-    if (page) page.post({ type: 'devroutes', routes: this.prepare(page.name, page.app).devRoutes })
+    if (page) page.post({ type: 'devroutes', routes: this.#routesFor(page.name, page.app) })
   }
 
   #pointer(args: Record<string, unknown>): { x: number; y: number } {
