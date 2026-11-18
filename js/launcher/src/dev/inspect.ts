@@ -583,10 +583,12 @@ export class Inspect {
   }
 
   async #drag(window: InspectWindow, x: number, y: number, to: InspectArg): Promise<ActResult> {
-    const parsed = typeof to === 'string' ? Inspect.#parse(to) : null
-    if (typeof to !== 'string' || !parsed) return { ok: false, text: 'drag needs where to drop: the target ref (like w3.12, or a window w3)' }
+    const spot = typeof to === 'string' ? Inspect.#spot(to) : null
+    const parsed = typeof to === 'string' && !spot ? Inspect.#parse(to) : null
+    const where = 'the target ref (like w3.12, or a window w3), or screen x,y'
+    if (typeof to !== 'string' || (!parsed && !spot)) return { ok: false, text: `drag needs where to drop: ${where}` }
     if (window.hidden) return { ok: false, text: Inspect.#minimized(window) }
-    const onto = this.windows().find((w) => w.ref === `w${parsed.window}`)
+    const onto = parsed && this.windows().find((w) => w.ref === `w${parsed.window}`)
     if (onto?.hidden) return { ok: false, text: `cannot drop: ${Inspect.#minimized(onto)}` }
     const cover = this.#cover(window, x, y)
     if (cover) {
@@ -599,7 +601,7 @@ export class Inspect {
     await step()
     shell.inject({ type: 'down', x, y, button: LEFT })
     await step()
-    const target = await this.#point(to)
+    const target = spot ?? (await this.#point(to))
     if ('error' in target) {
       shell.inject({ type: 'up', x, y, button: LEFT })
       return { ok: false, text: `cannot drop: ${target.error}` }
@@ -922,6 +924,11 @@ export class Inspect {
     const ref = `w${this.#next++}`
     this.#refs.set(id, ref)
     return ref
+  }
+
+  static #spot(text: string): { x: number; y: number } | null {
+    const m = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/.exec(text)
+    return m ? { x: Number(m[1]), y: Number(m[2]) } : null
   }
 
   static #parse(ref: string): { window: number; node: number | null; menu: number | null; item: number | null } | null {

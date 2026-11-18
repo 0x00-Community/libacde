@@ -92,3 +92,18 @@ describe('the desktop panels in the guest', () => {
     assert.equal(wrapped.panel(5), true)
   })
 })
+
+describe('a drag to another process window in the guest', () => {
+  test('drops at the screen point the driver worked out', async () => {
+    const sent: { type: string; x?: number; y?: number }[] = []
+    const plain = base(1, [])
+    const rpc = { call: async () => ({ x: 10, y: 20 }) } as never
+    const guest = new GuestWindows(42, 'app')
+    const host = guest.host({ ...plain, web: (w) => (w === 1 ? rpc : null) }, () => 1, { inject: (e) => void sent.push(e) })
+    guest.place([{ ...row(7, 42), x: 100, y: 50 }, row(9, 50)])
+    const result = await new Inspect(host).act('w7.3', 'drag', '640,360')
+    assert.equal(result.ok, true)
+    assert.deepEqual(sent[0], { type: 'move', x: 110, y: 70 })
+    assert.deepEqual(sent.at(-1), { type: 'up', x: 640, y: 360, button: 0x110 })
+  })
+})
