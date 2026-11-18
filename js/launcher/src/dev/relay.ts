@@ -3,6 +3,7 @@ export interface DevRelay {
   devEvent(json: string): number
   announce(port: number): void
   inject(event: object): void
+  window(change: object): void
 }
 
 export function managerRelay(manager: { send?(frame: object): void } | null): DevRelay | null {
@@ -16,5 +17,6 @@ export function managerRelay(manager: { send?(frame: object): void } | null): De
     },
     announce: (port) => send({ devtools: { port } }),
     inject: (event) => send({ devinject: event }),
+    window: (change) => send({ devwindow: change }),
   }
 }

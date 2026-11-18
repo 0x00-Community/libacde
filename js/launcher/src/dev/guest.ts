@@ -21,6 +21,14 @@ export type GuestRole = 'app' | 'desktop' | 'lock'
 export interface GuestExtras {
   readonly inject?: InspectShell['inject']
   readonly panels?: () => readonly ShellWindow[]
+  readonly window?: (change: GuestWindowChange) => void
+}
+
+export interface GuestWindowChange {
+  readonly window: number
+  readonly state?: NonNullable<ShellWindow['state']>
+  readonly focus?: true
+  readonly close?: true
 }
 
 export class GuestWindows {
@@ -81,15 +89,32 @@ export class GuestWindows {
   }
 
   host(base: InspectHost, local: () => number, extra: GuestExtras = {}): InspectHost {
-    const { inject, panels } = extra
+    const { inject, panels, window } = extra
     const own = (id: number) => this.placed && id === this.mine()
     const to = (id: number) => (own(id) ? local() : id)
+    const winman = (id: number) => (window && this.placed && id !== 0 && this.row(id) ? window : null)
+    const setState = (id: number, state: NonNullable<ShellWindow['state']>) => {
+      const change = winman(id)
+      if (change) change({ window: id, state })
+      else base.shell.setState?.(to(id), state)
+    }
     const shell: InspectShell = {
       ...base.shell,
-      focus: (id) => base.shell.focus(to(id)),
-      ...(base.shell.setState && { setState: (id, state) => base.shell.setState!(to(id), state) }),
+      focus: (id) => {
+        const change = winman(id)
+        if (change) change({ window: id, focus: true })
+        else base.shell.focus(to(id))
+      },
+      ...((base.shell.setState || window) && { setState }),
       windows: () => (this.placed ? [...this.shellWindows(), ...this.#lift(panels?.() ?? [])] : base.shell.windows()),
       inject: (event) => (this.placed && inject ? inject(event) : base.shell.inject(event)),
+    }
+    const close = (id: number) => {
+      if (!this.placed || own(id)) return base.close(to(id))
+      const change = winman(id)
+      if (!change) return Promise.reject(new Error(`w${id} belongs to another process`))
+      change({ window: id, close: true })
+      return Promise.resolve()
     }
     return {
       ...base,
@@ -101,8 +126,12 @@ export class GuestWindows {
         return row && !row.desktop ? { kind: 'native', app: row.app_id, title: row.title } : null
       },
       panel: (id) => base.panel(to(id)),
-      close: (id) => (this.placed && !own(id) ? Promise.reject(new Error(`w${id} belongs to another process`)) : base.close(to(id))),
-      hide: (id, hidden) => base.hide(to(id), hidden),
+      close,
+      hide: (id, hidden) => {
+        const change = winman(id)
+        if (change) change({ window: id, state: hidden ? 'minimized' : 'normal' })
+        else base.hide(to(id), hidden)
+      },
       records: () => (this.placed ? [this.mine() ?? local()] : base.records()),
       ref: (id) => (this.placed ? `w${id}` : (base.ref?.(id) ?? null)),
     }

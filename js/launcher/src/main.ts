@@ -212,7 +212,8 @@ class Launcher {
       accessibility: () => Promise.resolve(null),
       records: () => [this.#window],
     }
-    const extras = { ...(this.#relay && { inject: this.#relay.inject }), panels: () => this.#panelRows() }
+    const relay = this.#relay
+    const extras = { ...(relay && { inject: relay.inject, window: relay.window }), panels: () => this.#panelRows() }
     this.#inspect = new Inspect(this.#guest ? this.#guest.host(host, () => this.#window, extras) : host)
     return this.#inspect
   }

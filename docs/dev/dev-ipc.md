@@ -142,3 +142,5 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
   所以 `acde.window({id: web.window})` 能拿到锁屏页. 管家转发 `webs` 时也附 `windows`.
 - 跨进程拖放 (2026-11-20): 客户机里目标在别的进程的窗口时, 拖放的源进程量不到目标元素; act drag 的 `arg` 也收屏幕坐标 `"x,y"`,
   acdev driver 在客户机会话里用目标窗口的原点加目标元素的 rect 中心算出坐标再发.
+- 窗口操作 (2026-11-20): 有窗口表时, Inspect 对 winman 窗口 (窗口表里有、不是桌面 0) 的最小化、还原、铺满、全屏、聚焦和关别的进程的窗口, 不经本进程的 shell
+  (应用进程的 shell 不认识 winman 的号), 改发 `{devwindow: {window, state?, focus?: true, close?: true}}` 给管家, 由管家交 winman_window_v1 去做; 桌面和面板仍走本进程.

@@ -107,3 +107,24 @@ describe('a drag to another process window in the guest', () => {
     assert.deepEqual(sent.at(-1), { type: 'up', x: 640, y: 360, button: 0x110 })
   })
 })
+
+describe('window changes in the guest', () => {
+  test('go to winman by window number through the manager, the desktop and panels stay local', async () => {
+    const changes: object[] = []
+    const focused: number[] = []
+    const plain = base(1, focused)
+    const guest = new GuestWindows(42, 'app')
+    const shell = { ...plain.shell, setState: () => assert.fail('no local state') }
+    const host = guest.host({ ...plain, shell }, () => 1, { window: (c) => void changes.push(c) })
+    guest.place([row(7, 42), row(9, 50), { id: 0, desktop: true, pid: 10 }])
+    host.shell.setState!(7, 'minimized')
+    host.shell.focus(9)
+    host.hide(9, false)
+    await host.close(9)
+    host.shell.focus(0)
+    assert.deepEqual(changes, [
+      { window: 7, state: 'minimized' }, { window: 9, focus: true }, { window: 9, state: 'normal' }, { window: 9, close: true },
+    ])
+    assert.deepEqual(focused, [0])
+  })
+})
