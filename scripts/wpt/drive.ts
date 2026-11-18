@@ -1,4 +1,4 @@
-import type { Acde } from 'acde/driver'
+import type { Acde } from 'acdev/driver'
 
 type InputEvent =
   | { type: 'move'; x: number; y: number }

@@ -23,7 +23,8 @@
   reftest (无边框窗口 800x600, 等 `reftest-wait` 去掉、字体就绪、两帧, 截图逐像素比, 按清单的 fuzzy 范围, 参考链, 同一会话缓存参考图);
   crashtest (加载、等 `test-wait` 去掉, 进程还在即 PASS). 6 秒内页面没加载完记 NOLOAD.
 - 命令: `wpt.sh fetch` (稀疏检出 `revision` 钉的 WPT, 去掉不适用的目录, 生成清单, 装好 wptserve 的 Python 环境) → `prepare --workers N` → `run --runtime <acdev runtime> [--label L]
-  [--dirs a,b] [--kinds …] [--tests gate.json] [--skip-slow <期望目录>]` (`--skip-slow` 跳过期望里记成 TIMEOUT / NOLOAD / HANG 的: 它们大多等满 10 / 60 秒的超时, 全量里大半时间花在这上面, 比如运行时没有的老式多字节编码; 只有 `baseline` 全跑) (`--app` 缺省是本仓库的 `web/packages/acde-host/dist`, 要先 `cd web && bun run build`) →
+  [--dirs a,b] [--kinds …] [--tests gate.json] [--skip-slow <期望目录>] [--log-grep <正则>]` (`--log-grep`: 运行时日志里匹配的行连同当时在跑的测试 (`during`) 写进
+  `results/<标签>/log.jsonl`, 每个测试跑完和每次关掉运行时各收一次, 行可能落在下一个测试名下; `--skip-slow` 跳过期望里记成 TIMEOUT / NOLOAD / HANG 的: 它们大多等满 10 / 60 秒的超时, 全量里大半时间花在这上面, 比如运行时没有的老式多字节编码; 只有 `baseline` 全跑) (`--app` 缺省是本仓库的 `web/packages/acde-host/dist`, 要先 `cd web && bun run build`) →
   `report L` (按目录的通过率、缺的接口、常见失败) / `expectations check L` (对期望文件, 回退就退出 1) / `expectations update L [L2 L3]` (几次结果合并,
   不一致的标 flaky) / `expectations gate` (守门的测试表).
 - 钉的版本 (`scripts/wpt/revision`) 要选 wpt.fyi 上 Chrome、Firefox、Safari、Servo 四家都有结果的提交 (`https://wpt.fyi/api/runs?sha=<提交>&products=chrome,firefox,safari,servo`
