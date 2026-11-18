@@ -30,7 +30,7 @@ mod office;
 #[cfg(target_os = "linux")]
 mod portal;
 #[cfg(target_os = "linux")]
-mod power;
+pub mod power;
 mod proxy;
 #[cfg(unix)]
 mod pty;
@@ -72,7 +72,7 @@ pub use office::{OfficeCall, OfficeService};
 #[cfg(target_os = "linux")]
 pub use portal::{Appearance, FileChooser, Filter as PortalFilter, choose_folder, open_files, save_file};
 #[cfg(target_os = "linux")]
-pub use power::{Power, PowerCall, PowerHost, backlight_brightness};
+pub use power::{Power, PowerCall, backlight_brightness};
 pub use proxy::backend_variables as backend_proxy_variables;
 #[cfg(target_os = "linux")]
 pub use sound::{SoundCall, Sounds};

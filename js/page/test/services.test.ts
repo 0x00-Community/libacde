@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import type { ServiceShape, WebInit } from '../src/contract.ts'
 import { RemoteBridge, WindowList } from '../src/remote.ts'
 import { Rpc } from '../src/rpc.ts'
+import { WatchFeed, Watched } from '../src/watched.ts'
 import { bindNatives } from '../src/sys/natives.ts'
 
 type Services = { names(): string[]; on(type: string, handler: (event: unknown) => void): () => boolean }
@@ -102,3 +103,18 @@ test('session.lock goes out over rpc like the other session calls', () => {
   assert.equal('lock' in bridge.value, false)
 })
 
+test('a power event the manager pushes reaches acde:power listeners as a native one does', () => {
+  const native: ((event: unknown) => void)[] = []
+  const feed = new WatchFeed()
+  const power = Watched.typed('power', feed.feed({ watch: (callback) => void native.push(callback) }), ['changed', 'prompt', 'critical']) as {
+    on(type: string, handler: (value: unknown) => void): () => boolean
+  }
+  const seen: unknown[] = []
+  power.on('prompt', (value) => void seen.push(value))
+  power.on('critical', (value) => void seen.push(value))
+  feed.push({ type: 'prompt' })
+  feed.push({ type: 'critical', action: 'shutdown', seconds: 60 })
+  native[0]?.({ type: 'prompt' })
+  assert.deepEqual(seen, [{ type: 'prompt' }, { type: 'critical', action: 'shutdown', seconds: 60 }, { type: 'prompt' }])
+  assert.equal(native.length, 1, 'the native watch is still asked once')
+})

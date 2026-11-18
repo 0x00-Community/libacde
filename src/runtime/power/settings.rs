@@ -162,6 +162,23 @@ pub struct Machine {
     pub virtual_machine: bool,
 }
 
+impl Machine {
+    pub fn probe(bus: Option<&zbus::blocking::Connection>) -> Self {
+        let virtual_machine = std::fs::read_to_string("/proc/cpuinfo")
+            .is_ok_and(|t| t.lines().any(|l| l.starts_with("flags") && l.split_whitespace().any(|f| f == "hypervisor")));
+        match bus {
+            Some(b) => Machine {
+                can_suspend: super::bus::can(b, "CanSuspend"),
+                can_hibernate: super::bus::can(b, "CanHibernate"),
+                can_hybrid: super::bus::can(b, "CanHybridSleep"),
+                can_then_hibernate: super::bus::can(b, "CanSuspendThenHibernate"),
+                virtual_machine,
+            },
+            None => Machine { virtual_machine, ..Machine::default() },
+        }
+    }
+}
+
 pub struct Settings {
     file: Value,
     machine: Machine,
