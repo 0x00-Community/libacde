@@ -68,9 +68,10 @@ export class AppLookup {
 export interface Given {
   readonly tier?: WebTier | null
   readonly request?: Record<string, unknown> | null
+  readonly services?: WebInit['services']
 }
 
-function common(token: bigint, window: number, place: Place) {
+function common(token: bigint, window: number, place: Place, services: WebInit['services'] = {}) {
   return {
     token,
     window,
@@ -80,7 +81,7 @@ function common(token: bigint, window: number, place: Place) {
     dark: false,
     languages: place.languages,
     navigator: place.navigator,
-    services: {},
+    services,
   }
 }
 
@@ -89,7 +90,7 @@ export function webInit(found: Found, token: bigint, place: Place, given: Given 
   return {
     kind: 'window',
     name: `${app.id}#${window}`,
-    ...common(token, window, place),
+    ...common(token, window, place, given.services),
     resources: PageSource.isHtml(app.entry) ? PageSource.rooted(app.entry, found.resources) : found.resources,
     app,
     theme: '',
@@ -99,6 +100,8 @@ export function webInit(found: Found, token: bigint, place: Place, given: Given 
   }
 }
 
-export function desktopInit(page: string, resources: Found['resources'], token: bigint, place: Place, tier: WebTier): WebInit {
-  return { kind: 'desktop', name: 'desktop', ...common(token, 0, place), resources, page, tier }
+export function desktopInit(
+  page: string, resources: Found['resources'], token: bigint, place: Place, tier: WebTier, services: WebInit['services'] = {},
+): WebInit {
+  return { kind: 'desktop', name: 'desktop', ...common(token, 0, place, services), resources, page, tier }
 }

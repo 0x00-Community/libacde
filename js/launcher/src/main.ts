@@ -13,8 +13,9 @@ import { AppLookup, desktopInit, webInit, type Found, type Place } from './app'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported } from './calls'
 import type { LentRoot } from '@dopame/acde-api'
-import { sessionOf, type ManagerEvent, type ManagerLink, type Session } from './manager'
+import { sessionOf, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager'
 import { toDesktop, type ShellEvent } from './events'
+import { ServiceHost } from './service'
 
 interface Grant {
   readonly window: number
@@ -76,12 +77,12 @@ function grantsFor(found: Found): WebGrants {
 }
 
 function standalone(args: LaunchArgs): Session {
-  if (args.kind === 'desktop') throw new Error('desktop needs the session manager (ACDE_MANAGER_FD); without it only app <id|dir> runs')
+  if (args.kind !== 'app') throw new Error(`${args.kind} needs the session manager (ACDE_MANAGER_FD); without it only app <id|dir> runs`)
   const path = (process.env['ACDE_PATH'] ?? '').split(':').filter(Boolean)
   const found = new AppLookup({ readText: (file) => readTextOr(file, null), readDir: readDirOr }).find(args.app, path, sys().cwd())
   const { app } = found
   const grants = grantsFor(found)
-  return { kind: 'app', found, page: null, resources: found.resources, label: app.label, heapMb: app.heapMb, tier: null, grants, request: null }
+  return { kind: 'app', found, page: null, resources: found.resources, label: app.label, heapMb: app.heapMb, tier: null, grants, request: null, services: {} }
 }
 
 function rect(value: unknown): [number, number, number, number] {
@@ -100,11 +101,13 @@ class Launcher {
   #closing = false
   #reloading = false
   readonly #panels = new Set<number>()
+  #services: Readonly<Record<string, ServiceShape>> = {}
 
   constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
     this.#shell = natives.native.Shell.broker({ title: session.label })
     this.#shell.onEvents(() => this.#wake?.())
     manager?.onEvents(() => this.#wake?.())
+    this.#services = session.services
   }
 
   get #desktop(): boolean {
@@ -132,8 +135,8 @@ class Launcher {
     this.#window = grant.window
     const { session } = this
     const init = this.#desktop
-      ? desktopInit(session.page!, session.resources, grant.token, this.#place(), session.tier!)
-      : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request: session.request }, grant.window)
+      ? desktopInit(session.page!, session.resources, grant.token, this.#place(), session.tier!, session.services)
+      : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request: session.request, services: session.services }, grant.window)
     this.#spawn(init)
   }
 
@@ -141,7 +144,7 @@ class Launcher {
     const rpc = new Rpc((message) => thread.post(message))
     rpc.serve((service, method, args) => this.#serve(service, method, args))
     const env = { ...Launcher.env(), ...(this.#shell.socketName && { WAYLAND_DISPLAY: this.#shell.socketName }) }
-    const thread = sys().spawnWeb(init.name, init, this.session.heapMb ?? HEAP_MB, env, (message) => void rpc.receive(message), (code, reason) => {
+    const thread = sys().spawnWeb(init.name, init, this.session.heapMb ?? HEAP_MB, env, (message) => this.#fromPage(message, rpc), (code, reason) => {
       if (this.#reloading) return this.#respawn()
       if (reason) process.stderr.write(`acdev: ${init.name} stopped: ${reason}\n`)
       this.#end(code)
@@ -149,6 +152,18 @@ class Launcher {
     this.#rpc = rpc
     this.#thread = thread
     this.#init = init
+  }
+
+  #fromPage(message: unknown, rpc: Rpc): void {
+    const call = message as { rpc?: string; id?: number; service?: string; method?: string; args?: unknown[] } | null
+    if (!this.manager || call?.rpc !== 'call' || !call.service || !Object.hasOwn(this.#services, call.service)) return void rpc.receive(message)
+    this.manager.call(call.service, call.method ?? '', call.args ?? []).then(
+      (value) => this.#thread?.post({ rpc: 'result', id: call.id, value }),
+      (error: Error & { status?: number; code?: string }) => {
+        const fields = { ...(error.status !== undefined && { status: error.status }), ...(error.code !== undefined && { code: error.code }) }
+        this.#thread?.post({ rpc: 'result', id: call.id, error: { name: error.name ?? 'Error', message: error.message, fields } })
+      },
+    )
   }
 
   #serve(service: string, method: string, args: unknown[]): unknown {
@@ -306,9 +321,16 @@ class Launcher {
   #managerEvents(): void {
     for (const event of this.manager?.pump() ?? []) {
       if (event.type === 'managerclosed') this.#end(0)
+      else if (event.type === 'services') this.#replaceServices(event['services'] as Readonly<Record<string, ServiceShape>> | undefined)
+      else if (event.type === 'invoke') this.#thread?.post({ rpc: 'invoke', fn: event['fn'], args: event['args'] ?? [] })
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
       else if (this.#desktop) this.#thread?.post(event)
     }
+  }
+
+  #replaceServices(services: Readonly<Record<string, ServiceShape>> | undefined): void {
+    this.#services = services ?? {}
+    this.#thread?.post({ type: 'services', services: this.#services })
   }
 
   #deliver(event: ManagerEvent): void {
@@ -353,6 +375,13 @@ export default async function launch(natives: LauncherNatives): Promise<void> {
   try {
     const args = LaunchArgs.parse(process.argv)
     const manager = process.env['ACDE_MANAGER_FD'] && natives.native.Manager ? natives.native.Manager.connect() : null
+    if (args.kind === 'service') {
+      if (!manager) throw new Error('service needs the session manager (ACDE_MANAGER_FD)')
+      if (manager.welcome.kind !== 'service') throw new Error(`the session manager started this process as ${manager.welcome.kind}, not service`)
+      const host = new ServiceHost(manager, manager.welcome, natives.native as unknown as Record<string, unknown>)
+      await host.start()
+      process.exit(await host.run())
+    }
     const session = manager ? sessionOf(manager.welcome, args.kind) : standalone(args)
     const launcher = new Launcher(natives, session, manager, args)
     launcher.start()

@@ -6,6 +6,7 @@ import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/calls.ts'
 import { sessionOf, type Welcome } from '../src/manager.ts'
 import { toDesktop } from '../src/events.ts'
+import { incomingCall, released, shapeOf, withCallbacks } from '../src/service.ts'
 
 bindNatives({ host: {}, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
 
@@ -108,5 +109,38 @@ describe('window system events on their way to the desktop page', () => {
     })
     const open = { type: 'windowopen', window: 3, title: 'Notes', appId: 'notes', instance: 7 }
     assert.equal(toDesktop(open), open)
+  })
+})
+
+describe('the service mode', () => {
+  test('a namespace shape lists methods along the prototype chain, plain values, sync results and whether it is callable', () => {
+    class Base {
+      greet(): string {
+        return 'hi'
+      }
+    }
+    const api = Object.assign(new Base(), { count: 3, label: 'x', nested: { a: 1 }, own: () => 'mine' })
+    const shape = shapeOf(api, ['own'])
+    assert.deepEqual([...shape.methods].sort(), ['greet', 'own'])
+    assert.deepEqual(shape.values, { count: 3, label: 'x' })
+    assert.deepEqual(shape.sync, { own: 'mine' })
+    assert.equal(shape.callable, false)
+    assert.equal(shapeOf(() => 1, []).callable, true)
+  })
+
+  test('function markers in the arguments become callbacks, deep in arrays and plain objects', () => {
+    const seen: number[] = []
+    const args = withCallbacks([{ __acdeFn: 7 }, { on: { __acdeFn: 8 } }, 'text'], (fn) => () => void seen.push(fn)) as [() => void, { on: () => void }, string]
+    args[0]()
+    args[1].on()
+    assert.deepEqual([seen, args[2]], [[7, 8], 'text'])
+  })
+
+  test("calls and releases are read from the manager's frames", () => {
+    const frame = { type: 'call', id: 4, service: 'desks', method: 'list', args: [1] }
+    assert.deepEqual(incomingCall(frame as never), { id: 4, service: 'desks', method: 'list', args: [1] })
+    assert.equal(incomingCall({ type: 'services' } as never), null)
+    assert.equal(released({ type: 'release', fn: 9 } as never), 9)
+    assert.equal(released({ type: 'x', release: { fn: 3 } } as never), 3)
   })
 })

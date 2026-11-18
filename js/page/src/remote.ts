@@ -274,6 +274,7 @@ type ModuleHost = { defineModule(url: string, exports: object): void; refuseModu
 
 export class RemoteBridge {
   readonly value: Record<string, unknown> = {}
+  readonly #services = new Set<string>()
   readonly permits: Permits
   readonly #rpc: Rpc
   #capabilities: { update(status: CapabilityStatus): void } | null = null
@@ -288,7 +289,7 @@ export class RemoteBridge {
       ...Rpc.calls(() => rpc, 'permissions', 'pending', 'answer', 'list', 'revoke'),
       on: windows.notices.for('permissions', ['prompt', 'answered']),
     })
-    for (const [service, shape] of Object.entries(init.services)) this.value[service] = this.#proxy(service, shape)
+    this.replaceServices(init.services)
     const calls = Rpc.calls(() => rpc, 'apps', 'list', 'open')
     const apps = { ...calls, open: async (...args: unknown[]) => calls.open(...args.map((arg) => this.#outgoing(arg))) }
     const files = Rpc.calls(() => rpc, 'apps', 'openPath', 'handlers', 'setDefault')
@@ -377,6 +378,15 @@ export class RemoteBridge {
     this.#waiting.delete(name)
     const value = this.permits.guard(name, this.value[name] as object)
     host.defineModule(`acde:${name}`, { [name]: value, default: value })
+  }
+
+  replaceServices(services: Readonly<Record<string, ServiceShape>>): void {
+    for (const service of this.#services) delete this.value[service]
+    this.#services.clear()
+    for (const [service, shape] of Object.entries(services)) {
+      this.value[service] = this.#proxy(service, shape)
+      this.#services.add(service)
+    }
   }
 
   #proxy(service: string, shape: ServiceShape): unknown {

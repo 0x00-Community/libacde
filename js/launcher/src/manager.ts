@@ -5,9 +5,16 @@ import type { WebGrants } from '../../page/src/sys/natives'
 import { join } from '../../page/src/sys/path'
 import type { Found } from './app'
 
+export interface ServiceShape {
+  readonly methods: readonly string[]
+  readonly values: Readonly<Record<string, unknown>>
+  readonly sync: Readonly<Record<string, unknown>>
+  readonly callable: boolean
+}
+
 export interface Welcome {
   readonly api: number
-  readonly kind: 'app' | 'desktop'
+  readonly kind: 'app' | 'desktop' | 'service'
   readonly level: string
   readonly dir: string
   readonly app?: AppManifest
@@ -16,6 +23,11 @@ export interface Welcome {
   readonly tier: WebTier
   readonly grants: WebGrants
   readonly request: Record<string, unknown> | null
+  readonly services?: Readonly<Record<string, ServiceShape>>
+  readonly name?: string
+  readonly module?: string
+  readonly modules?: readonly string[]
+  readonly stateDir?: string
 }
 
 export interface ManagerEvent {
@@ -28,6 +40,7 @@ export interface ManagerLink {
   call(service: string, method: string, args?: readonly unknown[]): Promise<unknown>
   onEvents(callback: () => void): void
   pump(): ManagerEvent[]
+  send?(frame: object): void
 }
 
 export interface Session {
@@ -40,11 +53,12 @@ export interface Session {
   readonly tier: WebTier | null
   readonly grants: WebGrants | null
   readonly request: Record<string, unknown> | null
+  readonly services: Readonly<Record<string, ServiceShape>>
 }
 
-export function sessionOf(welcome: Welcome, wanted: 'app' | 'desktop'): Session {
+export function sessionOf(welcome: Welcome, wanted: 'app' | 'desktop' | 'service'): Session {
   if (welcome.kind !== wanted) throw new Error(`the session manager started this process as ${welcome.kind}, not ${wanted}`)
-  const shared = { tier: welcome.tier, grants: welcome.grants, request: welcome.request ?? null }
+  const shared = { tier: welcome.tier, grants: welcome.grants, request: welcome.request ?? null, services: welcome.services ?? {} }
   if (welcome.kind === 'desktop') {
     const desktop = welcome.desktop
     if (!desktop) throw new Error('the session manager sent no desktop in its welcome')

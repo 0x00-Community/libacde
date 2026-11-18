@@ -1,6 +1,6 @@
 import { install, installBackendTransport, observe } from '@dopame/acde-dom'
 import type { AudioNative, BackendTransport, CaptureNative, DeviceNative, DomNative, GpuNative, HostNative, StorageNative, WebglNative } from '@dopame/acde-dom'
-import type { WebInit } from './contract'
+import type { ServiceShape, WebInit } from './contract'
 import { BluetoothModule, type BluetoothNatives } from './bluetooth'
 import { DevicesModule, type DevicesNatives } from './devices'
 import { Frame } from './frame'
@@ -197,6 +197,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
     if (rpc.receive(message)) return
     const m = message as {
       type?: string
+      services?: Record<string, ServiceShape>
       dark?: boolean
       reduced?: boolean
       language?: string
@@ -230,6 +231,8 @@ export default async function boot(natives: WebNatives): Promise<void> {
         return page.mediaChanged()
       case 'devhot':
         return devhot()
+      case 'services':
+        return bridge.replaceServices(m.services ?? {})
       case 'permit':
         return m.capability && m.approval ? bridge.permit(m.capability, m.approval, m.status ?? null) : undefined
       default:
