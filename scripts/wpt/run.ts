@@ -27,6 +27,7 @@ const { values } = parseArgs({
     rerun: { type: 'boolean', default: false },
     'skip-slow': { type: 'string', default: '' },
     shard: { type: 'string', default: '1/1' },
+    'log-grep': { type: 'string', default: '' },
   },
 })
 const [SHARD, SHARDS] = values.shard!.split('/').map(Number) as [number, number]
@@ -44,6 +45,8 @@ const OUT = join(STATE, 'results', values.label!)
 const DATA = join(STATE, 'work', 'data', values.label!)
 mkdirSync(OUT, { recursive: true })
 const RESULTS = join(OUT, 'results.jsonl')
+const LOG = join(OUT, 'log.jsonl')
+const LOG_GREP = values['log-grep'] ? new RegExp(values['log-grep']) : null
 const VIEWPORT: [number, number] = [800, 600]
 const LOAD_MS = 6000
 
@@ -129,6 +132,8 @@ class Hang extends Error {}
 
 class Worker {
   acde: Acde | null = null
+  logSeq = 1
+  current: string | null = null
   web = ''
   launches = 0
   viewport: [number, number] | null = null
@@ -149,6 +154,7 @@ class Worker {
         XDG_DATA_HOME: data, XDG_CONFIG_HOME: join(data, 'config'), XDG_CACHE_HOME: join(data, 'cache'),
       },
     })
+    this.logSeq = 1
     const webs = await this.acde.webs()
     const web = webs.find((w) => w.app === `wpt${this.n}`)
     if (!web) throw new Error(`worker ${this.n}: no page after launch for ${chunk}`)
@@ -162,6 +168,15 @@ class Worker {
     this.acde = null
     if (!acde) return
     await Promise.race([acde.close().catch(() => 0), sleep(15000)])
+    this.keepLog(acde)
+  }
+
+  keepLog(acde: Acde | null) {
+    if (!LOG_GREP || !acde?.logs) return
+    const slice = acde.logs.since(this.logSeq, { grep: LOG_GREP })
+    this.logSeq = slice.next
+    for (const line of slice.lines) appendFileSync(LOG, JSON.stringify({ worker: this.n, during: this.current, text: line.text }) + '\n')
+    if (slice.dropped) appendFileSync(LOG, JSON.stringify({ worker: this.n, during: this.current, dropped: slice.dropped }) + '\n')
   }
 
   async eval<T>(code: string): Promise<T> {
@@ -349,7 +364,9 @@ class Worker {
         continue
       }
       for (const t of tests) {
+        this.current = t.url
         let r = await this.runOne(t)
+        this.keepLog(this.acde)
         if (r.status === 'CRASH' || r.status === 'HANG') {
           try {
             await this.launch(key)
