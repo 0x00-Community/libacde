@@ -1,9 +1,9 @@
 export class LaunchArgs {
-  static readonly USAGE =
-    'the single-app launcher: app <id|dir> | desktop [id] | service <name> [--size WxH] [--scale N] [--seconds N] [--shot FILE] [--shot-after MS]'
+  static readonly USAGE = 'the single-app launcher: app <id|dir> | desktop [id] | lock <desktop id|dir> | service <name> '
+    + '[--size WxH] [--scale N] [--seconds N] [--shot FILE] [--shot-after MS]'
 
   constructor(
-    readonly kind: 'app' | 'desktop' | 'service',
+    readonly kind: 'app' | 'desktop' | 'lock' | 'service',
     readonly app: string,
     readonly width: number,
     readonly height: number,
@@ -15,12 +15,15 @@ export class LaunchArgs {
 
   static parse(argv: readonly string[]): LaunchArgs {
     const [command, ...given] = argv
-    if (command !== 'app' && command !== 'desktop' && command !== 'service') throw new Error(`${command ?? 'nothing'} is not supported; ${LaunchArgs.USAGE}`)
+    if (command !== 'app' && command !== 'desktop' && command !== 'lock' && command !== 'service') {
+      throw new Error(`${command ?? 'nothing'} is not supported; ${LaunchArgs.USAGE}`)
+    }
     const named = given[0] !== undefined && !given[0].startsWith('--')
     const app = named ? given[0]! : ''
     const rest = named ? given.slice(1) : given
     if (command === 'app' && !app) throw new Error(`app needs an id or a folder; ${LaunchArgs.USAGE}`)
     if (command === 'service' && !app) throw new Error(`service needs its name; ${LaunchArgs.USAGE}`)
+    if (command === 'lock' && !app) throw new Error(`lock needs a desktop id or a folder; ${LaunchArgs.USAGE}`)
     const values = new Map<string, string>()
     for (let i = 0; i < rest.length; i += 2) {
       const flag = rest[i]!

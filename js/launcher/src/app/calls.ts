@@ -8,6 +8,7 @@ export type Route =
   | 'windows'
   | 'manager'
   | 'session'
+  | 'lock'
   | 'unsupported'
 
 const ACKNOWLEDGED = new Set(['window.ready', 'window.setTitle', 'page.shown'])
@@ -35,6 +36,7 @@ export function route(service: string, method: string, args: readonly unknown[],
   if (caller.desktop && service === 'windows') return 'windows'
   if (caller.managed) return 'manager'
   if (service === 'session' || service === 'desktops') return 'session'
+  if (service === 'lock') return 'lock'
   return ACKNOWLEDGED.has(call) ? 'acknowledge' : 'unsupported'
 }
 

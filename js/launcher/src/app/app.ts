@@ -1,4 +1,5 @@
 import { API_LEVEL, Manifest, type AppManifest, type PackageManifest } from '@dopame/acde-api/manifest'
+import type { DesktopManifest } from '@dopame/acde-api'
 import type { WebInit, WebTier } from '../../../page/src/contract'
 import type { Languages } from '../../../page/src/language'
 import { PageSource } from '../../../page/src/page'
@@ -61,6 +62,38 @@ export class AppLookup {
   }
 
   #fail(message: string): never {
+    throw Object.assign(new Error(message), { status: 404 })
+  }
+}
+
+export interface FoundDesktop {
+  readonly dir: string
+  readonly desktop: DesktopManifest
+  readonly resources: { prefix: string; dirs: string[] }[]
+}
+
+export class DesktopLookup {
+  constructor(readonly files: Files) {}
+
+  find(target: string, path: readonly string[], cwd: string): FoundDesktop {
+    const dir = isAbsolute(target) || target.startsWith('.') ? resolve(cwd, target) : null
+    if (dir) return this.#first(dir, null) ?? DesktopLookup.#fail(`${dir}: no acde desktop in its package.json`)
+    for (const root of path) {
+      const found = this.#first(root, target) ?? this.files.readDir(root).map((name) => this.#first(join(root, name), target)).find(Boolean)
+      if (found) return found
+    }
+    return DesktopLookup.#fail(`no desktop ${target} in ACDE_PATH (${path.join(':') || 'unset'})`)
+  }
+
+  #first(dir: string, id: string | null): FoundDesktop | null {
+    const text = this.files.readText(join(dir, 'package.json'))
+    if (text === null) return null
+    const manifest = (JSON.parse(text) as { acde?: PackageManifest }).acde
+    const desktop = (manifest?.desktops ?? []).find((d) => id === null || d.id === id)
+    return desktop ? { dir, desktop, resources: AppLookup.resources(dir, manifest!) } : null
+  }
+
+  static #fail(message: string): never {
     throw Object.assign(new Error(message), { status: 404 })
   }
 }

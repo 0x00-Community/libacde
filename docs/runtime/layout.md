@@ -46,6 +46,10 @@
   `acde.assets`, 没有 `/` 时 `/` 指包目录; 没有服务、最低权限等级、存储在 `$ACDE_STORAGE` 或 `~/.local/share/acde/storage` 的 `app-<id>`.
   文件 (用户 2026-11-18): 清单声明了 `fs` 就授予 `{places, paths: false}` (形状同客户机管家的 `grants.fs`): 只在设了 `ACDE_DEV_PLACES` (`acdev dev` 设,
   它同时用 `XDG_<名>_DIR` 把公共位置换成会话自己的隔离目录) 时给清单 `fs.roots` 列的位置, 否则只有应用私有目录; 不给任意路径.
+- **锁屏页预览** (`lock <桌面 id|目录>`, 只在没有管家时, `acdev dev --lock` 用, 日常桌面工作项 23): 按 `ACDE_PATH` 或目录找桌面包, 打开它清单 `lock`
+  写的页面 (桌面窗口, 等级最低, 授予全无, 页面初始化数据带 `lock: true`, 所以只有 `acde:lock` 和 `acde:services`). `lock.user` / `lock.unlock` 由
+  `js/launcher/src/app/lock.ts` 的 `FakeLock` 回答: 固定用户 (头像 null); `right-password` 解锁, `wrong-password` auth (403)、`busy-password` busy (409)、
+  `throttled-password` throttled (429, `retryAfter` 3), 别的 auth. 有管家时 `lock` 命令报错, `lock.*` 照常交给管家.
   `window.ready`、`window.setTitle`、`page.shown` 直接应答, `desktops.list` 回 `{desktops: [], current: ''}`, 其余 (含 `session.*`、
   `desktops.choose`、`lock.*`) 回 `unsupported` (501).
 - **会话与桌面包** (`acde:session`、`acde:desktops`, libacde 工单 04): 页面胶水 (`RemoteBridge`) 给桌面页定义这两个模块, 应用页在

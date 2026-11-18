@@ -9,7 +9,9 @@ import { process } from '../../page/src/sys/process'
 import { Rpc } from '../../page/src/rpc'
 import { SessionLanguage } from '../../page/src/language'
 import { PageSource } from '../../page/src/page'
-import { AppLookup, desktopInit, webInit, type Found, type Place } from './app/app'
+import { AppLookup, DesktopLookup, desktopInit, webInit, type Found, type Place } from './app/app'
+import { FakeLock } from './app/lock'
+import { API_LEVEL } from '@dopame/acde-api/manifest'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported } from './app/calls'
 import type { LentRoot } from '@dopame/acde-api'
@@ -94,7 +96,8 @@ function grantsFor(found: Found): WebGrants {
 }
 
 function standalone(args: LaunchArgs): Session {
-  if (args.kind !== 'app') throw new Error(`${args.kind} needs the session manager (ACDE_MANAGER_FD); without it only app <id|dir> runs`)
+  if (args.kind === 'lock') return lockPreview(args)
+  if (args.kind !== 'app') throw new Error(`${args.kind} needs the session manager (ACDE_MANAGER_FD); without it only app <id|dir> and lock <desktop> run`)
   const path = (process.env['ACDE_PATH'] ?? '').split(':').filter(Boolean)
   const found = new AppLookup({ readText: (file) => readTextOr(file, null), readDir: readDirOr }).find(args.app, path, sys().cwd())
   const { app } = found
@@ -102,6 +105,21 @@ function standalone(args: LaunchArgs): Session {
   return {
     kind: 'app', found, page: null, resources: found.resources, label: app.label, heapMb: app.heapMb,
     tier: null, grants, request: null, services: {}, own: false, lock: false,
+  }
+}
+
+function lockPreview(args: LaunchArgs): Session {
+  const path = (process.env['ACDE_PATH'] ?? '').split(':').filter(Boolean)
+  const found = new DesktopLookup({ readText: (file) => readTextOr(file, null), readDir: readDirOr }).find(args.app, path, sys().cwd())
+  const entry = found.desktop.lock
+  if (!entry) throw new Error(`desktop ${found.desktop.id} has no lock page (lock in its package.json)`)
+  const grants: WebGrants = {
+    app: null, fs: null, terminal: false, network: false, system: false, bluetooth: false, audio: false, devices: false, power: false,
+    input: false, display: false, office: false, camera: false, microphone: false, storage: { key: 'lock', dir: null, legacy: null },
+  }
+  return {
+    kind: 'desktop', found: null, page: join(found.dir, entry), resources: found.resources, label: `${found.desktop.name} (lock)`,
+    heapMb: found.desktop.heapMb, tier: { level: API_LEVEL, shell: [], refused: {} }, grants, request: null, services: {}, own: false, lock: true,
   }
 }
 
@@ -123,6 +141,7 @@ class Launcher {
   readonly #panels = new Set<number>()
   #services: Readonly<Record<string, ServiceShape>> = {}
   readonly #dev: DevChannel
+  readonly #lock = new FakeLock()
   readonly #devtools: DevToolsEndpoint
   #inspect: Inspect | null = null
   #devState: unknown = null
@@ -264,6 +283,9 @@ class Launcher {
       case 'session':
         if (service === 'desktops' && method === 'list') return { desktops: [], current: '' }
         throw unsupported(service, method)
+      case 'lock':
+        if (!this.session.lock) throw unsupported(service, method)
+        return this.#lock.answer(method, args)
       case 'unsupported':
         throw unsupported(service, method)
     }
@@ -477,7 +499,8 @@ export default async function launch(natives: LauncherNatives): Promise<void> {
       await host.start()
       process.exit(await host.run())
     }
-    const session = manager ? sessionOf(manager.welcome, args.kind) : standalone(args)
+    if (manager && args.kind === 'lock') throw new Error('lock is the lock page preview of acdev dev; in a session the manager opens the lock page')
+    const session = manager ? sessionOf(manager.welcome, args.kind as 'app' | 'desktop') : standalone(args)
     const launcher = new Launcher(natives, session, manager, args)
     launcher.start()
     process.exit(await launcher.run())
