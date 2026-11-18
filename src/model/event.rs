@@ -30,6 +30,7 @@ pub struct Event {
     pub state: Option<String>,
     pub previous: Option<String>,
     pub instance: Option<u32>,
+    pub desk: Option<u32>,
 }
 
 impl Event {

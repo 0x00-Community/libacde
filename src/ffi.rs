@@ -229,6 +229,7 @@ impl From<&AcdertEvent> for Event {
             files: Texts(event.files, event.files_len).into(),
             data: keys.zip(values).map(|(keys, values)| keys.into_iter().zip(values).collect()),
             instance: None,
+            desk: None,
         }
     }
 }
