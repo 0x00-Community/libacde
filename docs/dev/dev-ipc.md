@@ -128,3 +128,7 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
   宿主上 `acdev dev --lock` 的预览没有管家, 页面名仍是 `desktop`, 也带 `lock: true`.
 - 页面和运行时的开发能力 (`debug.eval`/`evalOn`、`dev.clock`、devInit、devroute、DevTools 端点与页面域、V8 live-edit) 只看 `ACDE_DEV` 在不在.
   客户机里由会话总管在开发客户机 (fw_cfg 文件存在) 时设 `ACDE_DEV=guest`, 启动器把 `ACDE_*` 传给页面线程; 正式系统里没有它, 即使有, 没有管家转发请求也到不了页面.
+- 窗口表 (和 acdes 对齐, 2026-11-20): 管家转发 snapshot、act、query、run、open、input 时在请求里附 `windows: [{id, app_id, pid, title, x, y, width, height,
+  activated, hidden, state, desktop}]` (winman 的窗口表, 上层在前). 启动器的 Inspect 有它时用它列窗口 (`dev/guest.ts` `GuestWindows`): 窗口号就是 winman 的 id
+  (`w<id>`), 桌面是 `w0`; pid 等于本进程的那一行是自己的窗口 (桌面进程认 `desktop: true` 的那行), 有元素, 映射回本地窗口号; 别的进程的窗口列成 native, 没有元素.
+  所以管家按 ref 的窗口号 (w0 给桌面进程, 其余按 pid 找进程) 转发 act 和带 ref 的 snapshot / query.

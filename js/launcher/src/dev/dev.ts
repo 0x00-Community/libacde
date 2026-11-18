@@ -42,6 +42,7 @@ export interface DevHost {
   inspect(): Inspect
   reload(): Promise<void>
   respond?(id: number, ok: boolean, payload: string): void
+  place?(windows: unknown): void
 }
 
 interface DevInit {
@@ -128,7 +129,8 @@ export class DevChannel {
   }
 
   async answer(request: Request): Promise<unknown> {
-    const { type: _type, id: _id, op, ...args } = request
+    const { type: _type, id: _id, op, windows, ...args } = request
+    if (windows !== undefined) this.#host.place?.(windows)
     const inspect = () => this.#host.inspect().api
     switch (op) {
       case 'webs':

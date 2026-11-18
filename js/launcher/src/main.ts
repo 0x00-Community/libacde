@@ -25,7 +25,8 @@ import { ServiceHost } from './manager/service'
 import { DevChannel, type DevShell, type DevTarget } from './dev/dev'
 import { DevToolsEndpoint, type NativeDevTools } from './dev/devtools'
 import { managerRelay } from './dev/relay'
-import { Inspect, type InspectShell } from './dev/inspect'
+import { Inspect, type InspectHost, type InspectShell } from './dev/inspect'
+import { GuestWindows } from './dev/guest'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
 
@@ -155,6 +156,7 @@ class Launcher {
   readonly #pages: PageCalls
   readonly #devtools: DevToolsEndpoint
   #inspect: Inspect | null = null
+  readonly #guest: GuestWindows | null
   #devState: unknown = null
   readonly #backend: AppBackend | null
 
@@ -173,6 +175,7 @@ class Launcher {
       ...(this.#shell.notify && { notify: (title: string, body: string, subtitle: string) => this.#shell.notify!(title, body, subtitle) }),
     })
     const relay = managerRelay(manager)
+    this.#guest = manager ? new GuestWindows(process.pid, session.kind === 'desktop') : null
     const page = () => {
       const target = this.#target()
       return target && { ...target, url: this.#init?.url ?? null }
@@ -185,12 +188,14 @@ class Launcher {
       inspect: () => this.#inspector(),
       reload: () => this.#devReload(false),
       ...(relay && { respond: relay.respond }),
+      ...(this.#guest && { place: (windows: unknown) => this.#guest!.place(windows) }),
     }, process.env['ACDE_COLOR_SCHEME'] === 'dark')
     this.#backend = session.kind === 'app' && session.found?.app.backend ? new AppBackend(session.found) : null
   }
 
   #inspector(): Inspect {
-    this.#inspect ??= new Inspect({
+    if (this.#inspect) return this.#inspect
+    const host: InspectHost = {
       shell: this.#shell,
       web: (window) => (window === this.#window ? this.#rpc : null),
       record: (window) => (window === this.#window ? { kind: 'web', app: this.session.found?.app.id ?? null, title: this.#title } : null),
@@ -200,7 +205,8 @@ class Launcher {
       open: () => Promise.reject(new Error(`open: ${DevChannel.SINGLE}`)),
       accessibility: () => Promise.resolve(null),
       records: () => [this.#window],
-    })
+    }
+    this.#inspect = new Inspect(this.#guest ? this.#guest.host(host, () => this.#window) : host)
     return this.#inspect
   }
 

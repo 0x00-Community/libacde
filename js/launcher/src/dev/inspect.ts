@@ -57,6 +57,7 @@ export interface InspectHost {
   open(name: string): Promise<string>
   accessibility(): Promise<NativeAccessibility | null>
   records(): readonly number[]
+  ref?(window: number): string | null
 }
 
 interface SnapshotOptions {
@@ -914,6 +915,8 @@ export class Inspect {
 
   #ref(id: number): string {
     if (id === 0) return 'w0'
+    const given = this.#host.ref?.(id)
+    if (given) return given
     const known = this.#refs.get(id)
     if (known) return known
     const ref = `w${this.#next++}`
