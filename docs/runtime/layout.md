@@ -50,8 +50,11 @@
   写的页面 (桌面窗口, 等级最低, 授予全无, 页面初始化数据带 `lock: true`, 所以只有 `acde:lock` 和 `acde:services`). `lock.user` / `lock.unlock` 由
   `js/launcher/src/app/lock.ts` 的 `FakeLock` 回答: 固定用户 (头像 null); `right-password` 解锁, `wrong-password` auth (403)、`busy-password` busy (409)、
   `throttled-password` throttled (429, `retryAfter` 3), 别的 auth. 有管家时 `lock` 命令报错, `lock.*` 照常交给管家.
-  `window.ready`、`window.setTitle`、`page.shown` 直接应答, `desktops.list` 回 `{desktops: [], current: ''}`, 其余 (含 `session.*`、
+  `window.ready`、`page.shown` 直接应答, `desktops.list` 回 `{desktops: [], current: ''}`, 其余 (含 `session.*`、
   `desktops.choose`、`lock.*`) 回 `unsupported` (501).
+  `window.setTitle` 记下标题 (语义树、`webs`、DevTools 目标用它); `window.setMenus` 交给宿主窗口 (`Shell.setMenus`, 菜单画在框上), 带 `shortcut`
+  的菜单项注册成 `menu` 范围的快捷键, 宿主推来的 `menuselect` 和按下的菜单快捷键转成页面的 `window.menu` (`app/menus.ts`); `page.open` / `page.save`
+  (页面的打开、保存文件选择器) 用宿主的 `FileChooser`, `page.notify` 用 `Shell.notify` (`app/page.ts`); `page.download` 仍回 501.
 - **会话与桌面包** (`acde:session`、`acde:desktops`, libacde 工单 04): 页面胶水 (`RemoteBridge`) 给桌面页定义这两个模块, 应用页在
   `tier.shell` 含 `session` / `desktops` 时定义. `session.logout/reboot/poweroff/setLanguage(tag)`、`desktops.list()` (回
   `{desktops: DesktopInfo[], current}`)、`desktops.choose(id, remember?)` 经 rpc 转出, 有管家时原样 `manager.call`. 同步的
