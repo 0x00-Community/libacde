@@ -91,6 +91,10 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
   按交流 / 电池 / 低电量分组的策略设置 (空闲动作、熄屏、合盖、电源键、亮度), logind 挂起 / 休眠, 背光亮度, 充电上限; 事件 `changed` / `prompt` /
   `critical` 由 acde-host `Watched.typed` 按 `type` 分发. 系统总线连接挂在 `Power` 上. 会话里的执行 (空闲计时、熄屏、
   合盖和电源键) 要合成器配合, 见 acdebin-system.
+  设置存在 `$XDG_CONFIG_HOME/acde/power.json`, 由多个进程共用: 每个用到 `Power` 的进程 (页面进程和会话总管) 都用 inotify 盯着它所在的目录
+  (`power/shared.rs` 的 `watch`), 文件被写或换掉就重读并按新设置重排策略, 所以桌面页改的设置在会话总管里跑策略的实例上立即生效.
+  跑策略的实例 (`start_policy`) 写标记 `$XDG_RUNTIME_DIR/acde/power-policy` (内容是 pid, 策略线程结束时删); 页面进程的
+  `PowerState.policy` 是本进程在跑策略, 或标记里的进程还活着.
   `acde:input` (能力 `input`, src/host `input.rs`): 合成器的 xkb 布局 / 型号 / 选项、按键重复、NumLock 和鼠标 / 触控板的 libinput 设置;
   `state()` / `set(patch)` / `on('changed')` 走前端 `Platform::input()` 给的 `Input` (acdebin-system 的会话经 acde_shell `set_input` / `input` 事件;
   acdev runtime 没有, 调用就抛), `catalog()` 读 xkeyboard-config 的 `rules/evdev.xml` (runtime `XkbCatalog`).

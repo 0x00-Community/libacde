@@ -286,6 +286,7 @@ export class Manifest {
     manifest: PackageManifest,
     isDir: (path: string) => boolean,
     resolve: (url: string) => boolean,
+    isFile?: (path: string) => boolean,
   ): Findings {
     const findings: Findings = { errors: [], warnings: [] }
     const { errors, warnings } = findings
@@ -309,6 +310,13 @@ export class Manifest {
     for (const desktop of manifest.desktops ?? []) {
       const at = `desktop ${JSON.stringify(desktop?.id)}`
       if (desktop && typeof desktop === 'object' && 'frame' in desktop) errors.push(`${at}: frame is not a desktop field (only apps have a frame)`)
+      for (const field of ['entry', 'lock'] as const) {
+        const path: unknown = desktop?.[field]
+        if (field === 'lock' && path === undefined) continue
+        const example = `desktop/${field === 'lock' ? 'lock' : 'index'}.html`
+        if (!Manifest.packagePath(path)) errors.push(`${at}: ${field} must be a path inside the package, such as ${example}`)
+        else if (isFile && !isFile(path)) errors.push(`${at}: no ${field} ${path}`)
+      }
       const grants = Manifest.desktopServices(desktop?.services)
       if (typeof grants === 'string') errors.push(`${at}: ${grants}`)
       for (const grant of Array.isArray(grants) ? grants : []) {
@@ -369,6 +377,11 @@ export class Manifest {
     const valid = (s: unknown) => typeof s === 'string' && /^[a-z][a-z0-9+.-]*$/.test(s) && s !== 'file'
     if (!Array.isArray(raw) || !raw.every(valid)) return 'schemes lists lower-case URL schemes without the colon (https, mailto); file is not one'
     return [...(raw as string[])]
+  }
+
+  static packagePath(raw: unknown): raw is string {
+    if (typeof raw !== 'string' || !raw || raw.startsWith('/') || raw.includes('\\') || raw.includes('\0')) return false
+    return raw.split('/').every((part) => part !== '..')
   }
 
   static #services(raw: unknown): string[] | string {

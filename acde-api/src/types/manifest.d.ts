@@ -16,6 +16,7 @@ export interface DesktopManifest {
   readonly name: string
   readonly description?: string
   readonly entry: string
+  readonly lock?: string
   readonly services?: readonly (string | DesktopService)[]
   readonly heapMb?: number
 }

@@ -101,7 +101,7 @@ function standalone(args: LaunchArgs): Session {
   const grants = grantsFor(found)
   return {
     kind: 'app', found, page: null, resources: found.resources, label: app.label, heapMb: app.heapMb,
-    tier: null, grants, request: null, services: {}, own: false,
+    tier: null, grants, request: null, services: {}, own: false, lock: false,
   }
 }
 
@@ -211,7 +211,8 @@ class Launcher {
     const state = this.#devState
     this.#devState = null
     const session = { own: this.session.own }
-    const init: WebInit = { ...given, ...this.#dev.prepare(given.name, app), ...this.#backend?.init(), session, ...(state ? { devState: state } : {}) }
+    const lock = this.session.lock ? { lock: true } : {}
+    const init: WebInit = { ...given, ...this.#dev.prepare(given.name, app), ...this.#backend?.init(), session, ...lock, ...(state ? { devState: state } : {}) }
     const rpc = new Rpc((message) => thread.post(message))
     rpc.serve((service, method, args) => this.#serve(service, method, args))
     const env = { ...Launcher.env(), ...(this.#shell.socketName && { WAYLAND_DISPLAY: this.#shell.socketName }) }

@@ -10,6 +10,10 @@ declare module 'acde:session' {
   const session: import('../types/page').AcdeSession
   export { session, session as default }
 }
+declare module 'acde:lock' {
+  const lock: import('../types/page').AcdeLock
+  export { lock, lock as default }
+}
 declare module 'acde:desktops' {
   const desktops: import('../types/page').AcdeDesktops
   export { desktops, desktops as default }

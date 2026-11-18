@@ -67,6 +67,8 @@ describe('where the single-app launcher sends a page call', () => {
     assert.equal(route('apps', 'list', [], alone), 'unsupported')
     assert.match(unsupported('apps', 'list').message, /apps\.list is not supported/)
     assert.equal(route('session', 'logout', [], alone), 'session')
+    assert.equal(route('session', 'lock', [], alone), 'session')
+    assert.equal(route('lock', 'unlock', ['pw'], alone), 'unsupported')
     assert.equal(route('desktops', 'list', [], alone), 'session')
   })
 
@@ -103,6 +105,15 @@ describe('the session from the manager\'s welcome', () => {
     const welcome = { ...base, kind: 'desktop', desktop: { id: 'dopame', name: 'Dopame', entry: 'desktop.html' } } as Welcome
     assert.deepEqual([sessionOf(welcome, 'desktop').page, sessionOf(welcome, 'desktop').found], ['/p/desktop.html', null])
     assert.throws(() => sessionOf(welcome, 'app'), /started this process as desktop, not app/)
+  })
+
+  test('the lock page loads the lock entry of the desktop, or its entry when it has none', () => {
+    const desktop = { id: 'dopame', name: 'Dopame', entry: 'desktop.html', lock: 'lock.html' }
+    const locked = sessionOf({ ...base, kind: 'desktop', lock: true, desktop } as Welcome, 'desktop')
+    assert.deepEqual([locked.page, locked.lock], ['/p/lock.html', true])
+    const plain = sessionOf({ ...base, kind: 'desktop', lock: true, desktop: { id: 'lock', name: 'Lock', entry: 'index.html' } } as Welcome, 'desktop')
+    assert.deepEqual([plain.page, plain.lock], ['/p/index.html', true])
+    assert.deepEqual(sessionOf({ ...base, kind: 'desktop', desktop } as Welcome, 'desktop').page, '/p/desktop.html')
   })
 })
 

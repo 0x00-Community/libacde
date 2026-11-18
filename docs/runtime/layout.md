@@ -47,12 +47,18 @@
   文件 (用户 2026-11-18): 清单声明了 `fs` 就授予 `{places, paths: false}` (形状同客户机管家的 `grants.fs`): 只在设了 `ACDE_DEV_PLACES` (`acdev dev` 设,
   它同时用 `XDG_<名>_DIR` 把公共位置换成会话自己的隔离目录) 时给清单 `fs.roots` 列的位置, 否则只有应用私有目录; 不给任意路径.
   `window.ready`、`window.setTitle`、`page.shown` 直接应答, `desktops.list` 回 `{desktops: [], current: ''}`, 其余 (含 `session.*`、
-  `desktops.choose`) 回 `unsupported` (501).
+  `desktops.choose`、`lock.*`) 回 `unsupported` (501).
 - **会话与桌面包** (`acde:session`、`acde:desktops`, libacde 工单 04): 页面胶水 (`RemoteBridge`) 给桌面页定义这两个模块, 应用页在
   `tier.shell` 含 `session` / `desktops` 时定义. `session.logout/reboot/poweroff/setLanguage(tag)`、`desktops.list()` (回
   `{desktops: DesktopInfo[], current}`)、`desktops.choose(id, remember?)` 经 rpc 转出, 有管家时原样 `manager.call`. 同步的
-  `session.own()` 取 `WebInit.session.own`: 启动器把 welcome 顶层的 `session: {own}` 带进去, 没有这一项或没有管家时为 false.
+  `session.lock()` 同样经 rpc 转出 (管家调 logind 的 Lock). `session.own()` 取 `WebInit.session.own`: 启动器把 welcome 顶层的 `session: {own}` 带进去, 没有这一项或没有管家时为 false.
   管家 (acdes) 推来的服务里若也有 `session` / `desktops`, 会盖掉这两个模块; acdes 在本工单后去掉登录模式里的这条绕法.
+- **锁屏页** (`acde:lock`, 日常桌面工作项 18; 管家一侧见 acdes `docs/manager.md`「锁屏」): 管家以锁屏模式起的进程收到的 welcome 是桌面的形状
+  (`kind: 'desktop'`) 加顶层 `lock: true`, 启动器打开 `join(dir, desktop.lock ?? desktop.entry)` (桌面没写 `lock` 时管家给 acdes 自带的锁屏包),
+  页面初始化数据带 `lock: true`. 页面胶水对锁屏页只定义 `acde:lock` 和 `acde:services`, 不给 `session` (锁屏页不能关机、重启) 及别的外壳模块.
+  `lock.user()` 回 `{name, fullName, avatar}` (`avatar` 是 `data:` URL 或 null), `lock.unlock(password)` 失败时的错误带 `code`: `auth` (403,
+  密码错)、`busy` (409, 上一次验证还没完)、`throttled` (429, 失败后的延迟期内, 另带 `retryAfter` 秒数); 这些字段由 rpc 原样带回页面
+  (SDK 类型 `LockError`). 管家按调用方拒绝: 锁屏页只能调 `lock.*`、`window.ready`、`page.shown`.
 - **服务模式** (`service <名字>`, system 工作项 12, 帧格式见总仓 `.scratch/system/issues/12-services.md`, `js/launcher/src/manager/service.ts`):
   不开窗口, 在启动方的 isolate 里 `import` welcome 的 `module` (绝对路径), 用 ServiceContext (`name`、`package` 即包目录、`state` 即管家建好的
   `stateDir`、`native`、`env`、`log`、`spawn`, `import('acde:<模块>')` 只放行 welcome 的 `modules`, 其方法经管家调用) 调它的默认导出;

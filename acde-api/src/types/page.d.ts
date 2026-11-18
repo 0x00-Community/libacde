@@ -336,10 +336,29 @@ export interface AcdeDesktops {
 
 export interface AcdeSession {
   own(): boolean
+  lock(): Promise<void>
   logout(): Promise<void>
   reboot(): Promise<void>
   poweroff(): Promise<void>
   setLanguage(tag: string): Promise<void>
+}
+
+export interface LockUser {
+  readonly name: string
+  readonly fullName: string
+  readonly avatar: string | null
+}
+
+export type LockFailure =
+  | { readonly code: 'auth'; readonly status: 403 }
+  | { readonly code: 'busy'; readonly status: 409 }
+  | { readonly code: 'throttled'; readonly status: 429; readonly retryAfter: number }
+
+export type LockError = Error & LockFailure
+
+export interface AcdeLock {
+  user(): Promise<LockUser>
+  unlock(password: string): Promise<void>
 }
 
 export interface InspectNode {
@@ -1088,6 +1107,7 @@ export interface AcdePage {
   readonly desktop?: AcdeDesktop
   readonly desktops?: AcdeDesktops
   readonly session?: AcdeSession
+  readonly lock?: AcdeLock
   readonly inspect?: AcdeInspect
   readonly open?: AcdeOpen
   readonly openPath?: AcdeOpenFiles['openPath']
