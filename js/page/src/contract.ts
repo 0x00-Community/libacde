@@ -85,4 +85,5 @@ export interface WebInit {
   readonly devInit?: readonly string[]
   readonly tier: WebTier
   readonly windows?: readonly NativeWindow[]
+  readonly session?: { readonly own: boolean }
 }

@@ -91,7 +91,10 @@ function standalone(args: LaunchArgs): Session {
   const found = new AppLookup({ readText: (file) => readTextOr(file, null), readDir: readDirOr }).find(args.app, path, sys().cwd())
   const { app } = found
   const grants = grantsFor(found)
-  return { kind: 'app', found, page: null, resources: found.resources, label: app.label, heapMb: app.heapMb, tier: null, grants, request: null, services: {} }
+  return {
+    kind: 'app', found, page: null, resources: found.resources, label: app.label, heapMb: app.heapMb,
+    tier: null, grants, request: null, services: {}, own: false,
+  }
 }
 
 function rect(value: unknown): [number, number, number, number] {
@@ -199,7 +202,8 @@ class Launcher {
     const app = this.#desktop ? null : (this.session.found?.app.id ?? null)
     const state = this.#devState
     this.#devState = null
-    const init: WebInit = { ...given, ...this.#dev.prepare(given.name, app), ...this.#backend?.init(), ...(state ? { devState: state } : {}) }
+    const session = { own: this.session.own }
+    const init: WebInit = { ...given, ...this.#dev.prepare(given.name, app), ...this.#backend?.init(), session, ...(state ? { devState: state } : {}) }
     const rpc = new Rpc((message) => thread.post(message))
     rpc.serve((service, method, args) => this.#serve(service, method, args))
     const env = { ...Launcher.env(), ...(this.#shell.socketName && { WAYLAND_DISPLAY: this.#shell.socketName }) }
@@ -247,6 +251,9 @@ class Launcher {
         return this.#windowsCall(method, args)
       case 'manager':
         return this.manager!.call(service, method, args)
+      case 'session':
+        if (service === 'desktops' && method === 'list') return { desktops: [], current: '' }
+        throw unsupported(service, method)
       case 'unsupported':
         throw unsupported(service, method)
     }

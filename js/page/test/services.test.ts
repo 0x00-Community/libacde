@@ -48,3 +48,37 @@ test('a service cannot take the services namespace, and other events are refused
   assert.equal(typeof (bridge.value['services'] as Services).names, 'function')
   assert.throws(() => services.on('ready', () => {}), /acde:services has no ready event/)
 })
+
+type Session = { own(): boolean; logout(): Promise<unknown>; setLanguage(tag: string): Promise<unknown> }
+type Desktops = { list(): Promise<unknown>; choose(id: string, remember?: boolean): Promise<unknown> }
+
+const bridged = (init: Partial<WebInit>) => {
+  const sent: unknown[] = []
+  const rpc = new Rpc((message) => void sent.push(message))
+  const full = { name: 'page', services: {}, tier: { level: 1, shell: [], refused: {} }, ...init } as unknown as WebInit
+  return { bridge: new RemoteBridge(rpc, full, null, new WindowList(rpc)), sent }
+}
+
+test('a desktop page gets acde:session and acde:desktops; own comes from the init, calls go out over rpc', () => {
+  const { bridge, sent } = bridged({ kind: 'desktop', session: { own: true } })
+  const session = bridge.value['session'] as Session
+  const desktops = bridge.value['desktops'] as Desktops
+  assert.equal(session.own(), true)
+  void session.logout()
+  void session.setLanguage('zh-CN')
+  void desktops.choose('dopame', true)
+  const calls = sent.map((m) => { const c = m as { service: string; method: string; args: unknown[] }; return [c.service, c.method, c.args] })
+  assert.deepEqual(calls, [['session', 'logout', []], ['session', 'setLanguage', ['zh-CN']], ['desktops', 'choose', ['dopame', true]]])
+})
+
+test('without session in the init own() is false', () => {
+  const { bridge } = bridged({ kind: 'desktop' })
+  assert.equal((bridge.value['session'] as Session).own(), false)
+})
+
+test('an app page gets them only when its tier lists them', () => {
+  assert.equal('session' in bridged({ kind: 'window' }).bridge.value, false)
+  const shell = { level: 1, shell: ['session', 'desktops'], refused: {} } as unknown as WebInit['tier']
+  const { bridge } = bridged({ kind: 'window', tier: shell })
+  assert.equal('session' in bridge.value && 'desktops' in bridge.value, true)
+})
