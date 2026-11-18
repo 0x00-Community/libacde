@@ -30,7 +30,7 @@ export class WindowList {
   }
 
   #track(event: WindowEvent): void {
-    if (event.type === 'windowclose') return void this.#windows.delete(event.window)
+    if (event.type === 'windowclose' || event.type === 'windowcrash') return void this.#windows.delete(event.window)
     const was = this.#windows.get(event.window)
     if (event.type === 'windowstate') {
       const state = WindowList.STATES.find((known) => known === event['state'])

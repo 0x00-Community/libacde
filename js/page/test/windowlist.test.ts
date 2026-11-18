@@ -37,3 +37,13 @@ test('only open, title, state and close change the rows', () => {
   windows.deliver(event('windowclose', 7))
   assert.deepEqual(windows.api.list(), [])
 })
+
+test('a window whose process crashed leaves the list, and the crash is still said', () => {
+  const windows = list()
+  windows.deliver(event('windowopen', 10, { appId: 'files', title: 'Files', web: true }))
+  const crashes: unknown[] = []
+  windows.api.on('crash', (crash) => void crashes.push(crash))
+  windows.deliver(event('windowcrash', 10, { reason: 'killed', signal: 9 }))
+  assert.deepEqual(windows.api.list(), [])
+  assert.deepEqual(crashes, [{ type: 'windowcrash', window: 10, reason: 'killed', signal: 9 }])
+})
