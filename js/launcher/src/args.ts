@@ -1,7 +1,8 @@
 export class LaunchArgs {
-  static readonly USAGE = 'the single-app launcher: app <id|dir> [--size WxH] [--scale N] [--seconds N] [--shot FILE] [--shot-after MS]'
+  static readonly USAGE = 'the single-app launcher: app <id|dir> | desktop [id] [--size WxH] [--scale N] [--seconds N] [--shot FILE] [--shot-after MS]'
 
   constructor(
+    readonly kind: 'app' | 'desktop',
     readonly app: string,
     readonly width: number,
     readonly height: number,
@@ -12,8 +13,12 @@ export class LaunchArgs {
   ) {}
 
   static parse(argv: readonly string[]): LaunchArgs {
-    const [command, app, ...rest] = argv
-    if (command !== 'app' || !app) throw new Error(`${command ?? 'nothing'} is not supported; ${LaunchArgs.USAGE}`)
+    const [command, ...given] = argv
+    if (command !== 'app' && command !== 'desktop') throw new Error(`${command ?? 'nothing'} is not supported; ${LaunchArgs.USAGE}`)
+    const named = given[0] !== undefined && !given[0].startsWith('--')
+    const app = named ? given[0]! : ''
+    const rest = named ? given.slice(1) : given
+    if (command === 'app' && !app) throw new Error(`app needs an id or a folder; ${LaunchArgs.USAGE}`)
     const values = new Map<string, string>()
     for (let i = 0; i < rest.length; i += 2) {
       const flag = rest[i]!
@@ -29,6 +34,7 @@ export class LaunchArgs {
       return value
     }
     const seconds = values.has('--seconds') ? number('--seconds', 1) : null
-    return new LaunchArgs(app, Number(size[1]), Number(size[2]), number('--scale', 1), seconds, values.get('--shot') ?? null, number('--shot-after', 2000))
+    const shot = values.get('--shot') ?? null
+    return new LaunchArgs(command, app, Number(size[1]), Number(size[2]), number('--scale', 1), seconds, shot, number('--shot-after', 2000))
   }
 }

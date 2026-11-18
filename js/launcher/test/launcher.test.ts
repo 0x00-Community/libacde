@@ -3,7 +3,8 @@ import { describe, test } from 'node:test'
 import { bindNatives } from '../../page/src/sys/natives.ts'
 import { AppLookup, webInit } from '../src/app.ts'
 import { LaunchArgs } from '../src/args.ts'
-import { answer, unsupported } from '../src/calls.ts'
+import { route, unsupported } from '../src/calls.ts'
+import { sessionOf, type Welcome } from '../src/manager.ts'
 
 bindNatives({ host: {}, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
 
@@ -41,21 +42,60 @@ describe('the single-app launcher', () => {
     assert.deepEqual([init.services, init.tier.shell, init.app?.id], [{}, [], 'hello'])
   })
 
-  test('arguments: app with an id or folder, the size, scale, seconds and a screenshot; other commands are refused', () => {
+  test('arguments: app with an id or folder, or desktop; the size, scale, seconds and a screenshot; other commands are refused', () => {
     const args = LaunchArgs.parse(['app', 'hello', '--size', '640x480', '--scale', '1.5', '--shot', '/tmp/s.png'])
     assert.deepEqual([args.app, args.width, args.height, args.scale, args.seconds, args.shot], ['hello', 640, 480, 1.5, null, '/tmp/s.png'])
-    assert.throws(() => LaunchArgs.parse(['desktop', 'dopame']), /desktop is not supported/)
+    assert.equal(LaunchArgs.parse(['desktop']).kind, 'desktop')
+    assert.throws(() => LaunchArgs.parse(['sessions']), /sessions is not supported/)
+    assert.throws(() => LaunchArgs.parse(['app']), /app needs an id or a folder/)
     assert.throws(() => LaunchArgs.parse(['app', 'x', '--size', 'big']), /--size big: WxH/)
   })
 })
 
-describe('the page calls the single-app launcher answers', () => {
-  test('ready, the title and shown are acknowledged; the window closing itself, or by its own id, closes it', () => {
-    assert.equal(answer('window', 'ready', [], 1), 'acknowledge')
-    assert.equal(answer('window', 'close', [], 1), 'close')
-    assert.equal(answer('windows', 'close', [1], 1), 'close')
-    assert.equal(answer('windows', 'close', [2], 1), 'unsupported')
-    assert.equal(answer('apps', 'list', [], 1), 'unsupported')
+describe('where the single-app launcher sends a page call', () => {
+  const alone = { window: 1, desktop: false, managed: false }
+  const managed = { ...alone, managed: true }
+  const desktop = { window: 0, desktop: true, managed: true }
+
+  test('without a manager: ready, the title and shown are acknowledged; closing itself closes; the rest is unsupported', () => {
+    assert.equal(route('window', 'ready', [], alone), 'acknowledge')
+    assert.equal(route('window', 'close', [], alone), 'close')
+    assert.equal(route('windows', 'close', [1], alone), 'close')
+    assert.equal(route('windows', 'close', [2], alone), 'unsupported')
+    assert.equal(route('apps', 'list', [], alone), 'unsupported')
     assert.match(unsupported('apps', 'list').message, /apps\.list is not supported/)
+  })
+
+  test('with a manager: window state, reload and capabilities stay here, everything else goes to the manager', () => {
+    assert.equal(route('window', 'minimize', [], managed), 'minimize')
+    assert.equal(route('window', 'reload', [], managed), 'reload')
+    assert.equal(route('capabilities', 'get', ['network'], managed), 'capabilities')
+    assert.equal(route('window', 'ready', [], managed), 'manager')
+    assert.equal(route('page', 'shown', [], managed), 'manager')
+    assert.equal(route('apps', 'open', ['notes'], managed), 'manager')
+    assert.equal(route('panel', 'open', [], managed), 'manager')
+  })
+
+  test('the desktop answers panels and windows itself', () => {
+    assert.equal(route('panel', 'open', [[0, 0, 10, 10]], desktop), 'panel')
+    assert.equal(route('windows', 'close', [3], desktop), 'windows')
+    assert.equal(route('apps', 'list', [], desktop), 'manager')
+  })
+})
+
+describe('the session from the manager\'s welcome', () => {
+  const tier = { level: 1, shell: [], refused: {} }
+  const base = { api: 1, level: 'system', dir: '/p', resources: [{ prefix: '/', dirs: ['/p/'] }], tier, grants: {} as never, request: null }
+
+  test('an app takes its manifest, tier, grants and request from the welcome', () => {
+    const app = { id: 'notes', label: 'Notes', icon: 'apps', entry: '/index.html', capabilities: {} } as never
+    const session = sessionOf({ ...base, kind: 'app', app, request: { kind: 'open-file' } } as Welcome, 'app')
+    assert.deepEqual([session.kind, session.found?.dir, session.label, session.request], ['app', '/p', 'Notes', { kind: 'open-file' }])
+  })
+
+  test('a desktop loads its entry from the package folder; the wrong kind is refused', () => {
+    const welcome = { ...base, kind: 'desktop', desktop: { id: 'dopame', name: 'Dopame', entry: 'desktop.html' } } as Welcome
+    assert.deepEqual([sessionOf(welcome, 'desktop').page, sessionOf(welcome, 'desktop').found], ['/p/desktop.html', null])
+    assert.throws(() => sessionOf(welcome, 'app'), /started this process as desktop, not app/)
   })
 })

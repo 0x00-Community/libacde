@@ -1,4 +1,5 @@
 import { installCore } from '@dopame/acde-dom/core'
+import type { WebInit } from '../../page/src/contract'
 import type { WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
 import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
 import { readDirOr, readTextOr } from '../../page/src/sys/fs'
@@ -7,30 +8,80 @@ import { join } from '../../page/src/sys/path'
 import { process } from '../../page/src/sys/process'
 import { Rpc } from '../../page/src/rpc'
 import { SessionLanguage } from '../../page/src/language'
-import { AppLookup, webInit, type Found } from './app'
+import { PageSource } from '../../page/src/page'
+import { AppLookup, desktopInit, webInit, type Found, type Place } from './app'
 import { LaunchArgs } from './args'
-import { answer, unsupported } from './calls'
+import { refused, route, unsupported } from './calls'
+import { sessionOf, type ManagerLink, type Session } from './manager'
 
 interface Grant {
   readonly window: number
   readonly token: bigint
 }
 
+interface GrantOptions {
+  readonly desktop?: boolean
+  readonly window?: number
+  readonly mode?: 'fullscreen' | 'free' | 'pinned'
+  readonly size?: readonly number[]
+  readonly rect?: readonly number[]
+  readonly host?: boolean
+}
+
 interface LauncherShell {
   readonly socketName?: string
   pump(): { readonly type: string; readonly window?: number }[]
   onEvents(callback: () => void): void
-  grant(options: { window: number; mode: 'fullscreen' | 'free'; size?: readonly number[]; host?: boolean }): Grant
+  grant(options: GrantOptions): Grant
+  place(window: number, x: number, y: number, width: number, height: number): void
+  hide(window: number, hidden: boolean): void
+  release(window: number): void
+  focus(window: number): void
+  close(window: number): void
+  setState?(window: number, state: string): void
+  windows(): unknown[]
   screenshot(path: string): Promise<{ width: number; height: number }>
+  animate?(window: number, options: object): void
+  shortcut?(combo: string, scope: string, owner: number): void
+  unshortcut?(combo: string, scope: string, owner: number): void
+  stats?(reset?: boolean): Record<string, unknown>
 }
 
 interface LauncherNatives extends Natives {
-  readonly native: { readonly Shell: { broker(options?: { title?: string }): LauncherShell } }
+  readonly native: {
+    readonly Shell: { broker(options?: { title?: string }): LauncherShell }
+    readonly Manager?: { connect(): ManagerLink }
+  }
 }
 
 const HEAP_MB = 256
 const STOP = new Set(['close', 'exit', 'quit'])
 const CLOSE_WAIT_MS = 3000
+const STATES = ['normal', 'minimized', 'filled', 'fullscreen']
+
+function grantsFor(found: Found): WebGrants {
+  const { app } = found
+  const root = process.env['ACDE_STORAGE'] ?? join(xdgHome('data'), 'acde', 'storage')
+  return {
+    app: app.id, fs: null, terminal: false, network: !!app.capabilities.network, system: false, bluetooth: false, audio: !!app.capabilities.audio,
+    devices: false, power: false, input: false, display: false, office: false, camera: false, microphone: false,
+    storage: { key: `app-${app.id}`, dir: root ? join(root, `app-${app.id}`) : null, legacy: null },
+  }
+}
+
+function standalone(args: LaunchArgs): Session {
+  if (args.kind === 'desktop') throw new Error('desktop needs the session manager (ACDE_MANAGER_FD); without it only app <id|dir> runs')
+  const path = (process.env['ACDE_PATH'] ?? '').split(':').filter(Boolean)
+  const found = new AppLookup({ readText: (file) => readTextOr(file, null), readDir: readDirOr }).find(args.app, path, sys().cwd())
+  const { app } = found
+  const grants = grantsFor(found)
+  return { kind: 'app', found, page: null, resources: found.resources, label: app.label, heapMb: app.heapMb, tier: null, grants, request: null }
+}
+
+function rect(value: unknown): [number, number, number, number] {
+  const v = Array.isArray(value) ? value.map((n) => Math.round(Number(n) || 0)) : []
+  return [v[0] ?? 0, v[1] ?? 0, v[2] ?? 0, v[3] ?? 0]
+}
 
 class Launcher {
   readonly #shell: LauncherShell
@@ -38,46 +89,167 @@ class Launcher {
   #ended: number | null = null
   #rpc: Rpc | null = null
   #thread: WebThreadHandle | null = null
+  #init: WebInit | null = null
   #window = 0
   #closing = false
+  #reloading = false
+  readonly #panels = new Set<number>()
 
-  constructor(natives: LauncherNatives, readonly found: Found, readonly args: LaunchArgs) {
-    this.#shell = natives.native.Shell.broker({ title: found.app.label })
+  constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
+    this.#shell = natives.native.Shell.broker({ title: session.label })
     this.#shell.onEvents(() => this.#wake?.())
+    manager?.onEvents(() => this.#wake?.())
   }
 
-  start(): void {
-    const { app } = this.found
-    const grant = this.#shell.grant({ window: 1, mode: 'fullscreen', host: true, ...(app.size && { size: app.size }) })
-    const init = webInit(this.found, grant.token, {
+  get #desktop(): boolean {
+    return this.session.kind === 'desktop'
+  }
+
+  #place(): Place {
+    return {
       width: this.args.width,
       height: this.args.height,
       scale: this.args.scale,
       languages: SessionLanguage.of(process.env, sys().languages()),
       navigator: { userAgent: '', platform: process.platform === 'darwin' ? 'MacIntel' : process.platform === 'win32' ? 'Win32' : 'Linux x86_64' },
-    })
+    }
+  }
+
+  #grant(): Grant {
+    if (this.#desktop) return this.#shell.grant({ desktop: true })
+    const size = this.session.found!.app.size
+    return this.#shell.grant({ window: 1, mode: 'fullscreen', host: true, ...(size && { size }) })
+  }
+
+  start(): void {
+    const grant = this.#grant()
+    this.#window = grant.window
+    const { session } = this
+    const init = this.#desktop
+      ? desktopInit(session.page!, session.resources, grant.token, this.#place(), session.tier!)
+      : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request: session.request }, grant.window)
+    this.#spawn(init)
+  }
+
+  #spawn(init: WebInit): void {
     const rpc = new Rpc((message) => thread.post(message))
     rpc.serve((service, method, args) => this.#serve(service, method, args))
     const env = { ...Launcher.env(), ...(this.#shell.socketName && { WAYLAND_DISPLAY: this.#shell.socketName }) }
-    const thread = sys().spawnWeb(init.name, init, app.heapMb ?? HEAP_MB, env, (message) => void rpc.receive(message), (code, reason) => {
+    const thread = sys().spawnWeb(init.name, init, this.session.heapMb ?? HEAP_MB, env, (message) => void rpc.receive(message), (code, reason) => {
+      if (this.#reloading) return this.#respawn()
       if (reason) process.stderr.write(`acdev: ${init.name} stopped: ${reason}\n`)
       this.#end(code)
-    }, this.#grants())
+    }, this.session.grants ?? {} as WebGrants)
     this.#rpc = rpc
     this.#thread = thread
-    this.#window = grant.window
+    this.#init = init
   }
 
   #serve(service: string, method: string, args: unknown[]): unknown {
-    switch (answer(service, method, args, this.#window)) {
+    const caller = { window: this.#window, desktop: this.#desktop, managed: this.manager !== null }
+    switch (route(service, method, args, caller)) {
       case 'acknowledge':
         return undefined
       case 'close':
         void this.close(true)
         return true
+      case 'minimize':
+        if (method === 'requestState' && args[0] !== 'minimized') throw unsupported(service, `${method}(${String(args[0])})`)
+        return this.#rpc!.call('window', 'minimize')
+      case 'reload':
+        return this.#reload(args[0])
+      case 'capabilities':
+        return this.#capabilities(method, args)
+      case 'panel':
+        return this.#panel(method, args)
+      case 'windows':
+        return this.#windowsCall(method, args)
+      case 'manager':
+        return this.manager!.call(service, method, args)
       case 'unsupported':
         throw unsupported(service, method)
     }
+  }
+
+  #reload(url: unknown): boolean {
+    const given = url === undefined || url === null ? null : String(url)
+    if (this.#closing || this.#reloading || (given !== null && !given.startsWith(`${PageSource.ORIGIN}/`))) return false
+    if (given !== null) this.#init = { ...this.#init!, url: given }
+    this.#reloading = true
+    this.#thread?.terminate()
+    return true
+  }
+
+  #respawn(): void {
+    this.#reloading = false
+    const grant = this.#grant()
+    this.#spawn({ ...this.#init!, token: grant.token })
+  }
+
+  #capabilities(method: string, args: unknown[]): unknown {
+    const declared = Object.keys(this.session.found?.app.capabilities ?? {})
+    const status = (name: string) => {
+      const state = declared.includes(name) ? 'available' : 'not-declared'
+      return { name, kind: 'service', state, reason: state === 'available' ? '' : `not in the capabilities of ${this.session.label}`, optional: false }
+    }
+    return method === 'list' ? declared.map(status) : status(String(args[0]))
+  }
+
+  #panel(method: string, args: unknown[]): unknown {
+    const id = Number(args[0])
+    switch (method) {
+      case 'open': {
+        const grant = this.#shell.grant({ mode: 'pinned', rect: rect(args[0]) })
+        this.#panels.add(grant.window)
+        return grant
+      }
+      case 'place': {
+        if (!this.#panels.has(id)) throw refused(`panel ${id} is not this desktop's`)
+        const [x, y, width, height] = rect(args[1])
+        if (width <= 0 || height <= 0) return this.#shell.hide(id, true)
+        this.#shell.place(id, x, y, width, height)
+        return this.#shell.hide(id, false)
+      }
+      case 'close':
+        if (this.#panels.delete(id)) this.#shell.release(id)
+        return undefined
+    }
+    throw unsupported('panel', method)
+  }
+
+  #windowsCall(method: string, args: unknown[]): unknown {
+    const id = Number(args[0])
+    const shell = this.#shell
+    switch (method) {
+      case 'close':
+      case 'kill':
+        shell.close(id)
+        return true
+      case 'focus':
+        return shell.focus(id)
+      case 'hide':
+      case 'show':
+        return shell.hide(id, method === 'hide')
+      case 'requestState':
+        if (!STATES.includes(String(args[1]))) throw refused(`no window state ${String(args[1])} (${STATES.join(', ')})`)
+        if (!shell.setState) throw unsupported('windows', method)
+        return shell.setState(id, String(args[1]))
+      case 'screenshot':
+        return shell.screenshot(String(args[0]))
+      case 'animate':
+        return shell.animate?.(id, (args[1] ?? {}) as object)
+      case 'stats':
+        return shell.stats?.() ?? {}
+      case 'shortcut':
+      case 'unshortcut': {
+        const call = method === 'shortcut' ? shell.shortcut : shell.unshortcut
+        if (!call) throw unsupported('windows', method)
+        return call.call(shell, String(args[0]), String(args[1] ?? 'desktop'), 0)
+      }
+      case 'launch':
+        if (this.manager) return this.manager.call('launch', 'start', args)
+    }
+    throw unsupported('windows', method)
   }
 
   async close(force: boolean): Promise<boolean> {
@@ -93,19 +265,11 @@ class Launcher {
     return true
   }
 
-  #grants(): WebGrants {
-    const { app } = this.found
-    const root = process.env['ACDE_STORAGE'] ?? join(xdgHome('data'), 'acde', 'storage')
-    return {
-      app: app.id, fs: null, terminal: false, network: !!app.capabilities.network, system: false, bluetooth: false, audio: !!app.capabilities.audio,
-      devices: false, power: false, input: false, display: false, office: false, camera: false, microphone: false,
-      storage: { key: `app-${app.id}`, dir: root ? join(root, `app-${app.id}`) : null, legacy: null },
-    }
-  }
-
   static env(): Record<string, string> {
     const keep = /^(ACDE_|XDG_|LANG$|LC_|LANGUAGE$|HOME$|USER$|DBUS_SESSION_BUS_ADDRESS$|RUST_LOG$|TZ$|PATH$|RUST_BACKTRACE$)/
-    return Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => keep.test(entry[0]) && entry[1] !== undefined))
+    return Object.fromEntries(
+      Object.entries(process.env).filter((entry): entry is [string, string] => keep.test(entry[0]) && entry[1] !== undefined && entry[0] !== 'ACDE_MANAGER_FD'),
+    )
   }
 
   #end(code: number): void {
@@ -113,14 +277,28 @@ class Launcher {
     this.#wake?.()
   }
 
+  #shellEvents(): void {
+    for (const event of this.#shell.pump()) {
+      if (STOP.has(event.type)) this.#end(0)
+      else if (event.type === 'windowcloserequest') void this.close(false)
+      else if (this.#desktop) this.#thread?.post(event)
+    }
+  }
+
+  #managerEvents(): void {
+    for (const event of this.manager?.pump() ?? []) {
+      if (event.type === 'managerclosed') this.#end(0)
+      else if (event.type === 'request' && !this.#desktop) void this.#rpc?.call('window', 'request', [event['request']]).catch(() => undefined)
+      else if (this.#desktop) this.#thread?.post(event)
+    }
+  }
+
   async run(): Promise<number> {
     if (this.args.shot) this.#shoot(this.args.shot).catch((error: Error) => process.stderr.write(`acdev: screenshot: ${error.message}\n`))
     if (this.args.seconds !== null) setTimeout(() => this.#end(0), this.args.seconds * 1000)
     while (this.#ended === null) {
-      for (const event of this.#shell.pump()) {
-        if (STOP.has(event.type)) this.#end(0)
-        else if (event.type === 'windowcloserequest') void this.close(false)
-      }
+      this.#shellEvents()
+      this.#managerEvents()
       if (this.#ended !== null) break
       await new Promise<void>((wake) => {
         this.#wake = wake
@@ -141,9 +319,9 @@ export default async function launch(natives: LauncherNatives): Promise<void> {
   bindNatives(natives)
   try {
     const args = LaunchArgs.parse(process.argv)
-    const path = (process.env['ACDE_PATH'] ?? '').split(':').filter(Boolean)
-    const found = new AppLookup({ readText: (file) => readTextOr(file, null), readDir: readDirOr }).find(args.app, path, sys().cwd())
-    const launcher = new Launcher(natives, found, args)
+    const manager = process.env['ACDE_MANAGER_FD'] && natives.native.Manager ? natives.native.Manager.connect() : null
+    const session = manager ? sessionOf(manager.welcome, args.kind) : standalone(args)
+    const launcher = new Launcher(natives, session, manager, args)
     launcher.start()
     process.exit(await launcher.run())
   } catch (error) {

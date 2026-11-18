@@ -33,15 +33,31 @@
 (`WebInit`、服务形状、菜单、权限等级) 在 `js/page/src/contract.ts`; 管理中枢 (原 `broker.js`) 没有取回: 管家部分归 system (工作项 09).
 
 单应用启动器 (`js/launcher`, 用户 2026-11-17 定的临时做法, 总仓 `.scratch/acdev/issues/09-temporary-launcher-and-old-js.md`) 和页面包一样由
-`build.rs` 打成 `$OUT_DIR/launcher.js` 嵌进二进制 (`src/host/bundle.rs` 管这两个地址), `acdev app …` / `desktop …` 这类原来进管理中枢的
-入口 (`Entry::Broker`) 现在都从 `acde-runtime:/launcher.js` 起. 它只认 `app <id|目录> [--size WxH] [--scale N] [--seconds N]
-[--shot 文件] [--shot-after 毫秒]`: 目录取其 package.json 里第一个应用, id 在 `ACDE_PATH` 的各目录及其下一层找; 资源前缀按 `acde.assets`,
-没有 `/` 时 `/` 指包目录. 它向宿主窗口系统要一个占满宿主窗口的窗口, 拼好 `WebInit` (没有服务、最低权限等级、存储在
-`$ACDE_STORAGE` 或 `~/.local/share/acde/storage` 的 `app-<id>`), 经 `spawnWeb` 起页面; 页面经 rpc 来的调用里 `window.ready`、`window.setTitle`、`page.shown` 直接应答; `window.close` 和以自己窗口号调的
-`windows.close` 关掉窗口 (结束页面线程, 进程随之退出); 其余一律回 `unsupported` (501). 窗口系统发来的关窗请求
-(`windowcloserequest`, 如 xdg 的 close) 先问页面 `window.beforeclose` (最多等 3 秒, 页面答 `false` 就不关), 再同样关掉 (`js/launcher/src/calls.ts`). 它在启动方的 isolate 里先装好核心全局对象 (定时器、console 等, `installCore`). 宿主窗口关闭、页面退出或 `--seconds` 到时退出, 退出码是页面的. `--shot` 在 `--shot-after` (默认 2000) 毫秒后存一张宿主窗口截图,
-无头 (`ACDE_HEADLESS=1`) 也行; 首帧没画完时截到的是空屏 (WSL 的 Dozen 上调试版首帧要 5～6 秒, 验证时用 `--shot-after 15000`). 桌面、`desktops` / `sessions` / `applications` / `open`、调试通道 (`acdev dev` 的请求、DevTools) 都没有,
-所以 `acdev dev` 和 WPT 现在跑不了. 测试在 `js/launcher/test`.
+`build.rs` 打成 `$OUT_DIR/launcher.js` 嵌进二进制 (`src/host/bundle.rs` 管这两个地址), 原来进管理中枢的入口 (`Entry::Broker`) 现在都从
+`acde-runtime:/launcher.js` 起. 它认 `app <id|目录>` 和 `desktop [id]`, 都可带 `[--size WxH] [--scale N] [--seconds N] [--shot 文件]
+[--shot-after 毫秒]`. 一个进程一个页面 (一个应用一个窗口, 或一个桌面).
+
+- **有管家时** (会话里, 环境里有 `ACDE_MANAGER_FD` 且 `native.Manager` 在, acdebin-system 的管家, 总仓 `.scratch/system/issues/09-manager.md`,
+  协议见 acdebin-system `docs/manager.md`): `native.Manager.connect()` 拿 welcome, 应用的清单、包目录、资源、等级 (`tier`)、授予 (`grants`)、
+  拉起时的请求 (`request`) 都取自它; 桌面的页面是 `welcome.dir` 加 `welcome.desktop.entry`. 子进程的环境里不再带 `ACDE_MANAGER_FD`.
+  页面的调用除下面留在本进程的以外原样转给管家 (`manager.call`), 失败的 `Error` 带 `status`、`code` 抛回页面; `window.ready`、`page.shown`
+  也转过去 (管家据此记冷启动). 管家推来的 `request` 交给页面 `window.request`, 桌面进程收到的其余推送原样交给桌面页, `managerclosed` 时以 0 退出.
+- **没有管家时** (宿主窗口跑法): 只认 `app`; 目录取其 package.json 里第一个应用, id 在 `ACDE_PATH` 的各目录及其下一层找; 资源前缀按
+  `acde.assets`, 没有 `/` 时 `/` 指包目录; 没有服务、最低权限等级、存储在 `$ACDE_STORAGE` 或 `~/.local/share/acde/storage` 的 `app-<id>`.
+  `window.ready`、`window.setTitle`、`page.shown` 直接应答, 其余回 `unsupported` (501).
+- **两种都留在本进程的调用** (`js/launcher/src/calls.ts` 的 `route`): `window.close` 和以自己窗口号调的 `windows.close` 关掉窗口 (结束页面线程,
+  进程随之退出); `window.minimize`、`window.requestState('minimized')` 让页面自己最小化 (其余状态回 501); `window.reload([url])` 结束页面线程、
+  对同一个窗口重新授予后再起 (url 须在 `http://acde.local/` 下); `capabilities.get/list` 按清单声明回 `available` / `not-declared`
+  (临时, 不看平台与逐次同意). 桌面另答 `panel.open/place/close` (钉住的面板, 同旧管理中枢) 和 `windows.*` (`close`、`kill`、`focus`、`hide`、
+  `show`、`requestState`、`screenshot`、`animate`、`stats`、`shortcut`、`unshortcut` 交给 `native.Shell`; `launch` 有管家时转给 `launch.start`).
+- 窗口: 应用向窗口系统要一个占满宿主窗口的窗口; 桌面 `grant({desktop: true})` (窗口号 0). 窗口系统的关窗请求 (`windowcloserequest`, 如 xdg
+  的 close) 先问页面 `window.beforeclose` (最多等 3 秒, 页面答 `false` 就不关), 再同样关掉. 桌面进程把窗口系统的其余事件 (`windowopen` 等)
+  原样交给桌面页.
+- 启动方的 isolate 里先装好核心全局对象 (定时器、console 等, `installCore`). 宿主窗口关闭、页面退出或 `--seconds` 到时退出, 退出码是页面的.
+  `--shot` 在 `--shot-after` (默认 2000) 毫秒后存一张宿主窗口截图, 无头 (`ACDE_HEADLESS=1`) 也行; 首帧没画完时截到的是空屏 (WSL 的 Dozen 上
+  调试版首帧要 5～6 秒, 验证时用 `--shot-after 15000`).
+- 没有的: `desktops` / `sessions` / `applications` / `open`、调试通道 (`acdev dev` 的请求、DevTools), 所以 `acdev dev` 和 WPT 现在跑不了.
+  测试在 `js/launcher/test`.
 
 在 `js/`: `bun install` (只装测试用的 happy-dom、React、CodeMirror 等和 esbuild), `bun test` (`js/dom/test` 和
 `js/page/test`, 预加载 `dom/test/gc.ts`), `bun run typecheck`. 原 acde-host 的测试只带来了只涉及页面一侧的那几个.

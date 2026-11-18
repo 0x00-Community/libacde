@@ -1,5 +1,5 @@
 import { API_LEVEL, Manifest, type AppManifest, type PackageManifest } from '@dopame/acde-api/manifest'
-import type { WebInit } from '../../page/src/contract'
+import type { WebInit, WebTier } from '../../page/src/contract'
 import type { Languages } from '../../page/src/language'
 import { PageSource } from '../../page/src/page'
 import { isAbsolute, join, resolve } from '../../page/src/sys/path'
@@ -65,13 +65,15 @@ export class AppLookup {
   }
 }
 
-export function webInit(found: Found, token: bigint, place: Place): WebInit {
-  const { app } = found
+export interface Given {
+  readonly tier?: WebTier | null
+  readonly request?: Record<string, unknown> | null
+}
+
+function common(token: bigint, window: number, place: Place) {
   return {
-    kind: 'window',
-    name: `${app.id}#1`,
     token,
-    window: 1,
+    window,
     width: place.width * place.scale,
     height: place.height * place.scale,
     scale: place.scale,
@@ -79,11 +81,24 @@ export function webInit(found: Found, token: bigint, place: Place): WebInit {
     languages: place.languages,
     navigator: place.navigator,
     services: {},
+  }
+}
+
+export function webInit(found: Found, token: bigint, place: Place, given: Given = {}, window = 1): WebInit {
+  const { app } = found
+  return {
+    kind: 'window',
+    name: `${app.id}#${window}`,
+    ...common(token, window, place),
     resources: PageSource.isHtml(app.entry) ? PageSource.rooted(app.entry, found.resources) : found.resources,
     app,
     theme: '',
-    request: null,
+    request: given.request ?? null,
     url: null,
-    tier: { level: API_LEVEL, shell: [], refused: {} },
+    tier: given.tier ?? { level: API_LEVEL, shell: [], refused: {} },
   }
+}
+
+export function desktopInit(page: string, resources: Found['resources'], token: bigint, place: Place, tier: WebTier): WebInit {
+  return { kind: 'desktop', name: 'desktop', ...common(token, 0, place), resources, page, tier }
 }
