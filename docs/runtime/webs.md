@@ -96,7 +96,8 @@
     有这个 `kind` (没有时 409 `not_accepted`, 不交给对方), 内容由接收方自己查; `open` 照旧决定能叫哪些应用. 目标没写 `requests` 就什么私有请求都不收.
     `open(<id>, request, {parent, modal})` 给新窗口一个父窗口 (`broker/family.ts`: 应用只能写自己应用的
     web 窗口, 桌面可以写任何开着的窗口; 不存在 404, 别人的 403, 不是窗口号 400); 新窗口居中在父窗口上方, 不用记住的位置; 已在运行的单例应用只收请求,
-    不改父窗口. 父窗口、模态记在合成器的窗口表 (hostwin `Entry`、会话 model `Window`), `acde.inspect` 的窗口带 `parent` / `modal`;
+    不改父窗口. `{newWindow: true}` 要求给已在运行的应用再开一个窗口, 回答的 `running: true` 表示应用本来就在运行; 页面运行时把这些选项原样交给会话管家,
+    什么时候真的另开由管家 (acdes) 定. 父窗口、模态记在合成器的窗口表 (hostwin `Entry`、会话 model `Window`), `acde.inspect` 的窗口带 `parent` / `modal`;
     应用拿不到 `acde:windows`; 起原生程序和嵌进 slot 用 `acde:launch` (`start` / `embed` / `close`, 要清单的 `launch` / `slots`).
   - desktop web: 全部服务; `acde.apps` (`list` / `open`), `acde.packages` (`refresh` / `install` / `natives()` / `runNative(id)`), `acde.launch`; `acde.windows` (所有窗口, 加 `kill`、
     `invokeMenu`、`stats`、`focus` / `hide` / `show`、`animate`、session / desktop 级 `shortcut`); `acde.session`; `acde.inspect`. 另收
