@@ -12,7 +12,6 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use zbus::blocking::MessageIterator;
 
-use backlight::Backlight;
 pub use backlight::brightness as backlight_brightness;
 use settings::{Action, Group, Machine, Settings};
 use shared::PolicyMark;
@@ -31,20 +30,11 @@ pub enum PowerCall {
     SetChargeLimit { end: Option<u32> },
 }
 
-pub trait PowerHost: Send + 'static {
-    fn set_idle(&self, timeouts: &[u32]) -> Result<(), String>;
-    fn set_screens(&self, on: bool);
-}
-
 type Sink = Box<dyn Fn(Value) -> bool + Send>;
 
 enum Event {
     Bus,
-    Idle(u32, bool),
-    Button,
     Configured,
-    Start(Box<dyn PowerHost>),
-    Critical(u64),
 }
 
 #[derive(Default)]
@@ -53,7 +43,6 @@ struct Inner {
     machine: OnceLock<Machine>,
     sinks: Mutex<Vec<Sink>>,
     pump: Mutex<Option<Sender<Event>>>,
-    policy: AtomicBool,
     system: Mutex<Option<zbus::blocking::Connection>>,
     path: OnceLock<Option<PathBuf>>,
     watching: AtomicBool,
@@ -64,38 +53,8 @@ pub struct Power {
     inner: Arc<Inner>,
 }
 
-#[derive(Clone, Copy)]
-enum Kind {
-    Dim,
-    ScreenOff,
-    Auto(Action),
-}
-
-#[derive(Default)]
-struct Policy {
-    host: Option<Box<dyn PowerHost>>,
-    group: Option<Group>,
-    current: Option<settings::Policy>,
-    kinds: Vec<Kind>,
-    dimmed: Option<f64>,
-    lid_closed: Option<bool>,
-    critical: u64,
-    critical_armed: bool,
-    _inhibit: Option<zbus::zvariant::OwnedFd>,
-    _mark: Option<PolicyMark>,
-}
-
-struct Facts {
-    on_battery: bool,
-    percent: Option<f64>,
-    lid_present: bool,
-    lid_closed: bool,
-}
-
 impl Power {
     const SETTLE: Duration = Duration::from_millis(250);
-    const CRITICAL_WAIT: Duration = Duration::from_secs(60);
-    const DIM: f64 = 0.3;
 
     fn machine(&self) -> Machine {
         *self.inner.machine.get_or_init(|| Machine::probe(self.system().ok().as_ref()))
@@ -148,7 +107,7 @@ impl Power {
         }
     }
 
-    fn snapshot(&self) -> Result<(Value, Option<Facts>), String> {
+    fn snapshot(&self) -> Result<Value, String> {
         let bus = self.system()?;
         let facts = bus::facts(&bus).map_err(|e| log::debug!(target: "crate::runtime::power", "{e}")).ok();
         let profiles = bus::profiles(&bus);
@@ -173,15 +132,14 @@ impl Power {
             "can": { "suspend": m.can_suspend, "hibernate": m.can_hibernate, "hybrid": m.can_hybrid, "suspendThenHibernate": m.can_then_hibernate },
             "brightness": backlight::brightness(),
             "inhibitors": bus::inhibitors(&bus),
-            "policy": self.running() || Self::policy_elsewhere(),
+            "policy": Self::policy_elsewhere(),
         });
-        let facts = facts.map(|f| Facts { on_battery: f.on_battery, percent: f.percent, lid_present: f.lid_present, lid_closed: f.lid_closed });
-        Ok((state, facts))
+        Ok(state)
     }
 
     pub fn call(&self, call: PowerCall) -> Result<Value, String> {
         let done = match call {
-            PowerCall::State => return self.snapshot().map(|(state, _)| state),
+            PowerCall::State => return self.snapshot(),
             PowerCall::SetProfile { profile } => {
                 let bus = self.system()?;
                 let known = bus::profiles(&bus).ok_or("power-profiles-daemon is not running")?;
@@ -265,22 +223,6 @@ impl Power {
         Ok(())
     }
 
-    pub fn start_policy(&self, host: impl PowerHost) -> Result<(), String> {
-        self.pump()?.send(Event::Start(Box::new(host))).map_err(|e| e.to_string())
-    }
-
-    pub fn running(&self) -> bool {
-        self.inner.policy.load(Ordering::Relaxed)
-    }
-
-    pub fn idle(&self, index: u32, idle: bool) {
-        self.poke(Event::Idle(index, idle));
-    }
-
-    pub fn power_button(&self) {
-        self.poke(Event::Button);
-    }
-
     fn poke(&self, event: Event) {
         if let Some(tx) = self.inner.pump.locked().as_ref() {
             _ = tx.send(event);
@@ -308,8 +250,7 @@ impl Power {
         }
         let (tx, rx) = mpsc::channel();
         let power = self.clone();
-        let back = tx.clone();
-        std::thread::Builder::new().name("acde-power".into()).spawn(move || power.run(&rx, &back)).map_err(|e| e.to_string())?;
+        std::thread::Builder::new().name("acde-power".into()).spawn(move || power.run(&rx)).map_err(|e| e.to_string())?;
         self.watch_bus(tx.clone());
         self.watch_settings();
         *slot = Some(tx.clone());
@@ -333,8 +274,7 @@ impl Power {
         }
     }
 
-    fn run(&self, rx: &Receiver<Event>, tx: &Sender<Event>) {
-        let mut policy = Policy::default();
+    fn run(&self, rx: &Receiver<Event>) {
         let mut due = Some(Instant::now());
         loop {
             let event = match due {
@@ -345,208 +285,19 @@ impl Power {
                 Ok(Event::Bus | Event::Configured) => {
                     due.get_or_insert_with(|| Instant::now() + Self::SETTLE);
                 }
-                Ok(Event::Start(host)) => {
-                    self.start(&mut policy, host);
-                    due = Some(Instant::now());
-                }
-                Ok(Event::Idle(index, idle)) => self.on_idle(&mut policy, index, idle),
-                Ok(Event::Button) => {
-                    if let Some(action) = policy.current.as_ref().map(|p| p.button) {
-                        log::info!(target: "crate::runtime::power", "电源键: {}", action.js());
-                        self.perform(&policy, action);
-                    }
-                }
-                Ok(Event::Critical(serial)) => self.on_critical(&policy, serial),
                 Err(RecvTimeoutError::Timeout) => {
                     due = None;
-                    self.refresh(&mut policy, tx);
+                    self.refresh();
                 }
                 Err(RecvTimeoutError::Disconnected) => return,
             }
         }
     }
 
-    fn start(&self, policy: &mut Policy, host: Box<dyn PowerHost>) {
-        policy.host = Some(host);
-        policy.group = None;
-        policy.current = None;
-        self.inner.policy.store(true, Ordering::Relaxed);
-        policy._mark = PolicyMark::path().and_then(|path| PolicyMark::claim(path).map_err(|e| log::warn!(target: "crate::runtime::power", "{e}")).ok());
-        match self
-            .system()
-            .and_then(|b| bus::inhibit(&b, "handle-power-key:handle-lid-switch", "acde handles the power button and the lid (Power and battery settings)"))
-        {
-            Ok(fd) => policy._inhibit = Some(fd),
-            Err(e) => log::warn!(target: "crate::runtime::power", "logind 的电源键 / 合盖 inhibitor 拿不到, 由 logind 处理: {e}"),
-        }
-        log::info!(target: "crate::runtime::power", "电源策略开始 ({:?})", self.settings_path());
-    }
-
-    fn refresh(&self, policy: &mut Policy, tx: &Sender<Event>) {
-        let (state, facts) = match self.snapshot() {
-            Ok(s) => s,
-            Err(e) => return log::warn!(target: "crate::runtime::power", "{e}"),
-        };
-        self.emit(&json!({ "type": "changed", "state": state }));
-        if policy.host.is_some() {
-            self.apply(policy, facts.as_ref(), tx);
-        }
-    }
-
-    fn apply(&self, p: &mut Policy, facts: Option<&Facts>, tx: &Sender<Event>) {
-        let (on_battery, percent) = facts.map_or((false, None), |f| (f.on_battery, f.percent));
-        let general = self.settings(|s| s.general());
-        let group = Self::group(on_battery, percent, general.low);
-        let next = self.settings(|s| s.policy(group));
-        let fresh = p.group != Some(group);
-        let was = p.current.clone();
-        if fresh {
-            log::info!(target: "crate::runtime::power", "电源方案: {}", group.kde());
-        }
-        if (fresh || was.as_ref().is_none_or(|w| w.profile != next.profile))
-            && let Some(profile) = &next.profile
-            && let Err(e) = self.system().and_then(|b| bus::set_profile(&b, profile))
-        {
-            log::warn!(target: "crate::runtime::power", "电源模式 {profile}: {e}");
-        }
-        if (fresh || was.as_ref().is_none_or(|w| w.brightness != next.brightness))
-            && let Some(percent) = next.brightness
-            && let Some(light) = Backlight::find()
-            && let Err(e) = self.system().and_then(|bus| light.set(&bus, f64::from(percent) / 100.0))
-        {
-            log::warn!(target: "crate::runtime::power", "亮度: {e}");
-        }
-        if fresh || was.as_ref() != Some(&next) {
-            self.arm(p, &next);
-        }
-        p.group = Some(group);
-        p.current = Some(next.clone());
-        if let Some(f) = facts.filter(|f| f.lid_present) {
-            let before = p.lid_closed.replace(f.lid_closed);
-            if f.lid_closed && before == Some(false) {
-                let docked = self.system().is_ok_and(|b| bus::docked(&b));
-                if docked && !next.lid_external {
-                    log::info!(target: "crate::runtime::power", "合上了盖子, 接着外接显示器: 不动");
-                } else {
-                    log::info!(target: "crate::runtime::power", "合上了盖子: {}", next.lid.js());
-                    self.perform(p, next.lid);
-                }
-            }
-        }
-        let critical = on_battery && percent.is_some_and(|x| x <= f64::from(general.critical));
-        if critical != p.critical_armed {
-            p.critical_armed = critical;
-            p.critical += 1;
-            if critical {
-                let serial = p.critical;
-                log::warn!(target: "crate::runtime::power", "电量 {:.0}% 到了严重低电量, {} 秒后{}", percent.unwrap_or(0.0), Self::CRITICAL_WAIT.as_secs(), general.critical_action.js());
-                self.emit(&json!({ "type": "critical", "action": general.critical_action.js(), "seconds": Self::CRITICAL_WAIT.as_secs() }));
-                let tx = tx.clone();
-                _ = std::thread::Builder::new().name("acde-power-critical".into()).spawn(move || {
-                    std::thread::sleep(Self::CRITICAL_WAIT);
-                    _ = tx.send(Event::Critical(serial));
-                });
-            }
-        }
-    }
-
-    fn arm(&self, p: &mut Policy, policy: &settings::Policy) {
-        let mut kinds = Vec::new();
-        let mut timeouts = Vec::new();
-        let mut push = |kind: Kind, seconds: u32| {
-            kinds.push(kind);
-            timeouts.push(seconds.saturating_mul(1000));
-        };
-        if let Some(s) = policy.dim {
-            push(Kind::Dim, s);
-        }
-        if let Some(s) = policy.screen_off {
-            push(Kind::ScreenOff, s);
-        }
-        if policy.idle_action != Action::None {
-            push(Kind::Auto(policy.idle_action), policy.idle_after);
-        }
-        self.undim(p);
-        p.kinds = kinds;
-        if let Some(host) = &p.host
-            && let Err(e) = host.set_idle(&timeouts)
-        {
-            log::warn!(target: "crate::runtime::power", "空闲计时: {e}");
-        }
-    }
-
-    fn undim(&self, p: &mut Policy) {
-        if let Some(value) = p.dimmed.take()
-            && let Some(light) = Backlight::find()
-            && let Err(e) = self.system().and_then(|bus| light.set(&bus, value))
-        {
-            log::warn!(target: "crate::runtime::power", "亮度恢复: {e}");
-        }
-    }
-
-    fn on_idle(&self, p: &mut Policy, index: u32, idle: bool) {
-        let Some(&kind) = p.kinds.get(index as usize) else { return };
-        if !idle {
-            return self.undim(p);
-        }
-        if self.system().is_ok_and(|b| bus::blocked(&b, "idle")) {
-            return log::info!(target: "crate::runtime::power", "空闲了, 但有程序挡着 (logind idle inhibitor)");
-        }
-        match kind {
-            Kind::Dim => {
-                if p.dimmed.is_none()
-                    && let Some(light) = Backlight::find()
-                    && let Some(now) = light.get()
-                {
-                    p.dimmed = Some(now);
-                    if let Err(e) = self.system().and_then(|bus| light.set(&bus, now * Self::DIM)) {
-                        log::warn!(target: "crate::runtime::power", "调暗: {e}");
-                    }
-                }
-            }
-            Kind::ScreenOff => {
-                log::info!(target: "crate::runtime::power", "空闲: 关屏");
-                if let Some(host) = &p.host {
-                    host.set_screens(false);
-                }
-            }
-            Kind::Auto(action) => {
-                log::info!(target: "crate::runtime::power", "空闲: {}", action.js());
-                self.perform(p, action);
-            }
-        }
-    }
-
-    fn on_critical(&self, p: &Policy, serial: u64) {
-        if serial != p.critical || !p.critical_armed {
-            return;
-        }
-        let action = self.settings(|s| s.general().critical_action);
-        log::warn!(target: "crate::runtime::power", "严重低电量: {}", action.js());
-        self.perform(p, action);
-    }
-
-    fn perform(&self, p: &Policy, action: Action) {
-        let sleep = p.current.as_ref().map_or(settings::SleepMode::Suspend, |c| c.sleep_mode);
-        let done = match action {
-            Action::None => Ok(()),
-            Action::Sleep => self.system().and_then(|b| bus::logind(&b, sleep.logind())),
-            Action::Hibernate => self.system().and_then(|b| bus::logind(&b, "Hibernate")),
-            Action::Shutdown => self.system().and_then(|b| bus::logind(&b, "PowerOff")),
-            Action::Lock => self.system().and_then(|b| bus::lock(&b)),
-            Action::ScreenOff => {
-                if let Some(host) = &p.host {
-                    host.set_screens(false);
-                }
-                Ok(())
-            }
-            Action::Prompt => {
-                self.emit(&json!({ "type": "prompt" }));
-                Ok(())
-            }
-        };
-        if let Err(e) = done {
-            log::warn!(target: "crate::runtime::power", "{}: {e}", action.js());
+    fn refresh(&self) {
+        match self.snapshot() {
+            Ok(state) => self.emit(&json!({ "type": "changed", "state": state })),
+            Err(e) => log::warn!(target: "crate::runtime::power", "{e}"),
         }
     }
 }
