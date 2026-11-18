@@ -49,10 +49,12 @@
   进程随之退出); `window.minimize`、`window.requestState('minimized')` 让页面自己最小化 (其余状态回 501); `window.reload([url])` 结束页面线程、
   对同一个窗口重新授予后再起 (url 须在 `http://acde.local/` 下); `capabilities.get/list` 按清单声明回 `available` / `not-declared`
   (临时, 不看平台与逐次同意). 桌面另答 `panel.open/place/close` (钉住的面板, 同旧管理中枢) 和 `windows.*` (`close`、`kill`、`focus`、`hide`、
-  `show`、`requestState`、`screenshot`、`animate`、`stats`、`shortcut`、`unshortcut` 交给 `native.Shell`; `launch` 有管家时转给 `launch.start`).
+  `show`、`requestState`、`screenshot`、`animate`、`stats`、`shortcut`、`unshortcut`、`place`、虚拟桌面的 `addDesk`、`removeDesk`、
+  `showDesk`、`moveToDesk` 交给 `native.Shell` 的同名方法; `launch` 有管家时转给 `launch.start`).
 - 窗口: 应用向窗口系统要一个占满宿主窗口的窗口; 桌面 `grant({desktop: true})` (窗口号 0). 窗口系统的关窗请求 (`windowcloserequest`, 如 xdg
   的 close) 先问页面 `window.beforeclose` (最多等 3 秒, 页面答 `false` 就不关), 再同样关掉. 桌面进程把窗口系统的其余事件 (`windowopen` 等)
-  原样交给桌面页.
+  交给桌面页 (`js/launcher/src/events.ts`): `windowgeometry` 若带的是 `x`、`y`、`width`、`height` 就合成 `rect`; `windowopen` 的 `instance`
+  (管家给的应用实例编号)、`windowdesk`、`currentdesk` 原样转. 页面的窗口列表 (`js/page/src/remote.ts` 的 `WindowList`) 记下 `rect`、`instance`、`desk`.
 - 启动方的 isolate 里先装好核心全局对象 (定时器、console 等, `installCore`). 宿主窗口关闭、页面退出或 `--seconds` 到时退出, 退出码是页面的.
   `--shot` 在 `--shot-after` (默认 2000) 毫秒后存一张宿主窗口截图, 无头 (`ACDE_HEADLESS=1`) 也行; 首帧没画完时截到的是空屏 (WSL 的 Dozen 上
   调试版首帧要 5～6 秒, 验证时用 `--shot-after 15000`).

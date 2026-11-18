@@ -5,6 +5,7 @@ import { AppLookup, webInit } from '../src/app.ts'
 import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/calls.ts'
 import { sessionOf, type Welcome } from '../src/manager.ts'
+import { toDesktop } from '../src/events.ts'
 
 bindNatives({ host: {}, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
 
@@ -97,5 +98,15 @@ describe('the session from the manager\'s welcome', () => {
     const welcome = { ...base, kind: 'desktop', desktop: { id: 'dopame', name: 'Dopame', entry: 'desktop.html' } } as Welcome
     assert.deepEqual([sessionOf(welcome, 'desktop').page, sessionOf(welcome, 'desktop').found], ['/p/desktop.html', null])
     assert.throws(() => sessionOf(welcome, 'app'), /started this process as desktop, not app/)
+  })
+})
+
+describe('window system events on their way to the desktop page', () => {
+  test('a geometry change gets its rect as an object; other events pass as they are', () => {
+    assert.deepEqual(toDesktop({ type: 'windowgeometry', window: 3, x: 10, y: 20, width: 300, height: 200 }), {
+      type: 'windowgeometry', window: 3, rect: { x: 10, y: 20, width: 300, height: 200 },
+    })
+    const open = { type: 'windowopen', window: 3, title: 'Notes', appId: 'notes', instance: 7 }
+    assert.equal(toDesktop(open), open)
   })
 })

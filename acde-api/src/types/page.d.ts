@@ -147,6 +147,9 @@ export interface NativeWindow {
   readonly title: string | null
   readonly web?: boolean
   readonly state: WindowState
+  readonly rect?: WindowRect
+  readonly instance?: number
+  readonly desk?: number
 }
 
 export interface AcdeWindows extends WindowsEvents {
@@ -177,6 +180,11 @@ export interface AcdeWindows extends WindowsEvents {
   ): Promise<void>
   shortcut?(combo: string, scope?: 'session' | 'desktop'): Promise<void>
   unshortcut?(combo: string, scope?: 'session' | 'desktop'): Promise<void>
+  place?(id: number, rect: readonly [x: number, y: number, width: number, height: number]): Promise<void>
+  addDesk?(desk: number): Promise<void>
+  removeDesk?(desk: number, into: number): Promise<void>
+  showDesk?(desk: number): Promise<void>
+  moveToDesk?(window: number, desk: number): Promise<void>
 }
 
 export interface AcdeTerminals {
@@ -207,7 +215,7 @@ export interface AcdeOpenFiles {
   openPath(
     path: string,
     options?: { app?: string; select?: boolean },
-  ): Promise<{ kind: 'acde' | 'native'; id: string; window?: number }>
+  ): Promise<{ kind: 'acde' | 'native'; id: string; window?: number; instance?: number }>
   handlers(path: string): Promise<{ mime: string; association: string | null; handlers: OpenHandler[] }>
   setDefault(mime: string, handler: string): Promise<string>
 }
@@ -252,13 +260,14 @@ export interface Opened {
   readonly kind: 'acde' | 'native'
   readonly id: string
   readonly window?: number
+  readonly instance?: number
 }
 
 export interface AcdeOpen {
   (request: SystemRequest): Promise<Opened>
   (app: string, request: SystemRequest): Promise<Opened>
-  <R extends AppRequest>(app: string, request: R, options?: OpenWindowOptions): Promise<{ window: number }>
-  (app: string, request?: null, options?: OpenWindowOptions): Promise<{ window: number }>
+  <R extends AppRequest>(app: string, request: R, options?: OpenWindowOptions): Promise<{ window: number; instance?: number }>
+  (app: string, request?: null, options?: OpenWindowOptions): Promise<{ window: number; instance?: number }>
 }
 
 export interface AcdeAppList {

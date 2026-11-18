@@ -1,4 +1,4 @@
-import type { DesktopApp, WindowState } from './page'
+import type { DesktopApp, WindowRect, WindowState } from './page'
 
 interface WindowsEventOf<T extends string> {
   readonly type: T
@@ -10,6 +10,20 @@ export interface WindowOpenEvent extends WindowsEventOf<'windowopen'> {
   readonly title?: string | null
   readonly web?: true
   readonly icon?: string
+  readonly instance?: number
+}
+
+export interface WindowGeometryEvent extends WindowsEventOf<'windowgeometry'> {
+  readonly rect: WindowRect
+}
+
+export interface WindowDeskEvent extends WindowsEventOf<'windowdesk'> {
+  readonly desk: number
+}
+
+export interface CurrentDeskEvent {
+  readonly type: 'currentdesk'
+  readonly desk: number
 }
 
 export interface WindowTitleEvent extends WindowsEventOf<'windowtitle'> {
@@ -70,6 +84,9 @@ export interface WindowsEventMap {
   readonly ready: WindowsEventOf<'windowready'>
   readonly show: WindowsEventOf<'windowshow'>
   readonly animated: WindowsEventOf<'windowanimated'>
+  readonly geometry: WindowGeometryEvent
+  readonly desk: WindowDeskEvent
+  readonly currentdesk: CurrentDeskEvent
 }
 
 export type WindowsEventType = keyof WindowsEventMap

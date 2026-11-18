@@ -1,7 +1,9 @@
-import type { AppMenu, NativeWindow, WindowApp, WindowEdge, WindowEventName, WindowMode, WindowOutput, WindowRect, WindowState } from '@dopame/acde-api'
+import type {
+  AppMenu, NativeWindow, WindowApp, WindowEdge, WindowEventName, WindowMode, WindowOutput, WindowRect, WindowState,
+} from '@dopame/acde-api'
 import type { ServiceShape, WebInit, WireMenu } from './contract'
 import { Level, Log } from './log'
-import { WINDOWS_EVENT_NAMES, type NativeSurface, type WindowEvent } from './native'
+import { WINDOWS_EVENT_NAMES, windowsEventName, type NativeSurface, type WindowEvent } from './native'
 import { Notices } from './notices'
 import { Rpc } from './rpc'
 import { CapabilityCheck } from './broker/access/capabilities'
@@ -24,7 +26,7 @@ export class WindowList {
 
   deliver(event: WindowEvent): void {
     this.#track(event)
-    this.notices.emit(`windows:${event.type.slice('window'.length)}`, event)
+    this.notices.emit(`windows:${windowsEventName(event.type)}`, event)
   }
 
   #track(event: WindowEvent): void {
@@ -35,12 +37,32 @@ export class WindowList {
       if (was && state) this.#windows.set(event.window, { ...was, state })
       return
     }
+    if (event.type === 'currentdesk') return
+    if (event.type === 'windowdesk') {
+      if (was && typeof event['desk'] === 'number') this.#windows.set(event.window, { ...was, desk: event['desk'] })
+      return
+    }
+    if (event.type === 'windowgeometry') {
+      const rect = WindowList.#bounds(event['rect'])
+      if (was && rect) this.#windows.set(event.window, { ...was, rect })
+      return
+    }
     if (event.type !== 'windowopen' && event.type !== 'windowtitle') return
     const text = (value: unknown, fallback: string | null) => (typeof value === 'string' && value ? value : fallback)
     const web = event['web'] === true || was?.web === true
     const appId = text(event['appId'], was?.appId ?? null)
     const title = text(event['title'], was?.title ?? null)
-    this.#windows.set(event.window, { id: event.window, appId, title, ...(web ? { web } : {}), state: was?.state ?? 'normal' })
+    const rect = WindowList.#bounds(event['rect']) ?? was?.rect
+    const instance = typeof event['instance'] === 'number' ? event['instance'] : was?.instance
+    const desk = typeof event['desk'] === 'number' ? event['desk'] : was?.desk
+    const placed = { ...(rect ? { rect } : {}), ...(instance !== undefined ? { instance } : {}), ...(desk !== undefined ? { desk } : {}) }
+    this.#windows.set(event.window, { id: event.window, appId, title, ...(web ? { web } : {}), state: was?.state ?? 'normal', ...placed })
+  }
+
+  static #bounds(value: unknown): WindowRect | undefined {
+    const rect = value as Partial<Record<keyof WindowRect, unknown>> | null
+    const numbers = rect && [rect.x, rect.y, rect.width, rect.height].every((n) => typeof n === 'number' && Number.isFinite(n))
+    return numbers ? { x: rect.x as number, y: rect.y as number, width: rect.width as number, height: rect.height as number } : undefined
   }
 
   screenshot(path: string): Promise<{ width: number; height: number }> {
@@ -273,7 +295,8 @@ export class RemoteBridge {
     const shell = new Set<string>(init.tier?.shell ?? [])
     const globalWindows = () => ({
       ...windows.api,
-      ...Rpc.calls(() => rpc, 'windows', 'kill', 'focus', 'hide', 'show', 'requestState', 'invokeMenu', 'stats', 'animate', 'shortcut', 'unshortcut'),
+      ...Rpc.calls(() => rpc, 'windows', 'kill', 'focus', 'hide', 'show', 'requestState', 'invokeMenu', 'stats', 'animate', 'shortcut', 'unshortcut', 'place',
+        'addDesk', 'removeDesk', 'showDesk', 'moveToDesk'),
     })
     const tier = {
       packages: () => ({ ...Rpc.calls(() => rpc, 'packages', 'refresh', 'install', 'natives', 'runNative'), on: windows.notices.for('apps', ['changed']) }),

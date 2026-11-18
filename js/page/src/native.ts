@@ -12,9 +12,10 @@ export interface Modifiers {
 export const WINDOW_EVENTS = [
   'windowopen', 'windowclose', 'windowtitle', 'windowstate',
   'windowactivate', 'windowminsize', 'windowparent', 'windowmenus', 'windowcrash', 'windowhang', 'windowresponsive',
-  'windowattention', 'windowready', 'windowshow', 'windowanimated',
+  'windowattention', 'windowready', 'windowshow', 'windowanimated', 'windowgeometry', 'windowdesk', 'currentdesk',
 ] as const
-export const WINDOWS_EVENT_NAMES: readonly string[] = WINDOW_EVENTS.map((type) => type.slice('window'.length))
+export const windowsEventName = (type: string): string => (type.startsWith('window') ? type.slice('window'.length) : type)
+export const WINDOWS_EVENT_NAMES: readonly string[] = WINDOW_EVENTS.map(windowsEventName)
 type WindowEventType = (typeof WINDOW_EVENTS)[number]
 export interface WindowEvent {
   readonly type: WindowEventType

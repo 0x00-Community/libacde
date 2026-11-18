@@ -13,6 +13,7 @@ import { AppLookup, desktopInit, webInit, type Found, type Place } from './app'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported } from './calls'
 import { sessionOf, type ManagerLink, type Session } from './manager'
+import { toDesktop, type ShellEvent } from './events'
 
 interface Grant {
   readonly window: number
@@ -30,7 +31,7 @@ interface GrantOptions {
 
 interface LauncherShell {
   readonly socketName?: string
-  pump(): { readonly type: string; readonly window?: number }[]
+  pump(): ShellEvent[]
   onEvents(callback: () => void): void
   grant(options: GrantOptions): Grant
   place(window: number, x: number, y: number, width: number, height: number): void
@@ -45,6 +46,10 @@ interface LauncherShell {
   shortcut?(combo: string, scope: string, owner: number): void
   unshortcut?(combo: string, scope: string, owner: number): void
   stats?(reset?: boolean): Record<string, unknown>
+  addDesk?(desk: number): unknown
+  removeDesk?(desk: number, into: number): unknown
+  showDesk?(desk: number): unknown
+  moveToDesk?(window: number, desk: number): unknown
 }
 
 interface LauncherNatives extends Natives {
@@ -246,6 +251,18 @@ class Launcher {
         if (!call) throw unsupported('windows', method)
         return call.call(shell, String(args[0]), String(args[1] ?? 'desktop'), 0)
       }
+      case 'place': {
+        const [x, y, width, height] = rect(args[1])
+        return shell.place(id, x, y, width, height)
+      }
+      case 'addDesk':
+      case 'showDesk':
+      case 'removeDesk':
+      case 'moveToDesk': {
+        const call = shell[method]
+        if (!call) throw unsupported('windows', method)
+        return (call as (...numbers: number[]) => unknown).call(shell, ...args.map(Number))
+      }
       case 'launch':
         if (this.manager) return this.manager.call('launch', 'start', args)
     }
@@ -281,7 +298,7 @@ class Launcher {
     for (const event of this.#shell.pump()) {
       if (STOP.has(event.type)) this.#end(0)
       else if (event.type === 'windowcloserequest') void this.close(false)
-      else if (this.#desktop) this.#thread?.post(event)
+      else if (this.#desktop) this.#thread?.post(toDesktop(event))
     }
   }
 
