@@ -1,4 +1,4 @@
-import type { WebInternals } from '@dopame/acde-dom'
+import { hostTime, type WebInternals } from '@dopame/acde-dom'
 import { PageSource } from './page'
 import { WindowSelf } from './remote'
 import type { Rpc } from './rpc'
@@ -23,10 +23,10 @@ export class WebAppPage {
     this.#name = name
     const env = page.env
     env.close = () => {
-      if (this.#leave()) this.#call('close')
+      if (this.#leave()) this.#afterTask('close')
     }
     env.reload = () => {
-      if (this.#leave()) this.#call('reload', env.url)
+      if (this.#leave()) this.#afterTask('reload', env.url)
     }
     env.navigate = (url, target) => this.#navigate(url, target)
     env.alert = (message) => this.#alert(message)
@@ -65,7 +65,7 @@ export class WebAppPage {
 
   #navigate(url: string, target: string): void {
     if (url.startsWith(`${PageSource.ORIGIN}/`)) {
-      if (this.#leave()) this.#call('reload', url)
+      if (this.#leave()) this.#afterTask('reload', url)
       return
     }
     if (/^https?:\/\//i.test(url)) return this.#call('openUrl', url)
@@ -115,6 +115,10 @@ export class WebAppPage {
     overlay.append(box)
     parent.append(overlay)
     ok.focus()
+  }
+
+  #afterTask(method: 'close' | 'reload', ...args: unknown[]): void {
+    hostTime.setTimeout(() => this.#call(method, ...args))
   }
 
   #call(method: string, ...args: unknown[]): void {

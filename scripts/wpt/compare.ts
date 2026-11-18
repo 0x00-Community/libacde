@@ -6,7 +6,7 @@ const [before, after] = process.argv.slice(2)
 if (!before || !after) throw new Error('usage: scripts/wpt/wpt.sh compare <old label> <new label>')
 
 type Sub = { name: string; status: number; message: string | null }
-type Result = { url: string; status: string; message?: string | null; tests?: Sub[] }
+type Result = { url: string; kind?: string; status: string; message?: string | null; tests?: Sub[] }
 
 function load(label: string): Map<string, Result> {
   const map = new Map<string, Result>()
@@ -20,6 +20,8 @@ const regressions: string[] = []
 const progressions: string[] = []
 let passA = 0
 let passB = 0
+let wholeA = 0
+let wholeB = 0
 let common = 0
 for (const [url, ra] of a) {
   const rb = b.get(url)
@@ -29,6 +31,14 @@ for (const [url, ra] of a) {
   const subsB = new Map((rb.tests ?? []).map((t) => [t.name, t]))
   for (const t of subsA.values()) if (t.status === 0) passA++
   for (const t of subsB.values()) if (t.status === 0) passB++
+  if (ra.kind === 'reftest' || ra.kind === 'crashtest') {
+    if (ra.status === 'PASS') wholeA++
+    if (rb.status === 'PASS') wholeB++
+    const said = rb.message ? ` (${String(rb.message).slice(0, 160)})` : ''
+    if (ra.status === 'PASS' && rb.status !== 'PASS') regressions.push(`${url}: ${ra.kind} PASS -> ${rb.status}${said}`)
+    if (ra.status !== 'PASS' && rb.status === 'PASS') progressions.push(`${url}: ${ra.kind} ${ra.status} -> PASS`)
+    continue
+  }
   if (ra.status !== rb.status && ra.status === 'OK') regressions.push(`${url}: harness ${ra.status} -> ${rb.status}${rb.message ? ` (${String(rb.message).slice(0, 160)})` : ''}`)
   if (ra.status !== rb.status && rb.status === 'OK') progressions.push(`${url}: harness ${ra.status} -> OK`)
   for (const [name, t] of subsA) {
@@ -38,10 +48,15 @@ for (const [url, ra] of a) {
   }
 }
 
+function signed(n: number): string {
+  return n >= 0 ? `+${n}` : String(n)
+}
+
 const lines = [
   `# ${before} -> ${after}`,
   '',
-  `${common} files in both; passing subtests ${passA} -> ${passB} (${passB - passA >= 0 ? '+' : ''}${passB - passA}).`,
+  `${common} files in both; passing subtests ${passA} -> ${passB} (${signed(passB - passA)}),`
+    + ` passing reftests and crashtests ${wholeA} -> ${wholeB} (${signed(wholeB - wholeA)}).`,
   '',
   `## Regressions (${regressions.length})`,
   '',

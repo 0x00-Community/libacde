@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::panic::AssertUnwindSafe;
+use std::sync::Arc;
 
 use crate::webgl::{ActiveInfo, Attributes, ClearColor, Context, Param, Setter, TexSource, Value};
 
@@ -23,6 +24,7 @@ thread_local! {
 }
 
 pub fn clear() {
+    crate::host::gpuwatch::clear();
     let state = STATE.with(|s| std::mem::take(&mut *s.borrow_mut()));
     if let Some((gpu, id)) = &state.listener {
         gpu.forget_lost(*id);
@@ -334,6 +336,12 @@ fn create(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
     };
     let id = STATE.with(|s| {
         let mut s = s.borrow_mut();
+        // contexts made after a device was replaced listen to the new device
+        if s.listener.as_ref().is_some_and(|(held, _)| !Arc::ptr_eq(held, &gpu)) {
+            if let Some((held, id)) = s.listener.take() {
+                held.forget_lost(id);
+            }
+        }
         if s.listener.is_none() {
             let tx = rt::current().sender();
             let listener = gpu.on_lost(move |_| {
@@ -364,6 +372,12 @@ fn all_lost(scope: &mut v8::PinScope) {
     for id in ids {
         let id = v8::Number::new(scope, f64::from(id));
         bind::call(scope, lost.clone(), &[id.into()]);
+    }
+}
+
+fn watch(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
+    if let Ok(f) = v8::Local::<v8::Function>::try_from(args.get(0)) {
+        crate::host::gpuwatch::watch(v8::Global::new(scope, f));
     }
 }
 
@@ -486,6 +500,7 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>) {
         "pixels" => pixels,
         "png" => png,
         "onLost" => on_lost,
+        "watch" => watch,
         "texImageSource" => tex_image_source,
     );
     methods(scope, webgl);

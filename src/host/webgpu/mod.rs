@@ -365,8 +365,9 @@ pub fn clear() {
 }
 
 fn adapter_ready(scope: &mut v8::PinScope, gpu: Option<Arc<Gpu>>) {
+    let lost = gpu.as_ref().is_some_and(|gpu| gpu.gone());
     let waiting = with_state(|s| {
-        if s.gpu.is_none() {
+        if s.gpu.is_none() && !lost {
             s.gpu = Some(gpu.clone());
             if let Some(gpu) = &gpu {
                 let tx = rt::current().sender();
@@ -386,7 +387,30 @@ fn adapter_ready(scope: &mut v8::PinScope, gpu: Option<Arc<Gpu>>) {
     }
 }
 
+/// After a device loss the page lets go of the lost device, so its next requestAdapter() finds the host window's new one.
+fn let_go_of_lost_gpu() {
+    let Some(Some(held)) = with_state(|s| s.gpu.clone()) else { return };
+    if !held.gone() {
+        return;
+    }
+    let listener = with_state(|s| {
+        s.gpu = None;
+        s.lost_listener.take()
+    });
+    if let Some(listener) = listener {
+        held.forget_lost(listener);
+    }
+}
+
+/// Whether an adapter can be given now: not while the published device is the lost one (the host window is opening a new
+/// device); requestAdapter() then resolves null and the page asks again, as when a browser has no adapter.
+fn follow_replacement() -> bool {
+    let_go_of_lost_gpu();
+    !Gpu::get().flatten().is_some_and(|now| now.gone())
+}
+
 fn all_lost(scope: &mut v8::PinScope, message: &str) {
+    let_go_of_lost_gpu();
     let devices: Vec<Id> = ERRORS.with(|e| {
         e.borrow_mut()
             .devices
@@ -493,6 +517,11 @@ natives! {
     "requestAdapter" => fn request_adapter(scope, _args) {
         let Some(resolver) = v8::PromiseResolver::new(scope) else { return Ok(().into()) };
         let promise = resolver.get_promise(scope);
+        if !follow_replacement() {
+            let none = v8::null(scope);
+            resolver.resolve(scope, none.into());
+            return Ok(Ret::Val(promise.into()));
+        }
         let known = with_state(|s| s.gpu.is_some());
         if known {
             let info = adapter_info(scope);

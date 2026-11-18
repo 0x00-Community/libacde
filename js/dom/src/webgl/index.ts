@@ -1,6 +1,6 @@
 import { Event, fire, type EventTarget } from '../core/event'
 import { DOMException } from '../core/exception'
-import { constants, tag } from '../core/host'
+import { constants, host, tag } from '../core/host'
 import { bitmaps, ImageBitmap } from '../dom/bitmap'
 import { VideoFrame, videoFrames } from '../dom/videoframe'
 import { canvases, canvasSources, ImageData } from '../dom/canvas'
@@ -15,6 +15,7 @@ export interface WebglNative {
   done(): Promise<void>
   pixels(context: number): { width: number; height: number; rgba: Uint8Array } | null
   onLost(callback: (context: number) => void): void
+  watch?(callback: (kind: 'lost' | 'restored') => void): void
   texImageSource(...args: unknown[]): void
   error(context: number, code: number): void
   uniform(...args: unknown[]): void
@@ -36,12 +37,15 @@ let native: WebglNative = null as unknown as WebglNative
 const TOKEN = Symbol('token')
 const OBJECT = Symbol('object')
 const OWNER = Symbol('owner')
+// the context generation an object belongs to: objects made before a context was restored are invalid after it
+const GENERATION = Symbol('generation')
 
 type Base = WebGLContextBase
 
 export class WebGLObject {
   readonly [OBJECT]: number
   readonly [OWNER]: Base
+  [GENERATION] = 0
   deleted = false
   constructor(token: symbol, owner: Base, id: number) {
     if (token !== TOKEN) throw new TypeError('Illegal constructor')
@@ -191,18 +195,24 @@ export const contextHooks = {} as {
   png(gl: WebGLContextBase): Uint8Array | null
   resize(gl: WebGLContextBase): void
   lose(gl: WebGLContextBase): void
+  restore(gl: WebGLContextBase): void
   id(gl: WebGLContextBase): number
   request?: () => void
 }
 
 const byCanvas = new WeakMap<object, WebGLContextBase>()
 const live = new Set<WebGLContextBase>()
+// the canvas node a context was made for, to make it again when it is restored
+const contextNodes = new WeakMap<WebGLContextBase, number>()
 
 export class WebGLContextBase {
   readonly canvas: CanvasLike
   #c: number
   #webgl2: boolean
   #lost = false
+  // the page cancelled webglcontextlost, so the context comes back once a GPU device is there again (WebGL 1.0 5.15.3)
+  #restorable = false
+  #generation = 0
   #drawn = false
   #attributes: Record<string, unknown>
   #objects = new Map<number, WebGLObject>()
@@ -234,7 +244,28 @@ export class WebGLContextBase {
     contextHooks.lose = (gl) => {
       if (gl.#lost) return
       gl.#lost = true
-      fire(gl.canvas as unknown as EventTarget, new WebGLContextEvent('webglcontextlost', { cancelable: true, statusMessage: '' }))
+      const event = new WebGLContextEvent('webglcontextlost', { cancelable: true, statusMessage: '' })
+      fire(gl.canvas as unknown as EventTarget, event)
+      gl.#restorable = event.defaultPrevented
+    }
+    // a new native context on the current device, the same attributes and size; every object and extension of the lost
+    // context stays invalid; then webglcontextrestored. Without a device yet it stays lost until the next "restored".
+    contextHooks.restore = (gl) => {
+      if (!gl.#lost || !gl.#restorable) return
+      const node = contextNodes.get(gl)
+      if (node === undefined) return
+      const id = native.create(node, gl.#webgl2, gl.#attributes, Math.max(1, gl.canvas.width), Math.max(1, gl.canvas.height))
+      if (id == null) return
+      native.release(gl.#c)
+      gl.#c = id
+      gl.#generation++
+      gl.#objects.clear()
+      gl.#extensions.clear()
+      gl.#program = null
+      gl.#lost = false
+      gl.#restorable = false
+      gl.#drawn = true
+      fire(gl.canvas as unknown as EventTarget, new WebGLContextEvent('webglcontextrestored', { cancelable: false, statusMessage: '' }))
     }
     contextHooks.id = (gl) => gl.#c
   }
@@ -242,7 +273,7 @@ export class WebGLContextBase {
   #id<T extends WebGLObject>(object: T | null | undefined, Kind: abstract new (...args: never[]) => T): number | undefined {
     if (object == null) return 0
     if (!(object instanceof Kind)) throw new TypeError(`expected ${Kind.name}`)
-    if (object[OWNER] !== this) {
+    if (object[OWNER] !== this || object[GENERATION] !== this.#generation) {
       native.error(this.#c, C.INVALID_OPERATION)
       return undefined
     }
@@ -252,6 +283,7 @@ export class WebGLContextBase {
   #wrap<T extends WebGLObject>(Kind: new (token: symbol, owner: Base, id: number) => T, id: number | null): T | null {
     if (!id) return null
     const object = new Kind(TOKEN, this, id)
+    object[GENERATION] = this.#generation
     this.#objects.set(id, object)
     return object
   }
@@ -1349,7 +1381,11 @@ function extension(gl: WebGLContextBase, name: string): object {
           webglHooks.call(gl, 'loseContext')
           contextHooks.lose(gl)
         },
-        restoreContext: () => {},
+        // restoring asks the GPU device again, in a later task (as browsers do); a context that is not lost is an error
+        restoreContext: () => {
+          if (!gl.isContextLost()) return webglHooks.call(gl, 'error', C.INVALID_OPERATION)
+          host.setTimer(0, () => contextHooks.restore(gl), true)
+        },
       })
     case 'WEBGL_multi_draw':
       return Object.assign(plain('WEBGLMultiDraw'), {
@@ -1446,6 +1482,7 @@ export const webglContexts = {
     const Kind = webgl2 ? WebGL2RenderingContext : WebGLRenderingContext
     const gl = new Kind(TOKEN, canvas, id, webgl2, attributes)
     byCanvas.set(canvas, gl)
+    contextNodes.set(gl, node)
     live.add(gl)
     return gl
   },
@@ -1484,6 +1521,9 @@ export function installWebgl(webgl: WebglNative, request: () => void): Record<st
   }
   native.onLost((id) => {
     for (const gl of live) if (contextHooks.id(gl) === id) contextHooks.lose(gl)
+  })
+  native.watch?.((kind) => {
+    if (kind === 'restored') for (const gl of live) contextHooks.restore(gl)
   })
   return {
     WebGLRenderingContext,
