@@ -56,6 +56,7 @@ type Request = Record<string, unknown> & { readonly id: number; readonly op: str
 
 export class DevChannel {
   static readonly LOCK = 'lock'
+  readonly #inflight = new Set<Promise<void>>()
   static readonly STATE_MS = 500
   static readonly SINGLE = 'a single-app session (acdev dev --app) has no other apps'
   readonly log = new DevLog()
@@ -111,7 +112,24 @@ export class DevChannel {
     return (web) => web === null || web === name || (app !== null && web === app)
   }
 
-  async request(line: string): Promise<void> {
+  request(line: string): Promise<void> {
+    const pending = this.#request(line)
+    this.#inflight.add(pending)
+    void pending.finally(() => this.#inflight.delete(pending))
+    return pending
+  }
+
+  async settle(ms: number): Promise<void> {
+    if (!this.#inflight.size) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const late = new Promise<void>((done) => {
+      timer = setTimeout(done, ms)
+    })
+    await Promise.race([Promise.allSettled([...this.#inflight]), late])
+    clearTimeout(timer)
+  }
+
+  async #request(line: string): Promise<void> {
     let id: number | null = null
     let ok = true
     let payload: string

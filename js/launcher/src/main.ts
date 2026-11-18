@@ -139,6 +139,7 @@ function rect(value: unknown): [number, number, number, number] {
 
 class Launcher {
   static readonly SIGNALS = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const
+  static readonly DEV_SETTLE_MS = 1000
   readonly #shell: LauncherShell
   #wake: (() => void) | null = null
   #ended: number | null = null
@@ -548,6 +549,7 @@ class Launcher {
         this.#wake = wake
       })
     }
+    await this.#dev.settle(Launcher.DEV_SETTLE_MS)
     await this.#backend?.close()
     return this.#ended
   }

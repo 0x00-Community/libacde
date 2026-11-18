@@ -123,3 +123,20 @@ describe('the lock page in a session', () => {
     assert.equal(answers[2]!.ok, true)
   })
 })
+
+describe('a dev request still running when the launcher ends', () => {
+  test('settle waits for it, but no longer than it is told', async () => {
+    const answers: number[] = []
+    const dev = new DevChannel({
+      shell: { screenshot: async () => ({ width: 0, height: 0 }) },
+      page: () => null,
+      inspect: () => { throw new Error('no inspect') },
+      reload: async () => {},
+      respond: (id) => void answers.push(id),
+    })
+    await dev.settle(10)
+    void dev.request(JSON.stringify({ id: 1, op: 'webs' }))
+    await dev.settle(1000)
+    assert.deepEqual(answers, [1])
+  })
+})
