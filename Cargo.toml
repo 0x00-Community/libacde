@@ -65,6 +65,8 @@ peniko = "0.6"
 # vello / webgl: wgpu on the same device as src/gpu
 vello = { version = "0.12", default-features = false, features = ["wgpu"] }
 wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "wgsl", "naga-ir"] }
+# webgpu: the page's descriptors deserialize straight into wgpu-types (src/host/webgpu/desc.rs)
+wgpu-types = { version = "30", features = ["serde"] }
 pollster = "0.4"
 # webgl: src/webgl/glsl is naga's GLSL frontend with the WebGL dialect
 naga = "30"
@@ -107,7 +109,6 @@ symphonia = { version = "0.6", default-features = false, features = ["wav", "pcm
 [target.'cfg(target_os = "linux")'.dependencies]
 wgpu = { version = "30", default-features = false, features = ["vulkan"] }
 ash = "0.38"
-wgpu-types = { version = "30", features = ["serde"] }
 pipewire = { version = "0.10", features = ["v0_3_49"] }
 zbus = "5"
 roxmltree = "0.21"

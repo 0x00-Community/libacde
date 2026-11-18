@@ -46,7 +46,7 @@ mod system;
 mod terminal;
 mod web;
 mod webgl;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod webgpu;
 mod webnative;
 

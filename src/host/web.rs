@@ -352,7 +352,7 @@ impl Spec {
         crate::host::capture::clear();
         crate::host::device::clear();
         crate::host::webgl::clear();
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         crate::host::webgpu::clear();
         #[cfg(target_os = "linux")]
         crate::host::bluetooth::clear();
@@ -518,7 +518,7 @@ fn run_web(runtime: &mut rt::Runtime, init: Vec<u8>, env: &[(String, String)], g
         crate::host::webnative::install(scope, natives);
         grants.install(scope, natives);
         crate::host::webgl::install(scope, natives);
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         crate::host::webgpu::install(scope, natives);
         crate::host::audio::install(scope, natives);
         let port = v8::Object::new(scope);

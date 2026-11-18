@@ -330,7 +330,6 @@ pub fn arg_u32(scope: &mut v8::PinScope, args: &v8::FunctionCallbackArguments, i
     if n.is_finite() && n >= 0.0 { n as u32 } else { 0 }
 }
 
-#[cfg(target_os = "linux")]
 pub fn arg_u64(scope: &mut v8::PinScope, args: &v8::FunctionCallbackArguments, i: i32) -> u64 {
     let n = arg_f64(scope, args, i);
     if n.is_finite() && n >= 0.0 { n as u64 } else { 0 }
