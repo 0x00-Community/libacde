@@ -92,7 +92,7 @@
   的 close) 先问页面 `window.beforeclose` (最多等 3 秒, 页面答 `false` 就不关), 再同样关掉. 桌面进程把窗口系统的其余事件 (`windowopen` 等)
   交给桌面页 (`js/launcher/src/app/events.ts`): `windowgeometry` 若带的是 `x`、`y`、`width`、`height` 就合成 `rect`; `windowopen` 的 `instance`
   (管家给的应用实例编号)、`windowdesk`、`currentdesk` 原样转. 页面的窗口列表 (`js/page/src/remote.ts` 的 `WindowList`) 记下 `rect`、`instance`、`desk`.
-- 启动方的 isolate 里先装好核心全局对象 (定时器、console 等, `installCore`). 宿主窗口关闭、页面退出或 `--seconds` 到时退出, 退出码是页面的.
+- 启动方的 isolate 里先装好核心全局对象 (定时器、console 等, `installCore`). 宿主窗口关闭、页面退出或 `--seconds` 到时退出, 退出码是页面的; 收到 SIGTERM / SIGINT / SIGHUP 时 (`acdev dev` 停运行时就是 SIGTERM) 也照常收尾 (停后端、删 socket 目录) 再以 0 退出 (同原 Broker: 按要求停下不算出错), 同一信号再来一次就直接退出 (SIGINT 130, 其余 143). 不收尾的话 macOS 上后端会成孤儿: 那里没有 Linux 的父进程退出信号.
   `--shot` 在 `--shot-after` (默认 2000) 毫秒后存一张宿主窗口截图, 无头 (`ACDE_HEADLESS=1`) 也行; 首帧没画完时截到的是空屏 (WSL 的 Dozen 上
   调试版首帧要 5～6 秒, 验证时用 `--shot-after 15000`).
 - **调试通道** (`js/launcher/src/dev/dev.ts` 的 `DevChannel`, acdev-single-app 工作项 10、11): 宿主窗口的 `devrequest` 事件 (hostwin `dev.rs`

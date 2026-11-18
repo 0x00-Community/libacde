@@ -5,7 +5,7 @@ import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
 import { readDirOr, readTextOr } from '../../page/src/sys/fs'
 import { xdgHome } from '../../page/src/sys/os'
 import { join } from '../../page/src/sys/path'
-import { process } from '../../page/src/sys/process'
+import { onceSignal, process } from '../../page/src/sys/process'
 import { Rpc } from '../../page/src/rpc'
 import { SessionLanguage } from '../../page/src/language'
 import { PageSource } from '../../page/src/page'
@@ -138,6 +138,7 @@ function rect(value: unknown): [number, number, number, number] {
 }
 
 class Launcher {
+  static readonly SIGNALS = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const
   readonly #shell: LauncherShell
   #wake: (() => void) | null = null
   #ended: number | null = null
@@ -533,6 +534,7 @@ class Launcher {
   }
 
   async run(): Promise<number> {
+    for (const signal of Launcher.SIGNALS) onceSignal(signal, () => this.#end(0))
     if (this.args.shot) this.#shoot(this.args.shot).catch((error: Error) => process.stderr.write(`acdev: screenshot: ${error.message}\n`))
     if (this.args.seconds !== null) setTimeout(() => this.#end(0), this.args.seconds * 1000)
     while (this.#ended === null) {
