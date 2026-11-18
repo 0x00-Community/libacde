@@ -42,6 +42,7 @@ pub enum RootSource {
     Granted,
     Private,
     Place,
+    Lent,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize)]

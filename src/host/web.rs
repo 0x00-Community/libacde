@@ -108,7 +108,7 @@ impl Webs {
             Some(v) => v8::Local::<v8::Object>::try_from(v).ok().map(|files| {
                 let places = bind::get(scope, files, "places").and_then(|places| bind::strings(scope, places)).unwrap_or_default();
                 let paths = bind::get(scope, files, "paths").is_some_and(|paths| paths.is_true());
-                Ok(crate::runtime::Files::new(&places, paths))
+                Ok(crate::runtime::Files::new(&places, paths).with_lent(lent_roots(scope, files)))
             }),
             None => None,
         };
@@ -168,6 +168,17 @@ impl Webs {
             display: display.then(|| (rt::current().platform().display(), system.power.clone())),
         }
     }
+}
+
+fn lent_roots(scope: &mut v8::PinScope, files: v8::Local<v8::Object>) -> Vec<crate::runtime::LentRoot> {
+    let Some(Ok(list)) = bind::get(scope, files, "roots").map(v8::Local::<v8::Array>::try_from) else { return Vec::new() };
+    let mut roots = Vec::new();
+    for i in 0..list.length() {
+        let Some(Ok(item)) = list.get_index(scope, i).map(v8::Local::<v8::Object>::try_from) else { continue };
+        let (Some(name), Some(dir)) = (bind::get_string(scope, item, "name"), bind::get_string(scope, item, "dir")) else { continue };
+        roots.push(crate::runtime::LentRoot { name, dir, label: bind::get_string(scope, item, "label") });
+    }
+    roots
 }
 
 impl Grants {

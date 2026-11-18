@@ -11,7 +11,7 @@ export interface FinderRoot {
   id: string
   path?: string
   label: string
-  source: 'desktop' | 'downloads' | 'default' | 'granted' | 'private' | 'place'
+  source: 'desktop' | 'downloads' | 'default' | 'granted' | 'private' | 'place' | 'lent'
   place?: SharedPlace
   mode: RootMode
   reason: string | null
@@ -229,9 +229,16 @@ export interface NativeApp {
   readonly wmClass: string | null
 }
 
+export interface LentRoot {
+  readonly name: string
+  readonly dir: string
+  readonly label?: string
+}
+
 export interface OpenWindowOptions {
   readonly parent?: number
   readonly modal?: boolean
+  readonly root?: LentRoot
 }
 
 export interface OpenFileRequest {

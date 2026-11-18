@@ -7,7 +7,7 @@ mod ranged;
 mod save;
 pub(crate) mod workspace;
 
-pub use access::files::{Files, GrantedFolder};
+pub use access::files::{Files, GrantedFolder, LentRoot};
 use access::{admit, cache::RootCache, grants::Grants};
 #[cfg(not(windows))]
 use path::NodePath;

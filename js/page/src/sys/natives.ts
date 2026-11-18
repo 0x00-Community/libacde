@@ -1,4 +1,5 @@
 import type { HostNative } from '@dopame/acde-dom'
+import type { LentRoot } from '@dopame/acde-api'
 import type { StoragePlace } from '../contract'
 
 export interface FileStat {
@@ -75,7 +76,7 @@ interface SysNative {
 
 export interface WebGrants {
   readonly app: string | null
-  readonly fs: true | string[] | { readonly places: string[]; readonly paths: boolean } | null
+  readonly fs: true | string[] | { readonly places: string[]; readonly paths: boolean; readonly roots?: readonly LentRoot[] } | null
   readonly terminal: boolean
   readonly network: boolean
   readonly system: boolean
