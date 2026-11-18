@@ -9,9 +9,13 @@ export type Route =
   | 'manager'
   | 'session'
   | 'lock'
+  | 'title'
+  | 'menus'
+  | 'page'
   | 'unsupported'
 
-const ACKNOWLEDGED = new Set(['window.ready', 'window.setTitle', 'page.shown'])
+const ACKNOWLEDGED = new Set(['window.ready', 'page.shown'])
+const PAGE = new Set(['open', 'save', 'notify'])
 const LOCAL: Readonly<Record<string, Route>> = {
   'window.close': 'close',
   'window.minimize': 'minimize',
@@ -37,6 +41,9 @@ export function route(service: string, method: string, args: readonly unknown[],
   if (caller.managed) return 'manager'
   if (service === 'session' || service === 'desktops') return 'session'
   if (service === 'lock') return 'lock'
+  if (call === 'window.setTitle') return 'title'
+  if (call === 'window.setMenus') return 'menus'
+  if (service === 'page' && PAGE.has(method)) return 'page'
   return ACKNOWLEDGED.has(call) ? 'acknowledge' : 'unsupported'
 }
 

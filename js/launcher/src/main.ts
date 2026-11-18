@@ -11,6 +11,10 @@ import { SessionLanguage } from '../../page/src/language'
 import { PageSource } from '../../page/src/page'
 import { AppLookup, DesktopLookup, desktopInit, webInit, type Found, type Place } from './app/app'
 import { FakeLock } from './app/lock'
+import { AppMenus } from './app/menus'
+import { PageCalls } from './app/page'
+import type { WireMenu } from '../../page/src/contract'
+import type { NativeFileChooser } from '../../page/src/native'
 import { API_LEVEL } from '@dopame/acde-api/manifest'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported } from './app/calls'
@@ -40,6 +44,8 @@ interface GrantOptions {
 
 interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState' | 'windows' | 'inject'> {
   devEvent?(json: string): number
+  setMenus?(window: number, menus: string): void
+  notify?(title: string, body: string, subtitle: string): void
   readonly socketName?: string
   pump(): ShellEvent[]
   onEvents(callback: () => void): void
@@ -68,6 +74,7 @@ interface LauncherNatives extends Natives {
     readonly Shell: { broker(options?: { title?: string }): LauncherShell }
     readonly Manager?: { connect(): ManagerLink }
     readonly DevTools?: NativeDevTools
+    readonly FileChooser?: { open(): Promise<NativeFileChooser> }
   }
 }
 
@@ -142,6 +149,9 @@ class Launcher {
   #services: Readonly<Record<string, ServiceShape>> = {}
   readonly #dev: DevChannel
   readonly #lock = new FakeLock()
+  #title: string
+  readonly #menus: AppMenus
+  readonly #pages: PageCalls
   readonly #devtools: DevToolsEndpoint
   #inspect: Inspect | null = null
   #devState: unknown = null
@@ -152,6 +162,15 @@ class Launcher {
     this.#shell.onEvents(() => this.#wake?.())
     manager?.onEvents(() => this.#wake?.())
     this.#services = session.services
+    this.#title = session.label
+    this.#menus = new AppMenus(this.#shell, () => this.#window)
+    const chooser = natives.native.FileChooser
+    this.#pages = new PageCalls({
+      label: session.label,
+      language: () => SessionLanguage.of(process.env, sys().languages()).language,
+      chooser: () => chooser?.open() ?? null,
+      ...(this.#shell.notify && { notify: (title: string, body: string, subtitle: string) => this.#shell.notify!(title, body, subtitle) }),
+    })
     this.#devtools = new DevToolsEndpoint(natives.native.DevTools, this.#shell, () => {
       const target = this.#target()
       return target && { ...target, url: this.#init?.url ?? null }
@@ -170,7 +189,7 @@ class Launcher {
     this.#inspect ??= new Inspect({
       shell: this.#shell,
       web: (window) => (window === this.#window ? this.#rpc : null),
-      record: (window) => (window === this.#window ? { kind: 'web', app: this.session.found?.app.id ?? null, title: this.session.label } : null),
+      record: (window) => (window === this.#window ? { kind: 'web', app: this.session.found?.app.id ?? null, title: this.#title } : null),
       panel: (window) => this.#panels.has(window),
       close: (window) => (window === this.#window ? this.close(true) : Promise.resolve(this.#shell.close(window))),
       hide: (window, hidden) => this.#shell.hide(window, hidden),
@@ -191,7 +210,7 @@ class Launcher {
     const call = (service: string, method: string, args: readonly unknown[]) => rpc.call(service, method, args)
     const post = (message: Record<string, unknown>) => this.#thread?.post(message)
     const frame = desktop ? 0 : Frame.height(this.session.found?.app)
-    return { name: init.name, app, kind, window: this.#window, title: this.session.label, frame, call, post }
+    return { name: init.name, app, kind, window: this.#window, title: this.#title, frame, call, post }
   }
 
   get #desktop(): boolean {
@@ -264,6 +283,13 @@ class Launcher {
     switch (route(service, method, args, caller)) {
       case 'acknowledge':
         return undefined
+      case 'title':
+        this.#title = String(args[0] ?? '') || this.session.label
+        return undefined
+      case 'menus':
+        return this.#menus.set((Array.isArray(args[0]) ? args[0] : []) as WireMenu[])
+      case 'page':
+        return this.#pages.call(method, args)
       case 'close':
         void this.close(true)
         return true
@@ -429,9 +455,21 @@ class Launcher {
       else if (event.type === 'windowcloserequest') void this.close(false)
       else if (event.type === 'devrequest') void this.#dev.request(String(event['key'] ?? ''))
       else if (event.type === 'devtools') this.#devtools.pressed()
+      else if (!this.#desktop && (event.type === 'menuselect' || event.type === 'shortcut')) this.#appKey(event)
       else if (event.type === 'devreload') void this.#devReload(event['title'] === 'hot')
       else if (this.#desktop) this.#thread?.post(toDesktop(event))
     }
+  }
+
+  #appKey(event: ShellEvent): void {
+    const title = event['title']
+    if (event.type === 'menuselect') return void this.#rpc?.call('window', 'menu', [event['key'], title]).catch(() => undefined)
+    if (title === 'menu') {
+      const hit = this.#menus.pressed(String(event['key'] ?? ''))
+      if (hit) void this.#rpc?.call('window', 'menu', [hit.menu, hit.item]).catch(() => undefined)
+      return
+    }
+    if (title === 'app') this.#thread?.post(event)
   }
 
   #managerEvents(): void {
