@@ -8,7 +8,7 @@ pub(crate) fn tls() -> Result<Arc<rustls::ClientConfig>, String> {
 
 fn client_config() -> Result<Arc<rustls::ClientConfig>, String> {
     use rustls_platform_verifier::BuilderVerifierExt;
-    let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
+    let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
         .with_safe_default_protocol_versions()
         .and_then(|builder| builder.with_platform_verifier())
         .map_err(|error| format!("TLS: {error}"))?

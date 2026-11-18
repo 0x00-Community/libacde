@@ -8,7 +8,7 @@
 | `src/gpu` | 设备层: 共享设备 `Gpu` (包着 detour 的 `Shared`; WebGPU / WebGL / video / canvas 图都在它上面), 接口 `Compositor` (前端在发布 `Gpu` 时用 `Gpu::set_compositor` 装上) 交出 `Offscreen` (render 画 canvas、滤镜、阴影、截图用); 平铺导出 detour 的 2D 场景 (`Scene` / `PaintScene` / 滤镜)、`Part` / `Pass` / `Content`、`Px` / `Backdrop` / `Shadow` / `Effect`、`GpuImage` |
 | `src/vello` | `acde-vello`: 合成器的 vello / wgpu 实现 (`VelloCompositor`, `Offscreen`, `Composer`, 会话的 `Raster`); acdev runtime 和会话用它. detour 实现以后也放本仓库 |
 | `src/webgl` | `acde-webgl`: wgpu 上的 WebGL 1 / 2 (见 `docs/graphics/webgl.md`「WebGL」). 检查: `cargo test --release -p libacde webgl` |
-| `src/runtime` | 系统接口 (napi 导出 + 注入用的 Rust 对象). 异步执行器 `rt.rs`: `acde-rt` 线程上的 ntex System (不用 tokio, TLS 用 rustls + aws-lc-rs, 证书校验用 rustls-platform-verifier). 检查: `cargo test -p libacde runtime` (含真 pty / Windows 伪控制台上的终端、unix socket 上的 HTTP / WebSocket)、`ime-check.sh`、`portal-check.sh`、`atspi-check.sh` (经 `tests/run.sh`) |
+| `src/runtime` | 系统接口 (napi 导出 + 注入用的 Rust 对象). 异步执行器 `rt.rs`: `acde-rt` 线程上的 ntex System (不用 tokio, TLS 用 rustls + ring (不用 aws-lc: Windows 要 NASM, 每个平台都多编一个 C 库; 用户定 2026-11-18), 证书校验用 rustls-platform-verifier). 检查: `cargo test -p libacde runtime` (含真 pty / Windows 伪控制台上的终端、unix socket 上的 HTTP / WebSocket)、`ime-check.sh`、`portal-check.sh`、`atspi-check.sh` (经 `tests/run.sh`) |
 | `src/model` | canvas / 窗口表、计划、快捷键、shell 事件 (`Event` / `Inbox`)、`acde_window` / `acde_shell` 协议 |
 | `src/log` | `acde-log`: 日志和计时 |
 | `src/media` | `acde-media`: 解码音视频, 读摄像头和麦克风 (Linux GStreamer, macOS AVFoundation; 见 `docs/web/web-apps.md`「视频」「摄像头和麦克风」). 检查: `cargo test --release -p libacde media` (`tests/fixtures` 是 ffmpeg 命令行生成的 1 秒小片段; `tests/capture.rs` 用假设备; `tests/devices.rs` 里 `--ignored` 的列出 / 读真设备、在 macOS 上问权限) |

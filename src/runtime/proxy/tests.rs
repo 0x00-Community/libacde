@@ -326,7 +326,7 @@ fn fetch_through_socks5() {
 }
 
 fn provider() -> Arc<rustls::crypto::CryptoProvider> {
-    Arc::new(rustls::crypto::aws_lc_rs::default_provider())
+    Arc::new(rustls::crypto::ring::default_provider())
 }
 
 pub(crate) fn localhost_tls() -> (Arc<rustls::ServerConfig>, rustls::pki_types::CertificateDer<'static>) {
