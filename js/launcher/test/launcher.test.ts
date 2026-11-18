@@ -101,6 +101,13 @@ describe('the session from the manager\'s welcome', () => {
     assert.deepEqual([session.kind, session.found?.dir, session.label, session.request], ['app', '/p', 'Notes', { kind: 'open-file' }])
   })
 
+  test('an app keeps the instance number the manager gave it, and only a whole positive one', () => {
+    const app = { id: 'files', label: 'Files', icon: 'apps', entry: '/index.html', capabilities: {} } as never
+    const second = sessionOf({ ...base, kind: 'app', app, instance: 2 } as Welcome, 'app')
+    const odd = sessionOf({ ...base, kind: 'app', app, instance: 0 } as Welcome, 'app')
+    assert.deepEqual([second.instance, odd.instance], [2, undefined])
+  })
+
   test('a desktop loads its entry from the package folder; the wrong kind is refused', () => {
     const welcome = { ...base, kind: 'desktop', desktop: { id: 'dopame', name: 'Dopame', entry: 'desktop.html' } } as Welcome
     assert.deepEqual([sessionOf(welcome, 'desktop').page, sessionOf(welcome, 'desktop').found], ['/p/desktop.html', null])

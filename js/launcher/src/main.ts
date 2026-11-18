@@ -253,7 +253,14 @@ class Launcher {
       : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request: session.request, services: session.services }, grant.window)
     this.#backend?.start()
     if (session.grants?.office) Launcher.#openOffice()
-    this.#spawn(this.manager && session.lock ? { ...init, name: DevChannel.LOCK } : init)
+    this.#spawn({ ...init, name: this.#webName(init.name) })
+  }
+
+  #webName(given: string): string {
+    const { session } = this
+    if (this.manager && session.lock) return DevChannel.LOCK
+    if (session.instance !== undefined && session.found) return `${session.found.app.id}#${session.instance}`
+    return given
   }
 
   static #openOffice(): void {

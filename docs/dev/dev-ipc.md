@@ -132,3 +132,5 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
   activated, hidden, state, desktop}]` (winman 的窗口表, 上层在前; `desk` 是虚拟桌面号; 最后一行是桌面 `{id: 0, desktop: true, pid}`, 没有坐标). 启动器的 Inspect 有它时用它列窗口 (`dev/guest.ts` `GuestWindows`): 窗口号就是 winman 的 id
   (`w<id>`), 桌面是 `w0`; pid 等于本进程的那一行是自己的窗口 (桌面进程认 `desktop: true` 的那行), 有元素, 映射回本地窗口号; 别的进程的窗口列成 native, 没有元素.
   所以管家按 ref 的窗口号 (w0 给桌面进程, 其余按 pid 找进程) 转发 act 和带 ref 的 snapshot / query.
+- 页面名: 管家的 app welcome 带 `instance` (同一应用从 1 起的编号, 和管家 `instances` / `instancegone` 里的一致) 时, 应用的页面名是 `<应用 id>#<instance>`;
+  没有时照旧用 `<应用 id>#<本地窗口号>` (宿主上的单应用).

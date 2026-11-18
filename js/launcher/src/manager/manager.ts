@@ -30,6 +30,7 @@ export interface Welcome {
   readonly stateDir?: string
   readonly session?: { readonly own: boolean }
   readonly lock?: boolean
+  readonly instance?: number
 }
 
 export interface ManagerEvent {
@@ -58,6 +59,7 @@ export interface Session {
   readonly services: Readonly<Record<string, ServiceShape>>
   readonly own: boolean
   readonly lock: boolean
+  readonly instance?: number
 }
 
 export function sessionOf(welcome: Welcome, wanted: 'app' | 'desktop' | 'service'): Session {
@@ -74,5 +76,6 @@ export function sessionOf(welcome: Welcome, wanted: 'app' | 'desktop' | 'service
   const app = welcome.app
   if (!app) throw new Error('the session manager sent no app in its welcome')
   const found = { dir: welcome.dir, app, resources: welcome.resources }
-  return { kind: 'app', found, page: null, resources: welcome.resources, label: app.label, heapMb: app.heapMb, ...shared }
+  const instance = Number.isInteger(welcome.instance) && welcome.instance! > 0 ? { instance: welcome.instance } : {}
+  return { kind: 'app', found, page: null, resources: welcome.resources, label: app.label, heapMb: app.heapMb, ...shared, ...instance }
 }
