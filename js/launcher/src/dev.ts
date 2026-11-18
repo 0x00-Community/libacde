@@ -14,13 +14,17 @@ export interface DevShell {
   devRespond?(id: number, ok: boolean, payload: string): void
 }
 
+export interface DevToolsPort {
+  port(): { port: number }
+}
+
 type Request = Record<string, unknown> & { readonly id: number; readonly op: string }
 
 export class DevChannel {
-  static readonly ANSWERED = ['webs', 'eval', 'console', 'network', 'permissions'] as const
+  static readonly ANSWERED = ['webs', 'eval', 'console', 'network', 'permissions', 'devtools'] as const
   readonly log = new DevLog()
 
-  constructor(readonly shell: DevShell, readonly page: () => DevTarget | null) {}
+  constructor(readonly shell: DevShell, readonly page: () => DevTarget | null, readonly devtools: DevToolsPort | null = null) {}
 
   take(post: unknown): boolean {
     if (!DevLog.isPost(post)) return false
@@ -62,6 +66,9 @@ export class DevChannel {
         return this.log.requests({ ...DevChannel.#query(args), failed: args['failed'] === true })
       case 'permissions':
         return { pending: [], decisions: [] }
+      case 'devtools':
+        if (!this.devtools) throw new Error('devtools: this session serves no DevTools endpoint')
+        return this.devtools.port()
     }
     throw new Error(`${op}: not answered in a single-app session yet (answered: ${DevChannel.ANSWERED.join(', ')})`)
   }

@@ -17,6 +17,7 @@ import { sessionOf, type ManagerEvent, type ManagerLink, type ServiceShape, type
 import { toDesktop, type ShellEvent } from './events'
 import { ServiceHost } from './service'
 import { DevChannel, type DevTarget } from './dev'
+import { DevToolsEndpoint, type NativeDevTools } from './devtools'
 
 interface Grant {
   readonly window: number
@@ -54,12 +55,14 @@ interface LauncherShell {
   showDesk?(desk: number): unknown
   moveToDesk?(window: number, desk: number): unknown
   devRespond?(id: number, ok: boolean, payload: string): void
+  devEvent?(json: string): number
 }
 
 interface LauncherNatives extends Natives {
   readonly native: {
     readonly Shell: { broker(options?: { title?: string }): LauncherShell }
     readonly Manager?: { connect(): ManagerLink }
+    readonly DevTools?: NativeDevTools
   }
 }
 
@@ -105,13 +108,18 @@ class Launcher {
   readonly #panels = new Set<number>()
   #services: Readonly<Record<string, ServiceShape>> = {}
   readonly #dev: DevChannel
+  readonly #devtools: DevToolsEndpoint
 
   constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
     this.#shell = natives.native.Shell.broker({ title: session.label })
     this.#shell.onEvents(() => this.#wake?.())
     manager?.onEvents(() => this.#wake?.())
     this.#services = session.services
-    this.#dev = new DevChannel(this.#shell, () => this.#target())
+    this.#devtools = new DevToolsEndpoint(natives.native.DevTools, this.#shell, () => {
+      const target = this.#target()
+      return target && { ...target, url: this.#init?.url ?? null }
+    })
+    this.#dev = new DevChannel(this.#shell, () => this.#target(), this.#devtools)
   }
 
   #target(): DevTarget | null {
@@ -213,6 +221,7 @@ class Launcher {
     if (this.#closing || this.#reloading || (given !== null && !given.startsWith(`${PageSource.ORIGIN}/`))) return false
     if (given !== null) this.#init = { ...this.#init!, url: given }
     this.#reloading = true
+    this.#devtools.reloading(this.#init!.name)
     this.#thread?.terminate()
     return true
   }
@@ -331,6 +340,7 @@ class Launcher {
       if (STOP.has(event.type)) this.#end(0)
       else if (event.type === 'windowcloserequest') void this.close(false)
       else if (event.type === 'devrequest') void this.#dev.request(String(event['key'] ?? ''))
+      else if (event.type === 'devtools') this.#devtools.pressed()
       else if (this.#desktop) this.#thread?.post(toDesktop(event))
     }
   }
