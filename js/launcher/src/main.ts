@@ -57,6 +57,7 @@ interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState
   release(window: number): void
   focus(window: number): void
   close(window: number): void
+  kill?(window: number): void
   setState?(window: number, state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
   windows(): ReturnType<InspectShell['windows']>
   inject(event: Parameters<InspectShell['inject']>[0]): void
@@ -422,8 +423,11 @@ class Launcher {
     const shell = this.#shell
     switch (method) {
       case 'close':
-      case 'kill':
         shell.close(id)
+        return true
+      case 'kill':
+        if (shell.kill) shell.kill(id)
+        else shell.close(id)
         return true
       case 'focus':
         return shell.focus(id)
