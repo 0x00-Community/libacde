@@ -42,6 +42,7 @@ export class DevToolsEndpoint {
   port(): { port: number } {
     const endpoint = this.#native?.open()
     if (!endpoint) throw new Error('devtools: this session serves no DevTools endpoint')
+    this.publish()
     return { port: endpoint.port }
   }
 
