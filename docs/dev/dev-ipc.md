@@ -124,3 +124,5 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
 - 启动器 → 管家: `{devresponse:{id, ok, payload}}` 代替 `Shell.devRespond` (管家按号找回连接、换回原 id); `{devevent:'<json>'}` 代替
   `Shell.devEvent` (F12 等事件, 管家转给发过 hello role=dev 的连接); DevTools 端点开成时主动报一次 `{devtools:{port}}`, 管家按进程记下,
   客户机里 `devtools` 请求由管家回 `{ports:[{web, app, port}]}`. `webs` 由管家向各进程逐个发再合并, 不另加消息.
+- 锁屏页 (welcome 顶层 `lock: true`): 页面名固定为 `lock`, `webs` 里带 `lock: true` (kind 仍是 desktop), `web: "lock"` 找到它, `desktop` 不再指它.
+  宿主上 `acdev dev --lock` 的预览没有管家, 页面名仍是 `desktop`, 也带 `lock: true`.

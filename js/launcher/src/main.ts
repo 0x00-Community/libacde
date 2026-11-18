@@ -214,7 +214,8 @@ class Launcher {
     const call = (service: string, method: string, args: readonly unknown[]) => rpc.call(service, method, args)
     const post = (message: Record<string, unknown>) => this.#thread?.post(message)
     const frame = desktop ? 0 : Frame.height(this.session.found?.app)
-    return { name: init.name, app, kind, window: this.#window, title: this.#title, frame, call, post }
+    const lock = this.session.lock ? { lock: true } : {}
+    return { name: init.name, app, kind, window: this.#window, title: this.#title, frame, ...lock, call, post }
   }
 
   get #desktop(): boolean {
@@ -245,7 +246,7 @@ class Launcher {
       ? desktopInit(session.page!, session.resources, grant.token, this.#place(), session.tier!, session.services)
       : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request: session.request, services: session.services }, grant.window)
     this.#backend?.start()
-    this.#spawn(init)
+    this.#spawn(this.manager && session.lock ? { ...init, name: DevChannel.LOCK } : init)
   }
 
   #spawn(given: WebInit): void {

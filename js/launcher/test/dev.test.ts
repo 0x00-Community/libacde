@@ -99,3 +99,27 @@ describe('the single-app dev channel', () => {
     assert.match(String((await ask({ id: 23, op: 'pointer', x: 1, y: 2 })).payload), /no injected input/)
   })
 })
+
+describe('the lock page in a session', () => {
+  test('answers as lock, marked lock, and is not the desktop', async () => {
+    const answers: { id: number; ok: boolean; payload: string }[] = []
+    const page: DevTarget = {
+      name: DevChannel.LOCK, app: null, kind: 'desktop', window: 0, title: 'Lock', frame: 0, lock: true,
+      call: async () => 'locked', post: () => {},
+    }
+    const dev = new DevChannel({
+      shell: { screenshot: async () => ({ width: 0, height: 0 }) },
+      page: () => page,
+      inspect: () => { throw new Error('no inspect') },
+      reload: async () => {},
+      respond: (id, ok, payload) => void answers.push({ id, ok, payload }),
+    })
+    await dev.request(JSON.stringify({ id: 1, op: 'webs' }))
+    await dev.request(JSON.stringify({ id: 2, op: 'clock', web: 'desktop', action: 'state' }))
+    await dev.request(JSON.stringify({ id: 3, op: 'clock', web: 'lock', action: 'state' }))
+    assert.deepEqual(JSON.parse(answers[0]!.payload), { webs: [{ name: 'lock', app: null, kind: 'desktop', window: 0, title: 'Lock', lock: true }] })
+    assert.equal(answers[1]!.ok, false)
+    assert.match(answers[1]!.payload, /no web desktop/)
+    assert.equal(answers[2]!.ok, true)
+  })
+})

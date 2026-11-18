@@ -12,6 +12,7 @@ export interface DevTarget {
   readonly window: number
   readonly title: string
   readonly frame: number
+  readonly lock?: boolean
   call(service: string, method: string, args: readonly unknown[]): Promise<unknown>
   post(message: Record<string, unknown>): void
 }
@@ -53,6 +54,7 @@ interface DevInit {
 type Request = Record<string, unknown> & { readonly id: number; readonly op: string }
 
 export class DevChannel {
+  static readonly LOCK = 'lock'
   static readonly STATE_MS = 500
   static readonly SINGLE = 'a single-app session (acdev dev --app) has no other apps'
   readonly log = new DevLog()
@@ -213,13 +215,16 @@ export class DevChannel {
 
   #webs(): object[] {
     const page = this.#host.page()
-    return page ? [{ name: page.name, app: page.app, kind: page.kind, window: page.window, title: page.title }] : []
+    if (!page) return []
+    const { name, app, kind, window, title, lock } = page
+    return [{ name, app, kind, window, title, ...(lock && { lock }) }]
   }
 
   #web(wanted: unknown): DevTarget {
     const page = this.#host.page()
     const name = wanted === undefined || wanted === null ? '' : String(wanted)
-    const matches = !!page && (name === '' || name === page.name || name === page.app || (name === 'desktop' && page.kind === 'desktop'))
+    const desktop = name === 'desktop' && page?.kind === 'desktop' && page.name !== DevChannel.LOCK
+    const matches = !!page && (name === '' || name === page.name || name === page.app || desktop)
     if (!matches) {
       const known = page ? page.name : 'none'
       throw Object.assign(new Error(`no web ${name} (webs: ${known}; a web name, an app id or desktop)`), { status: 404 })
