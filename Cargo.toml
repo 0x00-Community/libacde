@@ -169,6 +169,8 @@ socket2 = { version = "0.6", features = ["all"] }
 napi = []
 # render: blitz-dom's per-phase timings in the log
 phase-times = ["blitz-dom/log-phase-times"]
+# render: acss (our CSS engine, AC/acss) follows the DOM beside Stylo; ACSS_AUDIT=1 audits its element table, ACSS_SHADOW=1 compares computed values
+acss = ["blitz-dom/acss"]
 
 [build-dependencies]
 cbindgen = { version = "0", default-features = false }

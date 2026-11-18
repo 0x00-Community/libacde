@@ -3,6 +3,19 @@
 version = 4
 
 [[package]]
+name = "acss"
+version = "0.0.1"
+source = "sparse+http://gitea.dopamine/api/packages/AC/cargo/"
+checksum = "d7457e76ff337ba1fca6a12089238f97129cad57bd4d6980870083e3864e5b7a"
+dependencies = [
+ "cssparser",
+ "log",
+ "serde",
+ "toml 1.2.1+spec-1.1.0",
+ "url",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -477,6 +490,7 @@ dependencies = [
 name = "blitz-dom"
 version = "0.3.0-beta.5"
 dependencies = [
+ "acss",
  "app_units",
  "atomic_refcell",
  "bitflags",
@@ -495,6 +509,7 @@ dependencies = [
  "keyboard-types",
  "kurbo",
  "linebender_resource_handle",
+ "log",
  "markup5ever",
  "objc2",
  "parley",
