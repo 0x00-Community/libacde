@@ -165,9 +165,9 @@
   经 `Finder.revokeFolder` 删掉授权 (回有没有删到) 并给这个应用的 web 发 `permit` 拒绝: 它离开 `roots()`, 以它为 root 的调用 403 `denied` (`FileAccess.guard`).
   进程里所有 `Workspace` 和 `Finder` 共用一份授权 (`fs/mod.rs` 的 `GRANTS`), 撤销对正在运行的 web 立刻生效. 页面里已有的这个文件夹的句柄活到页面结束;
   同一个页面撤销后再选同一个文件夹, `acde:fs` 仍报 `denied` 到页面重开. 开发、无头和 driver 照常问: dev 请求 `permissions` (待答和已有决定)、`answer {prompt, allow}`、`revoke {app, capability}` (#95, 和 `acde:permissions.revoke` 同一份记录和效果,
-  回 `{app, capability, revoked}`, 没有决定过的回 `revoked: false`; 桌面和 `acdert app` 都能用)
+  回 `{app, capability, revoked}`, 没有决定过的回 `revoked: false`; 桌面和 `<运行时> app` 都能用)
   给 acdev 用 (driver、MCP, 和命令行的 `acdev permissions` / `allow` / `deny` / `revoke`); 每个提示记一行 info (`waits for the user to allow … answer it with acdev allow or acdev deny, …`: 这一行出现在 `acdev dev` 的输出里, 是没有对话框的会话里用户和 agent 知道该做什么的地方), 没人答就一直等, 不自动批准.
-  **单应用模式的原生对话框** (`acdert app`, 宿主窗口; `broker/access/approval/dialog.ts` `ApprovalDialogs`, 由 `broker/approvals.ts` 接上): 提示同时交给宿主的
+  **单应用模式的原生对话框** (`<运行时> app`, 宿主窗口; `broker/access/approval/dialog.ts` `ApprovalDialogs`, 由 `broker/approvals.ts` 接上): 提示同时交给宿主的
   `approve(title, message)` (hostwin `Cmd::Approve`, Windows 是 `platform/win32/approve.rs` 的 `MessageBoxW`, 以宿主窗口为 owner, 是 / 否, 默认否),
   一次只开一个, 其余排队; 答案经 `Permissions.answer` 写进同一份 `permissions.json`, 和桌面答的一样. driver 或别处先答了, Broker 调
   `dismissApproval` 关掉还开着的对话框 (它不算回答), 排队的直接丢掉. macOS 是宿主窗口上的 `NSAlert` sheet (`system/approve.rs`, 「Don't Allow」在前、是默认,
@@ -175,7 +175,7 @@
   的常驻通知 (urgency critical, 不过期), 带 `deny` / `allow` 两个动作, 关掉或点了别处回 null, `dismissApproval` 调 `CloseNotification`; 通知服务没有
   `actions` 能力、没有会话总线或 5 s 内不应 (`CALL_TIMEOUT`, 只管方法调用, 不管等用户) 时回 null. headless 没有对话框 (`approve` 回 null); 回 null 的提示照旧等 driver 或 `acdev allow` / `acdev deny`.
   `devReload` 对主窗口用 `Launchable.app` 重新查一遍 (应用没了、级别不对、平台不支持、服务没在跑各报各的话), 查不过时结束会话, 那行错误是
-  `Launchable.ended`: `acdert app <id>: <原因>`. **`acdert app` 里以前的拒绝会再问一次** (`PermissionsHost.asksAgain`, 单应用模式为真): 记录里是
+  `Launchable.ended`: `<运行时> app <id>: <原因>`. **`<运行时> app` 里以前的拒绝会再问一次** (`PermissionsHost.asksAgain`, 单应用模式为真): 记录里是
   `denied`、这一次运行还没问过的能力, `permit` 当作 `ask`, 问的时候删掉旧记录并记一行 `was denied … in an earlier run: asking again`; 这一次运行里答了「否」照旧不问第二次.
   单应用模式是开发者点名要跑这个应用, 又没有桌面的权限界面; 不这样的话拒绝一次之后这个应用在 `acdev dev` 里再也问不到, 而 `acdev revoke` 要有会话才能用, 只剩手改 `permissions.json`. 桌面和会话里记下的拒绝照旧有效.
   `icon` 是 `ICON_NAMES` (`@dopame/acde-api/manifest`, 和 Dopame art 引擎 `APPS` 的名字一致, 加名字两边一起改) 之一, 或 assets 下以

@@ -206,7 +206,7 @@ pub(crate) fn open(bytes: Arc<[u8]>) -> Result<(Box<dyn Backend>, Info), String>
     loop {
         if forbidden.load(std::sync::atomic::Ordering::Acquire) {
             _ = pipeline.set_state(gst::State::Null);
-            return Err("the file asks for other resources (a playlist or a reference), which acdert does not follow".into());
+            return Err("the file asks for other resources (a playlist or a reference), which acde does not follow".into());
         }
         if prerolled && demuxed.load(std::sync::atomic::Ordering::Acquire) {
             let (want_video, want_audio) = *lock(&expected);
@@ -266,7 +266,7 @@ impl Gst {
     fn pull(&self, sink: &gst_app::AppSink) -> Pull<gst::Sample> {
         if self.forbidden.load(std::sync::atomic::Ordering::Acquire) {
             _ = self.pipeline.set_state(gst::State::Null);
-            return Pull::Failed("the file asks for other resources, which acdert does not follow".into());
+            return Pull::Failed("the file asks for other resources, which acde does not follow".into());
         }
         if let Some(e) = bus_error(&self.pipeline) {
             return Pull::Failed(e);

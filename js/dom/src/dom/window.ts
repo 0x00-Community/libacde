@@ -418,7 +418,7 @@ export class Navigator {
   }
 
   get userAgent(): string {
-    return this.#options.userAgent ?? `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) acdert/${VERSION}`
+    return this.#options.userAgent ?? `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) acde/${VERSION}`
   }
   get platform(): string {
     return this.#options.platform ?? 'Linux x86_64'

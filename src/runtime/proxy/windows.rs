@@ -92,7 +92,7 @@ fn automatic(url: &Url, detect: bool, script: Option<&str>) -> Option<Vec<Hop>> 
 fn session() -> Option<*mut c_void> {
     static SESSION: OnceLock<usize> = OnceLock::new();
     let session = *SESSION.get_or_init(|| {
-        let agent = wide("acdert");
+        let agent = wide("acde");
         unsafe { WinHttpOpen(agent.as_ptr(), WINHTTP_ACCESS_TYPE_NO_PROXY, null(), null(), 0) as usize }
     });
     (session != 0).then_some(session as *mut c_void)

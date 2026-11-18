@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 const artifacts = process.argv[2]
 assert.ok(artifacts, 'Run this through scripts/dom-perf/bench.sh')
 const run = resolve(artifacts)
-const binary = process.platform === 'win32' ? 'acdert.exe' : 'acdert'
+const binary = process.platform === 'win32' ? 'acdev.exe' : 'acdev'
 const defaultRuntime = resolve('target', 'release', binary)
 const defaultApp = resolve('web', 'packages', 'acde-host', 'dist')
 const sides = [
@@ -98,7 +98,7 @@ async function session(side: (typeof sides)[number], index: number): Promise<Res
         .catch(() => undefined)) as { error?: string; value: T } | undefined
       if (data?.error) throw new Error(data.error)
       if (data) return data.value
-      if (child.exitCode !== null) throw new Error(`acdert exited with ${child.exitCode} before ${name}`)
+      if (child.exitCode !== null) throw new Error(`the runtime exited with ${child.exitCode} before ${name}`)
       await Bun.sleep(50)
     }
     throw new Error(`Timed out waiting for ${name}`)

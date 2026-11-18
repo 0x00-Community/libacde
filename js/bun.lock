@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "acdert-js",
+      "name": "libacde-js",
       "devDependencies": {
         "@codemirror/commands": "^6.11.1",
         "@codemirror/state": "6.7.6",

@@ -11,12 +11,12 @@ const CREATE_BUFFER: &str = "(buffer, offset, length) => new Uint8Array(buffer, 
 pub fn exports<'s>(scope: &mut v8::PinScope<'s, '_>) -> v8::Local<'s, v8::Value> {
     let lp = rt::current();
     let local = lp.clone();
-    let create_buffer = crate::host::bind::run_script(scope, CREATE_BUFFER, "acde:napi").expect("acdert: create_buffer");
-    let create_buffer = v8::Local::<v8::Function>::try_from(create_buffer).expect("acdert: create_buffer");
+    let create_buffer = crate::host::bind::run_script(scope, CREATE_BUFFER, "acde:napi").expect("libacde: create_buffer");
+    let create_buffer = v8::Local::<v8::Function>::try_from(create_buffer).expect("libacde: create_buffer");
     let report_error = v8::Function::new(scope, |scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue| {
         rt::report(scope, args.get(0));
     })
-    .expect("acdert: report_error");
+    .expect("libacde: report_error");
     let embedder = crate::napi::Embedder {
         cross_thread: lp.spawner(),
         local: crate::napi::V8TaskSpawner::new(move |task| local.spawn_local(task)),

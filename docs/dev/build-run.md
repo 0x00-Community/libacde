@@ -1,10 +1,10 @@
 # 构建、运行、平台
 
 ```sh
-cargo build --release -p libacde                # target/release/acdert
+cargo build --release -p libacde                # target/release/acdev (acdev 仓库)
 cd web && bun install && bun run build         # packages/acde-host/dist/{broker,web}.js
-../target/release/acdert desktops              # 装了哪些桌面
-ACDE_PATH=<acde-dopame 的包目录> ../target/release/acdert --desktop dopame
+../target/release/acdev desktops              # 装了哪些桌面
+ACDE_PATH=<acde-dopame 的包目录> ../target/release/acdev --desktop dopame
 ```
 
 页面包和单应用启动器构建时打进二进制 (见 `docs/runtime/layout.md`「js」), 运行时不再找 `broker.js`、`web.js`, `ACDE_APP` 不再有用.
@@ -16,14 +16,14 @@ CRT 静态链接 (`.cargo/config.toml` 的 `+crt-static`). arm64 暂不做 (没�
 D3D12 调试层 (要装「图形工具」可选功能). 没有: 通知、WebGPU、network / office / 语音. 依赖里不要 winapi
 (fslock、async-dnssd 现在是 crates.io 原版, 经 v8 / sspi 会带进 winapi).
 
-编好 acdert 和网页宿主后, 在有 GPU 的机器上用 `bash scripts/check-standalone.sh` 验证独立应用启动、重载、退出和服务清理.
+编好运行时和网页宿主后, 在有 GPU 的机器上用 `bash scripts/check-standalone.sh` 验证独立应用启动、重载、退出和服务清理.
 脚本以无窗口模式运行, 测试包和日志写到 `logs/standalone.*`.
 
 Windows 上用 `bash scripts/check-backends.sh` 验收应用后端 (见 `docs/web/backend.md`「Windows 后端契约」). 测试包 (`scripts/backends/`) 有 Node、Bun 两个带后端的应用和一个旧预加载的;
 预加载从并排检出的 acdev (`../acde/src/listen.ts`, 或设 `ACDE_SRC` / 直接给成品 `ACDE_LISTEN`) 现场打包. 每个后端: 页面跑 GET、带体 POST、分块、8 个并发、
-2 MiB 双向、WebSocket 文本和二进制 (Bun 另有 1 MiB 消息和发布订阅); acdert、后端和后端的子进程没有 TCP 监听、UDP 端点、名字带它们 pid 的新命名管道;
+2 MiB 双向、WebSocket 文本和二进制 (Bun 另有 1 MiB 消息和发布订阅); 运行时、后端和后端的子进程没有 TCP 监听、UDP 端点、名字带它们 pid 的新命名管道;
 Bun 的本代目录在默认 base 下, DACL 读回只有 SYSTEM 和当前用户, 启动时扫掉了预先放的残留目录; 杀后端后重起、子进程一起没了、旧目录删了、场景再跑一遍
-(WebSocket 重连); 经 Broker 停止 3 秒内 (SHUTDOWN) 结束、子进程和目录没了; 关窗后 acdert 退 0, 进程和本代目录都不在. 旧预加载的 node 不起, 打 warn.
+(WebSocket 重连); 经 Broker 停止 3 秒内 (SHUTDOWN) 结束、子进程和目录没了; 关窗后运行时退 0, 进程和本代目录都不在. 旧预加载的 node 不起, 打 warn.
 不设 `XDG_RUNTIME_DIR` (环境里有就沿用). 结果写到 `logs/backends.*/report.json`. 第二个本地账户打不开套接字目录这一项要手工验证, 脚本不做.
 
 有图形会话的 Windows 上用 `bash scripts/audit-thread-progress.sh` 复查双窗口的 JavaScript 与出帧进展. 脚本会调整并关闭自己的宿主窗口,
@@ -31,24 +31,25 @@ Bun 的本代目录在默认 base 下, DACL 读回只有 SYSTEM 和当前用户,
 
 ## 命令
 
-命令行由前端的 `main.rs` 解析 (调试运行时在 acdev runtime 的 `src/main.rs`, 会话在 acdebin-system), 两边共用的部分交给 `acdert_common` / `acde::common` (见 `docs/runtime/ffi.md`).
+命令行由前端的 `main.rs` 解析 (调试运行时在 acdev runtime 的 `src/main.rs`, 会话在 acdebin-system), 两边共用的部分交给 `acde_common` / `acde::common` (见 `docs/runtime/ffi.md`).
+下面的 `<运行时>` 指前端程序: 宿主窗口是 acdev 的运行时程序, 会话是 acdebin-system (Arch 包里仍叫 `/usr/bin/acdert`, 改不改由 acdebin-system 定).
 
 ```sh
-acdert                                    # 会话: 桌面按 `docs/runtime/packages.md`「桌面包」的规则选
-acdert --desktop dopame                   # 那个桌面 (id 或包目录)
-acdert --greeter                          # 登录页 (greetd)
-acdert desktop <id|目录>                  # 调试桌面 (acdev dev)
-acdert app <id|目录>                      # 调试窗口: 只跑一个应用
-acdert desktops                           # 装了的桌面和外部会话 (不要显示器)
-acdert --version                          # 发行版本和契约级别: acdert <版本> (contract level 1)
-acdert --help                             # 用法 (main.rs 直接回, 不起 V8); 不认的选项: 一行原因加一行用法到 stderr, 退出 2
-acdert doctor [--json]                    # 自检: 宿主文件、GPU (真画一帧)、Linux 的显示; 有错误退出 1 (见下)
-acdert sessions DIR --package PKG         # 给包的每个桌面写 acdert-<id>.desktop
-acdert applications DIR --package PKG     # `docs/web/default-apps.md`「默认应用」的 desktop entry 和 acde-mimeapps.list
-acdert open [--app ID] PATH|URI...        # 在运行中的会话里打开
-acdert run FILE [ARGS...]                 # 在一个 isolate 里跑一个模块 (runtime 的 tests/ 用)
-acdert --size 1920x1080 --scale 1         # shell 报输出之前的 CSS 尺寸
-acdert --launch foot --seconds 10 --stats # 起一个程序; 10 秒后停; 打印 stats 和窗口表
+<运行时>                                    # 会话: 桌面按 `docs/runtime/packages.md`「桌面包」的规则选
+<运行时> --desktop dopame                   # 那个桌面 (id 或包目录)
+<运行时> --greeter                          # 登录页 (greetd)
+<运行时> desktop <id|目录>                  # 调试桌面 (acdev dev)
+<运行时> app <id|目录>                      # 调试窗口: 只跑一个应用
+<运行时> desktops                           # 装了的桌面和外部会话 (不要显示器)
+<运行时> --version                          # 发行版本和契约级别: <程序名> <版本> (contract level 1)
+<运行时> --help                             # 用法 (main.rs 直接回, 不起 V8); 不认的选项: 一行原因加一行用法到 stderr, 退出 2
+<运行时> doctor [--json]                    # 自检: 宿主文件、GPU (真画一帧)、Linux 的显示; 有错误退出 1 (见下)
+<运行时> sessions DIR --package PKG         # 给包的每个桌面写 acdert-<id>.desktop
+<运行时> applications DIR --package PKG     # `docs/web/default-apps.md`「默认应用」的 desktop entry 和 acde-mimeapps.list
+<运行时> open [--app ID] PATH|URI...        # 在运行中的会话里打开
+<运行时> run FILE [ARGS...]                 # 在一个 isolate 里跑一个模块 (runtime 的 tests/ 用)
+<运行时> --size 1920x1080 --scale 1         # shell 报输出之前的 CSS 尺寸
+<运行时> --launch foot --seconds 10 --stats # 起一个程序; 10 秒后停; 打印 stats 和窗口表
 ```
 
 前端的 `doctor` 子命令见 acdev runtime `docs/doctor.md`.

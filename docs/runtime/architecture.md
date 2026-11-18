@@ -22,17 +22,17 @@ C 接口见 `docs/runtime/ffi.md`; 发布到 cargo 源 ac 见 `docs/dev/release.
 外部 crate 用的绑定工具在 lib 根上平铺导出 (`acde::{string, get, set, offload, failure, current, Msg, methods!, …}`).
 会话里的 shell / window / paint / supervise 已搬到 acdebin-system; vendor (只剩 blitz 子模块) 仍在本仓库, 前端的 Cargo.toml 里不再 `[patch]` 它.
 
-acdert 和开发者 CLI `acdev` (acdev runtime ([acdev](http://gitea.dopamine/AC/acdev) 根上的 `src/`、`crates/hostwin`) 的 `npm/`)
-的关系像 workerd 和 wrangler: acdert 跑桌面和应用, acdev (bun) 建工程、构建、装包, `acdev dev` 拉起 acdebin-dbg. 改名成 acdert 的只有程序、Arch 包和
+运行时和开发者 CLI `acdev` (acdev runtime ([acdev](http://gitea.dopamine/AC/acdev) 根上的 `src/`、`crates/hostwin`) 的 `npm/`)
+的关系像 workerd 和 wrangler: 运行时跑桌面和应用, acdev (bun) 建工程、构建、装包, `acdev dev` 拉起 acdebin-dbg. 改名成 acdert 的只有程序、Arch 包和
 crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境变量、`$XDG_*/acde/` 这些都不改. 桌面是一张网页: JS 在内嵌的 V8 里
 (不用 Node), Blitz (`vendor/blitz`) 排版, vello 在 GPU 上画; 不监听端口 (RDP 后端除外). 具体的桌面由桌面包提供 (例如
-[acde-dopame](https://github.com/dopame-org/acde-dopame), 发行时带上, acdert 不认识它).
+[acde-dopame](https://github.com/dopame-org/acde-dopame), 发行时带上, 运行时不认识它).
 
 两种跑法, 运行时是同一套:
 
 | 跑法 | 命令 | 平台 | 输出 | 合成器 |
 | --- | --- | --- | --- | --- |
-| **会话** (Dopame OS) | `acdert --desktop <id>` (登录页起) | Linux | 屏幕 (DRM/KMS) 或 RDP | acdebin-system 的 `crates/shell` |
+| **会话** (Dopame OS) | `<运行时> --desktop <id>` (登录页起) | Linux | 屏幕 (DRM/KMS) 或 RDP | acdebin-system 的 `crates/shell` |
 | **调试桌面** (`acdev dev`) | `acdev runtime desktop <id \| 包目录>` | Linux / Windows / macOS, 在别人的桌面里 | **一个**宿主原生窗口, 里面合成桌面和所有窗口 | acdev runtime 的 crates/hostwin |
 | **调试窗口** | `acdev runtime app <id>` | 同上 | 一个宿主原生窗口, 所选应用铺满, 关闭该应用后退出 | 同上 |
 
@@ -51,7 +51,7 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
 会话: 主进程 (`supervise.rs`)、合成器线程和运行时子进程怎么分在 acdebin-system 里, 见它的 docs/architecture.md.
 
 宿主窗口:
-acdert (一个进程)   主线程: 平台事件循环 (Windows win32, 别处 winit); `acdev` 线程 (栈 64 MiB): Broker;
+运行时 (一个进程)   主线程: 平台事件循环 (Windows win32, 别处 winit); `acdev` 线程 (栈 64 MiB): Broker;
                     每个 web 一条 JS 线程 + 一条出帧线程 `acde-host-<id>`; `acde-compose` 合成到宿主窗口的 surface
 ```
 

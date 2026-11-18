@@ -50,7 +50,7 @@ impl FileLoader {
                     if let Some(target) = Self::exports(exports, &key) {
                         return Ok(root.join(target.trim_start_matches("./")));
                     }
-                    return Err(format!("acdert: {name} does not export {key}"));
+                    return Err(format!("libacde: {name} does not export {key}"));
                 }
                 if subpath.is_empty() {
                     let main = json.get("module").or_else(|| json.get("main")).and_then(Value::as_str).unwrap_or("index.js");
@@ -60,7 +60,7 @@ impl FileLoader {
             }
             dir = d.parent();
         }
-        Err(format!("acdert: cannot find package {name} from {}", from.display()))
+        Err(format!("libacde: cannot find package {name} from {}", from.display()))
     }
 
     fn exports(exports: &Value, key: &str) -> Option<String> {
@@ -105,12 +105,12 @@ impl FileLoader {
         if index.is_file() {
             return Ok(index);
         }
-        Err(format!("acdert: no module at {}", path.display()))
+        Err(format!("libacde: no module at {}", path.display()))
     }
 
     fn url(path: &Path) -> Result<String, String> {
         let real = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        url::Url::from_file_path(&real).map(String::from).map_err(|_| format!("acdert: {} is not absolute", real.display()))
+        url::Url::from_file_path(&real).map(String::from).map_err(|_| format!("libacde: {} is not absolute", real.display()))
     }
 }
 
@@ -118,12 +118,12 @@ impl Loader for FileLoader {
     fn resolve(&self, specifier: &str, referrer: &str) -> Result<String, String> {
         let bare = specifier.strip_prefix("node:").unwrap_or(specifier);
         if specifier.starts_with("node:") || BUILTINS.contains(&bare.split('/').next().unwrap_or("")) {
-            return Err(format!("acdert: '{specifier}' is Node's; acde has no Node (services get what they need from ServiceContext)"));
+            return Err(format!("libacde: '{specifier}' is Node's; acde has no Node (services get what they need from ServiceContext)"));
         }
-        let base = url::Url::parse(referrer).map_err(|e| format!("acdert: referrer {referrer}: {e}"))?;
+        let base = url::Url::parse(referrer).map_err(|e| format!("libacde: referrer {referrer}: {e}"))?;
         if specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with('/') {
-            let url = base.join(specifier).map_err(|e| format!("acdert: {specifier}: {e}"))?;
-            let path = url.to_file_path().map_err(|_| format!("acdert: {url} is not a file"))?;
+            let url = base.join(specifier).map_err(|e| format!("libacde: {specifier}: {e}"))?;
+            let path = url.to_file_path().map_err(|_| format!("libacde: {url} is not a file"))?;
             return Self::url(&Self::file(&path)?);
         }
         if let Ok(url) = url::Url::parse(specifier) {
@@ -134,7 +134,7 @@ impl Loader for FileLoader {
             true if parts.len() >= 2 => (format!("{}/{}", parts[0], parts[1]), parts.get(2).copied().unwrap_or("")),
             _ => (parts[0].to_owned(), parts.get(1).copied().unwrap_or("")),
         };
-        let from = base.to_file_path().map_err(|_| format!("acdert: cannot import {specifier} from {referrer}"))?;
+        let from = base.to_file_path().map_err(|_| format!("libacde: cannot import {specifier} from {referrer}"))?;
         let from = from.parent().unwrap_or(Path::new("/"));
         Self::url(&Self::package(&name, subpath, from)?)
     }
@@ -143,8 +143,8 @@ impl Loader for FileLoader {
         if let Some(source) = crate::host::bundle::source(url) {
             return Ok(source.into_owned());
         }
-        let path = url::Url::parse(url).ok().and_then(|u| u.to_file_path().ok()).ok_or_else(|| format!("acdert: {url} is not a file"))?;
-        std::fs::read_to_string(&path).map_err(|e| format!("acdert: {}: {e}", path.display()))
+        let path = url::Url::parse(url).ok().and_then(|u| u.to_file_path().ok()).ok_or_else(|| format!("libacde: {url} is not a file"))?;
+        std::fs::read_to_string(&path).map_err(|e| format!("libacde: {}: {e}", path.display()))
     }
 }
 
@@ -637,7 +637,7 @@ fn boot_entry<'s>(scope: &mut v8::PinScope<'s, '_>, args: v8::FunctionCallbackAr
     let Ok(namespace) = v8::Local::<v8::Object>::try_from(args.get(0)) else { return };
     let entry = bind::get(scope, namespace, "default");
     let Some(Ok(entry)) = entry.map(v8::Local::<v8::Function>::try_from) else {
-        return bind::throw_type_error(scope, "acdert: the bundle has no default export function");
+        return bind::throw_type_error(scope, "libacde: the bundle has no default export function");
     };
     if let Some(result) = bind::call(scope, entry, &[args.data()]) {
         rv.set(result);

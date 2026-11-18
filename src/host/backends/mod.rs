@@ -92,7 +92,7 @@ fn generation() -> Result<PathBuf, String> {
     std::fs::create_dir_all(&base).map_err(|e| format!("cannot create {}: {e}", base.display()))?;
     SWEPT.call_once(|| {
         for left in dir::sweep(&base, dir::alive) {
-            log::info!("removed {}, left by an acdert that is gone", left.display());
+            log::info!("removed {}, left by a runtime that is gone", left.display());
         }
     });
     let dir = base.join(dir::generation_name());

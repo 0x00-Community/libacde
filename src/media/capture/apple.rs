@@ -146,7 +146,7 @@ pub fn permission(kind: Kind) -> super::Permission {
 
 pub fn authorize(kind: Kind) -> Result<(), Error> {
     let what = if kind == Kind::Camera { "camera" } else { "microphone" };
-    let denied = || Error::NotAllowed(format!("macOS does not let acdert use the {what} (System Settings > Privacy & Security)"));
+    let denied = || Error::NotAllowed(format!("macOS does not let acde use the {what} (System Settings > Privacy & Security)"));
     match unsafe { AVCaptureDevice::authorizationStatusForMediaType(media_type(kind)) } {
         AVAuthorizationStatus::Authorized => Ok(()),
         AVAuthorizationStatus::NotDetermined => {

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 const HEADER: &str = "include/acde.h";
 const FFI: &str = "src/ffi.rs";
-const PREFIX: &str = "acdert_";
+const PREFIX: &str = "acde_";
 
 enum Linker {
     Gnu,

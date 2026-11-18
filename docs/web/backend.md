@@ -1,13 +1,13 @@
 # 应用后端 (启动、Windows 后端契约、请求路由)
 
 - **后端** (acde-host `backend.ts`, unix): PATH 上有 `bun` 就 `bun --preload acde-listen.js server.js`, 否则 `node --import <acde-listen.js 的 file: URL> server.js`
-  (Node ≥ 22.3; `ACDE_RUNTIME=node` (acdev dev 按工程的运行时设) 时先找 node, 没有再 bun; 两样都没有不起, 打一行 warn; 同一份构建产物两边都能跑, 见 acdev 的「和 acdert 的契约」), 第一个窗口打开时起, 最后一个关掉时停 (SIGTERM 进程组,
+  (Node ≥ 22.3; `ACDE_RUNTIME=node` (acdev dev 按工程的运行时设) 时先找 node, 没有再 bun; 两样都没有不起, 打一行 warn; 同一份构建产物两边都能跑, 见 acdev 的「和运行时的契约」), 第一个窗口打开时起, 最后一个关掉时停 (SIGTERM 进程组,
   3 秒后 SIGKILL), 一分钟内第 4 次崩溃后不再起. `child.rs` 起: 自己的会话和进程组, 环境从零建 (`ACDE_APP_ID` / `ACDE_APP_DATA` /
   `ACDE_APP_SOCKETS` / `PORT` / `NODE_ENV=production` + 会话的 HOME、PATH、LANG 等), 工作目录 `$XDG_DATA_HOME/acde/apps/<id>/`, 输出前缀
-  `[<app>#backend]`, `PR_SET_PDEATHSIG` (子进程都由 `acde-fork` 线程 fork). preload 把 listen 换成 unix socket (`<acdev 的运行时目录>/<acdert 的 pid>/<id>/`, acdev 的运行时目录是 `sys/os.ts` `ownRuntimeDir`: 有 `XDG_RUNTIME_DIR` 或在 Linux 上是那里的 `acde/`, 别处 `$TMPDIR/acde-<uid>` 本身就是 acdev 的, 不再套一层 (macOS 的 `TMPDIR` 很长, 104 字节里每个字都要省; 这样应用 id 能比 0.0.9 长 4 个字): 每个会话一份, acdev dev 和 acdev test 同时跑
+  `[<app>#backend]`, `PR_SET_PDEATHSIG` (子进程都由 `acde-fork` 线程 fork). preload 把 listen 换成 unix socket (`<acdev 的运行时目录>/<运行时的 pid>/<id>/`, acdev 的运行时目录是 `sys/os.ts` `ownRuntimeDir`: 有 `XDG_RUNTIME_DIR` 或在 Linux 上是那里的 `acde/`, 别处 `$TMPDIR/acde-<uid>` 本身就是 acdev 的, 不再套一层 (macOS 的 `TMPDIR` 很长, 104 字节里每个字都要省; 这样应用 id 能比 0.0.9 长 4 个字): 每个会话一份, acdev dev 和 acdev test 同时跑
   同一个应用不再互相删 socket; 应用的后端停了删它的目录, Broker 关闭时删整个 pid 目录, 第一次起后端时扫掉进程已不在的 pid 目录;
   `<端口>.sock` 的路径超过 `sun_path` (macOS 104 字节, Linux 108) 时不起, 打一行 warn. Linux 上没有 `XDG_RUNTIME_DIR` 时用
-  `/run/user/<uid>`; `sys.pid` 给出 acdert 的 pid; 只扫纯数字的目录, 同一处的 `acde/` (旧布局、`exec`) 不动), 指定端口的 UDP bind 拒绝; 原生扩展开的端口管不到.
+  `/run/user/<uid>`; `sys.pid` 给出运行时的 pid; 只扫纯数字的目录, 同一处的 `acde/` (旧布局、`exec`) 不动), 指定端口的 UDP bind 拒绝; 原生扩展开的端口管不到.
 - **后端的代理变量** (runtime `proxy::backend_variables`, Broker 经 `sys.proxyEnv()` 并进后端环境, 各平台都有): 会话设了
   `http_proxy` / `https_proxy` / `all_proxy` 中任何一个, 就原样传 `http_proxy` / `https_proxy` / `all_proxy` / `no_proxy` 这几个变量 (unix 上大小写
   两种名字各自照传, Windows 环境变量名不分大小写, 用大写名). 一个都没设时给平台的手动代理, 和页面用的同一份系统设置: Windows 是用户
@@ -18,7 +18,7 @@
   Windows 的 `<local>` 和 macOS 的“排除简单主机名”没有对应写法, 不给. 配置脚本和自动发现 (Windows 设了配置脚本, macOS 开了自动配置或
   自动发现) 是按 URL 回答的, 变量表达不了, 这时后端不得到系统代理; Windows 只开“自动检测设置”时照样给手动代理 (和页面在 WPAD 没找到时一致).
   每次起后端时读, 改了系统设置后新起的后端生效. Linux 没有系统来源, 只有会话的变量.
-- **Windows 后端契约** (2026-11-09 定, 运行时实现在 src/host `backends/` 和 runtime `channel/`; acdev 的「和 acdert 的契约」写同一份, 两边一起发版). 不变量: 后端运行期间没有 TCP 监听、没有命名管道,
+- **Windows 后端契约** (2026-11-09 定, 运行时实现在 src/host `backends/` 和 runtime `channel/`; acdev 的「和运行时的契约」写同一份, 两边一起发版). 不变量: 后端运行期间没有 TCP 监听、没有命名管道,
   套接字文件只有 SYSTEM 和当前用户能开; macOS / Linux 不变. argv、`ACDE_RUNTIME` 选 bun / node、环境从零建、一分钟 4 次崩溃上限、首窗起末窗停都同上.
   - **两种模式**: node 走**通道模式** (Node 在 Windows 上不能用文件系统 AF_UNIX, 命名管道的默认安全描述符给 Everyone / 匿名读、也接受远端打开);
     bun 走**套接字模式** (和 unix 一样, `Bun.serve` 语义完整). 环境: 通道模式 `ACDE_APP_CHANNEL=fd`, 不设 `ACDE_APP_SOCKETS`; 套接字模式
@@ -28,7 +28,7 @@
     单向匿名管道两根, 因为双工管道要有名字. 通道模式上面跑全部帧; 套接字模式只跑控制帧 (SHUTDOWN, 帧格式同下), 数据走 AF_UNIX. 运行时一侧一条线程阻塞写、一条阻塞读, 和 ntex 的 `IoStream` 之间只经互斥锁和 waker.
     Broker 用的原生接口多两个只在 Windows 有的: `sys.spawnBackend(argv, {cwd, env, prefix, app, mode, preload}, onExit)` (两种模式都用它, mode 是
     `'channel'` / `'sockets'`; 传输变量和 `SystemRoot`、`TEMP`、`LOCALAPPDATA` 等 Windows 程序要的变量由运行时补) 和 `sys.stopBackend(pid, ms)`.
-    acde-host `backend.ts` 有它们就走这条路, node 是通道模式, bun 是套接字模式. acdert 退出时 `child::stop_all` 终止还在的后端并删本代目录;
+    acde-host `backend.ts` 有它们就走这条路, node 是通道模式, bun 是套接字模式. 运行时退出时 `child::stop_all` 终止还在的后端并删本代目录;
     等待线程正在收尾的后端 (末窗关闭先发了 SHUTDOWN, 进程刚退出, 目录可能还要重试删除) 也等它收尾完 (`FINISHING` 锁) 再退出, 不留目录.
   - **通道帧** (大端): `type u8 | stream u32 | length u32 | payload`, 头 9 字节, payload 最多 64 KiB. 类型: OPEN 1 (运行时开一条流, payload 是
     u16 逻辑端口, 即 `listen(P)` 的 P)、DATA 2 (字节, 运行时按 16 KiB 分块)、FIN 3 (这一方向写完, 半关闭)、RST 4 (中止这条流, payload 是 UTF-8

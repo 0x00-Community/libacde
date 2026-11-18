@@ -53,7 +53,7 @@ for (const run of runs) {
   const meta = {
     label,
     wpt: REVISION,
-    acdert: `wpt.fyi run ${run.id}: ${run.browser_name} ${run.browser_version} on ${run.os_name} ${run.os_version}`,
+    runtime: `wpt.fyi run ${run.id}: ${run.browser_name} ${run.browser_version} on ${run.os_name} ${run.os_version}`,
     source: run.raw_results_url,
     sha256: createHash('sha256').update(gz).digest('hex'),
     started: run.time_start,
@@ -62,5 +62,5 @@ for (const run of runs) {
     platform: run.os_name,
   }
   writeFileSync(join(dir, 'meta.json'), JSON.stringify(meta, null, 2) + '\n')
-  console.log(`${label}: ${lines.length} tests, ${meta.acdert}`)
+  console.log(`${label}: ${lines.length} tests, ${meta.runtime}`)
 }

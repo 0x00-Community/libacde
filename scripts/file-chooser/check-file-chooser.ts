@@ -33,7 +33,7 @@ const env = { ...process.env }
 delete env['ACDE_STORAGE']
 delete env['ACDE_BACKEND']
 delete env['ACDE_DEV']
-const binary = process.platform === 'win32' ? 'acdert.exe' : 'acdert'
+const binary = process.platform === 'win32' ? 'acdev.exe' : 'acdev'
 const runtime = env['ACDEV_RUNTIME'] ?? resolve('target', 'release', binary)
 const host = env['ACDE_APP'] ?? resolve('web/packages/acde-host/dist')
 const child = Bun.spawn([runtime, 'app', 'picker-probe', '--seconds', '60'], {
@@ -54,7 +54,7 @@ async function call<T>(name: string, source: string): Promise<T> {
       { error?: string; value: T } | undefined
     if (data?.error) throw new Error(data.error)
     if (data) return data.value
-    if (child.exitCode !== null) throw new Error(`acdert exited with ${child.exitCode} before ${name}`)
+    if (child.exitCode !== null) throw new Error(`the runtime exited with ${child.exitCode} before ${name}`)
     await Bun.sleep(50)
   }
   throw new Error(`Timed out waiting for ${name}`)

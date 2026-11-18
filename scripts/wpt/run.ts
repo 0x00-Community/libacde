@@ -18,7 +18,8 @@ const { values } = parseArgs({
     tests: { type: 'string', default: '' },
     limit: { type: 'string', default: '0' },
     chunk: { type: 'string', default: '40' },
-    acdert: { type: 'string', default: process.env.ACDEV_RUNTIME ?? '' },
+    runtime: { type: 'string', default: process.env.ACDEV_RUNTIME ?? '' },
+    acdert: { type: 'string', default: '' },
     app: { type: 'string', default: process.env.ACDE_APP ?? '' },
     'timeout-scale': { type: 'string', default: '1' },
     retry: { type: 'boolean', default: false },
@@ -30,7 +31,8 @@ const { values } = parseArgs({
 })
 const [SHARD, SHARDS] = values.shard!.split('/').map(Number) as [number, number]
 if (!(SHARDS >= 1 && SHARD >= 1 && SHARD <= SHARDS)) throw new Error(`--shard ${values.shard}: want i/n with 1 <= i <= n`)
-if (!values.acdert) throw new Error('--acdert <path to acdev runtime> (or ACDEV_RUNTIME) is required')
+const RUNTIME = values.runtime || values.acdert
+if (!RUNTIME) throw new Error('--runtime <path to acdev runtime> (or ACDEV_RUNTIME) is required; --acdert is its old name')
 if (values.app && !existsSync(join(values.app, 'broker.js'))) {
   throw new Error(`--app ${values.app}: no broker.js (the runtime bundles its page files; --app is only for an older runtime)`)
 }
@@ -109,7 +111,7 @@ const meta = {
   passes: [...(previous?.passes ?? []), { started: new Date().toISOString(), flag: values.flag || null, rerun: values.rerun, dirs: values.dirs || null, kinds: values.kinds, tests: values.tests || null }],
   label: values.label,
   wpt: readFileSync(join(STATE, 'work', 'wpt-sha'), 'utf8').trim(),
-  acdert: values.acdert,
+  runtime: RUNTIME,
   started: new Date().toISOString(),
   workers: WORKERS,
   dirs: values.dirs || null,
@@ -143,7 +145,7 @@ class Worker {
       force: true,
       timeout: 20000,
       env: {
-        ACDEV_RUNTIME: values.acdert!, ...(values.app ? { ACDE_APP: values.app } : {}),
+        ACDEV_RUNTIME: RUNTIME, ...(values.app ? { ACDE_APP: values.app } : {}),
         XDG_DATA_HOME: data, XDG_CONFIG_HOME: join(data, 'config'), XDG_CACHE_HOME: join(data, 'cache'),
       },
     })

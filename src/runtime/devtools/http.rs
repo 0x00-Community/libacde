@@ -191,9 +191,9 @@ impl Endpoint {
 
     fn version(&self) -> Value {
         json!({
-            "Browser": format!("acdert/{VERSION}"),
+            "Browser": format!("acde/{VERSION}"),
             "Protocol-Version": "1.3",
-            "User-Agent": format!("acdert/{VERSION}"),
+            "User-Agent": format!("acde/{VERSION}"),
             "webSocketDebuggerUrl": format!("ws://{}", self.socket(&format!("/devtools/browser/{}", self.browser))),
         })
     }
@@ -284,9 +284,9 @@ fn handle(endpoint: &Endpoint, client: &Client, text: &str) {
     let mut answer = match message.get("method").and_then(Value::as_str) {
         Some("Browser.getVersion") => json!({"id": id, "result": {
             "protocolVersion": "1.3",
-            "product": format!("acdert/{VERSION}"),
+            "product": format!("acde/{VERSION}"),
             "revision": "",
-            "userAgent": format!("acdert/{VERSION}"),
+            "userAgent": format!("acde/{VERSION}"),
             "jsVersion": "",
         }}),
         Some(_) if endpoint.forwarded(client, text) => return,

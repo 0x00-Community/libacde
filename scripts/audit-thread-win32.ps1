@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $runtime = Get-Process -Id $ProcessId
-if ($runtime.ProcessName -ne 'acdert') { throw 'Expected an acdert process' }
+if ($runtime.ProcessName -ne 'acdev') { throw 'Expected an acdev process' }
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;

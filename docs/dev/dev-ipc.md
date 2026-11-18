@@ -1,14 +1,14 @@
 # acdev dev: IPC、调试请求、dev 日志和热重载
 
-IPC: acdert 是服务端, 在 `ACDE_DEV` 上听 (hostwin `dev.rs`, 线程 `acde-dev`, 每条连接一条 `acde-dev-conn`), acdev dev 和工具 (acdev 的命令、
-MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址和 0700 的目录由 acdev dev 定好、旧 socket 它先删, acdert bind 后设 0600,
+IPC: 运行时是服务端, 在 `ACDE_DEV` 上听 (hostwin `dev.rs`, 线程 `acde-dev`, 每条连接一条 `acde-dev-conn`), acdev dev 和工具 (acdev 的命令、
+MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址和 0700 的目录由 acdev dev 定好、旧 socket 它先删, 运行时 bind 后设 0600,
 退出后 acdev dev 删), Windows 上是命名管道服务端 (`FILE_FLAG_FIRST_PIPE_INSTANCE` 防别人抢先占名、`PIPE_REJECT_REMOTE_CLIENTS`、SDDL
 `D:P(A;;GA;;;OW)` 只给当前用户, 接一个再开下一个实例). 这条 IPC 能在页面里求值, 所以只给自己. 一行一个 JSON. 发 `{"type":"hello","role":"dev"}`
-的那条连接是 acdev dev 的: 它断了 acdert 就退出, acdert 主动发的事件也只发给它; 别的 hello 忽略. Windows 上读之前先 `PeekNamedPipe`, 有数据才 `ReadFile`: 同一个同步句柄上
+的那条连接是 acdev dev 的: 它断了运行时就退出, 运行时主动发的事件也只发给它; 别的 hello 忽略. Windows 上读之前先 `PeekNamedPipe`, 有数据才 `ReadFile`: 同一个同步句柄上
 挂着的读会让写 (回答) 一直等着. 工程的构建结果经
-`ACDE_PATH` (Windows 用 `;` 分隔) 交给 acdert, 不装进包目录; 日志就是 acdert 的 stderr.
+`ACDE_PATH` (Windows 用 `;` 分隔) 交给运行时, 不装进包目录; 日志就是运行时的 stderr.
 
-acdert 主动发的事件 (`Shell.devEvent(json)` → hostwin `dev::event`, 写给每条 acdev dev 的连接, 没有就丢; 一行
+运行时主动发的事件 (`Shell.devEvent(json)` → hostwin `dev::event`, 写给每条 acdev dev 的连接, 没有就丢; 一行
 `{"type":"event","event",…}`):
 
 - `{"type":"event","event":"devtools","web","app","window"}`: 宿主窗口里按了 F12 (#196). hostwin `App::key` 前面的

@@ -2,7 +2,7 @@
 
 > 路径相对仓库根。
 
-`@dopame/acde-api` 是 acdert 删掉的 `web/` 的替代品 (群里结论, 2026-11-17): 学 workerd, npm 包是薄壳, **只有 `.d.ts` 声明, 没有 JS 逻辑**.
+`@dopame/acde-api` 是运行时删掉的 `web/` 的替代品 (群里结论, 2026-11-17): 学 workerd, npm 包是薄壳, **只有 `.d.ts` 声明, 没有 JS 逻辑**.
 它描述运行时给应用的东西: `acde:*` 模块 (运行时注入页面, 包里只是 `declare module`)、包清单、`acde.config.jsonc`、服务、能力、页面对象和事件的类型.
 来源是删除前的 `web/packages/acde-api` (acdert `91e7dd1e` 的父提交, 本仓库的历史), 只取纯类型声明. 它和清单规则 `manifest/` 原在 acdev 的
 `npm/` 里, 2026-11-18 随运行时库一起拆进本仓库: 运行时编译时要读它们, acdes 不该为此检出 acdev.
@@ -33,7 +33,7 @@
 | 原文件 | 原来做什么 | 现在 |
 | --- | --- | --- |
 | `src/runtime/load.js` (`load()`, 及各入口里 `load` 的声明) | 可选的 `acde:*` 模块: `import('acde:<name>')` 的默认导出, 拿不到时是 null | 没有: 应用直接写 `import('acde:<name>')`, 拿不到时 reject; `acdev check` 只拦可选模块的静态导入 |
-| `src/runtime/level.js` (`API_LEVEL`) | 契约级别 (值 1); acdert 编译时读它, Broker 和 `acdev check/build/dev/doctor` 也用 | 值移到本包的 `api-level` (只写一个数字的纯数据, 随包发布); `src/host/mod.rs` 编译时 `include_str!` 读, `manifest/level.ts` 读同一文件 |
+| `src/runtime/level.js` (`API_LEVEL`) | 契约级别 (值 1); 运行时编译时读它, Broker 和 `acdev check/build/dev/doctor` 也用 | 值移到本包的 `api-level` (只写一个数字的纯数据, 随包发布); `src/host/mod.rs` 编译时 `include_str!` 读, `manifest/level.ts` 读同一文件 |
 | `src/runtime/places.js` (`SHARED_PLACES`) | 共享位置的列表 (类型留下了) | `manifest/places.ts` |
 | `src/runtime/platforms.js` (`PLATFORM_SUPPORT`、`RUNNING_MODES`、`platformSupport()`) | 各平台、各跑法下有哪些模块 | `manifest/platforms.ts` |
 | `src/vite.js` (`@dopame/acde-api/vite`) | Vite 插件: 构建时把 `acde:*` 留作外部模块, dev 时换成会 reject 的替身 | acdev 的 `npm/src/vite-plugin.ts` (`acdev build` 用) |

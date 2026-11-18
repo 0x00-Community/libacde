@@ -16,7 +16,7 @@
   有焦点时焦点给下一个; 给它焦点 (`focus` / `show`) 就回到之前的状态. 每次变化给窗口自己发 `state {state, previous}`, 给 Broker 发
   `windowstate {window, state, previous}` (旧的 `windowfullscreen` / `windowunfullscreen` / `windowminimize` 已随第 0 级去掉). 宿主窗口的窗框按钮
   (最小化、全屏 / 还原) 由运行时直接改状态, 只有关闭交给页面. `requestMode` 只收 `free` / `fixed` / `pinned` (`fullscreen` 抛 TypeError,
-  全屏用 `requestState`); 改模式时当前状态在新模式下不允许就回到 `normal`. 独立应用的窗口 (`acdert app`) 内部仍是 `fullscreen` 模式, 页面改不了.
+  全屏用 `requestState`); 改模式时当前状态在新模式下不允许就回到 `normal`. 独立应用的窗口 (`<运行时> app`) 内部仍是 `fullscreen` 模式, 页面改不了.
   会话 (acdebin-system 的 `crates/window`) 把请求映射成标准 xdg_toplevel 请求 (`set_fullscreen` / `set_maximized` / `set_minimized` / 取消), 按 configure 里的
   fullscreen / maximized 给页面发 `state`. 合成器 (acdebin-system 的 `crates/shell` `compositor/windows.rs`, 同一套 `WindowState` + `Restore`) 执行四种状态, 规则同上;
   原生客户端 (Firefox 等) 的最大化 / 全屏 / 最小化请求、acde 窗口的请求和桌面的 `acde:windows.requestState` (napi `Shell.setState` →
@@ -71,4 +71,4 @@
 
 ## 宿主窗口
 
-宿主窗口 (crates/hostwin, `acdert app` / `acdert desktop` 在别人桌面里的那条路) 归 acdev runtime ([acdev](http://gitea.dopamine/AC/acdev) 根上的 `src/`、`crates/hostwin`), 说明在它的 AGENTS.md.
+宿主窗口 (crates/hostwin, `<运行时> app` / `<运行时> desktop` 在别人桌面里的那条路) 归 acdev runtime ([acdev](http://gitea.dopamine/AC/acdev) 根上的 `src/`、`crates/hostwin`), 说明在它的 AGENTS.md.

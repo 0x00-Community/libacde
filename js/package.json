@@ -1,5 +1,5 @@
 {
-  "name": "acdert-js",
+  "name": "libacde-js",
   "private": true,
   "description": "The runtime's own JS, bundled into the acdev runtime by build.rs (not published, not part of the SDK): dom/ is the web platform over the render document, page/ the glue that boots a page in a web",
   "license": "UNLICENSED",

@@ -203,7 +203,7 @@ pub fn method_with(
     if let Some(data) = data {
         builder = builder.data(data);
     }
-    let function = builder.build(scope).expect("acdert: function");
+    let function = builder.build(scope).expect("libacde: function");
     function.set_name(key);
     obj.set(scope, key.into(), function.into());
 }
@@ -363,7 +363,7 @@ pub fn uint8_array<'s>(scope: &mut v8::PinScope<'s, '_>, data: Vec<u8>) -> v8::L
     let len = data.len();
     let store = v8::ArrayBuffer::new_backing_store_from_vec(data).make_shared();
     let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
-    v8::Uint8Array::new(scope, buffer, 0, len).expect("acdert: Uint8Array")
+    v8::Uint8Array::new(scope, buffer, 0, len).expect("libacde: Uint8Array")
 }
 
 fn array_buffer<'s, T: Copy>(scope: &mut v8::PinScope<'s, '_>, data: &[T]) -> v8::Local<'s, v8::ArrayBuffer> {
@@ -381,7 +381,7 @@ macro_rules! typed_arrays {
     ($($name:ident: $t:ty => $array:ident),*) => {$(
         pub fn $name<'s>(scope: &mut v8::PinScope<'s, '_>, data: &[$t]) -> v8::Local<'s, v8::$array> {
             let buffer = array_buffer(scope, data);
-            v8::$array::new(scope, buffer, 0, data.len()).expect(concat!("acdert: ", stringify!($array)))
+            v8::$array::new(scope, buffer, 0, data.len()).expect(concat!("libacde: ", stringify!($array)))
         }
     )*};
 }

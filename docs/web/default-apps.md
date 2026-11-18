@@ -2,7 +2,7 @@
 
 一个入口 `Opener.open(路径或 URI, {app?, select?})` (acde-host `open.ts`, runtime `bus.rs`), 四条路进来: `acde.openPath` (桌面和有 `openFiles`
 的应用)、会话总线的 `org.freedesktop.FileManager1` (`ShowFolders` / `ShowItems` / `ShowItemProperties`)、`org.dopame.Acde1.Open`
-(`acdert open [--app <id>] <路径|URI>...`, 没有会话时退出码 3)、原生程序的 xdg-open (经装的 desktop entry 回到 `acdert open`).
+(`<运行时> open [--app <id>] <路径|URI>...`, 没有会话时退出码 3)、原生程序的 xdg-open (经装的 desktop entry 回到 `<运行时> open`).
 
 - **选应用**: 类型 (文件夹 `inode/directory`; 链接 `x-scheme-handler/<scheme>`; 文件见下) → 按 XDG
   MIME Applications 规范读 mimeapps.list (每个目录先读 `acde-mimeapps.list`), `acde-<app>.desktop` 指 acde 应用; 没设过的用清单 `mimeTypes`
@@ -35,7 +35,7 @@
   MIME 的选择 → 清单 `mimeTypes` 的第一个 → 交给系统默认 (下一条) → `no_app` (由桌面弹自己的打开方式). 用原生程序打开: 先过 `Finder.admit`
   (同下), Rust 再做和交给系统同样的路径检查 (绝对、非设备路径、无 `..`、非命名流、普通文件), 但不限扩展名 (用户为这个文件选的这个程序),
   重新枚举确认它是这个扩展名登记的处理程序, 经 `IAssocHandler::Invoke` (文件的 `IDataObject` 来自 `IShellItem::BindToHandler(BHID_DataObject)`)
-  在 `acde-open` 线程上打开 (先 `CoInitializeEx`). `openPath({app: 程序 id})` 点名原生程序只给桌面 (和 `acdert open`) 以及点名了公共位置的系统应用 (能 `locate` 的那些, `OpenCaller.paths`, #115;
+  在 `acde-open` 线程上打开 (先 `CoInitializeEx`). `openPath({app: 程序 id})` 点名原生程序只给桌面 (和 `<运行时> open`) 以及点名了公共位置的系统应用 (能 `locate` 的那些, `OpenCaller.paths`, #115;
   文件仍要在它的根里), 别的应用点名回 403 `refused`;
   记住的选择对所有调用方都生效. headless 照样检查, 只打一行 info 不打开. 测试 `acde-host/test/open/windows.test.ts` (注入的关联读取).
 - **macOS / Windows 的宿主窗口交给系统默认程序** (没有 XDG 的 `.desktop`, `natives()` 是空的): 没有记住的选择、没有能用的 acde 应用、也没有指定 `app`
@@ -46,7 +46,7 @@
     (挡掉往浏览器命令行里塞参数). 别的 scheme (`file:`、`javascript:`、`ms-settings:`、`mailto:` …) 不交.
   - 文件: 不是文件夹、不是 `select`, 先过 napi `Finder.admit(path, roots, owner)` (runtime `fs/access/admit.rs`): 把路径和调用方能用的根都按真实路径
     解析 (`canonicalize`, 跟随联接和链接) 后, 文件必须落在其中一个根里, 交给系统的是解析后的路径 (去掉 `\\?\`); 不在的回 `outside_roots`.
-    调用方能用的根: 桌面、`acdert open` 和系统总线 (`openFromBus`) 是全部 Finder 根; 应用是清单 `fs` 的 roots (`fs: true` 是全部 Finder 根,
+    调用方能用的根: 桌面、`<运行时> open` 和系统总线 (`openFromBus`) 是全部 Finder 根; 应用是清单 `fs` 的 roots (`fs: true` 是全部 Finder 根,
     没有 `fs` 是空的) 加上授予它的文件夹, 和它的 `acde:fs` 一样 (每次重读授权文件); 第 1 级的应用是私有文件夹、批准了的点名位置 (`OpenCaller.places`,
     Broker 按当前的批准滤过) 和选的文件夹 (napi `Finder.admit` 第 4 个参数, runtime `Workspace::admit_with`), 交来的文件所在的文件夹也算 (#110).
     所以根里的联接指向根外时也被拒绝.
@@ -58,14 +58,14 @@
     Mark of the Web: acdev 的下载和应用自己写的文件都没有 `Zone.Identifier`, 交给 Office 时不进受保护视图, 收窄对所有来源都成立.
     Windows 不关区域检查 (文件本来带的 Mark of the Web 照旧提示).
   - Rust 拒绝 (`code: 'refused'`) 或系统打不开 (`failed`) 都回 `no_app`, 文字带原因. 系统找不到默认程序时 Windows 弹它自己的「打开方式」.
-  - 安全边界: 只有 `Opener.open` 这条路 (桌面、有 `openFiles` 的应用、`acdert open`), 靠能力、调用方的根和上面的过滤限范围.
+  - 安全边界: 只有 `Opener.open` 这条路 (桌面、有 `openFiles` 的应用、`<运行时> open`), 靠能力、调用方的根和上面的过滤限范围.
     **不要求用户手势**: acde-dom 还没有用户激活 (user activation) 模型, 有 `openFiles` 的应用不经点击也能交出去; acde-dom 有了激活模型后,
-    应用发起的交出要求一次有效的激活 (桌面和 `acdert open` 不要求). 页面自己的导航 (`<a>`、`location`、`window.open` 到 http(s)) 是页面可控的,
+    应用发起的交出要求一次有效的激活 (桌面和 `<运行时> open` 不要求). 页面自己的导航 (`<a>`、`location`、`window.open` 到 http(s)) 是页面可控的,
     不交给系统. headless (`ACDE_HEADLESS`) 照样检查, 只打一行 info 不打开. Linux (会话和宿主窗口) 不注入, 行为不变.
 - **交给应用**: 应用收 `request` (和 `acde.open` 同一个事件), 窗口提前 (桌面收 `windowshow`); 请求带 `handle` (见 `docs/web/fs.md`「拖放和打开请求的句柄」),
   按路径的根的拿 `{root, path, file}` (`fs.locate`), 能看路径的拿 `{url}`, 第 1 级的第三方应用只有 `handle`. 不在任何根里的文件交给原生程序 (`gio launch`), 没有就报 `outside_roots` (宿主窗口也不交给系统).
 - **改默认**: `acde.setDefault(mime, 应用)` 写 `$XDG_CONFIG_HOME/acde-mimeapps.list` (只在 `XDG_CURRENT_DESKTOP=acdev` 下生效; Windows 见上,
   扩展名的选择写 `acde-extensions.list`). `acde.handlers(路径)` 列能打开它的应用, `association` 是给 `setDefault` 的键.
-- `acdert applications <目录> [--package <包目录>]` 给有 `mimeTypes` 的应用写 `acde-<app>.desktop` (`Exec=acdert open --app <app> %U`,
+- `<运行时> applications <目录> [--package <包目录>]` 给有 `mimeTypes` 的应用写 `acde-<app>.desktop` (`Exec=<运行时> open --app <app> %U`,
   `NoDisplay`, `OnlyShowIn=acdev;`) 和 `acde-mimeapps.list`.
 - 总线名字只在自己的会话里拿 (`ACDE_BUS_NAMES=1/0` 强制), 允许被替换; 不装 D-Bus activation 文件.

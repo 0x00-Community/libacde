@@ -1,5 +1,5 @@
 {
-  "name": "acdert-wpt",
+  "name": "libacde-wpt",
   "private": true,
   "type": "module",
   "dependencies": {

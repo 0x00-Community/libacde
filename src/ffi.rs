@@ -46,9 +46,9 @@ impl Held {
     }
 }
 
-pub struct AcdertStrings(Vec<String>);
+pub struct AcdeStrings(Vec<String>);
 
-impl AcdertStrings {
+impl AcdeStrings {
     fn first(self) -> Option<String> {
         self.0.into_iter().next()
     }
@@ -56,14 +56,14 @@ impl AcdertStrings {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AcdertChoice {
+pub enum AcdeChoice {
     Chosen,
     Cancelled,
     Failed,
 }
 
-impl AcdertChoice {
-    fn many(self, strings: AcdertStrings) -> Result<Option<Vec<String>>, String> {
+impl AcdeChoice {
+    fn many(self, strings: AcdeStrings) -> Result<Option<Vec<String>>, String> {
         match self {
             Self::Chosen => Ok(Some(strings.0)),
             Self::Cancelled => Ok(None),
@@ -71,13 +71,13 @@ impl AcdertChoice {
         }
     }
 
-    fn one(self, strings: AcdertStrings) -> Result<Option<String>, String> {
+    fn one(self, strings: AcdeStrings) -> Result<Option<String>, String> {
         self.many(strings).map(|chosen| chosen.and_then(|paths| paths.into_iter().next()))
     }
 }
 
 #[repr(C)]
-pub struct AcdertFilter {
+pub struct AcdeFilter {
     pub name: *const c_char,
     pub globs: *const *const c_char,
     pub globs_len: usize,
@@ -86,33 +86,33 @@ pub struct AcdertFilter {
 }
 
 #[repr(C)]
-pub struct AcdertFileRequest {
+pub struct AcdeFileRequest {
     pub title: *const c_char,
     pub name: *const c_char,
     pub multiple: bool,
     pub directory: bool,
-    pub filters: *const AcdertFilter,
+    pub filters: *const AcdeFilter,
     pub filters_len: usize,
 }
 
 struct Request {
     _held: Held,
-    _filters: Vec<AcdertFilter>,
-    request: AcdertFileRequest,
+    _filters: Vec<AcdeFilter>,
+    request: AcdeFileRequest,
 }
 
 impl Request {
     fn new(title: &str, name: Option<&str>, multiple: bool, directory: bool, filters: &[FileFilter]) -> Self {
         let mut held = Held::default();
-        let filters: Vec<AcdertFilter> = filters
+        let filters: Vec<AcdeFilter> = filters
             .iter()
             .map(|filter| {
                 let (globs, globs_len) = held.list(&filter.globs);
                 let (mimes, mimes_len) = held.list(&filter.mimes);
-                AcdertFilter { name: held.text(&filter.name), globs, globs_len, mimes, mimes_len }
+                AcdeFilter { name: held.text(&filter.name), globs, globs_len, mimes, mimes_len }
             })
             .collect();
-        let request = AcdertFileRequest {
+        let request = AcdeFileRequest {
             title: held.text(title),
             name: name.map_or(null(), |name| held.text(name)),
             multiple,
@@ -137,7 +137,7 @@ impl From<&SaveRequest> for Request {
 }
 
 #[repr(C)]
-pub struct AcdertEvent {
+pub struct AcdeEvent {
     pub kind: *const c_char,
     pub window: i64,
     pub parent: i64,
@@ -166,7 +166,7 @@ pub struct AcdertEvent {
     pub data_len: usize,
 }
 
-impl Default for AcdertEvent {
+impl Default for AcdeEvent {
     fn default() -> Self {
         Self {
             kind: null(),
@@ -199,8 +199,8 @@ impl Default for AcdertEvent {
     }
 }
 
-impl From<&AcdertEvent> for Event {
-    fn from(event: &AcdertEvent) -> Self {
+impl From<&AcdeEvent> for Event {
+    fn from(event: &AcdeEvent) -> Self {
         let float = |value: f64| (!value.is_nan()).then_some(value);
         let count = |value: i64| u32::try_from(value).ok();
         let keys: Option<Vec<String>> = Texts(event.data_keys, event.data_len).into();
@@ -234,17 +234,17 @@ impl From<&AcdertEvent> for Event {
     }
 }
 
-pub struct AcdertEvents(Vec<Event>);
+pub struct AcdeEvents(Vec<Event>);
 
-pub struct AcdertWaker(Waker);
+pub struct AcdeWaker(Waker);
 
-pub struct AcdertRender(RenderHandle);
+pub struct AcdeRender(RenderHandle);
 
-pub struct AcdertReply(Box<dyn FnOnce(String) + Send>);
+pub struct AcdeReply(Box<dyn FnOnce(String) + Send>);
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AcdertCommandKind {
+pub enum AcdeCommandKind {
     RequestFrame,
     SetClipboard,
     ReadClipboard,
@@ -267,8 +267,8 @@ pub enum AcdertCommandKind {
 }
 
 #[repr(C)]
-pub struct AcdertCommand {
-    pub kind: AcdertCommandKind,
+pub struct AcdeCommand {
+    pub kind: AcdeCommandKind,
     pub text: *const c_char,
     pub number: u32,
     pub id: u32,
@@ -281,11 +281,11 @@ pub struct AcdertCommand {
     pub data_keys: *const *const c_char,
     pub data_values: *const *const c_char,
     pub data_len: usize,
-    pub reply: *mut AcdertReply,
+    pub reply: *mut AcdeReply,
 }
 
-impl From<AcdertCommandKind> for AcdertCommand {
-    fn from(kind: AcdertCommandKind) -> Self {
+impl From<AcdeCommandKind> for AcdeCommand {
+    fn from(kind: AcdeCommandKind) -> Self {
         Self {
             kind,
             text: null(),
@@ -307,51 +307,51 @@ impl From<AcdertCommandKind> for AcdertCommand {
 
 struct Outgoing {
     _held: Held,
-    command: AcdertCommand,
+    command: AcdeCommand,
 }
 
 impl From<SurfaceCommand> for Outgoing {
     fn from(command: SurfaceCommand) -> Self {
-        use AcdertCommandKind as Kind;
+        use AcdeCommandKind as Kind;
         let mut held = Held::default();
         let command = match command {
             SurfaceCommand::RequestFrame => Kind::RequestFrame.into(),
-            SurfaceCommand::SetClipboard(text) => AcdertCommand { text: held.text(&text), ..Kind::SetClipboard.into() },
-            SurfaceCommand::ReadClipboard(reply) => AcdertCommand { reply: Box::into_raw(Box::new(AcdertReply(reply))), ..Kind::ReadClipboard.into() },
+            SurfaceCommand::SetClipboard(text) => AcdeCommand { text: held.text(&text), ..Kind::SetClipboard.into() },
+            SurfaceCommand::ReadClipboard(reply) => AcdeCommand { reply: Box::into_raw(Box::new(AcdeReply(reply))), ..Kind::ReadClipboard.into() },
             SurfaceCommand::StartDrag(data, _) => {
                 let (data_keys, data_len) = held.list(data.keys());
                 let (data_values, _) = held.list(data.values());
-                AcdertCommand { data_keys, data_values, data_len, ..Kind::StartDrag.into() }
+                AcdeCommand { data_keys, data_values, data_len, ..Kind::StartDrag.into() }
             }
-            SurfaceCommand::Mode(number) => AcdertCommand { number, ..Kind::Mode.into() },
-            SurfaceCommand::State(number) => AcdertCommand { number, ..Kind::State.into() },
-            SurfaceCommand::GrabHint(rect, number) => AcdertCommand { rect, number, ..Kind::GrabHint.into() },
-            SurfaceCommand::Backdrop(rect, values) => AcdertCommand { rect, values, ..Kind::Backdrop.into() },
+            SurfaceCommand::Mode(number) => AcdeCommand { number, ..Kind::Mode.into() },
+            SurfaceCommand::State(number) => AcdeCommand { number, ..Kind::State.into() },
+            SurfaceCommand::GrabHint(rect, number) => AcdeCommand { rect, number, ..Kind::GrabHint.into() },
+            SurfaceCommand::Backdrop(rect, values) => AcdeCommand { rect, values, ..Kind::Backdrop.into() },
             SurfaceCommand::Activate => Kind::Activate.into(),
-            SurfaceCommand::Grab(number, flag) => AcdertCommand { number, flag, ..Kind::Grab.into() },
-            SurfaceCommand::OpenPanel { id, token, rect } => AcdertCommand { id, token, rect, ..Kind::OpenPanel.into() },
-            SurfaceCommand::PlacePanel { id, rect, input } => AcdertCommand { id, rect, input, ..Kind::PlacePanel.into() },
-            SurfaceCommand::ClosePanel(id) => AcdertCommand { id, ..Kind::ClosePanel.into() },
-            SurfaceCommand::ReservePanel { id, edge, thickness } => AcdertCommand { id, number: edge, thickness, ..Kind::ReservePanel.into() },
-            SurfaceCommand::DoubleClick(number) => AcdertCommand { number, ..Kind::DoubleClick.into() },
+            SurfaceCommand::Grab(number, flag) => AcdeCommand { number, flag, ..Kind::Grab.into() },
+            SurfaceCommand::OpenPanel { id, token, rect } => AcdeCommand { id, token, rect, ..Kind::OpenPanel.into() },
+            SurfaceCommand::PlacePanel { id, rect, input } => AcdeCommand { id, rect, input, ..Kind::PlacePanel.into() },
+            SurfaceCommand::ClosePanel(id) => AcdeCommand { id, ..Kind::ClosePanel.into() },
+            SurfaceCommand::ReservePanel { id, edge, thickness } => AcdeCommand { id, number: edge, thickness, ..Kind::ReservePanel.into() },
+            SurfaceCommand::DoubleClick(number) => AcdeCommand { number, ..Kind::DoubleClick.into() },
             SurfaceCommand::FrameTheme(_) => Kind::FrameTheme.into(),
-            SurfaceCommand::PageDark(flag) => AcdertCommand { flag, ..Kind::PageDark.into() },
-            SurfaceCommand::Title(text) => AcdertCommand { text: held.text(&text), ..Kind::Title.into() },
-            SurfaceCommand::ImeArea(values) => AcdertCommand { values, ..Kind::ImeArea.into() },
+            SurfaceCommand::PageDark(flag) => AcdeCommand { flag, ..Kind::PageDark.into() },
+            SurfaceCommand::Title(text) => AcdeCommand { text: held.text(&text), ..Kind::Title.into() },
+            SurfaceCommand::ImeArea(values) => AcdeCommand { values, ..Kind::ImeArea.into() },
         };
         Self { _held: held, command }
     }
 }
 
 #[repr(C)]
-pub struct AcdertWindow {
+pub struct AcdeWindow {
     pub ctx: *mut c_void,
     pub window: Option<unsafe extern "C" fn(*mut c_void) -> u32>,
     pub content_offset: Option<unsafe extern "C" fn(*mut c_void, *mut f64, *mut f64)>,
-    pub pump: Option<unsafe extern "C" fn(*mut c_void, *mut AcdertEvents)>,
+    pub pump: Option<unsafe extern "C" fn(*mut c_void, *mut AcdeEvents)>,
     pub has_events: Option<unsafe extern "C" fn(*mut c_void) -> bool>,
-    pub set_waker: Option<unsafe extern "C" fn(*mut c_void, *mut AcdertWaker)>,
-    pub send: Option<unsafe extern "C" fn(*mut c_void, *const AcdertCommand)>,
+    pub set_waker: Option<unsafe extern "C" fn(*mut c_void, *mut AcdeWaker)>,
+    pub send: Option<unsafe extern "C" fn(*mut c_void, *const AcdeCommand)>,
     pub minimizable: Option<unsafe extern "C" fn(*mut c_void) -> bool>,
     pub host_controls: Option<unsafe extern "C" fn(*mut c_void) -> bool>,
     pub size: Option<unsafe extern "C" fn(*mut c_void, *mut u32, *mut u32, *mut f64) -> bool>,
@@ -359,7 +359,7 @@ pub struct AcdertWindow {
     pub release: Option<unsafe extern "C" fn(*mut c_void)>,
 }
 
-impl Default for AcdertWindow {
+impl Default for AcdeWindow {
     fn default() -> Self {
         Self {
             ctx: null_mut(),
@@ -378,7 +378,7 @@ impl Default for AcdertWindow {
     }
 }
 
-struct CWindow(AcdertWindow);
+struct CWindow(AcdeWindow);
 
 impl CWindow {
     fn ask(&self, call: Option<unsafe extern "C" fn(*mut c_void) -> bool>, otherwise: bool) -> bool {
@@ -400,7 +400,7 @@ impl Window for CWindow {
     }
 
     fn pump(&self) -> Vec<Event> {
-        let mut events = AcdertEvents(Vec::new());
+        let mut events = AcdeEvents(Vec::new());
         if let Some(call) = self.0.pump {
             unsafe { call(self.0.ctx, &mut events) };
         }
@@ -413,7 +413,7 @@ impl Window for CWindow {
 
     fn set_waker(&self, waker: Option<Waker>) {
         if let Some(call) = self.0.set_waker {
-            let waker = waker.map_or(null_mut(), |waker| Box::into_raw(Box::new(AcdertWaker(waker))));
+            let waker = waker.map_or(null_mut(), |waker| Box::into_raw(Box::new(AcdeWaker(waker))));
             unsafe { call(self.0.ctx, waker) };
         }
     }
@@ -454,17 +454,17 @@ impl Drop for CWindow {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct AcdertPlatform {
+pub struct AcdePlatform {
     pub ctx: *mut c_void,
-    pub claim: Option<unsafe extern "C" fn(*mut c_void, u64, *mut AcdertRender, u32, *const c_char, *mut AcdertWindow, *mut AcdertStrings) -> bool>,
-    pub content_type: Option<unsafe extern "C" fn(*mut c_void, *const c_char, *mut AcdertStrings)>,
-    pub choose_folder: Option<unsafe extern "C" fn(*mut c_void, *const c_char, *mut AcdertStrings) -> AcdertChoice>,
-    pub open_files: Option<unsafe extern "C" fn(*mut c_void, *const AcdertFileRequest, *mut AcdertStrings) -> AcdertChoice>,
-    pub save_file: Option<unsafe extern "C" fn(*mut c_void, *const AcdertFileRequest, *mut AcdertStrings) -> AcdertChoice>,
+    pub claim: Option<unsafe extern "C" fn(*mut c_void, u64, *mut AcdeRender, u32, *const c_char, *mut AcdeWindow, *mut AcdeStrings) -> bool>,
+    pub content_type: Option<unsafe extern "C" fn(*mut c_void, *const c_char, *mut AcdeStrings)>,
+    pub choose_folder: Option<unsafe extern "C" fn(*mut c_void, *const c_char, *mut AcdeStrings) -> AcdeChoice>,
+    pub open_files: Option<unsafe extern "C" fn(*mut c_void, *const AcdeFileRequest, *mut AcdeStrings) -> AcdeChoice>,
+    pub save_file: Option<unsafe extern "C" fn(*mut c_void, *const AcdeFileRequest, *mut AcdeStrings) -> AcdeChoice>,
     pub release: Option<unsafe extern "C" fn(*mut c_void)>,
 }
 
-struct CPlatform(AcdertPlatform);
+struct CPlatform(AcdePlatform);
 
 unsafe impl Send for CPlatform {}
 unsafe impl Sync for CPlatform {}
@@ -472,10 +472,10 @@ unsafe impl Sync for CPlatform {}
 impl CPlatform {
     fn choose(
         &self,
-        call: unsafe extern "C" fn(*mut c_void, *const AcdertFileRequest, *mut AcdertStrings) -> AcdertChoice,
+        call: unsafe extern "C" fn(*mut c_void, *const AcdeFileRequest, *mut AcdeStrings) -> AcdeChoice,
         request: Request,
-    ) -> (AcdertChoice, AcdertStrings) {
-        let mut strings = AcdertStrings(Vec::new());
+    ) -> (AcdeChoice, AcdeStrings) {
+        let mut strings = AcdeStrings(Vec::new());
         let choice = unsafe { call(self.0.ctx, &request.request, &mut strings) };
         (choice, strings)
     }
@@ -488,8 +488,8 @@ impl Platform for CPlatform {
         };
         let mut held = Held::default();
         let app = app.as_deref().map_or(null(), |app| held.text(app));
-        let render = Box::into_raw(Box::new(AcdertRender(render)));
-        let (mut window, mut error) = (AcdertWindow::default(), AcdertStrings(Vec::new()));
+        let render = Box::into_raw(Box::new(AcdeRender(render)));
+        let (mut window, mut error) = (AcdeWindow::default(), AcdeStrings(Vec::new()));
         match unsafe { claim(self.0.ctx, token, render, frame, app, &mut window, &mut error) } {
             true => Ok(Box::new(CWindow(window))),
             false => Err(error.first().unwrap_or_else(|| format!("claimSurface {token}: refused"))),
@@ -498,7 +498,7 @@ impl Platform for CPlatform {
 
     fn content_type(&self, extension: &str) -> Option<String> {
         let call = self.0.content_type?;
-        let (mut held, mut strings) = (Held::default(), AcdertStrings(Vec::new()));
+        let (mut held, mut strings) = (Held::default(), AcdeStrings(Vec::new()));
         unsafe { call(self.0.ctx, held.text(extension), &mut strings) };
         strings.first()
     }
@@ -507,7 +507,7 @@ impl Platform for CPlatform {
         let Some(call) = self.0.choose_folder else {
             return Portal.choose_folder(title);
         };
-        let (mut held, mut strings) = (Held::default(), AcdertStrings(Vec::new()));
+        let (mut held, mut strings) = (Held::default(), AcdeStrings(Vec::new()));
         unsafe { call(self.0.ctx, held.text(title), &mut strings) }.one(strings)
     }
 
@@ -542,7 +542,7 @@ struct Launch {
 }
 
 impl Launch {
-    unsafe fn new(argc: usize, argv: *const *const c_char, platform: *const AcdertPlatform) -> Self {
+    unsafe fn new(argc: usize, argv: *const *const c_char, platform: *const AcdePlatform) -> Self {
         let args = Option::from(Texts(argv, argc)).unwrap_or_default();
         let platform: Shared = match unsafe { platform.as_ref() } {
             Some(platform) => Arc::new(CPlatform(*platform)),
@@ -553,32 +553,32 @@ impl Launch {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn acdert_api_level() -> u32 {
+pub extern "C" fn acde_api_level() -> u32 {
     API_LEVEL
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_version(program: *const c_char) -> *mut c_char {
-    let program = Option::from(Text(program)).unwrap_or_else(|| String::from("acdert"));
+pub unsafe extern "C" fn acde_version(program: *const c_char) -> *mut c_char {
+    let program = Option::from(Text(program)).unwrap_or_else(|| String::from("acde"));
     CString::new(crate::host::version(&program)).map_or(null_mut(), CString::into_raw)
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_string_free(text: *mut c_char) {
+pub unsafe extern "C" fn acde_string_free(text: *mut c_char) {
     if !text.is_null() {
         drop(unsafe { CString::from_raw(text) });
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_start(script: *const c_char, argc: usize, argv: *const *const c_char, platform: *const AcdertPlatform) -> i32 {
+pub unsafe extern "C" fn acde_start(script: *const c_char, argc: usize, argv: *const *const c_char, platform: *const AcdePlatform) -> i32 {
     let Launch { args, platform } = unsafe { Launch::new(argc, argv, platform) };
     let entry = Option::from(Text(script)).map_or(Entry::Broker, Entry::Script);
     crate::host::start(entry, &args, platform)
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_common(argc: usize, argv: *const *const c_char, platform: *const AcdertPlatform, code: *mut i32) -> bool {
+pub unsafe extern "C" fn acde_common(argc: usize, argv: *const *const c_char, platform: *const AcdePlatform, code: *mut i32) -> bool {
     let Launch { args, platform } = unsafe { Launch::new(argc, argv, platform) };
     let Some(exit) = crate::host::common(&args, &platform) else {
         return false;
@@ -590,93 +590,93 @@ pub unsafe extern "C" fn acdert_common(argc: usize, argv: *const *const c_char, 
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn acdert_exit(code: i32) -> ! {
+pub extern "C" fn acde_exit(code: i32) -> ! {
     crate::host::exit(code)
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_strings_push(strings: *mut AcdertStrings, text: *const c_char) {
+pub unsafe extern "C" fn acde_strings_push(strings: *mut AcdeStrings, text: *const c_char) {
     if let (Some(strings), Some(text)) = (unsafe { strings.as_mut() }, Option::from(Text(text))) {
         strings.0.push(text);
     }
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn acdert_event_init() -> AcdertEvent {
-    AcdertEvent::default()
+pub extern "C" fn acde_event_init() -> AcdeEvent {
+    AcdeEvent::default()
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_events_push(events: *mut AcdertEvents, event: *const AcdertEvent) {
+pub unsafe extern "C" fn acde_events_push(events: *mut AcdeEvents, event: *const AcdeEvent) {
     if let (Some(events), Some(event)) = unsafe { (events.as_mut(), event.as_ref()) } {
         events.0.push(event.into());
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_waker_wake(waker: *const AcdertWaker) {
-    if let Some(AcdertWaker(wake)) = unsafe { waker.as_ref() } {
+pub unsafe extern "C" fn acde_waker_wake(waker: *const AcdeWaker) {
+    if let Some(AcdeWaker(wake)) = unsafe { waker.as_ref() } {
         wake();
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_waker_free(waker: *mut AcdertWaker) {
+pub unsafe extern "C" fn acde_waker_free(waker: *mut AcdeWaker) {
     if !waker.is_null() {
         drop(unsafe { Box::from_raw(waker) });
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_reply_send(reply: *mut AcdertReply, text: *const c_char) {
+pub unsafe extern "C" fn acde_reply_send(reply: *mut AcdeReply, text: *const c_char) {
     if !reply.is_null() {
-        let AcdertReply(reply) = *unsafe { Box::from_raw(reply) };
+        let AcdeReply(reply) = *unsafe { Box::from_raw(reply) };
         reply(Option::from(Text(text)).unwrap_or_default());
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_reply_free(reply: *mut AcdertReply) {
+pub unsafe extern "C" fn acde_reply_free(reply: *mut AcdeReply) {
     if !reply.is_null() {
         drop(unsafe { Box::from_raw(reply) });
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_render_tick(render: *const AcdertRender, now_ms: f64) {
-    if let Some(AcdertRender(render)) = unsafe { render.as_ref() } {
+pub unsafe extern "C" fn acde_render_tick(render: *const AcdeRender, now_ms: f64) {
+    if let Some(AcdeRender(render)) = unsafe { render.as_ref() } {
         render.tick(now_ms);
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_render_pointer(render: *const AcdertRender, x: f32, y: f32) {
-    if let Some(AcdertRender(render)) = unsafe { render.as_ref() } {
+pub unsafe extern "C" fn acde_render_pointer(render: *const AcdeRender, x: f32, y: f32) {
+    if let Some(AcdeRender(render)) = unsafe { render.as_ref() } {
         render.pointer(x, y);
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_render_scroll_at(render: *const AcdertRender, x: f32, y: f32, dx: f64, dy: f64) {
-    if let Some(AcdertRender(render)) = unsafe { render.as_ref() } {
+pub unsafe extern "C" fn acde_render_scroll_at(render: *const AcdeRender, x: f32, y: f32, dx: f64, dy: f64) {
+    if let Some(AcdeRender(render)) = unsafe { render.as_ref() } {
         render.scroll_at(x, y, dx, dy);
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_render_commit(render: *const AcdertRender) -> u64 {
-    unsafe { render.as_ref() }.map_or(0, |AcdertRender(render)| render.commit())
+pub unsafe extern "C" fn acde_render_commit(render: *const AcdeRender) -> u64 {
+    unsafe { render.as_ref() }.map_or(0, |AcdeRender(render)| render.commit())
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_render_invalidate(render: *const AcdertRender) {
-    if let Some(AcdertRender(render)) = unsafe { render.as_ref() } {
+pub unsafe extern "C" fn acde_render_invalidate(render: *const AcdeRender) {
+    if let Some(AcdeRender(render)) = unsafe { render.as_ref() } {
         render.invalidate();
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn acdert_render_free(render: *mut AcdertRender) {
+pub unsafe extern "C" fn acde_render_free(render: *mut AcdeRender) {
     if !render.is_null() {
         drop(unsafe { Box::from_raw(render) });
     }

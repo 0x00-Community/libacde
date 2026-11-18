@@ -10,7 +10,7 @@ const leveled = join(run, 'fixture-level2')
 const unversioned = join(run, 'fixture-unversioned')
 const debug = join(run, 'debug')
 const home = join(run, 'home')
-const binary = process.platform === 'win32' ? 'acdert.exe' : 'acdert'
+const binary = process.platform === 'win32' ? 'acdev.exe' : 'acdev'
 const runtime = process.env['ACDEV_RUNTIME'] ?? resolve('target', 'release', binary)
 const host = process.env['ACDE_APP'] ?? resolve('web', 'packages', 'acde-host', 'dist')
 
@@ -110,7 +110,7 @@ async function waitFor<T>(read: () => Promise<T | undefined>, label: string): Pr
   while (Date.now() < deadline) {
     const result = await read()
     if (result !== undefined) return result
-    if (child.exitCode !== null) throw new Error(`acdert exited with ${child.exitCode} before ${label}`)
+    if (child.exitCode !== null) throw new Error(`the runtime exited with ${child.exitCode} before ${label}`)
     await Bun.sleep(50)
   }
   throw new Error(`Timed out waiting for ${label}`)

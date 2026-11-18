@@ -320,7 +320,7 @@ pub(crate) fn finish<'s>(scope: &mut v8::PinScope<'s, '_>, rv: &mut v8::ReturnVa
         Ok(Err(Throw::Error(message))) => bind::throw_error(scope, &message),
         Err(panic) => {
             let message = panic.downcast_ref::<String>().cloned().or_else(|| panic.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default();
-            report(current_device(), Kind::Internal, format!("acdert: {message}"));
+            report(current_device(), Kind::Internal, format!("libacde: {message}"));
         }
     }
 }

@@ -37,7 +37,7 @@
 不列 acdev 自己的、`Hidden` / `NoDisplay`、程序找不到的.
 
 **契约级别** (`apiLevel`): 每个包清单的 `acde` 字段带一个整数 `apiLevel`, 运行时的级别只在本仓库的 `acde-api/api-level` (只写一个数字) 定义 (acde-host 经
-`@dopame/acde-api/manifest` 读, `acdert --version` 编译时从这个文件读). 级别不同或不是正整数的包 (`Packages.refused`) 不进应用列表、
+`@dopame/acde-api/manifest` 读, `<运行时> --version` 编译时从这个文件读). 级别不同或不是正整数的包 (`Packages.refused`) 不进应用列表、
 桌面列表和打开方式, 启动它的应用报 `<id>: needs level N, runtime is level M` (409, `api_level`), 选它的桌面同样报错. 没有 `apiLevel` 的包
 (第 1 级之前构建的) 同样拒绝, 报 `Manifest.UNVERSIONED` (`no acde.apiLevel: ...; rebuild it with the current acdev (level 1)`), 要用现在的 acdev
 重新构建; 校验器也把它当错误. 第 0 级 (契约级别之前的扩展期形态) 已全部去掉. acde-host 自己的包不查.
@@ -46,12 +46,12 @@
 第三方沙箱上线之前, 本地和开发构建的包都按开发者自己的代码运行.
 
 **启动哪个桌面**: `--desktop <id|包目录>`, 否则 `ACDE_DESKTOP`, 否则上次进的 (`$XDG_STATE_HOME/acde/desktop`; `--greeter` 和 `app` /
-`desktop` 子命令不记), 否则第一个 acde 桌面, 否则第一个外部会话. `acdert app` 没有桌面时用空的 (`Packages.bare`).
+`desktop` 子命令不记), 否则第一个 acde 桌面, 否则第一个外部会话. `<运行时> app` 没有桌面时用空的 (`Packages.bare`).
 桌面经 `acde.desktops.choose(id, remember)` 换桌面.
 
 **交出会话**: 选中外部会话时写交接文件 `$XDG_RUNTIME_DIR/acde/exec` (第一行是单引号引起来的 argv, 之后 `XDG_CURRENT_DESKTOP` /
 `XDG_SESSION_DESKTOP` / `XDG_SESSION_TYPE=wayland` / `DESKTOP_SESSION`), 退出码 3; 会话入口 `/usr/bin/acdert` 读它并 `exec`.
 
-**登录页** (`acdert --greeter`, greetd 的 greeter, acde-host `greet/`): 选账户、桌面、输密码; 会话是 `/usr/bin/acdert --desktop <id>` (外部会话是
+**登录页** (`<运行时> --greeter`, greetd 的 greeter, acde-host `greet/`): 选账户、桌面、输密码; 会话是 `/usr/bin/acdert --desktop <id>` (外部会话是
 它的 Exec 加那四个变量). 每个账户上次的桌面记在 `$XDG_STATE_HOME/acde/greeter.json` (greeter 的状态目录是 `/var/lib/acdev/greeter`). 别的显示管理器用
-`acdert sessions` 生成的 `acdert-<id>.desktop`.
+`<运行时> sessions` 生成的 `acdert-<id>.desktop`.

@@ -51,7 +51,7 @@ $homeDir = Join-Path $Run 'home'
 $sample = Join-Path $Run 'sample'
 $saved = Join-Path $Run 'saved'
 $savedFile = Join-Path $saved 'saved-from-chooser.txt'
-$acdert = Join-Path $repo 'target\release\acdert.exe'
+$runtime = Join-Path $repo 'target\release\acdev.exe'
 
 $envBefore = @{}
 $envSet = @{
@@ -63,8 +63,8 @@ $envRemove = @('ACDE_HEADLESS', 'ACDE_STORAGE', 'ACDE_BACKEND')
 foreach ($key in @($envSet.Keys + $envRemove)) { $envBefore[$key] = [Environment]::GetEnvironmentVariable($key) }
 foreach ($kv in $envSet.GetEnumerator()) { [Environment]::SetEnvironmentVariable($kv.Key, $kv.Value) }
 foreach ($key in $envRemove) { [Environment]::SetEnvironmentVariable($key, $null) }
-Write-Log "starting $acdert app manual-file-chooser (headful, dev pipe $pipeName)"
-$proc = Start-Process -FilePath $acdert -ArgumentList 'app', 'manual-file-chooser' -PassThru -RedirectStandardError (Join-Path $Run 'acdert.stderr.log')
+Write-Log "starting $runtime app manual-file-chooser (headful, dev pipe $pipeName)"
+$proc = Start-Process -FilePath $runtime -ArgumentList 'app', 'manual-file-chooser' -PassThru -RedirectStandardError (Join-Path $Run 'runtime.stderr.log')
 foreach ($kv in $envBefore.GetEnumerator()) { [Environment]::SetEnvironmentVariable($kv.Key, $kv.Value) }
 
 $pipe = $null

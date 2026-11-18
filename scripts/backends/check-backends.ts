@@ -9,14 +9,14 @@ assert.ok(artifacts, 'Run this check through scripts/check-backends.sh')
 const run = resolve(artifacts)
 const pkg = join(run, 'fixture')
 const fixture = import.meta.dir
-const runtime = process.env['ACDEV_RUNTIME'] ?? resolve('target', 'release', 'acdert.exe')
+const runtime = process.env['ACDEV_RUNTIME'] ?? resolve('target', 'release', 'acdev.exe')
 const host = process.env['ACDE_APP'] ?? resolve('web', 'packages', 'acde-host', 'dist')
 const base = join(process.env['XDG_RUNTIME_DIR'] || process.env['TMP'] || process.env['TEMP'] || '', 'acde', 'b')
 const report: Record<string, unknown> = { runtime, base }
 
 interface Session {
   name: string
-  acdert: ReturnType<typeof Bun.spawn>
+  host: ReturnType<typeof Bun.spawn>
   page: <T>(code: string, ms?: number) => Promise<T>
   call: <T>(source: string, ms?: number) => Promise<T>
   result: Record<string, unknown>
@@ -50,7 +50,7 @@ async function preload(): Promise<string> {
   const given = process.env['ACDE_LISTEN']
   if (given) return Bun.file(given).text()
   const source = join(process.env['ACDE_SRC'] ?? resolve('..', 'acde'), 'src', 'listen.ts')
-  assert.ok(existsSync(source), `No ${source}: check out acde beside acdert, or set ACDE_SRC or ACDE_LISTEN`)
+  assert.ok(existsSync(source), `No ${source}: check out acde beside libacde, or set ACDE_SRC or ACDE_LISTEN`)
   const built = await Bun.build({ entrypoints: [source], target: 'node', format: 'esm', minify: { syntax: true } })
   assert.ok(built.success && built.outputs[0], `Bundling ${source} failed: ${built.logs.join('\n')}`)
   return built.outputs[0].text()
@@ -136,23 +136,23 @@ async function session(name: string, prefer: string, body: (s: Session) => Promi
   const env: Record<string, string | undefined> = { ...process.env }
   delete env['ACDE_BACKEND']
   delete env['ACDE_DEV']
-  const acdert = Bun.spawn([runtime, 'app', app], {
+  const host = Bun.spawn([runtime, 'app', app], {
     env: {
       ...env, ACDE_RUNTIME: prefer, ACDE_APP: host, ACDE_PATH: pkg, ACDE_HEADLESS: '1', ACDE_SIZE: '800x600', ACDE_SCALE: '1', ACDE_STORAGE: '',
       ACDE_DEBUG_DIR: debug, HOME: home, XDG_CONFIG_HOME: home, XDG_DATA_HOME: home, XDG_STATE_HOME: home, XDG_CACHE_HOME: home,
       ...Object.fromEntries(['DESKTOP', 'DOCUMENTS', 'DOWNLOAD', 'MUSIC', 'PICTURES', 'VIDEOS'].map((n) => [`XDG_${n}_DIR`, join(home, 'places', n)])),
     },
-    stdout: Bun.file(join(dir, 'acdert.stdout.log')),
-    stderr: Bun.file(join(dir, 'acdert.stderr.log')),
+    stdout: Bun.file(join(dir, 'runtime.stdout.log')),
+    stderr: Bun.file(join(dir, 'runtime.stderr.log')),
   })
-  const s: Session = { name, acdert, page, call, result, pids: [] }
+  const s: Session = { name, host, page, call, result, pids: [] }
   try {
     await call(`async (api) => { for (let i = 0; i < 200; i++) { if (${web}) return true; await api.sleep(100) } throw new Error('no web') }`)
     await waitFor(async () => ((await page('typeof window.runScenario')) === 'function' ? true : undefined), 'the page')
     await body(s)
   } finally {
-    if (acdert.exitCode === null) acdert.kill()
-    await acdert.exited
+    if (host.exitCode === null) host.kill()
+    await host.exited
     for (const pid of s.pids) if (alive(pid)) process.kill(pid)
   }
 }
@@ -169,7 +169,7 @@ async function closeWindow(s: Session, pids: number[]): Promise<void> {
   const begun = Date.now()
   await s.call(`async (api) => { const w = api.shell.windows()[0]; setTimeout(() => api.broker.closeWeb(w.window), 100); return true }`)
   const timeout = new Promise<string>((done) => setTimeout(done, 10_000, 'timeout').unref())
-  assert.equal(await Promise.race([s.acdert.exited, timeout]), 0, `${s.name}: acdert did not exit with 0 after its last window closed`)
+  assert.equal(await Promise.race([s.host.exited, timeout]), 0, `${s.name}: the runtime did not exit with 0 after its last window closed`)
   s.result['closeToExitMs'] = Date.now() - begun - 100
   await waitFor(() => (pids.some(alive) ? undefined : true), `${s.name}: the backend processes to end`, 5000)
 }
@@ -188,9 +188,9 @@ async function backend(name: string, prefer: string, full: boolean): Promise<voi
     s.pids.push(pid, child)
     s.result['transport'] = transport
     scenarioPassed(name, await s.page('runScenario(' + full + ')', 120_000))
-    const opened = endpoints([s.acdert.pid, pid, child])
+    const opened = endpoints([s.host.pid, pid, child])
     const newPipes = [...pipes()].filter((pipe) => !before.has(pipe))
-    const ours = owned(newPipes, [s.acdert.pid, pid, child])
+    const ours = owned(newPipes, [s.host.pid, pid, child])
     s.result['endpoints'] = { ...opened, newPipes, ours }
     assert.deepEqual({ ...opened, ours }, { tcp: 0, udp: 0, ours: [] }, `${name}: open endpoints`)
     let generation: string | undefined
@@ -237,8 +237,8 @@ async function backend(name: string, prefer: string, full: boolean): Promise<voi
     const child3 = Number(await s.page(text('/api/child', 'POST')))
     s.pids.push(third, child3)
     await closeWindow(s, [third, child3])
-    if (full) assert.deepEqual(readdirSync(base).filter((entry) => entry.startsWith(`${s.acdert.pid}.`)), [], `${name}: generation directories left`)
-    const log = await Bun.file(join(run, name, 'acdert.stderr.log')).text()
+    if (full) assert.deepEqual(readdirSync(base).filter((entry) => entry.startsWith(`${s.host.pid}.`)), [], `${name}: generation directories left`)
+    const log = await Bun.file(join(run, name, 'runtime.stderr.log')).text()
     assert.match(log, /starting it again/, `${name}: no restart in the log`)
     const closed = s.result['closeToExitMs']
     console.log(`${name}: scenario passed twice, no TCP / UDP / named pipe, restarted ${pid} -> ${again}, stopped in ${stopMs} ms, closed in ${closed} ms`)
@@ -252,7 +252,7 @@ try {
   await backend('bun', 'bun', true)
   await session('old', 'node', async (s) => {
     const warned = await waitFor(async () => {
-      const log = await Bun.file(join(run, 'old', 'acdert.stderr.log')).text()
+      const log = await Bun.file(join(run, 'old', 'runtime.stderr.log')).text()
       return log.includes('acde-listen.js does not support the Windows channel (built by an older acde: acde build it again)') ? true : undefined
     }, 'the old preload warning', 10_000)
     s.result['warned'] = warned

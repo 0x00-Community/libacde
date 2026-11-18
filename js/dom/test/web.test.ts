@@ -52,7 +52,7 @@ test('storage, location / history, matchMedia, navigator, screen, viewport', asy
     const mq = matchMedia('(prefers-reduced-motion: reduce)')
     out.media = [mq.matches, matchMedia('(min-width: 1000px)').matches, matchMedia('(max-width: 1000px)').matches]
     out.nav = [navigator.platform, navigator.language, typeof navigator.clipboard.writeText, navigator.userAgent.includes('Chrome')]
-    out.ua = / acdert\\/\\d+\\.\\d+\\.\\d+$/.test(navigator.userAgent)
+    out.ua = / acde\\/\\d+\\.\\d+\\.\\d+$/.test(navigator.userAgent)
     out.view = [innerWidth, innerHeight, devicePixelRatio, screen.width]
     return out
   })()`)

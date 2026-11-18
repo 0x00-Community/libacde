@@ -71,7 +71,7 @@ thread_local! {
 }
 
 pub fn current() -> Rc<Loop> {
-    LOOP.with(|l| l.borrow().clone()).expect("acdert: no event loop on this thread")
+    LOOP.with(|l| l.borrow().clone()).expect("libacde: no event loop on this thread")
 }
 
 impl Loop {

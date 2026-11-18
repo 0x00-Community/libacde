@@ -7,46 +7,46 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef enum AcdertCommandKind {
-  ACDERT_COMMAND_KIND_REQUEST_FRAME,
-  ACDERT_COMMAND_KIND_SET_CLIPBOARD,
-  ACDERT_COMMAND_KIND_READ_CLIPBOARD,
-  ACDERT_COMMAND_KIND_START_DRAG,
-  ACDERT_COMMAND_KIND_MODE,
-  ACDERT_COMMAND_KIND_STATE,
-  ACDERT_COMMAND_KIND_GRAB_HINT,
-  ACDERT_COMMAND_KIND_BACKDROP,
-  ACDERT_COMMAND_KIND_ACTIVATE,
-  ACDERT_COMMAND_KIND_GRAB,
-  ACDERT_COMMAND_KIND_OPEN_PANEL,
-  ACDERT_COMMAND_KIND_PLACE_PANEL,
-  ACDERT_COMMAND_KIND_CLOSE_PANEL,
-  ACDERT_COMMAND_KIND_RESERVE_PANEL,
-  ACDERT_COMMAND_KIND_DOUBLE_CLICK,
-  ACDERT_COMMAND_KIND_FRAME_THEME,
-  ACDERT_COMMAND_KIND_PAGE_DARK,
-  ACDERT_COMMAND_KIND_TITLE,
-  ACDERT_COMMAND_KIND_IME_AREA,
-} AcdertCommandKind;
+typedef enum AcdeCommandKind {
+  ACDE_COMMAND_KIND_REQUEST_FRAME,
+  ACDE_COMMAND_KIND_SET_CLIPBOARD,
+  ACDE_COMMAND_KIND_READ_CLIPBOARD,
+  ACDE_COMMAND_KIND_START_DRAG,
+  ACDE_COMMAND_KIND_MODE,
+  ACDE_COMMAND_KIND_STATE,
+  ACDE_COMMAND_KIND_GRAB_HINT,
+  ACDE_COMMAND_KIND_BACKDROP,
+  ACDE_COMMAND_KIND_ACTIVATE,
+  ACDE_COMMAND_KIND_GRAB,
+  ACDE_COMMAND_KIND_OPEN_PANEL,
+  ACDE_COMMAND_KIND_PLACE_PANEL,
+  ACDE_COMMAND_KIND_CLOSE_PANEL,
+  ACDE_COMMAND_KIND_RESERVE_PANEL,
+  ACDE_COMMAND_KIND_DOUBLE_CLICK,
+  ACDE_COMMAND_KIND_FRAME_THEME,
+  ACDE_COMMAND_KIND_PAGE_DARK,
+  ACDE_COMMAND_KIND_TITLE,
+  ACDE_COMMAND_KIND_IME_AREA,
+} AcdeCommandKind;
 
-typedef enum AcdertChoice {
-  ACDERT_CHOICE_CHOSEN,
-  ACDERT_CHOICE_CANCELLED,
-  ACDERT_CHOICE_FAILED,
-} AcdertChoice;
+typedef enum AcdeChoice {
+  ACDE_CHOICE_CHOSEN,
+  ACDE_CHOICE_CANCELLED,
+  ACDE_CHOICE_FAILED,
+} AcdeChoice;
 
-typedef struct AcdertEvents AcdertEvents;
+typedef struct AcdeEvents AcdeEvents;
 
-typedef struct AcdertRender AcdertRender;
+typedef struct AcdeRender AcdeRender;
 
-typedef struct AcdertReply AcdertReply;
+typedef struct AcdeReply AcdeReply;
 
-typedef struct AcdertStrings AcdertStrings;
+typedef struct AcdeStrings AcdeStrings;
 
-typedef struct AcdertWaker AcdertWaker;
+typedef struct AcdeWaker AcdeWaker;
 
-typedef struct AcdertCommand {
-  enum AcdertCommandKind kind;
+typedef struct AcdeCommand {
+  enum AcdeCommandKind kind;
   const char *text;
   uint32_t number;
   uint32_t id;
@@ -59,58 +59,58 @@ typedef struct AcdertCommand {
   const char *const *data_keys;
   const char *const *data_values;
   size_t data_len;
-  struct AcdertReply *reply;
-} AcdertCommand;
+  struct AcdeReply *reply;
+} AcdeCommand;
 
-typedef struct AcdertWindow {
+typedef struct AcdeWindow {
   void *ctx;
   uint32_t (*window)(void*);
   void (*content_offset)(void*, double*, double*);
-  void (*pump)(void*, struct AcdertEvents*);
+  void (*pump)(void*, struct AcdeEvents*);
   bool (*has_events)(void*);
-  void (*set_waker)(void*, struct AcdertWaker*);
-  void (*send)(void*, const struct AcdertCommand*);
+  void (*set_waker)(void*, struct AcdeWaker*);
+  void (*send)(void*, const struct AcdeCommand*);
   bool (*minimizable)(void*);
   bool (*host_controls)(void*);
   bool (*size)(void*, uint32_t*, uint32_t*, double*);
   bool (*hosted)(void*);
   void (*release)(void*);
-} AcdertWindow;
+} AcdeWindow;
 
-typedef struct AcdertFilter {
+typedef struct AcdeFilter {
   const char *name;
   const char *const *globs;
   size_t globs_len;
   const char *const *mimes;
   size_t mimes_len;
-} AcdertFilter;
+} AcdeFilter;
 
-typedef struct AcdertFileRequest {
+typedef struct AcdeFileRequest {
   const char *title;
   const char *name;
   bool multiple;
   bool directory;
-  const struct AcdertFilter *filters;
+  const struct AcdeFilter *filters;
   size_t filters_len;
-} AcdertFileRequest;
+} AcdeFileRequest;
 
-typedef struct AcdertPlatform {
+typedef struct AcdePlatform {
   void *ctx;
   bool (*claim)(void*,
                 uint64_t,
-                struct AcdertRender*,
+                struct AcdeRender*,
                 uint32_t,
                 const char*,
-                struct AcdertWindow*,
-                struct AcdertStrings*);
-  void (*content_type)(void*, const char*, struct AcdertStrings*);
-  enum AcdertChoice (*choose_folder)(void*, const char*, struct AcdertStrings*);
-  enum AcdertChoice (*open_files)(void*, const struct AcdertFileRequest*, struct AcdertStrings*);
-  enum AcdertChoice (*save_file)(void*, const struct AcdertFileRequest*, struct AcdertStrings*);
+                struct AcdeWindow*,
+                struct AcdeStrings*);
+  void (*content_type)(void*, const char*, struct AcdeStrings*);
+  enum AcdeChoice (*choose_folder)(void*, const char*, struct AcdeStrings*);
+  enum AcdeChoice (*open_files)(void*, const struct AcdeFileRequest*, struct AcdeStrings*);
+  enum AcdeChoice (*save_file)(void*, const struct AcdeFileRequest*, struct AcdeStrings*);
   void (*release)(void*);
-} AcdertPlatform;
+} AcdePlatform;
 
-typedef struct AcdertEvent {
+typedef struct AcdeEvent {
   const char *kind;
   int64_t window;
   int64_t parent;
@@ -137,59 +137,55 @@ typedef struct AcdertEvent {
   const char *const *data_keys;
   const char *const *data_values;
   size_t data_len;
-} AcdertEvent;
+} AcdeEvent;
 
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
 
-uint32_t acdert_api_level(void);
+uint32_t acde_api_level(void);
 
-char *acdert_version(const char *program);
+char *acde_version(const char *program);
 
-void acdert_string_free(char *text);
+void acde_string_free(char *text);
 
-int32_t acdert_start(const char *script,
-                     size_t argc,
-                     const char *const *argv,
-                     const struct AcdertPlatform *platform);
-
-bool acdert_common(size_t argc,
+int32_t acde_start(const char *script,
+                   size_t argc,
                    const char *const *argv,
-                   const struct AcdertPlatform *platform,
-                   int32_t *code);
+                   const struct AcdePlatform *platform);
 
-void acdert_exit(int32_t code);
+bool acde_common(size_t argc,
+                 const char *const *argv,
+                 const struct AcdePlatform *platform,
+                 int32_t *code);
 
-void acdert_strings_push(struct AcdertStrings *strings, const char *text);
+void acde_exit(int32_t code);
 
-struct AcdertEvent acdert_event_init(void);
+void acde_strings_push(struct AcdeStrings *strings, const char *text);
 
-void acdert_events_push(struct AcdertEvents *events, const struct AcdertEvent *event);
+struct AcdeEvent acde_event_init(void);
 
-void acdert_waker_wake(const struct AcdertWaker *waker);
+void acde_events_push(struct AcdeEvents *events, const struct AcdeEvent *event);
 
-void acdert_waker_free(struct AcdertWaker *waker);
+void acde_waker_wake(const struct AcdeWaker *waker);
 
-void acdert_reply_send(struct AcdertReply *reply, const char *text);
+void acde_waker_free(struct AcdeWaker *waker);
 
-void acdert_reply_free(struct AcdertReply *reply);
+void acde_reply_send(struct AcdeReply *reply, const char *text);
 
-void acdert_render_tick(const struct AcdertRender *render, double now_ms);
+void acde_reply_free(struct AcdeReply *reply);
 
-void acdert_render_pointer(const struct AcdertRender *render, float x, float y);
+void acde_render_tick(const struct AcdeRender *render, double now_ms);
 
-void acdert_render_scroll_at(const struct AcdertRender *render,
-                             float x,
-                             float y,
-                             double dx,
-                             double dy);
+void acde_render_pointer(const struct AcdeRender *render, float x, float y);
 
-uint64_t acdert_render_commit(const struct AcdertRender *render);
+void acde_render_scroll_at(const struct AcdeRender *render, float x, float y, double dx, double dy);
 
-void acdert_render_invalidate(const struct AcdertRender *render);
+uint64_t acde_render_commit(const struct AcdeRender *render);
 
-void acdert_render_free(struct AcdertRender *render);
+void acde_render_invalidate(const struct AcdeRender *render);
+
+void acde_render_free(struct AcdeRender *render);
 
 #ifdef __cplusplus
 }  // extern "C"

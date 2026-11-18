@@ -47,7 +47,7 @@
       (`cloneFailure`). `structuredClone` / `postMessage` 也走这条路, `transfer` 里的 ArrayBuffer 克隆后 detach (MessagePort 照旧不转移).
     - 测试: `cargo test --release -p libacde storage` (调度、版本变更、回滚、游标), acde-dom `test/idb-keys.test.ts` (键序)、
       `test/storage.test.ts`. WPT 的 IndexedDB 用临时的包 (`apps` 的 entry 指向生成的页面, assets 挂 `/resources/`、`/IndexedDB/`、
-      `/common/`、`/interfaces/`; `/resources/WebIDLParser.js` 是 `resources/webidl2/lib/webidl2.js`), `acdert app` headless 逐个跑
+      `/common/`、`/interfaces/`; `/resources/WebIDLParser.js` 是 `resources/webidl2/lib/webidl2.js`), `<运行时> app` headless 逐个跑
       (`.any.js` 只跑 window 那份, 有 `variant` 的用 `history.replaceState` 换查询串), 页面用 `add_completion_callback` 把结果打进日志后
       `window.close()`. 2026-11-09 macOS: 1332 / 1384 个子测试过. 没过的都是别的缺口: Web Worker、跨 realm (iframe)、bfcache、
       SharedArrayBuffer (要 COOP / COEP)、Storage Buckets、要 WPT 服务器的 (`content.py`); `idlharness` 112 / 207, 没过的是整个 acde-dom
@@ -56,7 +56,7 @@
     `sys` 写任意文件 (见 `docs/runtime/webs.md`「沙箱」), 所以这不是安全边界的问题, 是和浏览器行为的差别.
   - **cookie** (`document.cookie`, 同源请求的 `Cookie` / `Set-Cookie`): 解析在 acde-dom `core/backend.ts`, 存在分区的 `CookieJar`
     (src/storage `cookies.rs`): 同一应用的窗口共用; 有 `Expires` / `Max-Age` 的写进 `cookies.sqlite3`, 会话 cookie 只在进程里
-    (acdert 退出就没了, 和浏览器关掉一样); 按路径长、再按创建先后排; 脚本碰不到 `HttpOnly`.
+    (运行时退出就没了, 和浏览器关掉一样); 按路径长、再按创建先后排; 脚本碰不到 `HttpOnly`.
   - **Cache API** (`caches`, `Cache` / `CacheStorage`, acde-dom `storage/cache.ts`, src/storage `caches.rs`, src/host `caches.rs`):
     `caches.sqlite3`, 每个缓存一行 (按创建先后), 条目存请求的 URL (含 `#片段`)、方法、请求头, 回应的 status / statusText / type / url /
     redirected (JSON)、回应头和整段 body. 匹配在 Rust 里照规范的「request matches cached item」: 比的时候去掉片段, `ignoreSearch` 再去掉

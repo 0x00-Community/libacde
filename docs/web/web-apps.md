@@ -44,7 +44,7 @@
   `docs/dev/dev-ipc.md`「acdev dev」的 `dialog`. 页面可以等用户回答的模态对话框还没有);
   外部链接交给浏览器应用 (宿主窗口里要 slots 的浏览器应用跑不了, 不打开, 见 `docs/web/default-apps.md`「默认应用」), 下载存进下载目录 (桌面收 `on('download')`); 打开 / 保存文件的选择器见 `docs/web/fs.md`「打开和保存文件」; 隐藏 / 显示是 `visibilitychange`;
   `screen.*` 是主输出的逻辑尺寸; `navigator.userAgent` / `platform` 在所有宿主上都报 Linux (`X11; Linux x86_64` / `Linux x86_64`, Broker 的 `UserAgent`,
-  经 `WebInit.navigator`), 产品段是 `acdert/<真实版本>`. 运行时对应用呈现统一的 Linux 环境: 交互语义一律照 Linux (编辑快捷键是 Ctrl;
+  经 `WebInit.navigator`), 产品段是 `acde/<真实版本>`. 运行时对应用呈现统一的 Linux 环境: 交互语义一律照 Linux (编辑快捷键是 Ctrl;
   页面若看到 `MacIntel`, 编辑器库会把快捷键改绑到 Command, 同一窗口里就有两套规矩), 跨宿主一致.
   需要宿主系统信息的应用以后由 `acde:` 模块单独提供, 不从 `navigator` 猜.
 - **`<select>`** (https://html.spec.whatwg.org/#the-select-element): 选中状态在 render (`dom/select.rs`), 每个 option 自己记 selectedness
@@ -133,7 +133,7 @@
     每 quantum 算一次, 增益、延迟和滤波系数在 quantum 内线性过渡 (不出拉链声); 立体声输入左进左耳、右进右耳 (和 Chrome 一样不交叉).
     输入变静时清掉延迟线和滤波器状态. `BiquadFilterNode`、`ConvolverNode`、`DynamicsCompressorNode`、`WaveShaperNode`、`DelayNode` 还没渲染
     (输入原样通过, 第一次用时 warn 一次).
-- **视频** (src/media `acde-media`): 用系统的框架解码, 不随包带编解码器 (用户定, 2026-11-09; acdert 闭源, 不链接 GPL 的 ffmpeg).
+- **视频** (src/media `acde-media`): 用系统的框架解码, 不随包带编解码器 (用户定, 2026-11-09; libacde 闭源, 不链接 GPL 的 ffmpeg).
   - `Player::open(bytes)` 探出 `Info {duration, width, height, audio, video}`, 每个轨一条读线程 (`acde-video` / `acde-video-audio`) 各自往
     有界队列里解: 视频 RGBA 帧 (领先 4 帧), 音频 48 kHz 立体声 f32 交错 (领先半秒). 两个轨分开读, 不会一个轨满了卡住解封装器让另一个轨饿死.
     `seek(t)`: 清队列, 两条线程都停下后由最后一条重启解码器. 消费方拉: `take_audio` (混音器线程)、`frame_at(t)` (取到时间的最后一帧,
@@ -193,7 +193,7 @@
       `code` / `capability`.
     - 还没有: 撤销之后已经在用的轨道不会 `ended` (它开着的设备照常出数据), 只是不能再开新的.
     批准之后还有系统的询问: macOS TCC (`AVCaptureDevice requestAccess`, 第一次 `getUserMedia`
-    时弹; acdert 二进制的 `__TEXT,__info_plist` 段带 `NSCameraUsageDescription` / `NSMicrophoneUsageDescription`, 见 src/host
+    时弹; 运行时程序的 `__TEXT,__info_plist` 段带 `NSCameraUsageDescription` / `NSMicrophoneUsageDescription`, 见 src/host
     `build.rs`; 从终端起时 TCC 记在终端名下); Linux 本机程序直接读 PipeWire / V4L2, 没有系统询问. acdev 自己不画询问框 (批准提示由桌面或 `acdev allow` 答).
     `navigator.permissions` 是真的 `Permissions` / `PermissionStatus`.
   - 设备 (`acde_media::capture`): Linux 用 GStreamer `DeviceMonitor` (`Audio/Source`、`Video/Source`, PipeWire / V4L2 提供者, 去掉

@@ -102,8 +102,10 @@ const pct = (a: number, b: number) => (b ? `${((100 * a) / b).toFixed(1)}%` : '�
 const notRun = (reason: string) => inScope.filter((t) => t.unhosted === reason).length
 const notYet = inScope.filter((t) => !t.unhosted && !results.has(t.url)).length
 const lines: string[] = []
-lines.push(`# WPT on acdert — ${label}`, '')
-lines.push(`- WPT ${String(meta.wpt).slice(0, 10)}, acdert binary \`${meta.acdert}\`, ${meta.platform}, ${meta.workers} workers, started ${meta.started}${meta.seconds ? `, ${Math.round(meta.seconds / 60)} min` : ''}`)
+lines.push(`# WPT on libacde — ${label}`, '')
+const took = meta.seconds ? `, ${Math.round(meta.seconds / 60)} min` : ''
+const runtime = meta.runtime ?? meta.acdert
+lines.push(`- WPT ${String(meta.wpt).slice(0, 10)}, runtime \`${runtime}\`, ${meta.platform}, ${meta.workers} workers, started ${meta.started}${took}`)
 lines.push('- testharness, reftest and crashtest files; a reftest or crashtest counts as one subtest.')
 lines.push(`- The runner cannot host yet: ${notRun('https')} need https/h2, ${notRun('websocket')} websockets (wptserve's ws port is not the page's), ${notRun('print')} print reftests${notYet ? `; ${notYet} not reached yet` : ''}. Not applicable: see scripts/wpt/not-applicable.`)
 lines.push(`- Ran ${total.files} test files: ${Object.entries(statusCount).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}.`)

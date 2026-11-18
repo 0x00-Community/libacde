@@ -12,7 +12,7 @@
 
 - 范围: WPT 的全部目录, 除了 `scripts/wpt/not-applicable` 列的 (一行一个目录, tab 后是理由). 只有「测的是浏览器自己, 页面碰不到」的才算不适用:
   浏览器外壳和自动化协议 (webdriver、扩展)、开放网页的广告和隐私生态 (fenced frame、跨站归因、存储访问授权…)、浏览器的支付面板、只对 https 页面的策略
-  (页面都是 `http://acde.local`)、校验器的测试. 其余都适用, acdert 没实现的是缺口 (期望文件里记 FAIL / NOLOAD), 不是不适用.
+  (页面都是 `http://acde.local`)、校验器的测试. 其余都适用, 运行时没实现的是缺口 (期望文件里记 FAIL / NOLOAD), 不是不适用.
 - 托管: 和浏览器跑 WPT 一样用 wptserve (`.sub.` 模板、`.headers`、`.py` 处理器、worker 和 `.any` 变体都由它现场生成). 每个 worker 是一个
   `"entry": "/"` 的测试应用 (页面由后端给), 后端 `proxy.ts` 把页面的请求原样转给 wptserve (字节流, 不经 HTTP 客户端改写); 它还原运行时为后端改的
   `Host` / `Origin` / `Referer` (后端看到的是 `localhost`, 见 `docs/web/backend.md`「路由」) 成 `acde.local`, 并换上本目录的 `testharnessreport.js` /
@@ -22,8 +22,8 @@
 - 三种测试: testharness (`harness/testharnessreport.js` 收结果; `testdriver-vendor.js` 把 click / send_keys / action_sequence 交给驱动的真实输入);
   reftest (无边框窗口 800x600, 等 `reftest-wait` 去掉、字体就绪、两帧, 截图逐像素比, 按清单的 fuzzy 范围, 参考链, 同一会话缓存参考图);
   crashtest (加载、等 `test-wait` 去掉, 进程还在即 PASS). 6 秒内页面没加载完记 NOLOAD.
-- 命令: `wpt.sh fetch` (稀疏检出 `revision` 钉的 WPT, 去掉不适用的目录, 生成清单, 装好 wptserve 的 Python 环境) → `prepare --workers N` → `run --acdert <acdev runtime> [--label L]
-  [--dirs a,b] [--kinds …] [--tests gate.json] [--skip-slow <期望目录>]` (`--skip-slow` 跳过期望里记成 TIMEOUT / NOLOAD / HANG 的: 它们大多等满 10 / 60 秒的超时, 全量里大半时间花在这上面, 比如 acdert 没有的老式多字节编码; 只有 `baseline` 全跑) (`--app` 缺省是本仓库的 `web/packages/acde-host/dist`, 要先 `cd web && bun run build`) →
+- 命令: `wpt.sh fetch` (稀疏检出 `revision` 钉的 WPT, 去掉不适用的目录, 生成清单, 装好 wptserve 的 Python 环境) → `prepare --workers N` → `run --runtime <acdev runtime> [--label L]
+  [--dirs a,b] [--kinds …] [--tests gate.json] [--skip-slow <期望目录>]` (`--skip-slow` 跳过期望里记成 TIMEOUT / NOLOAD / HANG 的: 它们大多等满 10 / 60 秒的超时, 全量里大半时间花在这上面, 比如运行时没有的老式多字节编码; 只有 `baseline` 全跑) (`--app` 缺省是本仓库的 `web/packages/acde-host/dist`, 要先 `cd web && bun run build`) →
   `report L` (按目录的通过率、缺的接口、常见失败) / `expectations check L` (对期望文件, 回退就退出 1) / `expectations update L [L2 L3]` (几次结果合并,
   不一致的标 flaky) / `expectations gate` (守门的测试表).
 - 钉的版本 (`scripts/wpt/revision`) 要选 wpt.fyi 上 Chrome、Firefox、Safari、Servo 四家都有结果的提交 (`https://wpt.fyi/api/runs?sha=<提交>&products=chrome,firefox,safari,servo`

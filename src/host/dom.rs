@@ -83,9 +83,9 @@ impl Loader for WebLoader {
         }
         let base = url::Url::parse(referrer).or_else(|_| url::Url::parse(&format!("{ORIGIN}/"))).map_err(|e| e.to_string())?;
         if !crate::host::modules::url_like(specifier) {
-            return Err(format!("acdert: bare module specifier '{specifier}' in {referrer} (pages import URLs)"));
+            return Err(format!("libacde: bare module specifier '{specifier}' in {referrer} (pages import URLs)"));
         }
-        base.join(specifier).map(String::from).map_err(|e| format!("acdert: {specifier}: {e}"))
+        base.join(specifier).map(String::from).map_err(|e| format!("libacde: {specifier}: {e}"))
     }
 
     fn load(&self, url: &str) -> Result<String, String> {
@@ -95,8 +95,8 @@ impl Loader for WebLoader {
         if url.starts_with("file:") {
             return crate::host::sys::FileLoader.load(url);
         }
-        let file = asset_file(url).ok_or_else(|| format!("acdert: module {url} is not a local file"))?;
-        std::fs::read_to_string(&file).map_err(|e| format!("acdert: {}: {e}", file.display()))
+        let file = asset_file(url).ok_or_else(|| format!("libacde: module {url} is not a local file"))?;
+        std::fs::read_to_string(&file).map_err(|e| format!("libacde: {}: {e}", file.display()))
     }
 }
 

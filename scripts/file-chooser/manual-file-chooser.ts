@@ -74,7 +74,7 @@ document.getElementById('save').onclick = async () => {
 </script>
 </body>
 `)
-const binary = resolve('target', 'release', process.platform === 'win32' ? 'acdert.exe' : 'acdert')
+const binary = resolve('target', 'release', process.platform === 'win32' ? 'acdev.exe' : 'acdev')
 const env = { ...process.env, ACDE_PATH: pkg, ACDE_APP: resolve('web/packages/acde-host/dist'), HOME: home, USERPROFILE: home,
   XDG_CONFIG_HOME: home, XDG_DATA_HOME: home, XDG_STATE_HOME: state,
   ...Object.fromEntries(['DESKTOP', 'DOCUMENTS', 'DOWNLOAD', 'MUSIC', 'PICTURES', 'VIDEOS'].map((n) => [`XDG_${n}_DIR`, join(home, 'places', n)])), }

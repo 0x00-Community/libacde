@@ -7,7 +7,7 @@ assert.ok(artifacts, 'Run this through scripts/release-perf/bench.sh')
 const run = resolve(artifacts)
 const hosts = (process.env['BENCH_HOSTS'] ?? 'dist,dist-release').split(',').map((name) => name.trim())
 const rounds = Number(process.env['BENCH_ROUNDS'] ?? 5)
-const binary = process.platform === 'win32' ? 'acdert.exe' : 'acdert'
+const binary = process.platform === 'win32' ? 'acdev.exe' : 'acdev'
 const runtime = process.env['ACDEV_RUNTIME'] ?? resolve('target', 'release', binary)
 const pkgRoot = join(run, 'package')
 await mkdir(pkgRoot, { recursive: true })
@@ -77,7 +77,7 @@ async function once(host: string, index: number) {
       const data = await Bun.file(`${base}.out`).json().catch(() => undefined) as { error?: string; value: T } | undefined
       if (data?.error) throw new Error(data.error)
       if (data) return data.value
-      if (child.exitCode !== null) throw new Error(`acdert exited with ${child.exitCode} before ${name}`)
+      if (child.exitCode !== null) throw new Error(`the runtime exited with ${child.exitCode} before ${name}`)
       await Bun.sleep(50)
     }
     throw new Error(`Timed out waiting for ${name}`)

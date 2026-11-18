@@ -83,7 +83,7 @@ pub fn set_loader(loader: Rc<dyn Loader>) {
 }
 
 fn loader() -> Result<Rc<dyn Loader>, String> {
-    MAP.with(|m| m.borrow().loader.clone()).ok_or_else(|| "acdert: no module loader in this isolate".to_owned())
+    MAP.with(|m| m.borrow().loader.clone()).ok_or_else(|| "libacde: no module loader in this isolate".to_owned())
 }
 
 pub const SCHEME: &str = "acde:";
@@ -115,7 +115,7 @@ fn target(specifier: &str, referrer: &str) -> Result<String, String> {
         true if MAP.with(|m| m.borrow().builtins.contains_key(specifier)) => Ok(specifier.to_owned()),
         true => Err(MAP
             .with(|m| m.borrow().refused.get(specifier).cloned())
-            .unwrap_or_else(|| format!("acdert: '{specifier}' is not given to {referrer} (the capabilities in its manifest)"))),
+            .unwrap_or_else(|| format!("libacde: '{specifier}' is not given to {referrer} (the capabilities in its manifest)"))),
         false => mapped(&*loader()?, specifier, referrer),
     }
 }
@@ -219,7 +219,7 @@ fn resolve_callback<'s>(
     let referrer = url_of(scope, referrer).unwrap_or_default();
     let target = thrown(scope, target(&specifier, &referrer))?;
     let module = cached(scope, &target);
-    thrown(scope, module.ok_or_else(|| format!("acdert: module {target} was not loaded")))
+    thrown(scope, module.ok_or_else(|| format!("libacde: module {target} was not loaded")))
 }
 
 pub fn set_inline_source(function: Option<v8::Global<v8::Function>>) {
@@ -228,14 +228,14 @@ pub fn set_inline_source(function: Option<v8::Global<v8::Function>>) {
 
 fn inline_source(scope: &mut v8::PinScope, url: &str) -> Option<String> {
     let Some(function) = MAP.with(|m| m.borrow().inline_source.clone()) else {
-        return thrown(scope, Err(format!("acdert: module {url}: this page reads no blob: or data: modules")));
+        return thrown(scope, Err(format!("libacde: module {url}: this page reads no blob: or data: modules")));
     };
     let function = v8::Local::new(scope, function);
     let receiver = v8::undefined(scope).into();
     let arg = v8::String::new(scope, url)?.into();
     let source = function.call(scope, receiver, &[arg])?;
     if source.is_null_or_undefined() {
-        return thrown(scope, Err(format!("acdert: module {url}: no such blob: or data: URL")));
+        return thrown(scope, Err(format!("libacde: module {url}: no such blob: or data: URL")));
     }
     Some(source.to_rust_string_lossy(scope))
 }

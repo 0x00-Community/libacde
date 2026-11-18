@@ -1,9 +1,9 @@
-# WebGL (`src/webgl` `acde-webgl`, acdert `webgl.rs`, acde-dom `webgl/`)
+# WebGL (`src/webgl` `acde-webgl`, src/host `webgl.rs`, acde-dom `webgl/`)
 
 WebGL 1 和 2 在每个 OS 上都有 (Windows 没验过), 是 wgpu 上的一台 GL 状态机, 用 `Gpu::shared()` 那台设备 (和画布、页面共用), 不用 ANGLE、不用系统 OpenGL.
 
 - **分层**: acde-dom `webgl/index.ts` 是标准的 `WebGLRenderingContext` / `WebGL2RenderingContext` 和 WebGL 对象 (`WebGLBuffer` …), 只管参数换算、
-  对象包装和扩展对象; 状态、校验和 GL 错误都在 acde-webgl 的 `Context` (Rust, 不依赖 V8, 能单测); acdert `webgl.rs` 把它绑成 `natives.webgl`
+  对象包装和扩展对象; 状态、校验和 GL 错误都在 acde-webgl 的 `Context` (Rust, 不依赖 V8, 能单测); src/host `webgl.rs` 把它绑成 `natives.webgl`
   (每个 canvas 一个 `Context`, 调用的第一个参数是上下文编号). `getError` 同步, 所以每个调用自己校验; 会失败的 wgpu 调用 (建纹理 / 渲染缓冲 /
   绘制缓冲 / 管线 / 绑定组、提交) 都在错误范围 (`Context::scoped`) 里, 失败时报 GL 错误 (`OUT_OF_MEMORY` / `INVALID_OPERATION`) 并记日志.
 - **着色器**: GLSL ES 1.00 / 3.00 经 `src/webgl/glsl` 的 WebGL 方言 (`Frontend::parse_webgl`, 见 `docs/graphics/vendor.md` 末尾) 变成 naga IR, 直接交给 wgpu
