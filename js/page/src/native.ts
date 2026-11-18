@@ -72,8 +72,9 @@ export interface NativeSurface {
   wait(): Promise<void>
   waitThen?(callback: () => void): void
   requestFrame(): void
-  setClipboard(text: string): void
-  readClipboard(): Promise<string>
+  setClipboard(entries: readonly ClipboardBytes[]): void
+  clipboardTypes(): Promise<string[]>
+  readClipboard(type: string): Promise<Uint8Array | null>
   startDrag(data: Record<string, string>, icon?: DragIcon): void
   requestMode(mode: 'free' | 'fixed' | 'pinned'): void
   requestState(state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
@@ -91,7 +92,12 @@ export interface NativeSurface {
   setPageDark?(dark: boolean): void
 }
 
-export type Shell = Pick<NativeSurface, 'setClipboard' | 'readClipboard' | 'setImeArea'>
+export interface ClipboardBytes {
+  readonly type: string
+  readonly data: Uint8Array
+}
+
+export type Shell = Pick<NativeSurface, 'setClipboard' | 'clipboardTypes' | 'readClipboard' | 'setImeArea'>
 
 export interface NativeDevToolsTarget {
   readonly id: string
