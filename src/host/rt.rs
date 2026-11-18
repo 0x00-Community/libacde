@@ -294,7 +294,10 @@ impl Runtime {
             for task in local {
                 self.task(task);
             }
-            while let Ok(msg) = lp.rx.try_recv() {
+            // only what is queued now: a task that posts another (a busy page's `waitThen` finding events ready again) would keep
+            // this drain going forever, and timers that came due meanwhile never ran
+            let queued: Vec<Msg> = std::iter::from_fn(|| lp.rx.try_recv().ok()).collect();
+            for msg in queued {
                 self.message(msg);
             }
             if lp.exit.get().is_some() || !lp.local.borrow().is_empty() {
@@ -304,7 +307,14 @@ impl Runtime {
                 return 1;
             }
             if !lp.alive() {
-                return 0;
+                // a task handled above may have posted more: the loop ends only once nothing is queued either
+                match lp.rx.try_recv() {
+                    Ok(msg) => {
+                        self.message(msg);
+                        continue;
+                    }
+                    Err(_) => return 0,
+                }
             }
             self.before_wait();
             if !lp.local.borrow().is_empty() || lp.exit.get().is_some() {
@@ -618,5 +628,51 @@ mod tests {
             value.to_rust_string_lossy(scope)
         });
         assert_eq!(reports, "Error: real", "only the real rejection is reported, not the termination");
+    }
+
+    /// A busy page re-posts its frame task while it handles one (`waitThen` finds events ready and sends `wake` again); timers
+    /// that came due meanwhile still run between those tasks instead of waiting until the page goes quiet.
+    #[test]
+    fn timers_run_between_tasks_that_post_more_tasks() {
+        use std::sync::atomic::AtomicU32;
+        const LIMIT: u32 = 200;
+        let mut rt = Runtime::new(None, "busy", std::sync::Arc::new(crate::host::platform::Headless));
+        rt.lp.keep_alive(true);
+        let posted = Arc::new(AtomicU32::new(0));
+        let fired_after = Rc::new(Cell::new(None::<u32>));
+        fn frame(posted: Arc<AtomicU32>) -> ScopeTask {
+            Box::new(move |_| {
+                std::thread::sleep(Duration::from_millis(2));
+                if posted.fetch_add(1, Ordering::SeqCst) + 1 < LIMIT {
+                    _ = current().sender().send(Msg::Task(frame(posted.clone())));
+                }
+            })
+        }
+        let (seen, at) = (posted.clone(), fired_after.clone());
+        rt.lp.delay(Duration::from_millis(1), move |_| at.set(Some(seen.load(Ordering::SeqCst))));
+        _ = rt.lp.sender().send(Msg::Task(frame(posted.clone())));
+        let (done, stop_at) = (posted.clone(), fired_after.clone());
+        rt.run_until(move || stop_at.get().is_some() || done.load(Ordering::SeqCst) >= LIMIT);
+        let fired_after = fired_after.get().expect("the timer ran before the busy tasks ended");
+        assert!(fired_after <= 2, "the 1 ms timer waited for {fired_after} busy tasks of 2 ms");
+    }
+
+    /// Tasks that keep posting tasks hold the loop open even with nothing else alive: it ends once nothing is queued.
+    #[test]
+    fn the_loop_ends_only_when_nothing_is_queued() {
+        use std::sync::atomic::AtomicU32;
+        const LIMIT: u32 = 50;
+        let mut rt = Runtime::new(None, "chain", std::sync::Arc::new(crate::host::platform::Headless));
+        let posted = Arc::new(AtomicU32::new(0));
+        fn link(posted: Arc<AtomicU32>) -> ScopeTask {
+            Box::new(move |_| {
+                if posted.fetch_add(1, Ordering::SeqCst) + 1 < LIMIT {
+                    _ = current().sender().send(Msg::Task(link(posted.clone())));
+                }
+            })
+        }
+        _ = rt.lp.sender().send(Msg::Task(link(posted.clone())));
+        assert_eq!(rt.run_until(|| false), 0);
+        assert_eq!(posted.load(Ordering::SeqCst), LIMIT, "every task in the chain ran before the loop ended");
     }
 }
