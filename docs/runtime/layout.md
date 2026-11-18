@@ -16,7 +16,7 @@
 | `src/napi` | rusty_v8 实现的 Node-API (napi8), 让 `#[napi]` 导出在 Broker 里可用. 改自 Deno `ext/napi` 0.191.0 (MIT, LICENSE-MIT), 去掉了用不到的入口 |
 | `js/dom` | 网页接口层: web 里的浏览器全局对象和 DOM (原 acde-dom) |
 | `js/page` | 页面一侧的胶水: 在 web 里起页面、`acde:` 模块、和启动方的 rpc、输入与窗框 (原 acde-host 的 `worker.ts` 及其依赖) |
-| `js/launcher` | 单应用启动器: 一个进程开一个应用一个窗口 (临时代替原管理中枢, 见下) |
+| `js/launcher` | 单应用启动器: 一个进程开一个应用一个窗口 (临时代替原管理中枢, 见下). `src/` 下按职责分: 根上是入口 `main.ts` 和 `args.ts`; `app/` 找应用、拼页面初始化数据、本进程回答的调用 (`calls.ts`) 和事件 (`events.ts`); `manager/` 与管家的连接和服务模式; `dev/` 调试通道、DevTools、语义树与操作; `backend/` 应用后端 |
 
 ## js: 运行时自带的 JS
 
@@ -51,7 +51,7 @@
   `{desktops: DesktopInfo[], current}`)、`desktops.choose(id, remember?)` 经 rpc 转出, 有管家时原样 `manager.call`. 同步的
   `session.own()` 取 `WebInit.session.own`: 启动器把 welcome 顶层的 `session: {own}` 带进去, 没有这一项或没有管家时为 false.
   管家 (acdes) 推来的服务里若也有 `session` / `desktops`, 会盖掉这两个模块; acdes 在本工单后去掉登录模式里的这条绕法.
-- **服务模式** (`service <名字>`, system 工作项 12, 帧格式见总仓 `.scratch/system/issues/12-services.md`, `js/launcher/src/service.ts`):
+- **服务模式** (`service <名字>`, system 工作项 12, 帧格式见总仓 `.scratch/system/issues/12-services.md`, `js/launcher/src/manager/service.ts`):
   不开窗口, 在启动方的 isolate 里 `import` welcome 的 `module` (绝对路径), 用 ServiceContext (`name`、`package` 即包目录、`state` 即管家建好的
   `stateDir`、`native`、`env`、`log`、`spawn`, `import('acde:<模块>')` 只放行 welcome 的 `modules`, 其方法经管家调用) 调它的默认导出;
   起好后向管家发 `{ready: {provides: {命名空间: {methods, values, sync, callable}}}}` (形状同旧管理中枢). 管家转来的调用
@@ -67,7 +67,7 @@
   在推来的列表 (含形状) 和上一份不同时通知. 通知前新命名空间已能 `import('acde:<名字>')`, 形状变了的重新 import 拿新代理, 去掉的再 import
   会被拒 (`modules.rs` 的 `define` / `refuse` 会丢掉缓存的模块; 已拿到手的旧代理仍在, 调用由管家报错). 桌面先于服务起来时 (客户机上服务要
   几十秒), 页面在 `changed` 里重新 import 并初始化, 不用轮询. 命名空间 `services` 留给这个模块, 服务提供同名命名空间会被忽略.
-- **两种都留在本进程的调用** (`js/launcher/src/calls.ts` 的 `route`): `window.close` 和以自己窗口号调的 `windows.close` 关掉窗口 (结束页面线程,
+- **两种都留在本进程的调用** (`js/launcher/src/app/calls.ts` 的 `route`): `window.close` 和以自己窗口号调的 `windows.close` 关掉窗口 (结束页面线程,
   进程随之退出); `window.minimize`、`window.requestState('minimized')` 让页面自己最小化 (其余状态回 501); `window.reload([url])` 结束页面线程、
   对同一个窗口重新授予后再起 (url 须在 `http://acde.local/` 下); `capabilities.get/list` 按清单声明回 `available` / `not-declared`
   (临时, 不看平台与逐次同意). 桌面另答 `panel.open/place/close` (钉住的面板, 同旧管理中枢) 和 `windows.*` (`close`、`kill`、`focus`、`hide`、
@@ -75,12 +75,12 @@
   `showDesk`、`moveToDesk` 交给 `native.Shell` 的同名方法; `launch` 有管家时转给 `launch.start`).
 - 窗口: 应用向窗口系统要一个占满宿主窗口的窗口; 桌面 `grant({desktop: true})` (窗口号 0). 窗口系统的关窗请求 (`windowcloserequest`, 如 xdg
   的 close) 先问页面 `window.beforeclose` (最多等 3 秒, 页面答 `false` 就不关), 再同样关掉. 桌面进程把窗口系统的其余事件 (`windowopen` 等)
-  交给桌面页 (`js/launcher/src/events.ts`): `windowgeometry` 若带的是 `x`、`y`、`width`、`height` 就合成 `rect`; `windowopen` 的 `instance`
+  交给桌面页 (`js/launcher/src/app/events.ts`): `windowgeometry` 若带的是 `x`、`y`、`width`、`height` 就合成 `rect`; `windowopen` 的 `instance`
   (管家给的应用实例编号)、`windowdesk`、`currentdesk` 原样转. 页面的窗口列表 (`js/page/src/remote.ts` 的 `WindowList`) 记下 `rect`、`instance`、`desk`.
 - 启动方的 isolate 里先装好核心全局对象 (定时器、console 等, `installCore`). 宿主窗口关闭、页面退出或 `--seconds` 到时退出, 退出码是页面的.
   `--shot` 在 `--shot-after` (默认 2000) 毫秒后存一张宿主窗口截图, 无头 (`ACDE_HEADLESS=1`) 也行; 首帧没画完时截到的是空屏 (WSL 的 Dozen 上
   调试版首帧要 5～6 秒, 验证时用 `--shot-after 15000`).
-- **调试通道** (`js/launcher/src/dev.ts` 的 `DevChannel`, acdev-single-app 工作项 10、11): 宿主窗口的 `devrequest` 事件 (hostwin `dev.rs`
+- **调试通道** (`js/launcher/src/dev/dev.ts` 的 `DevChannel`, acdev-single-app 工作项 10、11): 宿主窗口的 `devrequest` 事件 (hostwin `dev.rs`
   转来的 `acdev dev` 请求, 协议见 `docs/dev/dev-ipc.md`) 由本进程按单页回答, 结果经 `Shell.devRespond` 回去; 页面发来的 `{devlog}` (console、
   错误、请求、对话框) 收进 `DevLog`, `{devroute}` 记下假回应用掉一次. `dev-ipc.md` 的请求类型都回答: `snapshot` / `act` / `run` / `query` /
   `input` 由 `inspect.ts` (删 `web/` 前的 `inspect.ts` 取回, 只登记本进程的窗口) 经页面的 `inspect` 服务做; `route` / `init` 记在启动方,
@@ -88,10 +88,10 @@
   (`dev.state`, 最多 500 毫秒) 再重新找应用、重开页面并带上 `devState`, 热替换只发 `devhot`. 单应用的特例: `open` 报“没有别的应用”;
   `permissions` 恒为空、`answer` 找不到提示、`revoke` 回 `revoked: false` (单应用不问用户); `resize` 改宿主窗口大小 (`resizeScreen`);
   `emulate` 的系统配色只认 `ACDE_COLOR_SCHEME=dark`.
-- **DevTools** (`js/launcher/src/devtools.ts` 的 `DevToolsEndpoint`, 工作项 12): 运行时的 `DevTools.open()` 开了端点 (设了 `ACDE_DEV` 时) 就每 250 毫秒
+- **DevTools** (`js/launcher/src/dev/devtools.ts` 的 `DevToolsEndpoint`, 工作项 12): 运行时的 `DevTools.open()` 开了端点 (设了 `ACDE_DEV` 时) 就每 250 毫秒
   把本页登记成 CDP 目标 (id 是 web 名, 列表没变不重登); `devtools` 请求回 `{port}`; 重载前调 `reloading(web)` 让连着的 DevTools 接上新页面;
   宿主窗口的 F12 (`devtools` 事件) 经 `Shell.devEvent` 发 `{type: 'event', event: 'devtools', web, app, window}`, 由 `acdev dev` 打开 DevTools.
-- **应用后端** (`js/launcher/src/backend.ts` 的 `AppBackend`, 工作项 13; 用户 2026-11-18 定由启动器起, 宿主和客户机同一份): 应用清单有 `backend`
+- **应用后端** (`js/launcher/src/backend/backend.ts` 的 `AppBackend`, 工作项 13; 用户 2026-11-18 定由启动器起, 宿主和客户机同一份): 应用清单有 `backend`
   时随应用起, 地址 (`sockets` / `channel`) 每次开页面都并进 `WebInit`; `acdev dev` 的 `devreload` (非热替换) 和页面的 `window.reload` 都先停后端
   再起 (`devreload` 用重新找到的清单), 页面的请求在后端就绪前重试 10 秒; 启动器退出前停掉它并删本进程的 socket 目录. 起停、崩溃重起和日志见
   `docs/web/backend.md`.

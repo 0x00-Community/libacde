@@ -1,5 +1,5 @@
-import { PageSource } from '../../page/src/page'
-import { process } from '../../page/src/sys/process'
+import { PageSource } from '../../../page/src/page'
+import { process } from '../../../page/src/sys/process'
 
 export interface NativeDevToolsTarget {
   readonly id: string

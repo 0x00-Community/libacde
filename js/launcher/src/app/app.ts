@@ -1,8 +1,8 @@
 import { API_LEVEL, Manifest, type AppManifest, type PackageManifest } from '@dopame/acde-api/manifest'
-import type { WebInit, WebTier } from '../../page/src/contract'
-import type { Languages } from '../../page/src/language'
-import { PageSource } from '../../page/src/page'
-import { isAbsolute, join, resolve } from '../../page/src/sys/path'
+import type { WebInit, WebTier } from '../../../page/src/contract'
+import type { Languages } from '../../../page/src/language'
+import { PageSource } from '../../../page/src/page'
+import { isAbsolute, join, resolve } from '../../../page/src/sys/path'
 
 export interface Found {
   readonly dir: string

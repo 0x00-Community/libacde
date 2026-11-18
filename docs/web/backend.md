@@ -1,6 +1,6 @@
 # 应用后端 (启动、Windows 后端契约、请求路由)
 
-- **后端** (单应用启动器 `js/launcher/src/backend.ts` 的 `AppBackend`, 原 acde-host `backend.ts` 改写; unix): PATH 上有 `bun` 就 `bun --preload acde-listen.js server.js`, 否则 `node --import <acde-listen.js 的 file: URL> server.js`
+- **后端** (单应用启动器 `js/launcher/src/backend/backend.ts` 的 `AppBackend`, 原 acde-host `backend.ts` 改写; unix): PATH 上有 `bun` 就 `bun --preload acde-listen.js server.js`, 否则 `node --import <acde-listen.js 的 file: URL> server.js`
   (Node ≥ 22.3; `ACDE_RUNTIME=node` (acdev dev 按工程的运行时设) 时先找 node, 没有再 bun; 两样都没有不起, 打一行 warn; 同一份构建产物两边都能跑, 见 acdev 的「和运行时的契约」), 随应用起, 应用退出时停, 重载 (`acdev dev` 的 `devreload` 和 `window.reload`) 时先停再起 (SIGTERM 进程组,
   3 秒后 SIGKILL); 意外退出时打 warn `[<app>#backend] stopped (exit N); starting it again`, 0.5 秒后重起, 一分钟内第 4 次崩溃后打 warn 不再起, 直到下次重载.
   这些行的目标是 `acde_host`, 后端自己的输出是 `acde::host::child` (Windows `acde::host::backends`, 日志目标是模块路径) 的 `[<app>#backend] …`, `acdev dev` 都留下. `child.rs` 起: 自己的会话和进程组, 环境从零建 (`ACDE_APP_ID` / `ACDE_APP_DATA` /

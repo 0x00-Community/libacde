@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { bindNatives } from '../../page/src/sys/natives.ts'
-import { AppLookup, webInit } from '../src/app.ts'
+import { AppLookup, webInit } from '../src/app/app.ts'
 import { LaunchArgs } from '../src/args.ts'
-import { route, unsupported } from '../src/calls.ts'
-import { sessionOf, type Welcome } from '../src/manager.ts'
-import { toDesktop } from '../src/events.ts'
-import { incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/service.ts'
+import { route, unsupported } from '../src/app/calls.ts'
+import { sessionOf, type Welcome } from '../src/manager/manager.ts'
+import { toDesktop } from '../src/app/events.ts'
+import { incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
 
 bindNatives({ host: {}, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
 

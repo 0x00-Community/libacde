@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { DevChannel, type DevHost, type DevTarget } from '../src/dev.ts'
+import { DevChannel, type DevHost, type DevTarget } from '../src/dev/dev.ts'
 
 function channel(evaluate: (code: string) => unknown = () => null) {
   const answers: { id: number; ok: boolean; payload: unknown }[] = []

@@ -1,8 +1,8 @@
 import type { InspectAction, InspectArg, InspectMatch, InspectNode, InspectWindow, WindowState } from '@dopame/acde-api'
 import { Outline, type Line } from './outline'
-import { chordCodes, keyCode } from '../../page/src/keys'
-import type { PageNode, PagePoint, PageQuery, PageTree } from '../../page/src/pageinspect'
-import type { Rpc } from '../../page/src/rpc'
+import { chordCodes, keyCode } from '../../../page/src/keys'
+import type { PageNode, PagePoint, PageQuery, PageTree } from '../../../page/src/pageinspect'
+import type { Rpc } from '../../../page/src/rpc'
 
 export interface ShellWindow {
   readonly id: number

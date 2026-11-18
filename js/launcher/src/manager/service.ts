@@ -1,7 +1,7 @@
 import type { ServiceFactory, ServiceInstance, ServiceProcess, SpawnOptions } from '@dopame/acde-api'
-import { sys } from '../../page/src/sys/natives'
-import { pathToFileURL } from '../../page/src/sys/url'
-import { process, stopGroup } from '../../page/src/sys/process'
+import { sys } from '../../../page/src/sys/natives'
+import { pathToFileURL } from '../../../page/src/sys/url'
+import { process, stopGroup } from '../../../page/src/sys/process'
 import type { ManagerEvent, ManagerLink, ServiceShape, Welcome } from './manager'
 
 const FN = '__acdeFn'

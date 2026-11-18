@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { bindNatives } from '../../page/src/sys/natives.ts'
-import { DevChannel } from '../src/dev.ts'
-import { DevToolsEndpoint, type DevToolsPage, type NativeDevToolsTarget } from '../src/devtools.ts'
+import { DevChannel } from '../src/dev/dev.ts'
+import { DevToolsEndpoint, type DevToolsPage, type NativeDevToolsTarget } from '../src/dev/devtools.ts'
 
 const PAGE: DevToolsPage = { name: 'notes#1', app: 'notes', kind: 'app', window: 1, title: 'Notes', url: null }
 
