@@ -283,6 +283,17 @@ export interface AcdeAppList {
   open: AcdeOpen
 }
 
+export interface ServicesChangedEvent {
+  readonly names: readonly string[]
+  readonly added: readonly string[]
+  readonly removed: readonly string[]
+}
+
+export interface AcdeServices {
+  names(): string[]
+  on(type: 'changed', handler: (event: ServicesChangedEvent) => void): () => boolean
+}
+
 export interface AcdeApps extends AcdeAppList, AcdeOpenFiles {
   refresh(): Promise<DesktopApp[]>
   install(dir: string): Promise<{ id: string; dir: string; apps: DesktopApp[] }>
@@ -1084,6 +1095,7 @@ export interface AcdePage {
   readonly setDefault?: AcdeOpenFiles['setDefault']
   readonly permissions?: AcdePermissions
   readonly window?: AcdeWindow
+  readonly services?: AcdeServices
   readonly capabilities?: import('./capabilities').AcdeCapabilities
   readonly [service: string]: unknown
 }

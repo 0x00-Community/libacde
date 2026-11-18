@@ -27,5 +27,6 @@ export interface AppModules {
   readonly openPath: Page.AcdeOpenFiles['openPath']
   readonly handlers: Page.AcdeOpenFiles['handlers']
   readonly window: Page.AcdeWindow
+  readonly services: Page.AcdeServices
   readonly capabilities: AcdeCapabilities
 }

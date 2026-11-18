@@ -67,6 +67,10 @@ declare module 'acde:handlers' {
   const handlers: import('../types/page').AcdeOpenFiles['handlers']
   export { handlers, handlers as default }
 }
+declare module 'acde:services' {
+  const services: import('../types/page').AcdeServices
+  export { services, services as default }
+}
 declare module 'acde:window' {
   const self: import('../types/page').AcdeWindow
   export { self as window, self as default }

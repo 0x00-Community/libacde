@@ -275,6 +275,8 @@ type ModuleHost = { defineModule(url: string, exports: object): void; refuseModu
 export class RemoteBridge {
   readonly value: Record<string, unknown> = {}
   readonly #services = new Set<string>()
+  readonly #changes = new Notices()
+  #shapes = ''
   readonly permits: Permits
   readonly #rpc: Rpc
   #capabilities: { update(status: CapabilityStatus): void } | null = null
@@ -289,6 +291,7 @@ export class RemoteBridge {
       ...Rpc.calls(() => rpc, 'permissions', 'pending', 'answer', 'list', 'revoke'),
       on: windows.notices.for('permissions', ['prompt', 'answered']),
     })
+    this.value['services'] = { names: () => [...this.#services], on: this.#changes.for('services', ['changed']) }
     this.replaceServices(init.services)
     const calls = Rpc.calls(() => rpc, 'apps', 'list', 'open')
     const apps = { ...calls, open: async (...args: unknown[]) => calls.open(...args.map((arg) => this.#outgoing(arg))) }
@@ -381,12 +384,24 @@ export class RemoteBridge {
   }
 
   replaceServices(services: Readonly<Record<string, ServiceShape>>): void {
-    for (const service of this.#services) delete this.value[service]
+    const shapes = JSON.stringify(services)
+    if (shapes === this.#shapes) return
+    const before = [...this.#services]
+    for (const service of before) delete this.value[service]
     this.#services.clear()
     for (const [service, shape] of Object.entries(services)) {
+      if (service === 'services') continue
       this.value[service] = this.#proxy(service, shape)
       this.#services.add(service)
     }
+    const first = this.#shapes === ''
+    this.#shapes = shapes
+    if (first) return
+    const names = [...this.#services]
+    const removed = before.filter((name) => !this.#services.has(name))
+    for (const name of removed) this.#host?.refuseModule?.(`acde:${name}`, `acde:${name}: the service that provided it is no longer running`)
+    for (const name of names) this.#define(name)
+    this.#changes.emit('services:changed', { names, added: names.filter((name) => !before.includes(name)), removed })
   }
 
   #proxy(service: string, shape: ServiceShape): unknown {

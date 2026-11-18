@@ -44,7 +44,7 @@ export type IconName = (typeof ICON_NAMES)[number]
 
 export const SHELL_MODULES = ['windows', 'packages', 'session', 'desktops', 'inspect', 'desktop', 'setDefault', 'permissions'] as const
 
-export const APP_MODULES = ['launch', 'apps', 'open', 'openPath', 'handlers', 'window'] as const
+export const APP_MODULES = ['launch', 'apps', 'open', 'openPath', 'handlers', 'window', 'services'] as const
 
 export type ShellModule = (typeof SHELL_MODULES)[number]
 

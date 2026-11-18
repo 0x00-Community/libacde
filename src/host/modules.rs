@@ -90,11 +90,20 @@ pub const SCHEME: &str = "acde:";
 
 pub fn define(scope: &mut v8::PinScope, url: &str, exports: v8::Local<v8::Object>) {
     let exports = v8::Global::new(scope, exports);
-    MAP.with(|m| m.borrow_mut().builtins.insert(url.to_owned(), exports));
+    MAP.with(|m| {
+        let mut m = m.borrow_mut();
+        m.by_url.remove(url);
+        m.builtins.insert(url.to_owned(), exports);
+    });
 }
 
 pub fn refuse(url: &str, reason: &str) {
-    MAP.with(|m| m.borrow_mut().refused.insert(url.to_owned(), reason.to_owned()));
+    MAP.with(|m| {
+        let mut m = m.borrow_mut();
+        m.by_url.remove(url);
+        m.builtins.remove(url);
+        m.refused.insert(url.to_owned(), reason.to_owned());
+    });
 }
 
 fn builtin<'s>(scope: &mut v8::PinScope<'s, '_>, url: &str) -> Option<v8::Local<'s, v8::Object>> {
