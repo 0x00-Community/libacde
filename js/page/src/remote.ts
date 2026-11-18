@@ -305,10 +305,12 @@ export class RemoteBridge {
     const tier = {
       packages: () => ({ ...Rpc.calls(() => rpc, 'packages', 'refresh', 'install', 'natives', 'runNative'), on: windows.notices.for('apps', ['changed']) }),
       launch: () => ({ ...Rpc.calls(() => rpc, 'launch', 'start', 'embed', 'close'), list: windows.api.list, on: windows.api.on }),
-      session: () => ({ own: () => init.session?.own === true, ...Rpc.calls(() => rpc, 'session', 'logout', 'reboot', 'poweroff', 'setLanguage') }),
+      session: () => ({ own: () => init.session?.own === true, ...Rpc.calls(() => rpc, 'session', 'lock', 'logout', 'reboot', 'poweroff', 'setLanguage') }),
       desktops: () => Rpc.calls(() => rpc, 'desktops', 'list', 'choose'),
     }
-    if (init.kind === 'desktop') {
+    if (init.lock) {
+      this.value['lock'] = Rpc.calls(() => rpc, 'lock', 'user', 'unlock')
+    } else if (init.kind === 'desktop') {
       this.value['apps'] = { ...apps, ...files, on: windows.notices.for('apps', ['changed']) }
       const events = ['download', 'notification', 'screenshot', 'shortcut', 'edge']
       this.value['desktop'] = { apps: async () => ({ apps: await apps.list() }), on: windows.notices.for('desktop', events) }

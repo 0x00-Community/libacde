@@ -82,3 +82,21 @@ test('an app page gets them only when its tier lists them', () => {
   const { bridge } = bridged({ kind: 'window', tier: shell })
   assert.equal('session' in bridge.value && 'desktops' in bridge.value, true)
 })
+
+test('the lock page gets acde:lock and no shell modules; user and unlock go out over rpc', () => {
+  const { bridge, sent } = bridged({ kind: 'desktop', lock: true })
+  assert.deepEqual(Object.keys(bridge.value).sort(), ['lock', 'services'])
+  const lock = bridge.value['lock'] as { user(): Promise<unknown>; unlock(password: string): Promise<unknown> }
+  void lock.user()
+  void lock.unlock('secret')
+  const calls = sent.map((m) => { const c = m as { service: string; method: string; args: unknown[] }; return [c.service, c.method, c.args] })
+  assert.deepEqual(calls, [['lock', 'user', []], ['lock', 'unlock', ['secret']]])
+})
+
+test('session.lock goes out over rpc like the other session calls', () => {
+  const { bridge, sent } = bridged({ kind: 'desktop' })
+  void (bridge.value['session'] as { lock(): Promise<unknown> }).lock()
+  assert.deepEqual((sent[0] as { service: string; method: string }).method, 'lock')
+  assert.equal('lock' in bridge.value, false)
+})
+

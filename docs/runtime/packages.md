@@ -12,6 +12,8 @@
 ```
 
 - **desktops**: `entry` 是包里的 HTML, 满屏在所有窗口后面; 桌面拿全部 `acde:` 模块. `heapMb` 默认 1024, 最小 32.
+  `lock` (可选) 是锁屏页的入口, 写法同 `entry`. `Manifest.check` 对两者都要求是包里的相对路径 (不以 `/` 起头, 不含 `..`), 调用方给了
+  `isFile` 时还查文件在不在 (acdev 打包检查给). 锁屏页只拿 `acde:lock` (`user()` / `unlock(password)`), 见 `docs/runtime/layout.md`「锁屏页」.
 - **apps**: 见 `docs/runtime/webs.md`「应用清单」. **assets**: 同源 URL 前缀 → 包里的目录.
 - **services**: 在 Broker isolate 里跑的 ES 模块, 默认导出 `ServiceFactory` (只用 `ServiceContext` 和 web 标准接口). 随桌面起停; 应用要在
   清单的 `services` 里写服务名才能调 (写在 capabilities 里是校验错误). 服务名不能用系统模块的名字 (`RESERVED_NAMES`). 重活放进 `ctx.spawn(argv, {cwd, env, onLine, onExit})` 起的进程 (`child.rs`: 自己的进程组, stderr 进日志加前缀

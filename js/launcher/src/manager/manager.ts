@@ -29,6 +29,7 @@ export interface Welcome {
   readonly modules?: readonly string[]
   readonly stateDir?: string
   readonly session?: { readonly own: boolean }
+  readonly lock?: boolean
 }
 
 export interface ManagerEvent {
@@ -56,16 +57,18 @@ export interface Session {
   readonly request: Record<string, unknown> | null
   readonly services: Readonly<Record<string, ServiceShape>>
   readonly own: boolean
+  readonly lock: boolean
 }
 
 export function sessionOf(welcome: Welcome, wanted: 'app' | 'desktop' | 'service'): Session {
   if (welcome.kind !== wanted) throw new Error(`the session manager started this process as ${welcome.kind}, not ${wanted}`)
   const own = welcome.session?.own === true
-  const shared = { tier: welcome.tier, grants: welcome.grants, request: welcome.request ?? null, services: welcome.services ?? {}, own }
+  const lock = welcome.kind === 'desktop' && welcome.lock === true
+  const shared = { tier: welcome.tier, grants: welcome.grants, request: welcome.request ?? null, services: welcome.services ?? {}, own, lock }
   if (welcome.kind === 'desktop') {
     const desktop = welcome.desktop
     if (!desktop) throw new Error('the session manager sent no desktop in its welcome')
-    const page = join(welcome.dir, desktop.entry)
+    const page = join(welcome.dir, lock ? (desktop.lock ?? desktop.entry) : desktop.entry)
     return { kind: 'desktop', found: null, page, resources: welcome.resources, label: desktop.name, heapMb: desktop.heapMb, ...shared }
   }
   const app = welcome.app
