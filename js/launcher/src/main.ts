@@ -17,6 +17,7 @@ import { sessionOf, type ManagerEvent, type ManagerLink, type ServiceShape, type
 import { toDesktop, type ShellEvent } from './events'
 import { ServiceHost } from './service'
 import { DevChannel, type DevShell, type DevTarget } from './dev'
+import { DevToolsEndpoint, type NativeDevTools } from './devtools'
 import { Inspect, type InspectShell } from './inspect'
 import { Frame } from '../../page/src/frame'
 
@@ -35,6 +36,7 @@ interface GrantOptions {
 }
 
 interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState' | 'windows' | 'inject'> {
+  devEvent?(json: string): number
   readonly socketName?: string
   pump(): ShellEvent[]
   onEvents(callback: () => void): void
@@ -62,6 +64,7 @@ interface LauncherNatives extends Natives {
   readonly native: {
     readonly Shell: { broker(options?: { title?: string }): LauncherShell }
     readonly Manager?: { connect(): ManagerLink }
+    readonly DevTools?: NativeDevTools
   }
 }
 
@@ -108,6 +111,7 @@ class Launcher {
   readonly #panels = new Set<number>()
   #services: Readonly<Record<string, ServiceShape>> = {}
   readonly #dev: DevChannel
+  readonly #devtools: DevToolsEndpoint
   #inspect: Inspect | null = null
   #devState: unknown = null
 
@@ -116,8 +120,13 @@ class Launcher {
     this.#shell.onEvents(() => this.#wake?.())
     manager?.onEvents(() => this.#wake?.())
     this.#services = session.services
+    this.#devtools = new DevToolsEndpoint(natives.native.DevTools, this.#shell, () => {
+      const target = this.#target()
+      return target && { ...target, url: this.#init?.url ?? null }
+    })
     this.#dev = new DevChannel({
       shell: this.#shell,
+      devtools: this.#devtools,
       page: () => this.#target(),
       inspect: () => this.#inspector(),
       reload: () => this.#devReload(false),
@@ -244,6 +253,7 @@ class Launcher {
     if (this.#closing || this.#reloading || (given !== null && !given.startsWith(`${PageSource.ORIGIN}/`))) return false
     if (given !== null) this.#init = { ...this.#init!, url: given }
     this.#reloading = true
+    this.#devtools.reloading(this.#init!.name)
     this.#thread?.terminate()
     return true
   }
@@ -257,6 +267,7 @@ class Launcher {
       this.#init = webInit(fresh.found!, 0n, this.#place(), { tier: null, request: null, services: {} }, this.#window)
     }
     this.#reloading = true
+    this.#devtools.reloading(this.#init!.name)
     this.#thread?.terminate()
   }
 
@@ -374,6 +385,7 @@ class Launcher {
       if (STOP.has(event.type)) this.#end(0)
       else if (event.type === 'windowcloserequest') void this.close(false)
       else if (event.type === 'devrequest') void this.#dev.request(String(event['key'] ?? ''))
+      else if (event.type === 'devtools') this.#devtools.pressed()
       else if (event.type === 'devreload') void this.#devReload(event['title'] === 'hot')
       else if (this.#desktop) this.#thread?.post(toDesktop(event))
     }

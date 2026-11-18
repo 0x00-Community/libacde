@@ -30,8 +30,13 @@ export interface DevShell {
   resizeScreen?(width: number, height: number): void
 }
 
+export interface DevToolsPort {
+  port(): { port: number }
+}
+
 export interface DevHost {
   readonly shell: DevShell
+  readonly devtools?: DevToolsPort | null
   page(): DevTarget | null
   inspect(): Inspect
   reload(): Promise<void>
@@ -171,6 +176,9 @@ export class DevChannel {
         return this.#drop(args)
       case 'permissions':
         return { pending: [], decisions: [] }
+      case 'devtools':
+        if (!this.#host.devtools) throw new Error('devtools: this session serves no DevTools endpoint')
+        return this.#host.devtools.port()
       case 'answer':
         throw Object.assign(new Error(`answer: no prompt ${String(args['prompt'])} (a single-app session asks no one)`), { status: 404 })
       case 'revoke': {
