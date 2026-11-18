@@ -24,7 +24,7 @@ export class GuestWindows {
   ) {}
 
   place(rows: unknown): void {
-    this.#rows = Array.isArray(rows) ? rows.filter(GuestWindows.#row) : []
+    this.#rows = Array.isArray(rows) ? rows.filter((row) => Number.isFinite((row as GuestRow | null)?.id)).map(GuestWindows.#row) : []
   }
 
   get placed(): boolean {
@@ -90,8 +90,20 @@ export class GuestWindows {
     }
   }
 
-  static #row(row: unknown): row is GuestRow {
-    const r = row as GuestRow | null
-    return !!r && typeof r === 'object' && Number.isFinite(r.id) && Number.isFinite(r.x) && Number.isFinite(r.y)
+  static #row(given: GuestRow): GuestRow {
+    const number = (value: unknown) => (Number.isFinite(value) ? (value as number) : 0)
+    return {
+      ...given,
+      app_id: given.app_id ?? null,
+      pid: given.pid ?? null,
+      title: given.title ?? null,
+      x: number(given.x),
+      y: number(given.y),
+      width: number(given.width),
+      height: number(given.height),
+      activated: given.activated === true,
+      hidden: given.hidden === true,
+      desktop: given.desktop === true,
+    }
   }
 }

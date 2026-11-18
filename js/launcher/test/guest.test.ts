@@ -27,11 +27,12 @@ describe('the window table the session manager sends along', () => {
     const guest = new GuestWindows(42, false)
     const inspect = new Inspect(guest.host(base(1, focused), () => 1))
     assert.deepEqual(inspect.windows(), [])
-    guest.place([row(3, 10, { desktop: true }), row(9, 50), row(7, 42, { activated: true }), { bogus: true }])
+    const desktop = { id: 0, desktop: true, app_id: null, pid: 10, title: 'desktop', activated: false, hidden: false }
+    guest.place([row(7, 42, { activated: true }), { ...row(9, 50), desk: 2, desktop: undefined }, desktop, { bogus: true }])
     const windows = inspect.windows().map((w) => [w.ref, w.kind, w.app, w.title, w.focus])
     assert.deepEqual(windows, [
-      ['w9', 'native', 'app9', 'T9', false],
       ['w7', 'web', 'files', 'Files', true],
+      ['w9', 'native', 'app9', 'T9', false],
       ['w0', 'desktop', null, null, false],
     ])
     assert.equal(guest.mine(), 7)
@@ -47,7 +48,7 @@ describe('the window table the session manager sends along', () => {
     assert.deepEqual(focused, [1, 9])
     assert.deepEqual(host.records(), [7])
     const desktop = new GuestWindows(10, true)
-    desktop.place([row(3, 10, { desktop: true }), row(7, 42)])
+    desktop.place([row(7, 42), { id: 0, desktop: true, pid: 10 }])
     assert.equal(desktop.mine(), 0)
   })
 })
