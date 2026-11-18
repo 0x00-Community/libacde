@@ -153,7 +153,22 @@ impl Engine {
                 }
             }
             Control::Editor(multiline) => {
-                let Some(value) = self.ids.forms.get(&node).and_then(|f| f.value.clone()) else { return };
+                let password = !multiline && self.is_password(node);
+                let value = match self.ids.forms.get(&node).and_then(|f| f.value.clone()) {
+                    Some(value) => value,
+                    None if password || self.ids.masked.contains(&node) => self.value(node),
+                    None => return,
+                };
+                let value = match password {
+                    true => {
+                        self.ids.masked.insert(node);
+                        mask(&value)
+                    }
+                    false => {
+                        self.ids.masked.remove(&node);
+                        value
+                    }
+                };
                 let Some(e) = self.doc.get_node_mut(node).and_then(|n| n.element_data_mut()) else { return };
                 if !matches!(e.special_data, SpecialElementData::TextInput(_)) {
                     e.special_data = SpecialElementData::TextInput(TextInputData::new(multiline));
@@ -180,6 +195,11 @@ impl Engine {
             }
             _ => {}
         }
+    }
+
+    fn is_password(&self, node: NodeId) -> bool {
+        let e = self.doc.get_node(node).and_then(|n| n.element_data());
+        e.and_then(|e| e.attr(blitz_dom::local_name!("type"))).is_some_and(|t| t.eq_ignore_ascii_case("password"))
     }
 
     pub(in crate::render::dom) fn set_selection_range(&mut self, node: NodeId, start: u32, end: u32) {
@@ -535,4 +555,8 @@ impl Engine {
         };
         Some(geometry.map(svg, rect))
     }
+}
+
+fn mask(value: &str) -> String {
+    "\u{2022}".repeat(value.encode_utf16().count())
 }

@@ -18,6 +18,7 @@ pub(crate) struct Ids {
     pub(crate) owners: HashMap<NodeId, NodeId>,
     pub(crate) documents: HashMap<NodeId, DocumentInfo>,
     pub(crate) forms: HashMap<NodeId, Form>,
+    pub(crate) masked: HashSet<NodeId>,
     pub(crate) scrolls: HashMap<NodeId, (f64, f64)>,
     pub(crate) fresh: Vec<NodeId>,
     pub(crate) unpinned: Vec<NodeId>,
@@ -110,6 +111,7 @@ impl Ids {
         self.owners.remove(&node);
         self.documents.remove(&node);
         self.forms.remove(&node);
+        self.masked.remove(&node);
         self.scrolls.remove(&node);
         let Some(id) = self.handle(node) else { return };
         self.slots[Self::index(node)] = Slot { node: NodeId::default(), id: NO_ID, pinned: false };

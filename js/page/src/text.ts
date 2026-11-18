@@ -57,6 +57,7 @@ export class TextEntry {
   async clipboard(target: Element, key: 'c' | 'x' | 'v'): Promise<void> {
     const data = new this.#window.DataTransfer()
     const type = key === 'c' ? 'copy' : key === 'x' ? 'cut' : 'paste'
+    if (type !== 'paste' && TextEntry.#password(target)) return
     if (type === 'paste') data.setData('text/plain', (await this.#shell?.readClipboard()) ?? '')
     const event = new this.#window.ClipboardEvent(type, { bubbles: true, cancelable: true, composed: true, clipboardData: data } as never)
     const handled = !target.dispatchEvent(event as unknown as Event)
@@ -115,13 +116,16 @@ export class TextEntry {
 
   panel(event: ImePanelEvent): void {
     const target = this.active()
-    if (!this.#editable(target)) return this.#panel.hide()
+    if (!this.#editable(target) || TextEntry.#password(target!)) {
+      this.#panel.hide()
+      return
+    }
     this.#panel.show(event, this.#caretRect(target!))
   }
 
   preedit(text: string): void {
     const target = this.active()
-    if (!this.#editable(target)) return
+    if (!this.#editable(target) || TextEntry.#password(target)) return
     if (!text && this.#composing !== target) return
     if (this.#composing !== target) {
       this.#composing = target
@@ -144,6 +148,10 @@ export class TextEntry {
 
   deleteSurrounding(offset: number, length: number): void {
     this.#editing.deleteSurrounding(this.active() as never, offset, length)
+  }
+
+  static #password(target: Element): boolean {
+    return target.localName === 'input' && (target as HTMLInputElement).type === 'password'
   }
 
   #fire(target: Element, type: string, data: string): void {

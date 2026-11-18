@@ -219,6 +219,11 @@
   - 还没有: `devicechange` (不监视插拔)、`getDisplayMedia` (录屏)、`MediaRecorder`、`createMediaStreamDestination`、回声消除等处理、
     `resizeMode: crop-and-scale`、轨道的 `mute` / `unmute` (系统暂停时).
 - **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`) 和 XML 文档的渲染 (只当 DOM 用)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、Web Worker、`crypto.subtle`、OffscreenCanvas、全屏和指针锁定、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
+- **密码框** (`<input type=password>`, 2026-11-18): 照成熟浏览器的做法. 显示: 渲染层给 blitz 的编辑器的是掩码 (`engine_state.rs` 的
+  `show_form_state`, 每个 UTF-16 码元一个 `•`, 所以页面的选区偏移不用换算; 没改过值时也按 `value` 属性掩码, `type` 改掉后恢复明文),
+  无障碍树里本来就只给 `•••`. 复制和剪切: 在密码框里不发 `copy` / `cut` 事件, 也不写剪贴板 (`js/page/src/text.ts` 的 `clipboard`),
+  粘贴照常. 输入法: 告诉输入法这是密码框, 关掉预编辑、周边文字和候选面板 (`ime.ts` 的 `focus`, `text.ts` 的 `preedit` / `panel`),
+  密码不再以周边文字的形式送给输入法; 输入法直接提交的文字照常插入.
 - **语音输入** (`src/runtime/voice/`, Linux): `listen(onEvent)` 从 PipeWire 默认输入录 16 kHz 单声道, 连豆包输入法的流式识别 (非官方接口,
   身份存 `$XDG_STATE_HOME/acde/doubao-ime.json`). 事件 `partial {text}`、结束时恰好一个 `final` 或 `error`; `stop(id)` 等定稿 (最多 10 秒), 60 秒自动停,
   新的 `listen` 取消上一个. 日志 target `acde_runtime::voice` (识别出的文字不进日志). 没有麦克风时用 PipeWire 的 `module-pipe-source` 喂 PCM.
