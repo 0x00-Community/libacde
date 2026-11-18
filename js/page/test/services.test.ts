@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import type { ServiceShape, WebInit } from '../src/contract.ts'
 import { RemoteBridge, WindowList } from '../src/remote.ts'
 import { Rpc } from '../src/rpc.ts'
+import { bindNatives } from '../src/sys/natives.ts'
 
 type Services = { names(): string[]; on(type: string, handler: (event: unknown) => void): () => boolean }
 
@@ -53,6 +54,7 @@ type Session = { own(): boolean; logout(): Promise<unknown>; setLanguage(tag: st
 type Desktops = { list(): Promise<unknown>; choose(id: string, remember?: boolean): Promise<unknown> }
 
 const bridged = (init: Partial<WebInit>) => {
+  bindNatives({ host: { logEnabled: () => false }, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
   const sent: unknown[] = []
   const rpc = new Rpc((message) => void sent.push(message))
   const full = { name: 'page', services: {}, tier: { level: 1, shell: [], refused: {} }, ...init } as unknown as WebInit
