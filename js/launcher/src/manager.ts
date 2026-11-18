@@ -28,6 +28,7 @@ export interface Welcome {
   readonly module?: string
   readonly modules?: readonly string[]
   readonly stateDir?: string
+  readonly session?: { readonly own: boolean }
 }
 
 export interface ManagerEvent {
@@ -54,11 +55,13 @@ export interface Session {
   readonly grants: WebGrants | null
   readonly request: Record<string, unknown> | null
   readonly services: Readonly<Record<string, ServiceShape>>
+  readonly own: boolean
 }
 
 export function sessionOf(welcome: Welcome, wanted: 'app' | 'desktop' | 'service'): Session {
   if (welcome.kind !== wanted) throw new Error(`the session manager started this process as ${welcome.kind}, not ${wanted}`)
-  const shared = { tier: welcome.tier, grants: welcome.grants, request: welcome.request ?? null, services: welcome.services ?? {} }
+  const own = welcome.session?.own === true
+  const shared = { tier: welcome.tier, grants: welcome.grants, request: welcome.request ?? null, services: welcome.services ?? {}, own }
   if (welcome.kind === 'desktop') {
     const desktop = welcome.desktop
     if (!desktop) throw new Error('the session manager sent no desktop in its welcome')

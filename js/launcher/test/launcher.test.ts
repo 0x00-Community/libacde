@@ -66,6 +66,8 @@ describe('where the single-app launcher sends a page call', () => {
     assert.equal(route('windows', 'close', [2], alone), 'unsupported')
     assert.equal(route('apps', 'list', [], alone), 'unsupported')
     assert.match(unsupported('apps', 'list').message, /apps\.list is not supported/)
+    assert.equal(route('session', 'logout', [], alone), 'session')
+    assert.equal(route('desktops', 'list', [], alone), 'session')
   })
 
   test('with a manager: window state, reload and capabilities stay here, everything else goes to the manager', () => {
@@ -76,6 +78,8 @@ describe('where the single-app launcher sends a page call', () => {
     assert.equal(route('page', 'shown', [], managed), 'manager')
     assert.equal(route('apps', 'open', ['notes'], managed), 'manager')
     assert.equal(route('panel', 'open', [], managed), 'manager')
+    assert.equal(route('session', 'poweroff', [], managed), 'manager')
+    assert.equal(route('desktops', 'choose', ['dopame'], managed), 'manager')
   })
 
   test('the desktop answers panels and windows itself', () => {

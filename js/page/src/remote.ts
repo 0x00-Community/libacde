@@ -305,13 +305,16 @@ export class RemoteBridge {
     const tier = {
       packages: () => ({ ...Rpc.calls(() => rpc, 'packages', 'refresh', 'install', 'natives', 'runNative'), on: windows.notices.for('apps', ['changed']) }),
       launch: () => ({ ...Rpc.calls(() => rpc, 'launch', 'start', 'embed', 'close'), list: windows.api.list, on: windows.api.on }),
+      session: () => ({ own: () => init.session?.own === true, ...Rpc.calls(() => rpc, 'session', 'logout', 'reboot', 'poweroff', 'setLanguage') }),
+      desktops: () => Rpc.calls(() => rpc, 'desktops', 'list', 'choose'),
     }
     if (init.kind === 'desktop') {
       this.value['apps'] = { ...apps, ...files, on: windows.notices.for('apps', ['changed']) }
       const events = ['download', 'notification', 'screenshot', 'shortcut', 'edge']
       this.value['desktop'] = { apps: async () => ({ apps: await apps.list() }), on: windows.notices.for('desktop', events) }
       this.value['windows'] = globalWindows()
-      Object.assign(this.value, { packages: tier.packages(), launch: tier.launch(), open: apps.open, permissions: permissions(), ...files })
+      Object.assign(this.value, { packages: tier.packages(), launch: tier.launch(), session: tier.session(), desktops: tier.desktops() })
+      Object.assign(this.value, { open: apps.open, permissions: permissions(), ...files })
     } else {
       const caps = init.app?.capabilities ?? {}
       this.value['apps'] = { list: apps.list, open: apps.open, on: windows.notices.for('apps', ['changed']) }
@@ -320,6 +323,8 @@ export class RemoteBridge {
       if (caps['launch'] || caps['slots']) this.value['launch'] = tier.launch()
       if (shell.has('windows')) this.value['windows'] = globalWindows()
       if (shell.has('packages')) this.value['packages'] = tier.packages()
+      if (shell.has('session')) this.value['session'] = tier.session()
+      if (shell.has('desktops')) this.value['desktops'] = tier.desktops()
       if (shell.has('setDefault')) this.value['setDefault'] = files.setDefault
       if (shell.has('permissions')) this.value['permissions'] = permissions()
       if (shell.has('desktop')) {
