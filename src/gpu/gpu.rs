@@ -271,6 +271,17 @@ impl Gpu {
         }
     }
 
+    /// Waits up to `wait` for a live device other than `lost` to be published (the host window's recovery) and gives it.
+    pub fn replacement(lost: &Arc<Gpu>, wait: Duration) -> Option<Arc<Gpu>> {
+        let fresh = |state: &State| match state {
+            State::Published(Some(gpu)) if !Arc::ptr_eq(gpu, lost) && !gpu.gone() => Some(gpu.clone()),
+            _ => None,
+        };
+        let registry = lock(&REGISTRY);
+        let (registry, _) = READY.wait_timeout_while(registry, wait, |r| fresh(&r.state).is_none()).unwrap_or_else(|e| e.into_inner());
+        fresh(&registry.state)
+    }
+
     /// Whether a lost device was ever replaced in this process.
     pub fn replaced() -> bool {
         REPLACED.load(Ordering::SeqCst)

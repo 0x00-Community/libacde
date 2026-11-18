@@ -18,6 +18,7 @@ mod dom;
 mod encoding;
 mod engine;
 mod fs;
+mod gpuwatch;
 mod host;
 mod idb;
 mod input;
