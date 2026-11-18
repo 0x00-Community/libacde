@@ -16,6 +16,7 @@ import type { LentRoot } from '@dopame/acde-api'
 import { sessionOf, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager'
 import { toDesktop, type ShellEvent } from './events'
 import { ServiceHost } from './service'
+import { DevChannel, type DevTarget } from './dev'
 
 interface Grant {
   readonly window: number
@@ -52,6 +53,7 @@ interface LauncherShell {
   removeDesk?(desk: number, into: number): unknown
   showDesk?(desk: number): unknown
   moveToDesk?(window: number, desk: number): unknown
+  devRespond?(id: number, ok: boolean, payload: string): void
 }
 
 interface LauncherNatives extends Natives {
@@ -102,12 +104,25 @@ class Launcher {
   #reloading = false
   readonly #panels = new Set<number>()
   #services: Readonly<Record<string, ServiceShape>> = {}
+  readonly #dev: DevChannel
 
   constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
     this.#shell = natives.native.Shell.broker({ title: session.label })
     this.#shell.onEvents(() => this.#wake?.())
     manager?.onEvents(() => this.#wake?.())
     this.#services = session.services
+    this.#dev = new DevChannel(this.#shell, () => this.#target())
+  }
+
+  #target(): DevTarget | null {
+    const init = this.#init
+    const rpc = this.#rpc
+    if (!init || !rpc || this.#closing) return null
+    const desktop = this.#desktop
+    const kind = desktop ? 'desktop' as const : 'app' as const
+    const app = desktop ? null : (this.session.found?.app.id ?? null)
+    const call = (service: string, method: string, args: readonly unknown[]) => rpc.call(service, method, args)
+    return { name: init.name, app, kind, window: this.#window, title: this.session.label, call }
   }
 
   get #desktop(): boolean {
@@ -155,6 +170,7 @@ class Launcher {
   }
 
   #fromPage(message: unknown, rpc: Rpc): void {
+    if (this.#dev.take(message)) return
     const call = message as { rpc?: string; id?: number; service?: string; method?: string; args?: unknown[] } | null
     if (!this.manager || call?.rpc !== 'call' || !call.service || !Object.hasOwn(this.#services, call.service)) return void rpc.receive(message)
     this.manager.call(call.service, call.method ?? '', call.args ?? []).then(
@@ -314,6 +330,7 @@ class Launcher {
     for (const event of this.#shell.pump()) {
       if (STOP.has(event.type)) this.#end(0)
       else if (event.type === 'windowcloserequest') void this.close(false)
+      else if (event.type === 'devrequest') void this.#dev.request(String(event['key'] ?? ''))
       else if (this.#desktop) this.#thread?.post(toDesktop(event))
     }
   }

@@ -74,7 +74,11 @@
 - 启动方的 isolate 里先装好核心全局对象 (定时器、console 等, `installCore`). 宿主窗口关闭、页面退出或 `--seconds` 到时退出, 退出码是页面的.
   `--shot` 在 `--shot-after` (默认 2000) 毫秒后存一张宿主窗口截图, 无头 (`ACDE_HEADLESS=1`) 也行; 首帧没画完时截到的是空屏 (WSL 的 Dozen 上
   调试版首帧要 5～6 秒, 验证时用 `--shot-after 15000`).
-- 没有的: `desktops` / `sessions` / `applications` / `open`、调试通道 (`acdev dev` 的请求、DevTools), 所以 `acdev dev` 和 WPT 现在跑不了.
+- **调试通道** (`js/launcher/src/dev.ts` 的 `DevChannel`, acdev-single-app 工作项 10 起): 宿主窗口的 `devrequest` 事件 (hostwin `dev.rs` 转来的
+  `acdev dev` 请求, 协议见 `docs/dev/dev-ipc.md`) 由本进程按单页回答, 结果经 `Shell.devRespond` 回去; 页面发来的 `{devlog}` (console、错误、
+  请求、对话框) 收进 `DevLog`. 现在回答 `webs` (只有本页)、`eval`、`console`、`network`、`permissions` (单应用不问用户, 恒为空), 其余回
+  `<op>: not answered in a single-app session yet`; 其余请求类型、DevTools 端点与 F12、后端由后续工作项补.
+- 没有的: `desktops` / `sessions` / `applications` / `open`.
   测试在 `js/launcher/test`.
 
 在 `js/`: `bun install` (只装测试用的 happy-dom、React、CodeMirror 等和 esbuild), `bun test` (`js/dom/test` 和
