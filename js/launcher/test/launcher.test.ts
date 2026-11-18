@@ -59,7 +59,7 @@ describe('where the single-app launcher sends a page call', () => {
   const managed = { ...alone, managed: true }
   const desktop = { window: 0, desktop: true, managed: true }
 
-  test('without a manager: ready, the title and shown are acknowledged; closing itself closes; the rest is unsupported', () => {
+  test('without a manager: ready, the title and shown are acknowledged; closing itself closes; lock calls go to the preview; the rest is unsupported', () => {
     assert.equal(route('window', 'ready', [], alone), 'acknowledge')
     assert.equal(route('window', 'close', [], alone), 'close')
     assert.equal(route('windows', 'close', [1], alone), 'close')
@@ -68,7 +68,7 @@ describe('where the single-app launcher sends a page call', () => {
     assert.match(unsupported('apps', 'list').message, /apps\.list is not supported/)
     assert.equal(route('session', 'logout', [], alone), 'session')
     assert.equal(route('session', 'lock', [], alone), 'session')
-    assert.equal(route('lock', 'unlock', ['pw'], alone), 'unsupported')
+    assert.equal(route('lock', 'unlock', ['pw'], alone), 'lock')
     assert.equal(route('desktops', 'list', [], alone), 'session')
   })
 
