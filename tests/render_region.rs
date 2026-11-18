@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
-use acdert::gpu::Scene;
-use acdert::render::{Frame, Options};
+use acde::gpu::Scene;
+use acde::render::{Frame, Options};
 use kurbo::Rect;
 
 mod common;

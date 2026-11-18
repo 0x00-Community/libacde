@@ -4,7 +4,7 @@
 # $TMPDIR, else /tmp). Builds the test first with cargo (CARGO_TARGET_DIR and the like are honoured).
 # Usage: tests/runtime/ime-check.sh
 set -eu
-json=$(cargo test --release --locked -p acdert --lib --no-run --message-format=json)
+json=$(cargo test --release --locked -p libacde --lib --no-run --message-format=json)
 exe=$(printf '%s\n' "$json" | grep -o '"executable":"[^"]*"' | tail -n 1 | cut -d '"' -f 4)
 [ -x "$exe" ] || { echo "ime-check: no test executable" >&2; exit 1; }
 home=$(mktemp -d "${ACDE_CHECK_TMP:-${TMPDIR:-/tmp}}/acde-ime.XXXXXX")

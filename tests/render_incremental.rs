@@ -1,4 +1,4 @@
-use acdert::render::{Options, Stats};
+use acde::render::{Options, Stats};
 
 mod common;
 use common::{Doc, Handle};

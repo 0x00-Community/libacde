@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
-use acdert::gpu::Scene;
-use acdert::render::{Frame, Options, Rect};
+use acde::gpu::Scene;
+use acde::render::{Frame, Options, Rect};
 
 mod common;
 use common::{Doc, Handle};

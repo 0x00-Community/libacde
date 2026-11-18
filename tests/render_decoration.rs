@@ -1,5 +1,5 @@
-use acdert::gpu::RenderCommand;
-use acdert::render::{Bar, ButtonSide, Decoration, FrameButton, FrameColors, FrameStyle, FrameTheme, MenuList, MenuRow, TitleAlign};
+use acde::gpu::RenderCommand;
+use acde::render::{Bar, ButtonSide, Decoration, FrameButton, FrameColors, FrameStyle, FrameTheme, MenuList, MenuRow, TitleAlign};
 
 mod common;
 

@@ -1,11 +1,11 @@
-use acdert::webgl::consts::*;
-use acdert::webgl::{Attributes, Context};
+use acde::webgl::consts::*;
+use acde::webgl::{Attributes, Context};
 fn floats(v: &[f32]) -> Vec<u8> {
     v.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 #[test]
 fn probe() {
-    let gpu = acdert::gpu::Gpu::open("probe").unwrap().2;
+    let gpu = acde::gpu::Gpu::open("probe").unwrap().2;
     for (stride, swap) in [(20usize, false), (20, true)] {
         let mut gl = Context::new(gpu.clone(), false, Attributes { antialias: false, ..Default::default() }, 64, 64);
         let v = gl.create_shader(VERTEX_SHADER).unwrap();

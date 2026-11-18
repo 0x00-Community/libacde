@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use acdert::media::{CHANNELS, Player, RATE};
+use acde::media::{CHANNELS, Player, RATE};
 
 fn fixture(name: &str) -> Arc<[u8]> {
     std::fs::read(format!("{}/tests/fixtures/media/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap().into()
@@ -11,7 +11,7 @@ fn near(a: u8, b: u8) -> bool {
     a.abs_diff(b) <= 16
 }
 
-fn centre(frame: &acdert::media::Frame) -> [u8; 3] {
+fn centre(frame: &acde::media::Frame) -> [u8; 3] {
     let at = ((frame.height / 2 * frame.width + frame.width / 2) * 4) as usize;
     [frame.rgba[at], frame.rgba[at + 1], frame.rgba[at + 2]]
 }
@@ -89,7 +89,7 @@ fn a_rotated_video_is_shown_upright() {
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 #[test]
 fn playback_is_not_supported_without_a_platform_decoder() {
-    assert!(acdert::media::TYPES.is_empty());
+    assert!(acde::media::TYPES.is_empty());
     let error = Player::open(fixture("clip.mp4")).err().expect("no decoder here");
     assert!(error.contains("not supported"), "{error}");
 }

@@ -1,6 +1,6 @@
-use acdert::render::{Document, Options};
+use acde::render::{Document, Options};
 
-fn page(html: &str) -> (Document, acdert::render::Dom) {
+fn page(html: &str) -> (Document, acde::render::Dom) {
     let doc = Document::new(800, 600, 1.0, &Options::default()).unwrap();
     let dom = doc.dom();
     dom.parse_document(html).unwrap();

@@ -1,6 +1,6 @@
-# C 接口 (`src/ffi.rs`, `include/acdert.h`)
+# C 接口 (`src/ffi.rs`, `include/acde.h`)
 
-`src/ffi.rs` 是 C 接口, `build.rs` 用 cbindgen (`cbindgen.toml`, 只解析 `src/ffi.rs`) 每次构建重写 `include/acdert.h` (进 git, 随 so 发):
+`src/ffi.rs` 是 C 接口, `build.rs` 用 cbindgen (`cbindgen.toml`, 只解析 `src/ffi.rs`) 每次构建重写 `include/acde.h` (进 git, 随 so 发):
 
 - 入口: `acdert_start(script, argc, argv, platform)` (script 为 NULL 即 Broker; argv 是 script 之后的参数) / `acdert_common(argc, argv, platform, &code)`
   (argv 是整条命令行, 返回是否处理了) / `acdert_version(program)` (用 `acdert_string_free` 释放) / `acdert_api_level()` / `acdert_exit(code)`.

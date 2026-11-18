@@ -1,6 +1,6 @@
 use std::io::Read;
 
-use acdert::render::Options;
+use acde::render::Options;
 use flate2::read::GzDecoder;
 
 mod common;
@@ -55,7 +55,7 @@ struct Player {
 
 impl Player {
     fn id(&self, recorded: u32) -> u32 {
-        self.ids.get(recorded as usize).copied().unwrap_or(acdert::render::NONE)
+        self.ids.get(recorded as usize).copied().unwrap_or(acde::render::NONE)
     }
 
     fn batch(&mut self, mut b: &[u8]) {
@@ -70,8 +70,8 @@ impl Player {
             *b = tail;
             std::str::from_utf8(head).unwrap()
         }
-        fn created(ids: &mut Vec<u32>, id: acdert::render::Result<u32>) -> acdert::render::Result<()> {
-            ids.push(id.unwrap_or(acdert::render::NONE));
+        fn created(ids: &mut Vec<u32>, id: acde::render::Result<u32>) -> acde::render::Result<()> {
+            ids.push(id.unwrap_or(acde::render::NONE));
             Ok(())
         }
         while let Some((&op, rest)) = b.split_first() {
@@ -91,7 +91,7 @@ impl Player {
                     let (parent, child, reference) = (u32_(&mut b), u32_(&mut b), u32_(&mut b));
                     match reference {
                         u32::MAX => doc.append_child(self.id(parent), self.id(child)),
-                        r if self.id(r) == acdert::render::NONE => Ok(()),
+                        r if self.id(r) == acde::render::NONE => Ok(()),
                         r => doc.insert_before(self.id(parent), self.id(child), Some(self.id(r))),
                     }
                 }

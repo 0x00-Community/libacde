@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use acdert::render::{Document, Dom, NONE, NodeType, Ns, Options};
+use acde::render::{Document, Dom, NONE, NodeType, Ns, Options};
 
 mod common;
 use common::WaitFrame;
@@ -22,7 +22,7 @@ fn by_id(dom: &Dom, id: &str) -> u32 {
     found
 }
 
-fn error_name<T: std::fmt::Debug>(result: acdert::render::Result<T>) -> String {
+fn error_name<T: std::fmt::Debug>(result: acde::render::Result<T>) -> String {
     let e = result.unwrap_err().0;
     e.split(':').next().unwrap().to_owned()
 }
@@ -905,7 +905,7 @@ fn style_sheet_rules_style_the_page() {
     assert_eq!(dom.sheet_rule(style, 0).unwrap(), "p { color: rgb(0, 128, 0); }");
     assert_eq!(dom.computed_style(p, "", "color").unwrap(), "rgb(0, 128, 0)");
     assert_eq!(dom.text_content(style).unwrap(), "", "the element's text stays as it was");
-    let name = |e: acdert::render::Error| e.0.split(':').next().unwrap().to_owned();
+    let name = |e: acde::render::Error| e.0.split(':').next().unwrap().to_owned();
     assert_eq!(dom.sheet_insert_rule(style, "p", 0).map_err(name), Err("SyntaxError".to_owned()));
     assert_eq!(dom.sheet_insert_rule(style, "p {}", 9).map_err(name), Err("IndexSizeError".to_owned()));
     dom.sheet_delete_rule(style, 0).unwrap();

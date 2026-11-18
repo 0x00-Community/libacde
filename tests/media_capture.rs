@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
-use acdert::media::capture::{self, Capture, Kind, fake};
-use acdert::media::{CHANNELS, RATE};
+use acde::media::capture::{self, Capture, Kind, fake};
+use acde::media::{CHANNELS, RATE};
 
 static CAMERA: std::sync::Mutex<()> = std::sync::Mutex::new(());
 

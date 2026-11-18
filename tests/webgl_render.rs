@@ -1,8 +1,8 @@
-use acdert::webgl::consts::*;
-use acdert::webgl::{Attributes, Context, Setter};
+use acde::webgl::consts::*;
+use acde::webgl::{Attributes, Context, Setter};
 
-fn gpu() -> Option<std::sync::Arc<acdert::gpu::Gpu>> {
-    acdert::gpu::Gpu::open("webgl test").ok().map(|(.., g)| g)
+fn gpu() -> Option<std::sync::Arc<acde::gpu::Gpu>> {
+    acde::gpu::Gpu::open("webgl test").ok().map(|(.., g)| g)
 }
 
 fn program(gl: &mut Context, vs: &str, fs: &str) -> u32 {

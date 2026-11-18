@@ -1,4 +1,4 @@
-use acdert::render::{Document, Dom, NodeType, Ns, Options};
+use acde::render::{Document, Dom, NodeType, Ns, Options};
 
 fn page() -> (Document, Dom) {
     let doc = Document::new(800, 600, 1.0, &Options::default()).unwrap();
@@ -157,16 +157,16 @@ fn insertion_adopts_into_the_parents_document() {
     let live = dom.document();
     let el = dom.create_element(Ns::Html, "div").unwrap();
     assert_eq!(dom.owner_document(el).unwrap(), live);
-    dom.insert_before(root(&dom, doc), el, acdert::render::NONE).unwrap();
+    dom.insert_before(root(&dom, doc), el, acde::render::NONE).unwrap();
     assert_eq!(dom.owner_document(el).unwrap(), doc);
     assert!(!dom.in_html_document(el).unwrap());
     let body = dom.get_elements_by_tag_name(live, "body").unwrap()[0];
-    dom.insert_before(body, el, acdert::render::NONE).unwrap();
+    dom.insert_before(body, el, acde::render::NONE).unwrap();
     assert_eq!(dom.owner_document(el).unwrap(), live);
     assert!(dom.in_html_document(el).unwrap());
 }
 
-fn error_name<T: std::fmt::Debug>(result: acdert::render::Result<T>) -> String {
+fn error_name<T: std::fmt::Debug>(result: acde::render::Result<T>) -> String {
     result.unwrap_err().0.split(':').next().unwrap().to_owned()
 }
 

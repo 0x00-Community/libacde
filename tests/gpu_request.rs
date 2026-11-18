@@ -1,5 +1,5 @@
-use acdert::gpu::DeviceRequest;
-use acdert::gpu::wgpu::{Features, Limits};
+use acde::gpu::DeviceRequest;
+use acde::gpu::wgpu::{Features, Limits};
 
 fn limits() -> Limits {
     Limits { max_texture_dimension_2d: 16384, ..Limits::default() }

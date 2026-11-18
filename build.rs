@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-const HEADER: &str = "include/acdert.h";
+const HEADER: &str = "include/acde.h";
 const FFI: &str = "src/ffi.rs";
 const PREFIX: &str = "acdert_";
 
@@ -21,9 +21,9 @@ impl Linker {
 
     fn exports(&self, names: &[String], out: &Path) {
         let (file, text, arg) = match self {
-            Self::Gnu => ("acdert.map", format!("{{\n  global:\n    {PREFIX}*;\n  local:\n    *;\n}};\n"), "-Wl,--exclude-libs,ALL,--version-script="),
-            Self::Apple => ("acdert.exports", format!("_{PREFIX}*\n"), "-Wl,-exported_symbols_list,"),
-            Self::Msvc => ("acdert.def", format!("EXPORTS\n{}\n", names.iter().map(|n| format!("  {n}")).collect::<Vec<_>>().join("\n")), "/DEF:"),
+            Self::Gnu => ("acde.map", format!("{{\n  global:\n    {PREFIX}*;\n  local:\n    *;\n}};\n"), "-Wl,--exclude-libs,ALL,--version-script="),
+            Self::Apple => ("acde.exports", format!("_{PREFIX}*\n"), "-Wl,-exported_symbols_list,"),
+            Self::Msvc => ("acde.def", format!("EXPORTS\n{}\n", names.iter().map(|n| format!("  {n}")).collect::<Vec<_>>().join("\n")), "/DEF:"),
         };
         let path = out.join(file);
         std::fs::write(&path, text).expect("export list");

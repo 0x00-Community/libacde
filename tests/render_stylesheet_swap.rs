@@ -1,6 +1,6 @@
 mod common;
 
-use acdert::render::{Options, Resource};
+use acde::render::{Options, Resource};
 use common::Doc;
 
 fn page(dir: &std::path::Path) -> (Doc, u32, u32, u32) {

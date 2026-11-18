@@ -1,7 +1,7 @@
 # 构建、运行、平台
 
 ```sh
-cargo build --release -p acdert                # target/release/acdert
+cargo build --release -p libacde                # target/release/acdert
 cd web && bun install && bun run build         # packages/acde-host/dist/{broker,web}.js
 ../target/release/acdert desktops              # 装了哪些桌面
 ACDE_PATH=<acde-dopame 的包目录> ../target/release/acdert --desktop dopame
@@ -31,7 +31,7 @@ Bun 的本代目录在默认 base 下, DACL 读回只有 SYSTEM 和当前用户,
 
 ## 命令
 
-命令行由前端的 `main.rs` 解析 (调试运行时在 acdev runtime 的 `src/main.rs`, 会话在 acdebin-system), 两边共用的部分交给 `acdert_common` / `acdert::common` (见 `docs/runtime/ffi.md`).
+命令行由前端的 `main.rs` 解析 (调试运行时在 acdev runtime 的 `src/main.rs`, 会话在 acdebin-system), 两边共用的部分交给 `acdert_common` / `acde::common` (见 `docs/runtime/ffi.md`).
 
 ```sh
 acdert                                    # 会话: 桌面按 `docs/runtime/packages.md`「桌面包」的规则选

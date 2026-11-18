@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use acdert::render::{Options, Resource};
+use acde::render::{Options, Resource};
 
 mod common;
 use common::Doc;
@@ -14,11 +14,11 @@ fn page() -> (Doc, u32) {
     (doc, body)
 }
 
-fn settle(doc: &Doc, done: impl Fn(&acdert::render::Stats) -> bool) -> acdert::render::Stats {
+fn settle(doc: &Doc, done: impl Fn(&acde::render::Stats) -> bool) -> acde::render::Stats {
     settle_for(doc, Duration::from_secs(5), done)
 }
 
-fn settle_for(doc: &Doc, at_most: Duration, done: impl Fn(&acdert::render::Stats) -> bool) -> acdert::render::Stats {
+fn settle_for(doc: &Doc, at_most: Duration, done: impl Fn(&acde::render::Stats) -> bool) -> acde::render::Stats {
     let start = Instant::now();
     loop {
         doc.scene();

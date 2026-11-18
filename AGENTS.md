@@ -2,7 +2,7 @@
 
 libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acdert/`, 2026-11-18 连历史拆成本仓库): 内嵌 V8、自研 DOM 与排版绘制
 (Blitz fork + detour / vello)、网页存储、媒体、WebGPU / WebGL 绑定和 `acde:` 系统模块, 拥有全部跨仓契约 (包清单与清单规则、SDK `@dopame/acde-api`、
-`acde_*` 协议). 对外是 Rust 包 `acdert` (rlib + `libacdert.so` + `include/acdert.h`), 两个前端都和本仓库并排检出、以 path 依赖 `../libacde` 链它:
+`acde_*` 协议). 对外是 Rust 包 `libacde` (库名 `acde`, 代码里 `use acde::…`; rlib + `libacde.so` + `include/acde.h`), 两个前端都和本仓库并排检出、以 path 依赖 `../libacde` 链它:
 
 - [acdev](http://gitea.dopamine/AC/acdev): 跨平台调试运行时 (宿主窗口)、多平台模拟器和开发者命令行 `acdev`.
 - [acdes](http://gitea.dopamine/AC/acdes): Dopame OS 的系统态运行时 (Wayland 合成器、DRM/KMS、会话、RDP), 只在 Linux.
@@ -31,7 +31,7 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 ## 代码约定
 
 - 闭源 (用户定 2026-11-08): 自己的代码是专有的 (`LICENSE`), package.json 写 `"license": "UNLICENSED"`, Cargo.toml 不写 `license`.
-  `acdert` 只发到内网 cargo 源 ac (`publish = ["ac"]`, 见 `docs/dev/release.md`「cargo 源 ac」); 仓库和 release 不公开.
+  `libacde` 只发到内网 cargo 源 ac (`publish = ["ac"]`, 见 `docs/dev/release.md`「cargo 源 ac」); 仓库和 release 不公开.
   `vendor/` 和 `src/napi` 保留上游的许可证文件和版权行.
 - Rust 和 TypeScript 代码不写注释 (`//`、`/* */`、`///`、JSDoc 都不写), 要说明的写进 `docs/` 里对应的文件. 例外: 版权和许可证行 (`src/napi` 的
   Deno 版权)、工具指令 (`/// <reference>`, `@ts-expect-error`)、`vendor/` 改动处的 `acrender:` (blitz fork 里) / `acde:` 标记. derive 要读的文字写成属性.
@@ -71,7 +71,7 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 | 改说明或新增说明文档 | `docs/writing-docs.md` |
 | 第一次接手运行时, 要弄清各仓的分工、两种跑法 (会话 / 宿主窗口) 或进程与线程 | `docs/runtime/architecture.md` |
 | 找运行时的某个模块或目录归谁, 新加文件前确认放哪 | `docs/runtime/layout.md` |
-| 改 C 接口 (`src/ffi.rs`、`include/acdert.h`)、`Platform` 回调或 so 的导出表 | `docs/runtime/ffi.md` |
+| 改 C 接口 (`src/ffi.rs`、`include/acde.h`)、`Platform` 回调或 so 的导出表 | `docs/runtime/ffi.md` |
 | 改窗口表、窗口模式与状态、焦点 / 模态 / grab、全局快捷键, 或 `protocol/` 里的 `acde_window` / `acde_shell` | `docs/runtime/window-model.md` |
 | 改包清单的 `acde` 字段、桌面服务、契约级别 `apiLevel`、选哪个桌面、交出会话或登录页 | `docs/runtime/packages.md` |
 | 改 SDK `@dopame/acde-api` (`acde-api/`, 只有类型声明) 或清单规则 (`manifest/`), 或在别的工程里引用它们 | `docs/acde-api.md` |
@@ -90,4 +90,4 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 | 改 dev 的 IPC、调试请求 (eval / shot / route / clock / input …)、dev 日志或热重载 (运行时一侧) | `docs/dev/dev-ipc.md` |
 | 改 DevTools 端点、页面一侧的 CDP 域 (DOM / CSS / Network / Overlay)、断点或重载不断开 | `docs/dev/devtools.md` |
 | 写运行时的回归测试、跑或更新 WPT 期望 (`scripts/wpt/`; CI 在 acdev 的 `.github/workflows/test.yml`) | `docs/dev/testing.md` |
-| 把 `acdert` 发到 cargo 源 ac, 或了解运行时怎么随 acdev 发版 | `docs/dev/release.md` |
+| 把 `libacde` 发到 cargo 源 ac, 或了解运行时怎么随 acdev 发版 | `docs/dev/release.md` |

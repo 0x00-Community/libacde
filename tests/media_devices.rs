@@ -1,4 +1,4 @@
-use acdert::media::capture;
+use acde::media::capture;
 
 #[test]
 #[ignore = "lists this machine's real cameras and microphones"]

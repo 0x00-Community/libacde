@@ -1,12 +1,12 @@
-use acdert::webgl::consts::*;
-use acdert::webgl::{Attributes, Context, Setter};
+use acde::webgl::consts::*;
+use acde::webgl::{Attributes, Context, Setter};
 
 fn floats(v: &[f32]) -> Vec<u8> {
     v.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 
 fn run(fs_body: &str, decls: &str, set: impl Fn(&mut Context, u32, u64)) -> [u8; 4] {
-    let gpu = acdert::gpu::Gpu::open("uniforms").unwrap().2;
+    let gpu = acde::gpu::Gpu::open("uniforms").unwrap().2;
     let mut gl = Context::new(gpu, true, Attributes { antialias: false, ..Default::default() }, 4, 4);
     let v = gl.create_shader(VERTEX_SHADER).unwrap();
     gl.shader_source(v, "#version 300 es\nin vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }");

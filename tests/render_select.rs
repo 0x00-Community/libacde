@@ -1,4 +1,4 @@
-use acdert::render::{NONE, Options, Rect};
+use acde::render::{NONE, Options, Rect};
 
 mod common;
 use common::{Doc, WaitFrame};

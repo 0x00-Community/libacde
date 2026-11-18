@@ -1,5 +1,5 @@
-use acdert::gpu::RenderCommand;
-use acdert::render::{Options, Rect};
+use acde::gpu::RenderCommand;
+use acde::render::{Options, Rect};
 
 mod common;
 use common::{Doc, near};

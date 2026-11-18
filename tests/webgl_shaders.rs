@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use acdert::webgl::shader::{self, Limits};
+use acde::webgl::shader::{self, Limits};
 use naga::ShaderStage;
 
 const LIMITS: Limits = Limits { attributes: 16, varyings: 15, draw_buffers: 8, textures: 32 };

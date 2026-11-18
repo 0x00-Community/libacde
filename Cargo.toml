@@ -14,10 +14,10 @@ blitz-dom = { path = "vendor/blitz/packages/blitz-dom", version = "=0.3.0-beta.5
 blitz-paint = { path = "vendor/blitz/packages/blitz-paint", version = "=0.3.0-beta.5", registry = "ac", default-features = false }
 blitz-traits = { path = "vendor/blitz/packages/blitz-traits", version = "=0.3.0-beta.5", registry = "ac", default-features = false }
 
-# 对外唯一的包: src/ 下的模块 (host / render / runtime / webgl / …) (gpu 是 detour 之上的设备注册表和合成器接口) 平铺导出 (Rust 用 rlib), 并以 cdylib 出 libacdert.so
-# (C 接口在 src/ffi.rs, 头文件 include/acdert.h 由 build.rs 经 cbindgen 生成). acdev 和 acdes 并排检出本仓库, 以 path 依赖 "../libacde" 链它
+# 对外唯一的包: src/ 下的模块 (host / render / runtime / webgl / …) (gpu 是 detour 之上的设备注册表和合成器接口) 平铺导出 (Rust 用 rlib), 并以 cdylib 出 libacde.so
+# (C 接口在 src/ffi.rs, 头文件 include/acde.h 由 build.rs 经 cbindgen 生成). acdev 和 acdes 并排检出本仓库, 以 path 依赖 "../libacde" 链它
 [package]
-name = "acdert"
+name = "libacde"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
@@ -30,6 +30,7 @@ include = [
 ]
 
 [lib]
+name = "acde"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]

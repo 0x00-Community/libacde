@@ -45,7 +45,7 @@
       DOMQuad、DOMMatrix(ReadOnly). V8 反序列化时不许跑 JS, 所以 `read_host_object` 先放占位对象, 读完后交给 JS `reviveAll` 换成真的
       对象 (Map / Set 也照顾到). `EventTarget` / `Event` (含 DOM 节点、window) 克隆抛 `DataCloneError`; 克隆时 getter 抛的错原样抛出
       (`cloneFailure`). `structuredClone` / `postMessage` 也走这条路, `transfer` 里的 ArrayBuffer 克隆后 detach (MessagePort 照旧不转移).
-    - 测试: `cargo test --release -p acdert storage` (调度、版本变更、回滚、游标), acde-dom `test/idb-keys.test.ts` (键序)、
+    - 测试: `cargo test --release -p libacde storage` (调度、版本变更、回滚、游标), acde-dom `test/idb-keys.test.ts` (键序)、
       `test/storage.test.ts`. WPT 的 IndexedDB 用临时的包 (`apps` 的 entry 指向生成的页面, assets 挂 `/resources/`、`/IndexedDB/`、
       `/common/`、`/interfaces/`; `/resources/WebIDLParser.js` 是 `resources/webidl2/lib/webidl2.js`), `acdert app` headless 逐个跑
       (`.any.js` 只跑 window 那份, 有 `variant` 的用 `history.replaceState` 换查询串), 页面用 `add_completion_callback` 把结果打进日志后

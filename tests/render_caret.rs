@@ -1,4 +1,4 @@
-use acdert::render::{Options, Rect};
+use acde::render::{Options, Rect};
 
 mod common;
 use common::{Doc, near};
@@ -121,7 +121,7 @@ fn input_value() {
     assert!(w > 5.0 && near(c5.x, c0.x + 5.0 * w), "{c0:?} {c5:?}");
 }
 
-use acdert::render::CaretPosition;
+use acde::render::CaretPosition;
 
 impl Page {
     fn at(&self, x: f64, y: f64) -> Option<CaretPosition> {

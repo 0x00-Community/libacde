@@ -1,5 +1,5 @@
-use acdert::render::Options;
-use acdert::render::blitz_dom::node::SvgImageData;
+use acde::render::Options;
+use acde::render::blitz_dom::node::SvgImageData;
 
 mod common;
 use common::Doc;

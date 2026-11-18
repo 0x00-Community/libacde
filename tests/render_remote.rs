@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use acdert::render::{Document, Dom, Load, Loader, NONE, Ns, Options};
+use acde::render::{Document, Dom, Load, Loader, NONE, Ns, Options};
 
 const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAYAAAC56t6BAAAAEUlEQVR4nGP4z8DwH4QZMBgAoXkL9U3EmgcAAAAASUVORK5CYII=";
 
@@ -189,7 +189,7 @@ fn only_the_current_fetch_of_a_link_counts() {
 
     dom.set_attribute(link, "href", "https://cdn.example.com/c.css").unwrap();
     let pending = take(&loads, "https://cdn.example.com/c.css");
-    let holder = dom.create_element(acdert::render::Ns::Html, "div").unwrap();
+    let holder = dom.create_element(acde::render::Ns::Html, "div").unwrap();
     dom.insert_before(holder, link, NONE).unwrap();
     assert!(dom.sheet_state(link).is_ok_and(|state| state == 3), "a link out of the document has no fetch");
     assert_eq!(color(&dom, p), "rgb(0, 0, 0)");

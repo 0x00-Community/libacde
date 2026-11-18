@@ -1,4 +1,4 @@
-use acdert::render::{Capture, Options};
+use acde::render::{Capture, Options};
 
 mod common;
 use common::Doc;

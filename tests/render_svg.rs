@@ -1,4 +1,4 @@
-use acdert::render::Options;
+use acde::render::Options;
 
 mod common;
 use common::Doc;

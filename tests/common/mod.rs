@@ -4,7 +4,7 @@ use std::ops::Deref;
 
 use std::time::{Duration, Instant};
 
-use acdert::render::{Document, Dom, Error, Frame, Metrics, NONE, Ns, Options, Rect, RenderHandle, Result};
+use acde::render::{Document, Dom, Error, Frame, Metrics, NONE, Ns, Options, Rect, RenderHandle, Result};
 
 pub struct Doc {
     document: Document,
@@ -70,14 +70,14 @@ impl WaitFrame for RenderHandle {
 }
 
 pub fn vello() {
-    if let Some(gpu) = acdert::gpu::Gpu::shared() {
-        gpu.set_compositor(std::sync::Arc::new(acdert::vello::VelloCompositor));
+    if let Some(gpu) = acde::gpu::Gpu::shared() {
+        gpu.set_compositor(std::sync::Arc::new(acde::vello::VelloCompositor));
     }
 }
 
-pub fn rasterize(scene: acdert::gpu::Scene, size: (u32, u32)) -> Vec<u8> {
+pub fn rasterize(scene: acde::gpu::Scene, size: (u32, u32)) -> Vec<u8> {
     vello();
-    acdert::render::gpu::rasterize(scene, size)
+    acde::render::gpu::rasterize(scene, size)
 }
 
 pub fn near(a: f64, b: f64) -> bool {
@@ -108,7 +108,7 @@ impl Doc {
         self.document.sync()
     }
 
-    pub fn scene(&self) -> acdert::gpu::Scene {
+    pub fn scene(&self) -> acde::gpu::Scene {
         self.document.scene()
     }
 

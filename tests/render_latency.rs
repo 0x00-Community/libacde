@@ -1,4 +1,4 @@
-use acdert::render::Options;
+use acde::render::Options;
 use std::time::{Duration, Instant};
 
 mod common;

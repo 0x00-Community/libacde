@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use acdert::render::Options;
+use acde::render::Options;
 
 mod common;
 use common::{Doc, WaitFrame};

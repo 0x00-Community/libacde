@@ -30,7 +30,7 @@ WebGL 1 和 2 在每个 OS 上都有 (Windows 没验过), 是 wgpu 上的一台 
   `EXT_disjoint_timer_query`、带数据上传到 depth24 / depth32f (只有 depth16 能写)、copyTexImage 到 LUMINANCE / ALPHA 不换算、模板的 blit 解析、
   索引或实例化的宽点 (一个像素)、uniform 里的 bool 数组和含 bool 的结构、std140 块里的 matCx2、着色器校验比 ANGLE 宽松 (隐式转换照
   GLSL 4.x), origin-clean (跨源图片能读出来, 和 2D canvas 一样还没有), 上下文丢失后不恢复 (`restoreContext` 什么也不做).
-- **检查**: `cargo test --release -p acdert webgl` (加 `--test 'webgl_*'` 只跑根 `tests/` 里的) (着色器翻译、渲染、uniform、查询、多重采样、宽点); `ACDE_WEBGL_SHADERS=<目录>` 时再把目录里
+- **检查**: `cargo test --release -p libacde webgl` (加 `--test 'webgl_*'` 只跑根 `tests/` 里的) (着色器翻译、渲染、uniform、查询、多重采样、宽点); `ACDE_WEBGL_SHADERS=<目录>` 时再把目录里
   `name_NNN.vert` / `name_NNN+1.frag` 一对对链接并生成 MSL / SPIR-V / HLSL (three.js 0.187 的 36 个程序是从 Chrome 里拦 `shaderSource` 得到的).
   2026-11-12 three.js (标准 / 物理 / Phong / Lambert / Toon / Matcap / 法线 / 深度材质、三种阴影、实例化、变形、蒙皮、点、线、精灵、
   EffectComposer + UnrealBloomPass + 4 倍多重采样的半浮点目标、PNG / SVG / 2D canvas 纹理) 和 pixi 8.23 在 macOS (Metal) 和 .234 (Vulkan)
