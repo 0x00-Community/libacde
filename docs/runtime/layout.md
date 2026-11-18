@@ -166,3 +166,6 @@
   (桌面服务 `ctx.import` 拿到的外壳模块和它们的事件)、`capabilities.ts` (必需与可选能力), `access/approval/` 是批准: `permissions.ts` (决定)、`permits.ts` (web 侧的守卫)、
   `dialog.ts` (单应用模式的原生对话框). `broker.ts` 留着会话循环和 web 的起停. `greet/` 是登录页,
   `brand/` 的 `mark.mjs` / `art.mjs` 是 agentos 仓库 `branding/` 的原样拷贝 (只在那边改).
+
+**会话里的应用菜单** (和 acdes 对齐, 2026-11-20): 应用的 `window.setMenus` 经管家推给桌面 (`windowmenus`); 桌面进程的启动器把 `windows.invokeMenu`
+交给 `manager.call('windows', 'invokeMenu', args)`, 管家按 pid 给应用进程推 `{type: 'menuinvoke', menu, item}`, 应用进程的启动器照菜单快捷键那条路调页面的 `window.menu(menu, item)`.
