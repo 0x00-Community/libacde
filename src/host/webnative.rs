@@ -393,14 +393,18 @@ fn set_ime_area(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _
 
 fn set_clipboard(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
     let text = bind::arg_string(scope, &args, 0);
-    with_surface(scope, |surface| surface.set_clipboard(text));
+    with_surface(scope, |surface| surface.set_clipboard(vec![crate::render::ClipboardEntry::text(text)]));
 }
 
 fn read_clipboard(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     let Some((token, promise)) = bind::promise(scope) else { return };
     let tx = rt::current().sender();
-    let reply = move |text: String| _ = tx.send(Msg::Task(Box::new(move |scope| clipboard_read(scope, token, &text))));
-    if with_surface(scope, |surface| surface.read_clipboard(Box::new(reply))).is_none() {
+    let reply = move |bytes: Option<Vec<u8>>| {
+        let text = String::from_utf8_lossy(&bytes.unwrap_or_default()).into_owned();
+        _ = tx.send(Msg::Task(Box::new(move |scope| clipboard_read(scope, token, &text))));
+    };
+    let mime = crate::render::ClipboardEntry::TEXT.to_owned();
+    if with_surface(scope, |surface| surface.read_clipboard(mime, Box::new(reply))).is_none() {
         return bind::forget_promise(token);
     }
     rt::current().delay(Duration::from_secs(2), move |scope| clipboard_read(scope, token, ""));
