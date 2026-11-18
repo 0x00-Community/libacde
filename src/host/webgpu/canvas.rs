@@ -74,6 +74,9 @@ fn texture(
 }
 
 struct Passes {
+    // the device they were made on (held, so its address is not reused): after a device loss the next present makes them
+    // again on the new one. wgpu::Device's own == does not tell two devices apart.
+    gpu: Arc<Gpu>,
     opaque: wgpu::RenderPipeline,
     keep: wgpu::RenderPipeline,
     unpremultiply: wgpu::RenderPipeline,
@@ -104,11 +107,17 @@ const SHADER: &str = r"
 ";
 
 impl Passes {
-    fn get(gpu: &Gpu) -> Rc<Passes> {
-        PASSES.with(|p| p.borrow_mut().get_or_insert_with(|| Rc::new(Self::new(gpu))).clone())
+    fn get(gpu: &Arc<Gpu>) -> Rc<Passes> {
+        PASSES.with(|p| {
+            let mut slot = p.borrow_mut();
+            if slot.as_ref().is_some_and(|passes| !Arc::ptr_eq(&passes.gpu, gpu)) {
+                *slot = None;
+            }
+            slot.get_or_insert_with(|| Rc::new(Self::new(gpu))).clone()
+        })
     }
 
-    fn new(gpu: &Gpu) -> Self {
+    fn new(gpu: &Arc<Gpu>) -> Self {
         let device = &gpu.device;
         let module =
             device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("acde canvas present"), source: wgpu::ShaderSource::Wgsl(SHADER.into()) });
@@ -151,6 +160,7 @@ impl Passes {
             })
         };
         Self {
+            gpu: gpu.clone(),
             opaque: pipeline("opaque", &none, wgpu::ColorWrites::ALPHA),
             keep: pipeline("keep", &with_source, wgpu::ColorWrites::ALL),
             unpremultiply: pipeline("unpremultiply", &with_source, wgpu::ColorWrites::ALL),

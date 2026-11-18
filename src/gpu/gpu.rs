@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use detour::fallback::Shared;
 
-use super::{Compositor, Offscreen};
+use super::{Compositor, GpuImage, Offscreen};
 
 type LostListener = Box<dyn Fn(&str) + Send>;
 type Waiter = Box<dyn FnOnce(Option<Arc<Gpu>>) + Send>;
@@ -42,6 +42,7 @@ struct Registry {
 static REGISTRY: Mutex<Registry> = Mutex::new(Registry { state: State::Unset, waiters: Vec::new() });
 static READY: Condvar = Condvar::new();
 static NEXT_LISTENER: AtomicU64 = AtomicU64::new(1);
+static REPLACED: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     static SINK: RefCell<Option<ErrorSink>> = const { RefCell::new(None) };
@@ -205,7 +206,7 @@ impl Gpu {
         gpu.device.set_device_lost_callback(move |reason, message| {
             log::error!("web layer GPU device lost ({reason:?}): {message}");
             if let Some(gpu) = weak.upgrade() {
-                gpu.gone.store(true, Ordering::SeqCst);
+                gpu.mark_gone();
                 for listener in lock(&gpu.lost).values() {
                     listener(&message);
                 }
@@ -256,6 +257,30 @@ impl Gpu {
         gpu
     }
 
+    /// Publishes `gpu` in place of a lost device (the host window's recovery): `get`, `shared` and `when_ready` give the new
+    /// one from then on, and everything holding the old one finds it `gone` and moves over.
+    pub fn replace(gpu: Arc<Gpu>) {
+        let mut registry = lock(&REGISTRY);
+        registry.state = State::Published(Some(gpu.clone()));
+        REPLACED.store(true, Ordering::SeqCst);
+        READY.notify_all();
+        let waiters = std::mem::take(&mut registry.waiters);
+        drop(registry);
+        for waiter in waiters {
+            waiter(Some(gpu.clone()));
+        }
+    }
+
+    /// Whether a lost device was ever replaced in this process.
+    pub fn replaced() -> bool {
+        REPLACED.load(Ordering::SeqCst)
+    }
+
+    /// Whether `image` lives on this device (its image set holds it): an image of a replaced device does not.
+    pub fn owns(&self, image: &GpuImage) -> bool {
+        self.images.find(image.id()).is_some_and(|found| std::ptr::eq(Arc::as_ptr(&found), image))
+    }
+
     pub fn get() -> Option<Option<Arc<Gpu>>> {
         match &lock(&REGISTRY).state {
             State::Published(gpu) => Some(gpu.clone()),
@@ -292,8 +317,16 @@ impl Gpu {
     }
 
     pub fn destroy(&self) {
-        self.gone.store(true, Ordering::SeqCst);
+        self.mark_gone();
         self.device.destroy();
+    }
+
+    /// Marks the device gone and wakes the poll thread so it ends.
+    fn mark_gone(&self) {
+        let polls = lock(&self.polls);
+        self.gone.store(true, Ordering::SeqCst);
+        drop(polls);
+        self.polling.notify_all();
     }
 
     pub fn hold_poll(self: &Arc<Self>) {
@@ -315,7 +348,11 @@ impl Gpu {
 
     fn poll_forever(&self) {
         loop {
-            drop(self.polling.wait_while(lock(&self.polls), |p| *p == 0).unwrap_or_else(|e| e.into_inner()));
+            drop(self.polling.wait_while(lock(&self.polls), |p| *p == 0 && !self.gone()).unwrap_or_else(|e| e.into_inner()));
+            // a lost device has nothing more to finish; ending here lets it go once its other holders do
+            if self.gone() {
+                return;
+            }
             let pause = match self.device.poll(wgpu::PollType::Poll) {
                 Ok(wgpu::PollStatus::QueueEmpty) | Err(_) => POLL_IDLE,
                 Ok(_) => POLL_BUSY,

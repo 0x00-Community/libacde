@@ -3,14 +3,41 @@ use std::sync::{Arc, Mutex};
 use crate::gpu::{Gpu, GpuImage, Offscreen, Scene};
 use kurbo::Affine;
 
-static OFFSCREEN: Mutex<Option<Box<dyn Offscreen>>> = Mutex::new(None);
+static OFFSCREEN: Mutex<Option<(Arc<Gpu>, Box<dyn Offscreen>)>> = Mutex::new(None);
+
+#[derive(Debug, PartialEq)]
+enum Held {
+    Use,
+    Rebuild,
+    Wait,
+}
+
+/// What to do with the offscreen built on a device: use it while the device lives, wait while a lost device is still the
+/// published one (the host window is opening a new one), rebuild once a new device is published.
+fn held(gone: bool, still_published: impl FnOnce() -> bool) -> Held {
+    match (gone, gone && still_published()) {
+        (false, _) => Held::Use,
+        (true, true) => Held::Wait,
+        (true, false) => Held::Rebuild,
+    }
+}
 
 fn with<T>(f: impl FnOnce(&mut dyn Offscreen) -> Result<T, String>) -> Option<T> {
     let mut slot = OFFSCREEN.lock().unwrap_or_else(|e| e.into_inner());
-    if slot.is_none() {
-        *slot = Some(Gpu::shared()?.offscreen().inspect_err(|e| log::warn!("render: {e}")).ok()?);
+    if let Some((gpu, _)) = slot.as_ref() {
+        match held(gpu.gone(), || Gpu::shared().is_some_and(|now| Arc::ptr_eq(&now, gpu))) {
+            Held::Use => {}
+            Held::Wait => return None,
+            Held::Rebuild => *slot = None,
+        }
     }
-    f(slot.as_deref_mut()?).inspect_err(|e| log::warn!("render: {e}")).ok()
+    if slot.is_none() {
+        let gpu = Gpu::shared()?;
+        let offscreen = gpu.offscreen().inspect_err(|e| log::warn!("render: {e}")).ok()?;
+        *slot = Some((gpu, offscreen));
+    }
+    let (_, offscreen) = slot.as_mut()?;
+    f(offscreen.as_mut()).inspect_err(|e| log::warn!("render: {e}")).ok()
 }
 
 pub fn warm() {
@@ -24,12 +51,15 @@ pub fn draw(scene: Scene, size: (u32, u32), place: Affine) -> Option<Arc<GpuImag
     with(|o| o.draw(scene, size, place))
 }
 
+/// Reads `image` back; an image of a replaced device has nothing to read (None).
 pub fn read(image: &GpuImage, rect: [u32; 4]) -> Option<Vec<u8>> {
-    Gpu::shared()?.read(&image.texture, rect).inspect_err(|e| log::warn!("render: {e}")).ok()
+    let gpu = Gpu::shared().filter(|gpu| gpu.owns(image))?;
+    gpu.read(&image.texture, rect).inspect_err(|e| log::warn!("render: {e}")).ok()
 }
 
+/// Writes into `image`; an image of a replaced device is left alone.
 pub fn write(image: &GpuImage, data: &[u8], size: (u32, u32), from: [u32; 2], to: [u32; 4]) {
-    if let Some(gpu) = Gpu::shared() {
+    if let Some(gpu) = Gpu::shared().filter(|gpu| gpu.owns(image)) {
         gpu.write(image, data, size, from, to);
     }
 }
@@ -44,4 +74,20 @@ pub fn filtered(scene: Scene, size: (u32, u32), place: Affine, filter: &crate::g
 
 pub fn rasterize(scene: Scene, size: (u32, u32)) -> Vec<u8> {
     with(|o| Ok(o.rasterize(scene, size))).unwrap_or_else(|| vec![0; (size.0 * size.1 * 4) as usize])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Held, held};
+
+    #[test]
+    fn a_live_device_is_used_without_asking_the_registry() {
+        assert_eq!(held(false, || panic!("the registry is not asked")), Held::Use);
+    }
+
+    #[test]
+    fn a_lost_device_waits_until_a_new_one_is_published() {
+        assert_eq!(held(true, || true), Held::Wait);
+        assert_eq!(held(true, || false), Held::Rebuild);
+    }
 }
