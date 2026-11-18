@@ -177,7 +177,7 @@ class Launcher {
     })
     const relay = managerRelay(manager)
     this.#relay = relay
-    this.#guest = manager ? new GuestWindows(process.pid, session.kind === 'desktop') : null
+    this.#guest = manager ? new GuestWindows(process.pid, session.lock ? 'lock' : session.kind === 'desktop' ? 'desktop' : 'app') : null
     const page = () => {
       const target = this.#target()
       return target && { ...target, url: this.#init?.url ?? null }
@@ -223,7 +223,8 @@ class Launcher {
     const post = (message: Record<string, unknown>) => this.#thread?.post(message)
     const frame = desktop ? 0 : Frame.height(this.session.found?.app)
     const lock = this.session.lock ? { lock: true } : {}
-    return { name: init.name, app, kind, window: this.#window, title: this.#title, frame, ...lock, call, post }
+    const window = this.#guest?.global(this.#window) ?? this.#window
+    return { name: init.name, app, kind, window, title: this.#title, frame, ...lock, call, post }
   }
 
   get #desktop(): boolean {

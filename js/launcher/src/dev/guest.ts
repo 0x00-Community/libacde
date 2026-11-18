@@ -13,14 +13,17 @@ export interface GuestRow {
   readonly hidden: boolean
   readonly state?: ShellWindow['state']
   readonly desktop: boolean
+  readonly lock: boolean
 }
+
+export type GuestRole = 'app' | 'desktop' | 'lock'
 
 export class GuestWindows {
   #rows: readonly GuestRow[] = []
 
   constructor(
     readonly pid: number,
-    readonly desktop: boolean,
+    readonly role: GuestRole,
   ) {}
 
   place(rows: unknown): void {
@@ -36,8 +39,16 @@ export class GuestWindows {
   }
 
   mine(): number | null {
-    const row = this.#rows.find((r) => r.pid === this.pid && r.desktop === this.desktop)
+    const row = this.#rows.find((r) => r.pid === this.pid && GuestWindows.#role(r) === this.role)
     return row ? GuestWindows.id(row) : null
+  }
+
+  global(local: number): number {
+    return (this.placed ? this.mine() : null) ?? local
+  }
+
+  static #role(row: GuestRow): GuestRole {
+    return row.desktop ? 'desktop' : row.lock ? 'lock' : 'app'
   }
 
   row(id: number): GuestRow | undefined {
@@ -55,7 +66,7 @@ export class GuestWindows {
       y: row.y,
       width: row.width,
       height: row.height,
-      z: row.desktop ? -1 : count - index,
+      z: row.desktop ? -1 : row.lock ? count + 1 : count - index,
       focus: row.activated,
       hidden: row.hidden,
       pid: row.pid,
@@ -104,6 +115,7 @@ export class GuestWindows {
       activated: given.activated === true,
       hidden: given.hidden === true,
       desktop: given.desktop === true,
+      lock: given.lock === true,
     }
   }
 }

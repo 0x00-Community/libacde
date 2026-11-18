@@ -137,3 +137,6 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
 - 指针和按键 (2026-11-20): 有窗口表时, Inspect 的 act (click、double、right、hover、scroll、drag、key) 不经本进程的 shell, 而是发
   `{devinject: {type: move | down | up | wheel | keydown | keyup, x?, y?, button?, dx?, dy?, source?, code?}}` 给管家, 由管家交 winman 注入成真实输入;
   坐标是 winman 的屏幕坐标 (窗口表的 x、y 加元素在页面里的位置), `button` 和 `code` 是 evdev 码 (左键 0x110, 右键 0x111).
+- 锁屏页的窗口 (2026-11-20): 锁着时管家在窗口表里加一行锁屏页 `{id, lock: true, pid: <锁屏进程>, title: "lock"}` (`id` 是 winman 给锁屏面的号, 没有时管家另取一个不和别的窗口撞的号).
+  锁屏进程认 `lock: true` 且 pid 是自己的那一行, 叠在最上面, ref 是 `w<id>`; 有窗口表时 `webs` 报的 `window` 也换成窗口表里的号 (桌面 0, 锁屏页和应用是 winman 的号),
+  所以 `acde.window({id: web.window})` 能拿到锁屏页. 管家转发 `webs` 时也附 `windows`.
