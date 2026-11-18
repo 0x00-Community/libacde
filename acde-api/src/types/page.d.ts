@@ -906,6 +906,7 @@ export interface PowerBattery {
 export interface PowerPolicy {
   readonly dim: number | null
   readonly screenOff: number | null
+  readonly lockOnScreenOff: boolean
   readonly idleAction: PowerIdleAction
   readonly idleAfter: number
   readonly lidAction: PowerAction

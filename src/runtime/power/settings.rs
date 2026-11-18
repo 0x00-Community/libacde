@@ -119,6 +119,7 @@ impl SleepMode {
 pub struct Policy {
     pub dim: Option<u32>,
     pub screen_off: Option<u32>,
+    pub lock_on_screen_off: bool,
     pub idle_action: Action,
     pub idle_after: u32,
     pub lid: Action,
@@ -134,6 +135,7 @@ impl Policy {
         json!({
             "dim": self.dim,
             "screenOff": self.screen_off,
+            "lockOnScreenOff": self.lock_on_screen_off,
             "idleAction": self.idle_action.js(),
             "idleAfter": self.idle_after,
             "lidAction": self.lid.js(),
@@ -269,6 +271,7 @@ impl Settings {
         Policy {
             dim: self.flag(g, display, "DimDisplayWhenIdle", true).then(|| self.uint(g, display, "DimDisplayIdleTimeoutSec", dim)),
             screen_off: self.flag(g, display, "TurnOffDisplayWhenIdle", true).then(|| self.uint(g, display, "TurnOffDisplayIdleTimeoutSec", off)),
+            lock_on_screen_off: self.flag(g, display, "LockBeforeTurnOffDisplay", true),
             idle_action: action("AutoSuspendAction", auto_default, true),
             idle_after: self.uint(g, suspend, "AutoSuspendIdleTimeoutSec", auto),
             lid: action("LidAction", if m.can_suspend { Action::Sleep } else { Action::ScreenOff }, false),
@@ -373,6 +376,10 @@ impl Settings {
                     self.set(g, display, after, n.into());
                 }
             }
+            "lockOnScreenOff" => {
+                let on = v.as_bool().ok_or("acde.power.configure: lockOnScreenOff is a boolean")?;
+                self.set(g, display, "LockBeforeTurnOffDisplay", on.into());
+            }
             "idleAction" => self.set(g, suspend, "AutoSuspendAction", action(v, true)?.kde().into()),
             "idleAfter" => self.set(g, suspend, "AutoSuspendIdleTimeoutSec", seconds(v)?.into()),
             "lidAction" => self.set(g, suspend, "LidAction", action(v, false)?.kde().into()),
@@ -456,5 +463,18 @@ mod tests {
         assert!(s.apply(&json!({ "ac": { "idleAction": "prompt" } })).is_err());
         assert!(s.apply(&json!({ "criticalLevel": 50 })).is_err());
         assert_eq!(s.general().critical, 5);
+    }
+
+    #[test]
+    fn locks_on_screen_off_unless_told_not_to() {
+        let mut s = fresh();
+        assert!(Group::ALL.into_iter().all(|g| s.policy(g).lock_on_screen_off), "an old power.json without the key locks");
+        s.apply(&json!({ "battery": { "lockOnScreenOff": false } })).unwrap();
+        assert_eq!(s.file["Battery"]["Display"]["LockBeforeTurnOffDisplay"], json!(false));
+        assert!(!s.policy(Group::Battery).lock_on_screen_off);
+        assert!(s.policy(Group::Ac).lock_on_screen_off);
+        assert_eq!(s.policy(Group::Battery).js()["lockOnScreenOff"], json!(false));
+        assert!(s.apply(&json!({ "ac": { "lockOnScreenOff": "yes" } })).is_err());
+        assert!(s.policy(Group::Ac).lock_on_screen_off);
     }
 }
