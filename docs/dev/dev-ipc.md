@@ -126,3 +126,5 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
   客户机里 `devtools` 请求由管家回 `{ports:[{web, app, port}]}`. `webs` 由管家向各进程逐个发再合并, 不另加消息.
 - 锁屏页 (welcome 顶层 `lock: true`): 页面名固定为 `lock`, `webs` 里带 `lock: true` (kind 仍是 desktop), `web: "lock"` 找到它, `desktop` 不再指它.
   宿主上 `acdev dev --lock` 的预览没有管家, 页面名仍是 `desktop`, 也带 `lock: true`.
+- 页面和运行时的开发能力 (`debug.eval`/`evalOn`、`dev.clock`、devInit、devroute、DevTools 端点与页面域、V8 live-edit) 只看 `ACDE_DEV` 在不在.
+  客户机里由会话总管在开发客户机 (fw_cfg 文件存在) 时设 `ACDE_DEV=guest`, 启动器把 `ACDE_*` 传给页面线程; 正式系统里没有它, 即使有, 没有管家转发请求也到不了页面.
