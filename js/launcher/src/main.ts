@@ -75,11 +75,19 @@ const CLOSE_WAIT_MS = 3000
 type WindowState = 'normal' | 'minimized' | 'filled' | 'fullscreen'
 const STATES: readonly string[] = ['normal', 'minimized', 'filled', 'fullscreen'] satisfies WindowState[]
 
+function filesFor(found: Found): WebGrants['fs'] {
+  const fs = found.app.capabilities.fs
+  if (!fs) return null
+  const declared = typeof fs === 'object' ? [...fs.roots] : []
+  const places = process.env['ACDE_DEV_PLACES'] ? declared : []
+  return { places, paths: false }
+}
+
 function grantsFor(found: Found): WebGrants {
   const { app } = found
   const root = process.env['ACDE_STORAGE'] ?? join(xdgHome('data'), 'acde', 'storage')
   return {
-    app: app.id, fs: null, terminal: false, network: !!app.capabilities.network, system: false, bluetooth: false, audio: !!app.capabilities.audio,
+    app: app.id, fs: filesFor(found), terminal: false, network: !!app.capabilities.network, system: false, bluetooth: false, audio: !!app.capabilities.audio,
     devices: false, power: false, input: false, display: false, office: false, camera: false, microphone: false,
     storage: { key: `app-${app.id}`, dir: root ? join(root, `app-${app.id}`) : null, legacy: null },
   }
@@ -208,6 +216,7 @@ class Launcher {
     rpc.serve((service, method, args) => this.#serve(service, method, args))
     const env = { ...Launcher.env(), ...(this.#shell.socketName && { WAYLAND_DISPLAY: this.#shell.socketName }) }
     const thread = sys().spawnWeb(init.name, init, this.session.heapMb ?? HEAP_MB, env, (message) => this.#fromPage(message, rpc), (code, reason) => {
+      rpc.fail(Inspect.PAGE_GONE)
       if (this.#reloading) return this.#respawn()
       if (reason) process.stderr.write(`acdev: ${init.name} stopped: ${reason}\n`)
       this.#end(code)

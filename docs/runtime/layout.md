@@ -44,6 +44,8 @@
   也转过去 (管家据此记冷启动). 管家推来的 `request` 交给页面 `window.request`, 桌面进程收到的其余推送原样交给桌面页, `managerclosed` 时以 0 退出.
 - **没有管家时** (宿主窗口跑法): 只认 `app`; 目录取其 package.json 里第一个应用, id 在 `ACDE_PATH` 的各目录及其下一层找; 资源前缀按
   `acde.assets`, 没有 `/` 时 `/` 指包目录; 没有服务、最低权限等级、存储在 `$ACDE_STORAGE` 或 `~/.local/share/acde/storage` 的 `app-<id>`.
+  文件 (用户 2026-11-18): 清单声明了 `fs` 就授予 `{places, paths: false}` (形状同客户机管家的 `grants.fs`): 只在设了 `ACDE_DEV_PLACES` (`acdev dev` 设,
+  它同时用 `XDG_<名>_DIR` 把公共位置换成会话自己的隔离目录) 时给清单 `fs.roots` 列的位置, 否则只有应用私有目录; 不给任意路径.
   `window.ready`、`window.setTitle`、`page.shown` 直接应答, `desktops.list` 回 `{desktops: [], current: ''}`, 其余 (含 `session.*`、
   `desktops.choose`) 回 `unsupported` (501).
 - **会话与桌面包** (`acde:session`、`acde:desktops`, libacde 工单 04): 页面胶水 (`RemoteBridge`) 给桌面页定义这两个模块, 应用页在
@@ -88,6 +90,7 @@
   (`dev.state`, 最多 500 毫秒) 再重新找应用、重开页面并带上 `devState`, 热替换只发 `devhot`. 单应用的特例: `open` 报“没有别的应用”;
   `permissions` 恒为空、`answer` 找不到提示、`revoke` 回 `revoked: false` (单应用不问用户); `resize` 改宿主窗口大小 (`resizeScreen`);
   `emulate` 的系统配色只认 `ACDE_COLOR_SCHEME=dark`.
+  页面线程结束 (重载、跳到应用里另一个 HTML) 时, 等在它上面的 rpc 调用一律以“页面已离开”失败, `act` / `run` 把这当成点击引起的跳转照常回答, 不再卡到超时.
 - **DevTools** (`js/launcher/src/dev/devtools.ts` 的 `DevToolsEndpoint`, 工作项 12): 运行时的 `DevTools.open()` 开了端点 (设了 `ACDE_DEV` 时) 就每 250 毫秒
   把本页登记成 CDP 目标 (id 是 web 名, 列表没变不重登); `devtools` 请求回 `{port}`; 重载前调 `reloading(web)` 让连着的 DevTools 接上新页面;
   宿主窗口的 F12 (`devtools` 事件) 经 `Shell.devEvent` 发 `{type: 'event', event: 'devtools', web, app, window}`, 由 `acdev dev` 打开 DevTools.

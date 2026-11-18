@@ -159,6 +159,7 @@ type Point = { readonly x: number; readonly y: number } | { readonly error: stri
 
 export class Inspect {
   static readonly LIMIT = 600
+  static readonly PAGE_GONE = 'the page went away (it reloaded or loaded another document)'
   static readonly SETTLE_MS = 400
   static readonly QUIET_MS = 200
   static readonly BUSY_MS = 3000
@@ -372,7 +373,9 @@ export class Inspect {
             : await this.#webAct(window, parsed.node, step.action, arg)
       return { ...done, window }
     } catch (error) {
-      return { ok: false, text: (error as Error).message ?? String(error) }
+      const said = (error as Error).message ?? String(error)
+      if (said === Inspect.PAGE_GONE) return { ok: true, text: `${step.action} on ${step.ref}: the page loaded another document`, window }
+      return { ok: false, text: said }
     }
   }
 
