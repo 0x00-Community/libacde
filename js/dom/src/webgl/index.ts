@@ -2,6 +2,7 @@ import { Event, fire, type EventTarget } from '../core/event'
 import { DOMException } from '../core/exception'
 import { constants, tag } from '../core/host'
 import { bitmaps, ImageBitmap } from '../dom/bitmap'
+import { VideoFrame, videoFrames } from '../dom/videoframe'
 import { canvases, canvasSources, ImageData } from '../dom/canvas'
 import { ID } from '../dom/realm'
 import { WEBGL1, WEBGL2 } from './constants'
@@ -164,6 +165,11 @@ function sourceOf(source: unknown): [number, number, number, Uint8Array | null] 
     return [bitmaps.premultiplied(source) ? 3 : 2, (canvas as unknown as Record<symbol, number>)[ID] ?? 0, 0, null]
   }
   if (source instanceof ImageData) return [1, source.width, source.height, new Uint8Array(source.data.buffer, source.data.byteOffset, source.data.byteLength)]
+  if (source instanceof VideoFrame) {
+    const canvas = videoFrames.canvas(source)
+    if (!canvas) throw new DOMException('The VideoFrame has been closed', 'InvalidStateError')
+    return [2, (canvas as unknown as Record<symbol, number>)[ID] ?? 0, 0, null]
+  }
   if (source && typeof source === 'object' && ID in source) return [0, (source as Record<symbol, number>)[ID] ?? 0, 0, null]
   return null
 }

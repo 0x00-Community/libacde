@@ -36,6 +36,7 @@ import { NodeType } from './native'
 import { Animation, AnimationEffect, AnimationPlaybackEvent, AnimationTimeline, animate, animationsOf, DocumentTimeline, KeyframeEffect } from './dom/animation'
 import { CanvasContext2d, CanvasGradient, CanvasPattern, canvases, ImageData, Path2D, TextMetrics } from './dom/canvas'
 import { bitmaps, ImageBitmap } from './dom/bitmap'
+import { VideoColorSpace, VideoFrame, videoFrames } from './dom/videoframe'
 import { CustomElementRegistry } from './dom/custom'
 import * as editing from './dom/editing'
 import { Document, DOMImplementation, DOMParser, documentState, FontFace, FontFaceSet, HTMLDocument, XMLDocument, XMLSerializer } from './dom/document'
@@ -360,6 +361,7 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
 
 function externalPixels(source: unknown): { width: number; height: number; rgba: Uint8Array } | null {
   if (source instanceof ImageBitmap) return externalPixels(bitmaps.canvas(source))
+  if (source instanceof VideoFrame) return externalPixels(videoFrames.canvas(source))
   if (source instanceof ImageData) {
     return { width: source.width, height: source.height, rgba: new Uint8Array(source.data.buffer, source.data.byteOffset, source.data.byteLength) }
   }
@@ -462,7 +464,7 @@ function interfaces(): Record<string, unknown> {
     DOMParser, XMLSerializer, DOMImplementation, FontFace, FontFaceSet,
     DOMRect, DOMRectReadOnly, DOMRectList, DOMPoint, DOMPointReadOnly, DOMMatrix, DOMMatrixReadOnly, DOMQuad,
     SVGMatrix: DOMMatrix, SVGPoint: DOMPoint, SVGRect: DOMRect,
-    CanvasRenderingContext2D: CanvasContext2d, CanvasGradient, CanvasPattern, Path2D, ImageData, TextMetrics, ImageBitmap,
+    CanvasRenderingContext2D: CanvasContext2d, CanvasGradient, CanvasPattern, Path2D, ImageData, TextMetrics, ImageBitmap, VideoFrame, VideoColorSpace,
     Animation, AnimationEffect, KeyframeEffect, AnimationTimeline, DocumentTimeline, AnimationPlaybackEvent,
     CustomElementRegistry, Location, History, Navigator, Screen, ScreenOrientation, VisualViewport, Storage, MediaQueryList, Clipboard, MediaDevices,
     Headers, Request, Response, XMLHttpRequest, XMLHttpRequestEventTarget, XMLHttpRequestUpload, WebSocket, EventSource,

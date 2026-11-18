@@ -107,6 +107,9 @@ async function drawable(source: unknown): Promise<[unknown, number, number]> {
     return [source, canvas.width, canvas.height]
   }
   if (local === 'video') throw new DOMException('createImageBitmap of a <video> is not supported', 'NotSupportedError')
+  // other sources that stand for a canvas (a VideoFrame)
+  const resolved = canvasSources.resolve(source)
+  if (resolved !== source) return drawable(resolved)
   throw new TypeError('createImageBitmap: the source is not an image')
 }
 
