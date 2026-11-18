@@ -25,7 +25,7 @@ import { ServiceHost } from './manager/service'
 import { DevChannel, type DevShell, type DevTarget } from './dev/dev'
 import { DevToolsEndpoint, type NativeDevTools } from './dev/devtools'
 import { managerRelay, type DevRelay } from './dev/relay'
-import { Inspect, type InspectHost, type InspectShell } from './dev/inspect'
+import { Inspect, type InspectHost, type InspectShell, type ShellWindow } from './dev/inspect'
 import { GuestWindows } from './dev/guest'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
@@ -149,7 +149,7 @@ class Launcher {
   #window = 0
   #closing = false
   #reloading = false
-  readonly #panels = new Set<number>()
+  readonly #panels = new Map<number, { rect: [number, number, number, number]; hidden: boolean }>()
   #services: Readonly<Record<string, ServiceShape>> = {}
   readonly #dev: DevChannel
   readonly #lock = new FakeLock()
@@ -210,7 +210,8 @@ class Launcher {
       accessibility: () => Promise.resolve(null),
       records: () => [this.#window],
     }
-    this.#inspect = new Inspect(this.#guest ? this.#guest.host(host, () => this.#window, this.#relay?.inject) : host)
+    const extras = { ...(this.#relay && { inject: this.#relay.inject }), panels: () => this.#panelRows() }
+    this.#inspect = new Inspect(this.#guest ? this.#guest.host(host, () => this.#window, extras) : host)
     return this.#inspect
   }
 
@@ -384,18 +385,28 @@ class Launcher {
     return method === 'list' ? declared.map(status) : status(String(args[0]))
   }
 
+  #panelRows(): ShellWindow[] {
+    return [...this.#panels].map(([id, { rect: [x, y, width, height], hidden }]) => ({
+      id, window: id, canvas: 0, mode: 'pinned', x, y, width, height, z: 0, focus: false, hidden,
+    }))
+  }
+
   #panel(method: string, args: unknown[]): unknown {
     const id = Number(args[0])
     switch (method) {
       case 'open': {
-        const grant = this.#shell.grant({ mode: 'pinned', rect: rect(args[0]) })
-        this.#panels.add(grant.window)
+        const at = rect(args[0])
+        const grant = this.#shell.grant({ mode: 'pinned', rect: at })
+        this.#panels.set(grant.window, { rect: at, hidden: false })
         return grant
       }
       case 'place': {
         if (!this.#panels.has(id)) throw refused(`panel ${id} is not this desktop's`)
-        const [x, y, width, height] = rect(args[1])
-        if (width <= 0 || height <= 0) return this.#shell.hide(id, true)
+        const at = rect(args[1])
+        const [x, y, width, height] = at
+        const hidden = width <= 0 || height <= 0
+        this.#panels.set(id, { rect: hidden ? this.#panels.get(id)!.rect : at, hidden })
+        if (hidden) return this.#shell.hide(id, true)
         this.#shell.place(id, x, y, width, height)
         return this.#shell.hide(id, false)
       }

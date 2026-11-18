@@ -18,6 +18,11 @@ export interface GuestRow {
 
 export type GuestRole = 'app' | 'desktop' | 'lock'
 
+export interface GuestExtras {
+  readonly inject?: InspectShell['inject']
+  readonly panels?: () => readonly ShellWindow[]
+}
+
 export class GuestWindows {
   static readonly LOCK_Z = 1000
   #rows: readonly GuestRow[] = []
@@ -75,14 +80,15 @@ export class GuestWindows {
     }))
   }
 
-  host(base: InspectHost, local: () => number, inject?: InspectShell['inject']): InspectHost {
+  host(base: InspectHost, local: () => number, extra: GuestExtras = {}): InspectHost {
+    const { inject, panels } = extra
     const own = (id: number) => this.placed && id === this.mine()
     const to = (id: number) => (own(id) ? local() : id)
     const shell: InspectShell = {
       ...base.shell,
       focus: (id) => base.shell.focus(to(id)),
       ...(base.shell.setState && { setState: (id, state) => base.shell.setState!(to(id), state) }),
-      windows: () => (this.placed ? [...this.shellWindows(), ...this.#panels(base)] : base.shell.windows()),
+      windows: () => (this.placed ? [...this.shellWindows(), ...this.#lift(panels?.() ?? [])] : base.shell.windows()),
       inject: (event) => (this.placed && inject ? inject(event) : base.shell.inject(event)),
     }
     return {
@@ -102,12 +108,9 @@ export class GuestWindows {
     }
   }
 
-  #panels(base: InspectHost): ShellWindow[] {
+  #lift(panels: readonly ShellWindow[]): ShellWindow[] {
     const top = this.#rows.length + 1
-    return base.shell
-      .windows()
-      .filter((row) => base.panel(row.window ?? row.id))
-      .map((row, index) => ({ ...row, z: top + index }))
+    return panels.map((row, index) => ({ ...row, z: top + index }))
   }
 
   static #row(given: GuestRow): GuestRow {

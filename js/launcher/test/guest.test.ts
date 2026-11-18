@@ -59,7 +59,7 @@ describe('pointer and keys in the guest', () => {
     const sent: object[] = []
     const guest = new GuestWindows(42, 'app')
     const plain = base(1, [])
-    const host = guest.host({ ...plain, shell: { ...plain.shell, inject: (e) => void local.push(e) } }, () => 1, (e) => void sent.push(e))
+    const host = guest.host({ ...plain, shell: { ...plain.shell, inject: (e) => void local.push(e) } }, () => 1, { inject: (e) => void sent.push(e) })
     host.shell.inject({ type: 'move', x: 1, y: 2 })
     guest.place([row(7, 42)])
     host.shell.inject({ type: 'down', x: 1, y: 2, button: 0x110 })
@@ -85,7 +85,7 @@ describe('the desktop panels in the guest', () => {
     const panelRow = { id: 5, canvas: 0, mode: 'panel', x: 0, y: 0, width: 800, height: 30, z: 1, focus: false }
     const plain = base(0, [])
     const host = new GuestWindows(10, 'desktop')
-    const wrapped = host.host({ ...plain, shell: { ...plain.shell, windows: () => [panelRow] }, panel: (id) => id === 5 }, () => 0)
+    const wrapped = host.host({ ...plain, panel: (id) => id === 5 }, () => 0, { panels: () => [panelRow] })
     host.place([row(7, 42), { id: 0, desktop: true, pid: 10 }])
     const rows = wrapped.shell.windows()
     assert.deepEqual(rows.map((r) => [r.id, r.z]), [[7, 2], [0, -1], [5, 3]])
