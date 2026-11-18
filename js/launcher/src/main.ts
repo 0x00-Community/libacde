@@ -283,7 +283,9 @@ class Launcher {
     this.#devState = null
     const session = { own: this.session.own }
     const lock = this.session.lock ? { lock: true } : {}
-    const init: WebInit = { ...given, ...this.#dev.prepare(given.name, app), ...this.#backend?.init(), session, ...lock, ...(state ? { devState: state } : {}) }
+    const services = this.#services
+    const dev = this.#dev.prepare(given.name, app)
+    const init: WebInit = { ...given, services, ...dev, ...this.#backend?.init(), session, ...lock, ...(state ? { devState: state } : {}) }
     const rpc = new Rpc((message) => thread.post(message))
     rpc.serve((service, method, args) => this.#serve(service, method, args))
     const env = { ...Launcher.env(), ...(this.#shell.socketName && { WAYLAND_DISPLAY: this.#shell.socketName }) }
