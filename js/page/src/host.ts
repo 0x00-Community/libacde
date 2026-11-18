@@ -3,8 +3,8 @@ import type { DomNative, WebInternals } from '@dopame/acde-dom'
 import { DragDrop, DragSource } from './dnd'
 import type { HandOver } from './pagecalls'
 import { InputMethod, type ImeEvent } from './ime'
-import { ShellInput } from './keys'
-import { WINDOW_EVENTS, type Native, type NativeSurface, type RawShellEvent, type ShellEvent, type WindowEvent } from './native'
+import { ShellInput, chordMatches } from './keys'
+import { WINDOW_EVENTS, type Modifiers, type Native, type NativeSurface, type RawShellEvent, type ShellEvent, type WindowEvent } from './native'
 import type { WindowList } from './remote'
 import { mkdirSync } from './sys/fs'
 import { userDir } from './sys/os'
@@ -40,6 +40,8 @@ export class Host {
   onActivation: (active: boolean) => void = () => {}
   onPanelMove: (id: number, extent: readonly [number, number, number, number]) => void = () => {}
   onGrab: (event: WindowGrabEvent | WindowGrabLostEvent) => void = () => {}
+  menuKeys: readonly string[] = []
+  onMenuKey: (chord: string) => void = () => {}
   onFrameButton: (key: string) => void = () => {}
   onState: (state: string, previous: string) => void = () => {}
   onFirstFrame: () => void = () => {}
@@ -175,6 +177,7 @@ export class Host {
         return
       case 'keydown':
       case 'keyup':
+        if (event.type === 'keydown' && !event.fromIme && this.#menuKey(event.keycode ?? 0, event.modifiers)) return
         if (!event.fromIme && this.#ime?.key(event.key, event.keycode ?? 0, event.modifiers, event.type === 'keyup')) return
         input.key(event.type, event.key, event.code, { modifiers: event.modifiers, repeat: event.repeat })
         return
@@ -203,6 +206,13 @@ export class Host {
       detail = { type: 'screenshot', path, error: (error as Error).message }
     }
     this.#windows.notices.emit('desktop:screenshot', detail)
+  }
+
+  #menuKey(keycode: number, modifiers: Modifiers | undefined): boolean {
+    const chord = this.menuKeys.find((c) => chordMatches(c, keycode, modifiers))
+    if (chord === undefined) return false
+    this.onMenuKey(chord)
+    return true
   }
 
   #onIme(event: ImeEvent): void {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { chordCodes, keyCode } from '../src/keys.ts'
+import { chordCodes, chordMatches, keyCode } from '../src/keys.ts'
 
 const shift = keyCode('shift')!
 
@@ -28,4 +28,14 @@ test('the numeric keypad has its own keys', () => {
     assert.notEqual(keyCode(name), null, name)
   }
   assert.notEqual(keyCode('Numpad7'), keyCode('7'))
+})
+
+test('a key with the held modifiers matches a menu chord only when both agree', () => {
+  const n = keyCode('n')!
+  assert.equal(chordMatches('Alt+N', n, { alt: true }), true)
+  assert.equal(chordMatches('Alt+N', n, { alt: true, shift: true }), false)
+  assert.equal(chordMatches('Alt+N', n, {}), false)
+  assert.equal(chordMatches('Ctrl+Shift+S', keyCode('s')!, { ctrl: true, shift: true }), true)
+  assert.equal(chordMatches('mod+1', keyCode('1')!, { ctrl: true }), true)
+  assert.equal(chordMatches('mod+1', keyCode('1')!, { meta: true }, true), true)
 })

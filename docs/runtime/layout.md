@@ -169,3 +169,7 @@
 
 **会话里的应用菜单** (和 acdes 对齐, 2026-11-20): 应用的 `window.setMenus` 经管家推给桌面 (`windowmenus`); 桌面进程的启动器把 `windows.invokeMenu`
 交给 `manager.call('windows', 'invokeMenu', args)`, 管家按 pid 给应用进程推 `{type: 'menuinvoke', menu, item}`, 应用进程的启动器照菜单快捷键那条路调页面的 `window.menu(menu, item)`.
+
+**会话里的菜单快捷键** (2026-11-20): 宿主上菜单快捷键经 `shell.shortcut(combo, 'menu', window)` 在合成器登记; 会话里应用进程没有桌面协议, 登记不上.
+所以有管家时, 应用的 `window.setMenus` 照旧交给管家, 启动器另外记下菜单的快捷键表 (`AppMenus.remember`), 以 `{type: 'menukeys', keys}` 发给页面线程;
+页面的 Host 在 keydown 时先按 `chordMatches` 比对 (`mod` 在 macOS 是 Meta, 别处是 Ctrl), 命中就不再派发给页面, 改发 `{menukey}` 给启动器, 启动器调页面的 `window.menu(menu, item)`.

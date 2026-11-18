@@ -170,7 +170,8 @@ class Launcher {
     manager?.onEvents(() => this.#wake?.())
     this.#services = session.services
     this.#title = session.label
-    this.#menus = new AppMenus(this.#shell, () => this.#window)
+    const menuKeys = manager ? (keys: readonly string[]) => this.#thread?.post({ type: 'menukeys', keys }) : null
+    this.#menus = new AppMenus(this.#shell, () => this.#window, menuKeys)
     const chooser = natives.native.FileChooser
     this.#pages = new PageCalls({
       label: session.label,
@@ -298,6 +299,8 @@ class Launcher {
 
   #fromPage(message: unknown, rpc: Rpc): void {
     if (this.#dev.take(message)) return
+    const chord = (message as { menukey?: unknown } | null)?.menukey
+    if (typeof chord === 'string') return void this.#menuKey(chord)
     const call = message as { rpc?: string; id?: number; service?: string; method?: string; args?: unknown[] } | null
     if (!this.manager || call?.rpc !== 'call' || !call.service || !Object.hasOwn(this.#services, call.service)) return void rpc.receive(message)
     this.manager.call(call.service, call.method ?? '', call.args ?? []).then(
@@ -336,6 +339,7 @@ class Launcher {
       case 'windows':
         return this.#windowsCall(method, args)
       case 'manager':
+        if (service === 'window' && method === 'setMenus') this.#menus.remember((Array.isArray(args[0]) ? args[0] : []) as WireMenu[])
         return this.manager!.call(service, method, args)
       case 'session':
         if (service === 'desktops' && method === 'list') return { desktops: [], current: '' }
@@ -508,14 +512,15 @@ class Launcher {
     }
   }
 
+  #menuKey(chord: string): void {
+    const hit = this.#menus.pressed(chord)
+    if (hit) void this.#rpc?.call('window', 'menu', [hit.menu, hit.item]).catch(() => undefined)
+  }
+
   #appKey(event: ShellEvent): void {
     const title = event['title']
     if (event.type === 'menuselect') return void this.#rpc?.call('window', 'menu', [event['key'], title]).catch(() => undefined)
-    if (title === 'menu') {
-      const hit = this.#menus.pressed(String(event['key'] ?? ''))
-      if (hit) void this.#rpc?.call('window', 'menu', [hit.menu, hit.item]).catch(() => undefined)
-      return
-    }
+    if (title === 'menu') return void this.#menuKey(String(event['key'] ?? ''))
     if (title === 'app') this.#thread?.post(event)
   }
 

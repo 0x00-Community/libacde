@@ -15,7 +15,16 @@ export interface MenuShell {
 export class AppMenus {
   #keys = new Map<string, MenuKey>()
 
-  constructor(readonly shell: MenuShell, readonly window: () => number) {}
+  constructor(
+    readonly shell: MenuShell,
+    readonly window: () => number,
+    readonly page: ((chords: readonly string[]) => void) | null = null,
+  ) {}
+
+  remember(menus: readonly WireMenu[]): void {
+    this.#keys = AppMenus.keys(menus)
+    this.page?.([...this.#keys.keys()])
+  }
 
   set(menus: readonly WireMenu[]): void {
     const window = this.window()

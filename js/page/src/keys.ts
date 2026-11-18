@@ -47,6 +47,22 @@ export function chordCodes(chord: string): number[] | null {
   return [...new Set(codes)]
 }
 
+const HELD: Readonly<Record<number, keyof Modifiers>> = { 29: 'ctrl', 97: 'ctrl', 42: 'shift', 54: 'shift', 56: 'alt', 100: 'alt', 125: 'meta', 126: 'meta' }
+
+export function chordMatches(chord: string, keycode: number, modifiers: Modifiers | undefined, mac = false): boolean {
+  const codes = chordCodes(chord.split('+').map((part) => (part.toLowerCase() === 'mod' ? (mac ? 'meta' : 'ctrl') : part)).join('+'))
+  if (!codes) return false
+  const held = { shift: false, ctrl: false, alt: false, meta: false }
+  let main: number | null = null
+  for (const code of codes) {
+    const modifier = HELD[code]
+    if (modifier) held[modifier] = true
+    else main = code
+  }
+  if (main !== keycode) return false
+  return (Object.keys(held) as (keyof Modifiers)[]).every((name) => held[name] === !!modifiers?.[name])
+}
+
 export function keyCode(name: string): number | null {
   const lower = name.toLowerCase()
   if (lower in ALIASES) return ALIASES[lower]!

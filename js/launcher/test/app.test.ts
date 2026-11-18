@@ -38,6 +38,14 @@ describe('the single-app launcher answers its window and page calls', () => {
     ])
   })
 
+  test('with a session manager the menu chords go to the page instead of the shell', () => {
+    const sent: (readonly string[])[] = []
+    const menus = new AppMenus({ shortcut: () => assert.fail('no shell shortcut in a session') }, () => 1, (keys) => void sent.push(keys))
+    menus.remember([{ id: 'file', label: 'File', items: [{ id: 'new', label: 'New', action: true, shortcut: 'Alt+N' }] }])
+    assert.deepEqual(sent, [['Alt+N']])
+    assert.deepEqual(menus.pressed('Alt+N'), { menu: 'file', item: 'new' })
+  })
+
   test('the file pickers use the host file chooser with the app label; without one they are cancelled', async () => {
     const seen: unknown[] = []
     const chooser = {
