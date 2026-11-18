@@ -19,6 +19,7 @@ export interface GuestRow {
 export type GuestRole = 'app' | 'desktop' | 'lock'
 
 export class GuestWindows {
+  static readonly LOCK_Z = 1000
   #rows: readonly GuestRow[] = []
 
   constructor(
@@ -66,7 +67,7 @@ export class GuestWindows {
       y: row.y,
       width: row.width,
       height: row.height,
-      z: row.desktop ? -1 : row.lock ? count + 1 : count - index,
+      z: row.desktop ? -1 : row.lock ? count + GuestWindows.LOCK_Z : count - index,
       focus: row.activated,
       hidden: row.hidden,
       pid: row.pid,
@@ -81,7 +82,7 @@ export class GuestWindows {
       ...base.shell,
       focus: (id) => base.shell.focus(to(id)),
       ...(base.shell.setState && { setState: (id, state) => base.shell.setState!(to(id), state) }),
-      windows: () => (this.placed ? this.shellWindows() : base.shell.windows()),
+      windows: () => (this.placed ? [...this.shellWindows(), ...this.#panels(base)] : base.shell.windows()),
       inject: (event) => (this.placed && inject ? inject(event) : base.shell.inject(event)),
     }
     return {
@@ -93,12 +94,20 @@ export class GuestWindows {
         const row = this.row(id)
         return row && !row.desktop ? { kind: 'native', app: row.app_id, title: row.title } : null
       },
-      panel: (id) => (this.placed && !own(id) ? false : base.panel(to(id))),
+      panel: (id) => base.panel(to(id)),
       close: (id) => (this.placed && !own(id) ? Promise.reject(new Error(`w${id} belongs to another process`)) : base.close(to(id))),
       hide: (id, hidden) => base.hide(to(id), hidden),
       records: () => (this.placed ? [this.mine() ?? local()] : base.records()),
       ref: (id) => (this.placed ? `w${id}` : (base.ref?.(id) ?? null)),
     }
+  }
+
+  #panels(base: InspectHost): ShellWindow[] {
+    const top = this.#rows.length + 1
+    return base.shell
+      .windows()
+      .filter((row) => base.panel(row.window ?? row.id))
+      .map((row, index) => ({ ...row, z: top + index }))
   }
 
   static #row(given: GuestRow): GuestRow {

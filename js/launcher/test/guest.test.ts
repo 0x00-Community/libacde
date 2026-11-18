@@ -79,3 +79,16 @@ describe('the lock page in the guest', () => {
     assert.deepEqual(inspect.windows().map((w) => [w.ref, w.kind]), [['w900', 'web'], ['w7', 'native'], ['w0', 'desktop']])
   })
 })
+
+describe('the desktop panels in the guest', () => {
+  test('the window table leaves them out, so the desktop adds its own on top', () => {
+    const panelRow = { id: 5, canvas: 0, mode: 'panel', x: 0, y: 0, width: 800, height: 30, z: 1, focus: false }
+    const plain = base(0, [])
+    const host = new GuestWindows(10, 'desktop')
+    const wrapped = host.host({ ...plain, shell: { ...plain.shell, windows: () => [panelRow] }, panel: (id) => id === 5 }, () => 0)
+    host.place([row(7, 42), { id: 0, desktop: true, pid: 10 }])
+    const rows = wrapped.shell.windows()
+    assert.deepEqual(rows.map((r) => [r.id, r.z]), [[7, 2], [0, -1], [5, 3]])
+    assert.equal(wrapped.panel(5), true)
+  })
+})
