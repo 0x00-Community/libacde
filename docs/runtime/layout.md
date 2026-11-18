@@ -85,6 +85,10 @@
 - **DevTools** (`js/launcher/src/devtools.ts` 的 `DevToolsEndpoint`, 工作项 12): 运行时的 `DevTools.open()` 开了端点 (设了 `ACDE_DEV` 时) 就每 250 毫秒
   把本页登记成 CDP 目标 (id 是 web 名, 列表没变不重登); `devtools` 请求回 `{port}`; 重载前调 `reloading(web)` 让连着的 DevTools 接上新页面;
   宿主窗口的 F12 (`devtools` 事件) 经 `Shell.devEvent` 发 `{type: 'event', event: 'devtools', web, app, window}`, 由 `acdev dev` 打开 DevTools.
+- **应用后端** (`js/launcher/src/backend.ts` 的 `AppBackend`, 工作项 13; 用户 2026-11-18 定由启动器起, 宿主和客户机同一份): 应用清单有 `backend`
+  时随应用起, 地址 (`sockets` / `channel`) 每次开页面都并进 `WebInit`; `acdev dev` 的 `devreload` (非热替换) 和页面的 `window.reload` 都先停后端
+  再起 (`devreload` 用重新找到的清单), 页面的请求在后端就绪前重试 10 秒; 启动器退出前停掉它并删本进程的 socket 目录. 起停、崩溃重起和日志见
+  `docs/web/backend.md`.
 - 没有的: `desktops` / `sessions` / `applications` / `open`.
   测试在 `js/launcher/test`.
 

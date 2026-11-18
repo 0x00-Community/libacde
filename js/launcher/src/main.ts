@@ -20,6 +20,7 @@ import { DevChannel, type DevShell, type DevTarget } from './dev'
 import { DevToolsEndpoint, type NativeDevTools } from './devtools'
 import { Inspect, type InspectShell } from './inspect'
 import { Frame } from '../../page/src/frame'
+import { AppBackend } from './backend'
 
 interface Grant {
   readonly window: number
@@ -114,6 +115,7 @@ class Launcher {
   readonly #devtools: DevToolsEndpoint
   #inspect: Inspect | null = null
   #devState: unknown = null
+  readonly #backend: AppBackend | null
 
   constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
     this.#shell = natives.native.Shell.broker({ title: session.label })
@@ -131,6 +133,7 @@ class Launcher {
       inspect: () => this.#inspector(),
       reload: () => this.#devReload(false),
     }, process.env['ACDE_COLOR_SCHEME'] === 'dark')
+    this.#backend = session.kind === 'app' && session.found?.app.backend ? new AppBackend(session.found) : null
   }
 
   #inspector(): Inspect {
@@ -188,6 +191,7 @@ class Launcher {
     const init = this.#desktop
       ? desktopInit(session.page!, session.resources, grant.token, this.#place(), session.tier!, session.services)
       : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request: session.request, services: session.services }, grant.window)
+    this.#backend?.start()
     this.#spawn(init)
   }
 
@@ -195,7 +199,7 @@ class Launcher {
     const app = this.#desktop ? null : (this.session.found?.app.id ?? null)
     const state = this.#devState
     this.#devState = null
-    const init: WebInit = { ...given, ...this.#dev.prepare(given.name, app), ...(state ? { devState: state } : {}) }
+    const init: WebInit = { ...given, ...this.#dev.prepare(given.name, app), ...this.#backend?.init(), ...(state ? { devState: state } : {}) }
     const rpc = new Rpc((message) => thread.post(message))
     rpc.serve((service, method, args) => this.#serve(service, method, args))
     const env = { ...Launcher.env(), ...(this.#shell.socketName && { WAYLAND_DISPLAY: this.#shell.socketName }) }
@@ -254,6 +258,7 @@ class Launcher {
     if (given !== null) this.#init = { ...this.#init!, url: given }
     this.#reloading = true
     this.#devtools.reloading(this.#init!.name)
+    void this.#backend?.restart()
     this.#thread?.terminate()
     return true
   }
@@ -262,12 +267,11 @@ class Launcher {
     if (hot) return void this.#thread?.post({ type: 'devhot' })
     if (this.#closing || this.#reloading) return
     this.#devState = await this.#dev.snapshot()
-    if (!this.manager && this.session.found) {
-      const fresh = standalone(this.args)
-      this.#init = webInit(fresh.found!, 0n, this.#place(), { tier: null, request: null, services: {} }, this.#window)
-    }
+    const fresh = !this.manager && this.session.found ? standalone(this.args).found : null
+    if (fresh) this.#init = webInit(fresh, 0n, this.#place(), { tier: null, request: null, services: {} }, this.#window)
     this.#reloading = true
     this.#devtools.reloading(this.#init!.name)
+    void this.#backend?.restart(fresh ?? undefined)
     this.#thread?.terminate()
   }
 
@@ -432,6 +436,7 @@ class Launcher {
         this.#wake = wake
       })
     }
+    await this.#backend?.close()
     return this.#ended
   }
 
