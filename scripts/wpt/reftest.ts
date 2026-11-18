@@ -1,4 +1,4 @@
-import type { Image } from 'acde/driver'
+import type { Image } from 'acdev/driver'
 import type { Fuzzy, Test } from './prepare'
 
 export function compare(a: Image, b: Image): { maxDifference: number; totalPixels: number; size: string | null } {

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "acde": "link:acde"
+    "acdev": "link:acdev"
   },
   "devDependencies": {
     "@types/bun": "1.3.4",

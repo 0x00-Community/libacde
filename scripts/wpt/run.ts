@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
-import { Acde, Png, type Image } from 'acde/driver'
+import { Acde, Png, type Image } from 'acdev/driver'
 import { compare, fuzzyFor, within } from './reftest'
 import { perform, type DriverRequest } from './drive'
 import type { Test } from './prepare'
