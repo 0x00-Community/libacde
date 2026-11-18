@@ -86,6 +86,31 @@ pub struct Mixer {
     bus: Bus,
     pos: usize,
     ended: Vec<u32>,
+    meter: Option<Meter>,
+}
+
+/// What reaches the sound output, once a second at debug level under `perf::audio` (only when that target is on): the
+/// level of the mix and the blocks the output had to fill with silence because the page held the mixer.
+#[derive(Default)]
+struct Meter {
+    frames: usize,
+    squares: f64,
+    peak: f32,
+    missed: usize,
+}
+
+impl Meter {
+    fn add(&mut self, frame: [f32; 2]) {
+        self.frames += 1;
+        self.squares += f64::from(frame[0] * frame[0] + frame[1] * frame[1]) / 2.0;
+        self.peak = self.peak.max(frame[0].abs()).max(frame[1].abs());
+        if self.frames >= RATE as usize {
+            let rms = (self.squares / self.frames as f64).sqrt();
+            let db = if rms > 0.0 { 20.0 * rms.log10() } else { f64::NEG_INFINITY };
+            log::debug!(target: "perf::audio", "out rms_db={db:.1} peak={:.3} missed={}", self.peak, self.missed);
+            *self = Meter::default();
+        }
+    }
 }
 
 impl Default for Mixer {
@@ -98,6 +123,7 @@ impl Default for Mixer {
             bus: [[0.0; QUANTUM]; 2],
             pos: QUANTUM,
             ended: Vec::new(),
+            meter: log::log_enabled!(target: "perf::audio", log::Level::Debug).then(Meter::default),
         }
     }
 }
@@ -216,6 +242,16 @@ impl Mixer {
             frame[0] = self.bus[0][self.pos];
             frame[1] = self.bus[1][self.pos];
             self.pos += 1;
+            if let Some(meter) = &mut self.meter {
+                meter.add([frame[0], frame[1]]);
+            }
+        }
+    }
+
+    /// The output filled `frames` frames with silence because the mixer was busy (counted in the `perf::audio` line).
+    pub fn missed(&mut self, frames: usize) {
+        if let Some(meter) = &mut self.meter {
+            meter.missed += frames;
         }
     }
 

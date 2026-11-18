@@ -174,6 +174,7 @@ struct Process {
     ctl: pw::channel::Sender<Ctl>,
     scratch: Vec<f32>,
     idle: Idle,
+    missed: usize,
 }
 
 #[cfg(target_os = "linux")]
@@ -189,13 +190,17 @@ impl Process {
             self.scratch.resize(frames * 2, 0.0);
             match self.mixer.try_lock() {
                 Ok(mut mixer) => {
+                    mixer.missed(std::mem::take(&mut self.missed));
                     mixer.render(&mut self.scratch);
                     deliver(&mut mixer, &self.notify);
                     let active = mixer.active();
                     drop(mixer);
                     self.idle.tick(active, frames, |ctl| self.ctl.send(ctl).is_ok());
                 }
-                Err(_) => self.scratch.fill(0.0),
+                Err(_) => {
+                    self.scratch.fill(0.0);
+                    self.missed += frames;
+                }
             }
             for (out, v) in bytes[..frames * 8].as_chunks_mut::<4>().0.iter_mut().zip(&self.scratch) {
                 out.copy_from_slice(&v.to_le_bytes());
@@ -237,7 +242,7 @@ fn pw_stream(core: &pw::core::CoreRc, ctl: &pw::channel::Sender<Ctl>, id: u64, w
         *pw::keys::NODE_LATENCY => format!("512/{}", RATE as u32),
     };
     let stream = pw::stream::StreamRc::new(core.clone(), &web.name, props)?;
-    let process = Process { mixer: web.mixer.clone(), notify: web.notify.clone(), ctl: ctl.clone(), scratch: Vec::new(), idle: Idle::new(id) };
+    let process = Process { mixer: web.mixer.clone(), notify: web.notify.clone(), ctl: ctl.clone(), scratch: Vec::new(), idle: Idle::new(id), missed: 0 };
     let listener = stream.add_local_listener_with_user_data(process).process(|stream, p| p.process(stream)).register()?;
 
     let mut info = spa::param::audio::AudioInfoRaw::new();

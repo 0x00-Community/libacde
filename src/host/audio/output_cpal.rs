@@ -48,6 +48,7 @@ impl Device {
             ctl: ctl.clone(),
             resampler: Resampler::new(usize::from(self.config.channels), RATE / f64::from(self.config.sample_rate)),
             idle: Idle::new(id),
+            missed: 0,
         };
         let name = web.name.clone();
         let stream = self
@@ -74,14 +75,17 @@ struct Feed {
     ctl: mpsc::Sender<Ctl>,
     resampler: Resampler,
     idle: Idle,
+    missed: usize,
 }
 
 impl Feed {
     fn fill(&mut self, out: &mut [f32]) {
         let Ok(mut mixer) = self.mixer.try_lock() else {
             out.fill(0.0);
+            self.missed += out.len() / self.resampler.channels;
             return;
         };
+        mixer.missed(std::mem::take(&mut self.missed));
         let pulled = self.resampler.fill(out, |chunk| mixer.render(chunk));
         deliver(&mut mixer, &self.notify);
         let active = mixer.active();
