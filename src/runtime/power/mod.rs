@@ -1,7 +1,7 @@
-mod backlight;
-mod bus;
-mod settings;
-mod shared;
+pub mod backlight;
+pub mod bus;
+pub mod settings;
+pub mod shared;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -98,20 +98,7 @@ impl Power {
     const DIM: f64 = 0.3;
 
     fn machine(&self) -> Machine {
-        *self.inner.machine.get_or_init(|| {
-            let virtual_machine = std::fs::read_to_string("/proc/cpuinfo")
-                .is_ok_and(|t| t.lines().any(|l| l.starts_with("flags") && l.split_whitespace().any(|f| f == "hypervisor")));
-            match self.system() {
-                Ok(b) => Machine {
-                    can_suspend: bus::can(&b, "CanSuspend"),
-                    can_hibernate: bus::can(&b, "CanHibernate"),
-                    can_hybrid: bus::can(&b, "CanHybridSleep"),
-                    can_then_hibernate: bus::can(&b, "CanSuspendThenHibernate"),
-                    virtual_machine,
-                },
-                Err(_) => Machine { virtual_machine, ..Machine::default() },
-            }
-        })
+        *self.inner.machine.get_or_init(|| Machine::probe(self.system().ok().as_ref()))
     }
 
     fn settings<R>(&self, f: impl FnOnce(&mut Settings) -> R) -> R {

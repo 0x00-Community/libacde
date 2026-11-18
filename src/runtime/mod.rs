@@ -30,7 +30,7 @@ mod office;
 #[cfg(target_os = "linux")]
 mod portal;
 #[cfg(target_os = "linux")]
-mod power;
+pub mod power;
 mod proxy;
 #[cfg(unix)]
 mod pty;
