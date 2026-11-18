@@ -63,3 +63,21 @@ export class Watched {
     return () => set.delete(fn)
   }
 }
+
+export class WatchFeed {
+  readonly #callbacks = new Set<Handler>()
+
+  feed<T extends WatchNatives>(natives: T): T {
+    return {
+      ...natives,
+      watch: (callback: Handler) => {
+        this.#callbacks.add(callback)
+        natives.watch(callback)
+      },
+    }
+  }
+
+  push(event: unknown): void {
+    for (const callback of this.#callbacks) callback(event)
+  }
+}

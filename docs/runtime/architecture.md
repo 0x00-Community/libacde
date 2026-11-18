@@ -88,13 +88,16 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
   (新插入的驱动器) 由 acde-host `devices.ts` 包在原生 `watch(type)` / `unwatch(id)` 上. 自动挂载的监视只在自己的会话里由 Broker 调
   `sys.startDevices()` 起.
   `acde:power` (能力 `power`, src/host `power.rs` → runtime `power/`): UPower 的电池、power-profiles-daemon 的模式、
-  按交流 / 电池 / 低电量分组的策略设置 (空闲动作、熄屏、合盖、电源键、亮度), logind 挂起 / 休眠, 背光亮度, 充电上限; 事件 `changed` / `prompt` /
-  `critical` 由 acde-host `Watched.typed` 按 `type` 分发. 系统总线连接挂在 `Power` 上. 会话里的执行 (空闲计时、熄屏、
-  合盖和电源键) 要合成器配合, 见 acdebin-system.
-  设置存在 `$XDG_CONFIG_HOME/acde/power.json`, 由多个进程共用: 每个用到 `Power` 的进程 (页面进程和会话总管) 都用 inotify 盯着它所在的目录
-  (`power/shared.rs` 的 `watch`), 文件被写或换掉就重读并按新设置重排策略, 所以桌面页改的设置在会话总管里跑策略的实例上立即生效.
-  跑策略的实例 (`start_policy`) 写标记 `$XDG_RUNTIME_DIR/acde/power-policy` (内容是 pid, 策略线程结束时删); 页面进程的
-  `PowerState.policy` 是本进程在跑策略, 或标记里的进程还活着.
+  按交流 / 电池 / 低电量分组的策略设置 (空闲动作、熄屏、合盖、电源键、亮度) 的读写, logind 挂起 / 休眠, 背光亮度, 充电上限; 事件 `changed` /
+  `prompt` / `critical` 由页面胶水 `Watched.typed` 按 `type` 分发. 系统总线连接挂在 `Power` 上.
+  **策略不在 libacde** (用户 2026-11-18 定, libacde 工单 08): 电源键、合盖、空闲、低电量由 acdes 的会话总管决定并执行, 它用这里公开的底层件
+  (`acde::runtime::power::{backlight, bus, settings, shared}`, 机器能力用 `settings::Machine::probe`). 要问用户时 (`prompt`、`critical`)
+  管家给桌面页推 `{type: 'power', event}`, 启动器原样转给页面, 页面 (`worker.ts` 的 `WatchFeed`) 把 `event` 交给 `acde:power` 的监听者,
+  和原生 `watch` 来的事件一样; 页面拿不到 `acde:power` 时丢掉.
+  设置存在 `$XDG_CONFIG_HOME/acde/power.json`, 由多个进程共用: 每个用到 `Power` 的页面进程都用 inotify 盯着它所在的目录
+  (`power/shared.rs` 的 `watch`, acdes 也用它), 文件被写或换掉就重读, 所以桌面页改的设置在会话总管里立即生效.
+  会话总管跑策略时写标记 `$XDG_RUNTIME_DIR/acde/power-policy` (`shared::PolicyMark`, 内容是 pid, 停时删); 页面的
+  `PowerState.policy` 是标记里的进程还活着.
   `acde:input` (能力 `input`, src/host `input.rs`): 合成器的 xkb 布局 / 型号 / 选项、按键重复、NumLock 和鼠标 / 触控板的 libinput 设置;
   `state()` / `set(patch)` / `on('changed')` 走前端 `Platform::input()` 给的 `Input` (acdebin-system 的会话经 acde_shell `set_input` / `input` 事件;
   acdev runtime 没有, 调用就抛), `catalog()` 读 xkeyboard-config 的 `rules/evdev.xml` (runtime `XkbCatalog`).

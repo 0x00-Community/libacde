@@ -4,7 +4,7 @@ import type { ServiceShape, WebInit } from './contract'
 import { BluetoothModule, type BluetoothNatives } from './bluetooth'
 import { DevicesModule, type DevicesNatives } from './devices'
 import { Frame } from './frame'
-import { Watched, type WatchNatives } from './watched'
+import { WatchFeed, Watched, type WatchNatives } from './watched'
 import { FsModule } from './fsmodule'
 import { Host } from './host'
 import type { ImeEvent, NativeIme } from './ime'
@@ -193,6 +193,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
     throw new Error(`${init.name} serves no ${service}.${method}`)
   })
   let devhot = (): void => {}
+  const managerPower = new WatchFeed()
   port.onMessage((message) => {
     if (rpc.receive(message)) return
     const m = message as {
@@ -233,6 +234,8 @@ export default async function boot(natives: WebNatives): Promise<void> {
         return devhot()
       case 'services':
         return bridge.replaceServices(m.services ?? {})
+      case 'power':
+        return managerPower.push((m as { event?: unknown }).event)
       case 'permit':
         return m.capability && m.approval ? bridge.permit(m.capability, m.approval, m.status ?? null) : undefined
       default:
@@ -276,7 +279,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   if (natives.bluetooth) bridge.value['bluetooth'] = BluetoothModule.wrap(natives.bluetooth)
   if (natives.sound) bridge.value['audio'] = Watched.module('audio', natives.sound)
   if (natives.devices) bridge.value['devices'] = DevicesModule.wrap(natives.devices)
-  if (natives.power) bridge.value['power'] = Watched.typed('power', natives.power, ['changed', 'prompt', 'critical'])
+  if (natives.power) bridge.value['power'] = Watched.typed('power', managerPower.feed(natives.power), ['changed', 'prompt', 'critical'])
   if (natives.input) bridge.value['input'] = Watched.module('input', natives.input)
   if (natives.display) bridge.value['display'] = Watched.module('display', natives.display)
   if (natives.office) {
