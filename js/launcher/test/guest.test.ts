@@ -59,7 +59,7 @@ describe('pointer and keys in the guest', () => {
     const sent: object[] = []
     const guest = new GuestWindows(42, 'app')
     const plain = base(1, [])
-    const host = guest.host({ ...plain, shell: { ...plain.shell, inject: (e) => void local.push(e) } }, () => 1, (e) => void sent.push(e))
+    const host = guest.host({ ...plain, shell: { ...plain.shell, inject: (e) => void local.push(e) } }, () => 1, { inject: (e) => void sent.push(e) })
     host.shell.inject({ type: 'move', x: 1, y: 2 })
     guest.place([row(7, 42)])
     host.shell.inject({ type: 'down', x: 1, y: 2, button: 0x110 })
@@ -77,5 +77,54 @@ describe('the lock page in the guest', () => {
     assert.equal(lock.global(0), 900)
     const inspect = new Inspect(lock.host(base(0, []), () => 0))
     assert.deepEqual(inspect.windows().map((w) => [w.ref, w.kind]), [['w900', 'web'], ['w7', 'native'], ['w0', 'desktop']])
+  })
+})
+
+describe('the desktop panels in the guest', () => {
+  test('the window table leaves them out, so the desktop adds its own on top', () => {
+    const panelRow = { id: 5, canvas: 0, mode: 'panel', x: 0, y: 0, width: 800, height: 30, z: 1, focus: false }
+    const plain = base(0, [])
+    const host = new GuestWindows(10, 'desktop')
+    const wrapped = host.host({ ...plain, panel: (id) => id === 5 }, () => 0, { panels: () => [panelRow] })
+    host.place([row(7, 42), { id: 0, desktop: true, pid: 10 }])
+    const rows = wrapped.shell.windows()
+    assert.deepEqual(rows.map((r) => [r.id, r.z]), [[7, 2], [0, -1], [5, 3]])
+    assert.equal(wrapped.panel(5), true)
+  })
+})
+
+describe('a drag to another process window in the guest', () => {
+  test('drops at the screen point the driver worked out', async () => {
+    const sent: { type: string; x?: number; y?: number }[] = []
+    const plain = base(1, [])
+    const rpc = { call: async () => ({ x: 10, y: 20 }) } as never
+    const guest = new GuestWindows(42, 'app')
+    const host = guest.host({ ...plain, web: (w) => (w === 1 ? rpc : null) }, () => 1, { inject: (e) => void sent.push(e) })
+    guest.place([{ ...row(7, 42), x: 100, y: 50 }, row(9, 50)])
+    const result = await new Inspect(host).act('w7.3', 'drag', '640,360')
+    assert.equal(result.ok, true)
+    assert.deepEqual(sent[0], { type: 'move', x: 110, y: 70 })
+    assert.deepEqual(sent.at(-1), { type: 'up', x: 640, y: 360, button: 0x110 })
+  })
+})
+
+describe('window changes in the guest', () => {
+  test('go to winman by window number through the manager, the desktop and panels stay local', async () => {
+    const changes: object[] = []
+    const focused: number[] = []
+    const plain = base(1, focused)
+    const guest = new GuestWindows(42, 'app')
+    const shell = { ...plain.shell, setState: () => assert.fail('no local state') }
+    const host = guest.host({ ...plain, shell }, () => 1, { window: (c) => void changes.push(c) })
+    guest.place([row(7, 42), row(9, 50), { id: 0, desktop: true, pid: 10 }])
+    host.shell.setState!(7, 'minimized')
+    host.shell.focus(9)
+    host.hide(9, false)
+    await host.close(9)
+    host.shell.focus(0)
+    assert.deepEqual(changes, [
+      { window: 7, state: 'minimized' }, { window: 9, focus: true }, { window: 9, state: 'normal' }, { window: 9, close: true },
+    ])
+    assert.deepEqual(focused, [0])
   })
 })

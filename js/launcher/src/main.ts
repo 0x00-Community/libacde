@@ -25,7 +25,7 @@ import { ServiceHost } from './manager/service'
 import { DevChannel, type DevShell, type DevTarget } from './dev/dev'
 import { DevToolsEndpoint, type NativeDevTools } from './dev/devtools'
 import { managerRelay, type DevRelay } from './dev/relay'
-import { Inspect, type InspectHost, type InspectShell } from './dev/inspect'
+import { Inspect, type InspectHost, type InspectShell, type ShellWindow } from './dev/inspect'
 import { GuestWindows } from './dev/guest'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
@@ -57,6 +57,7 @@ interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState
   release(window: number): void
   focus(window: number): void
   close(window: number): void
+  kill?(window: number): void
   setState?(window: number, state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
   windows(): ReturnType<InspectShell['windows']>
   inject(event: Parameters<InspectShell['inject']>[0]): void
@@ -139,6 +140,7 @@ function rect(value: unknown): [number, number, number, number] {
 
 class Launcher {
   static readonly SIGNALS = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const
+  static readonly DEV_SETTLE_MS = 1000
   readonly #shell: LauncherShell
   #wake: (() => void) | null = null
   #ended: number | null = null
@@ -148,7 +150,7 @@ class Launcher {
   #window = 0
   #closing = false
   #reloading = false
-  readonly #panels = new Set<number>()
+  readonly #panels = new Map<number, { rect: [number, number, number, number]; hidden: boolean }>()
   #services: Readonly<Record<string, ServiceShape>> = {}
   readonly #dev: DevChannel
   readonly #lock = new FakeLock()
@@ -168,7 +170,8 @@ class Launcher {
     manager?.onEvents(() => this.#wake?.())
     this.#services = session.services
     this.#title = session.label
-    this.#menus = new AppMenus(this.#shell, () => this.#window)
+    const menuKeys = manager ? (keys: readonly string[]) => this.#thread?.post({ type: 'menukeys', keys }) : null
+    this.#menus = new AppMenus(this.#shell, () => this.#window, menuKeys)
     const chooser = natives.native.FileChooser
     this.#pages = new PageCalls({
       label: session.label,
@@ -209,7 +212,9 @@ class Launcher {
       accessibility: () => Promise.resolve(null),
       records: () => [this.#window],
     }
-    this.#inspect = new Inspect(this.#guest ? this.#guest.host(host, () => this.#window, this.#relay?.inject) : host)
+    const relay = this.#relay
+    const extras = { ...(relay && { inject: relay.inject, window: relay.window }), panels: () => this.#panelRows() }
+    this.#inspect = new Inspect(this.#guest ? this.#guest.host(host, () => this.#window, extras) : host)
     return this.#inspect
   }
 
@@ -295,6 +300,8 @@ class Launcher {
 
   #fromPage(message: unknown, rpc: Rpc): void {
     if (this.#dev.take(message)) return
+    const chord = (message as { menukey?: unknown } | null)?.menukey
+    if (typeof chord === 'string') return void this.#menuKey(chord)
     const call = message as { rpc?: string; id?: number; service?: string; method?: string; args?: unknown[] } | null
     if (!this.manager || call?.rpc !== 'call' || !call.service || !Object.hasOwn(this.#services, call.service)) return void rpc.receive(message)
     this.manager.call(call.service, call.method ?? '', call.args ?? []).then(
@@ -333,6 +340,7 @@ class Launcher {
       case 'windows':
         return this.#windowsCall(method, args)
       case 'manager':
+        if (service === 'window' && method === 'setMenus') this.#menus.remember((Array.isArray(args[0]) ? args[0] : []) as WireMenu[])
         return this.manager!.call(service, method, args)
       case 'session':
         if (service === 'desktops' && method === 'list') return { desktops: [], current: '' }
@@ -383,18 +391,28 @@ class Launcher {
     return method === 'list' ? declared.map(status) : status(String(args[0]))
   }
 
+  #panelRows(): ShellWindow[] {
+    return [...this.#panels].map(([id, { rect: [x, y, width, height], hidden }]) => ({
+      id, window: id, canvas: 0, mode: 'pinned', x, y, width, height, z: 0, focus: false, hidden,
+    }))
+  }
+
   #panel(method: string, args: unknown[]): unknown {
     const id = Number(args[0])
     switch (method) {
       case 'open': {
-        const grant = this.#shell.grant({ mode: 'pinned', rect: rect(args[0]) })
-        this.#panels.add(grant.window)
+        const at = rect(args[0])
+        const grant = this.#shell.grant({ mode: 'pinned', rect: at })
+        this.#panels.set(grant.window, { rect: at, hidden: false })
         return grant
       }
       case 'place': {
         if (!this.#panels.has(id)) throw refused(`panel ${id} is not this desktop's`)
-        const [x, y, width, height] = rect(args[1])
-        if (width <= 0 || height <= 0) return this.#shell.hide(id, true)
+        const at = rect(args[1])
+        const [x, y, width, height] = at
+        const hidden = width <= 0 || height <= 0
+        this.#panels.set(id, { rect: hidden ? this.#panels.get(id)!.rect : at, hidden })
+        if (hidden) return this.#shell.hide(id, true)
         this.#shell.place(id, x, y, width, height)
         return this.#shell.hide(id, false)
       }
@@ -410,8 +428,11 @@ class Launcher {
     const shell = this.#shell
     switch (method) {
       case 'close':
-      case 'kill':
         shell.close(id)
+        return true
+      case 'kill':
+        if (shell.kill) shell.kill(id)
+        else shell.close(id)
         return true
       case 'focus':
         return shell.focus(id)
@@ -492,14 +513,15 @@ class Launcher {
     }
   }
 
+  #menuKey(chord: string): void {
+    const hit = this.#menus.pressed(chord)
+    if (hit) void this.#rpc?.call('window', 'menu', [hit.menu, hit.item]).catch(() => undefined)
+  }
+
   #appKey(event: ShellEvent): void {
     const title = event['title']
     if (event.type === 'menuselect') return void this.#rpc?.call('window', 'menu', [event['key'], title]).catch(() => undefined)
-    if (title === 'menu') {
-      const hit = this.#menus.pressed(String(event['key'] ?? ''))
-      if (hit) void this.#rpc?.call('window', 'menu', [hit.menu, hit.item]).catch(() => undefined)
-      return
-    }
+    if (title === 'menu') return void this.#menuKey(String(event['key'] ?? ''))
     if (title === 'app') this.#thread?.post(event)
   }
 
@@ -548,6 +570,7 @@ class Launcher {
         this.#wake = wake
       })
     }
+    await this.#dev.settle(Launcher.DEV_SETTLE_MS)
     await this.#backend?.close()
     return this.#ended
   }

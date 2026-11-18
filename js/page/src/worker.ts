@@ -213,6 +213,9 @@ export default async function boot(natives: WebNatives): Promise<void> {
       status?: CapabilityStatus
     }
     switch (m.type) {
+      case 'menukeys':
+        web.menuKeys = Array.isArray((m as { keys?: unknown }).keys) ? ((m as { keys: unknown[] }).keys.map(String)) : []
+        return
       case 'devroutes':
         return routes?.set(m.routes ?? [])
       case 'devdialog': {
@@ -255,6 +258,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   if (self) self.handOver = calls
   web.onActivation = (active) => self?.emit(active ? 'activate' : 'deactivate')
   web.onGrab = (event) => self?.emit(event.kind === 'lost' ? 'grablost' : 'grab', event)
+  web.onMenuKey = (chord) => port.post({ menukey: chord })
   web.onState = (state, previous) => self?.changed(state, previous)
   web.onFrameButton = (key) => {
     if (!self) return
