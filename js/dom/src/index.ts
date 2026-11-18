@@ -29,6 +29,7 @@ import { idbTaskEnded, installIndexedDB } from './storage/idb/idb'
 import { StorageManager } from './storage/manager'
 import { installCaches } from './storage/cache'
 import { contexts as gpuContexts, installGpu } from './gpu/index'
+import { gpuFrames } from './gpu/frames'
 import { installWebgl, webglContexts, type WebglNative } from './webgl/index'
 import { installAudio } from './audio/index'
 import { NodeType } from './native'
@@ -289,7 +290,7 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
       moved()
       try {
         deliverScrolls()
-        if (!gpuContexts.behind()) runAnimationFrames(clockNow(), report)
+        if (!gpuFrames.behind()) runAnimationFrames(clockNow(), report)
         deliverObservations()
         animating = deliverCssEvents()
       } catch (error) {

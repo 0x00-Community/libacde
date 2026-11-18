@@ -1,4 +1,5 @@
 import { defineHandlers, Event, EventTarget, fire } from '../core/event'
+import { gpuFrames } from './frames'
 import { DOMException, guard, nativeException } from '../core/exception'
 import { base64 } from '../core/encoding'
 import { host, tag } from '../core/host'
@@ -691,9 +692,6 @@ export class GPUCanvasContext {
 }
 tag(GPUCanvasContext)
 
-const inFlight = new Set<{ at: number }>()
-const IN_FLIGHT_MS = 1000
-
 const byCanvas = new WeakMap<object, GPUCanvasContext>()
 
 export const contexts = {
@@ -713,13 +711,6 @@ export const contexts = {
     return context ? native.pngAsync(flushed(context), canvas.width, canvas.height) : null
   },
   waiting: new Set<GPUCanvasContext>(),
-  behind(): boolean {
-    if (inFlight.size < 2) return false
-    const now = host.now()
-    let count = 0
-    for (const { at } of inFlight) if (now - at < IN_FLIGHT_MS) count++
-    return count >= 2
-  },
   of(canvas: CanvasLike, node: number): GPUCanvasContext | null {
     if (!native) return null
     let context = byCanvas.get(canvas)
@@ -732,10 +723,7 @@ export const contexts = {
     for (const context of contexts.waiting) device = present(context) ?? device
     contexts.waiting.clear()
     if (!device) return
-    const entry = { at: host.now() }
-    inFlight.add(entry)
-    const done = () => inFlight.delete(entry)
-    native.onSubmittedWorkDone(device[ID]).then(done, done)
+    gpuFrames.submitted(native.onSubmittedWorkDone(device[ID]))
   },
 }
 

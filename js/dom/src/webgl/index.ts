@@ -5,11 +5,13 @@ import { bitmaps, ImageBitmap } from '../dom/bitmap'
 import { canvases, canvasSources, ImageData } from '../dom/canvas'
 import { ID } from '../dom/realm'
 import { WEBGL1, WEBGL2 } from './constants'
+import { gpuFrames } from '../gpu/frames'
 
 export interface WebglNative {
   create(node: number, webgl2: boolean, attributes: object, width: number, height: number): number | null
   release(context: number): void
   present(context: number): boolean
+  done(): Promise<void>
   pixels(context: number): { width: number; height: number; rgba: Uint8Array } | null
   onLost(callback: (context: number) => void): void
   texImageSource(...args: unknown[]): void
@@ -177,7 +179,7 @@ const webglHooks = {} as {
 }
 
 export const contextHooks = {} as {
-  present(gl: WebGLContextBase): void
+  present(gl: WebGLContextBase): boolean
   drawn(gl: WebGLContextBase): boolean
   pixels(gl: WebGLContextBase): { width: number; height: number; rgba: Uint8Array } | null
   png(gl: WebGLContextBase): Uint8Array | null
@@ -211,9 +213,9 @@ export class WebGLContextBase {
 
   static {
     contextHooks.present = (gl) => {
-      if (gl.#lost || !gl.#drawn) return
+      if (gl.#lost || !gl.#drawn) return false
       gl.#drawn = false
-      native.present(gl.#c)
+      return native.present(gl.#c)
     }
     contextHooks.drawn = (gl) => gl.#drawn
     contextHooks.pixels = (gl) => (gl.#lost ? null : native.pixels(gl.#c))
@@ -1446,7 +1448,9 @@ export const webglContexts = {
     if (gl) contextHooks.resize(gl)
   },
   present(): void {
-    for (const gl of live) contextHooks.present(gl)
+    let shown = false
+    for (const gl of live) shown = contextHooks.present(gl) || shown
+    if (shown) gpuFrames.submitted(native.done())
   },
   endTask(): void {
     epoch++

@@ -386,6 +386,30 @@ fn present(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv
     rv.set_bool(shown);
 }
 
+/// A promise for the GPU work submitted so far on the shared device (every context's presents included): the page counts
+/// frames still on the GPU with it and holds back requestAnimationFrame callbacks while two are, as for WebGPU canvases.
+fn done(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let Some((token, promise)) = bind::promise(scope) else { return };
+    rv.set(promise.into());
+    let settle = move |scope: &mut v8::PinScope| {
+        if let Some(resolver) = bind::resolver(scope, token) {
+            let undefined = v8::undefined(scope);
+            resolver.resolve(scope, undefined.into());
+        }
+    };
+    let Some(gpu) = crate::gpu::Gpu::shared().filter(|gpu| !gpu.gone()) else {
+        settle(scope);
+        return;
+    };
+    let tx = rt::current().sender();
+    let held = gpu.clone();
+    held.hold_poll();
+    gpu.queue.on_submitted_work_done(move || {
+        _ = tx.send(Msg::Task(Box::new(settle)));
+        held.release_poll();
+    });
+}
+
 fn pixels(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     let id = bind::arg_u32(scope, &args, 0);
     let read = std::panic::catch_unwind(AssertUnwindSafe(|| {
@@ -458,6 +482,7 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>) {
         "create" => create,
         "release" => release,
         "present" => present,
+        "done" => done,
         "pixels" => pixels,
         "png" => png,
         "onLost" => on_lost,

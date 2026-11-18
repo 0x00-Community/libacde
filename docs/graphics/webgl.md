@@ -23,6 +23,9 @@ WebGL 1 和 2 在每个 OS 上都有 (Windows 没验过), 是 wgpu 上的一台 
   实例 (6 个顶点), 属性按实例步进 (`ALIASED_POINT_SIZE_RANGE` [1, 1024]). 多重采样的深度经 `blitFramebuffer` 由 frag_depth 解析 (模板不解析).
 - **画布**: 默认帧缓冲是 RGBA8 (`antialias` 时 4 倍多重采样), `alpha: false` 时不写 alpha. 绘制缓冲在渲染那一步 (`frame`, 2D 画布刷新之前)
   交成 canvas 的 `GpuImage` (`Dom::canvas_image`), `preserveDrawingBuffer: false` 时下一次绘制先清; 2D `drawImage` 一个 WebGL canvas 前先交.
+  交了画面的一帧经 `natives.webgl.done()` (共享设备上已提交工作的完成) 记进 acde-dom `gpu/frames.ts`, 和 WebGPU canvas 共用一个计数:
+  还有两帧在 GPU 上时这一帧不跑 `requestAnimationFrame` 回调 (页面最多领先 GPU 两帧; 不限时 GPU 慢的页面会一直排帧, 直到 Metal 的命令缓冲区额度
+  在帧中间卡住它, 落后半秒). 只拦 rAF: 用 `setTimeout` 驱动画面的页面照样能跑在 GPU 前面.
   `toDataURL` / `toBlob` / WebGPU 外部拷贝读交出去的图. 纹理来源: `ImageData`、`<img>` (位图按 CPU 字节、SVG 在 GPU 上画)、2D canvas、
   `<video>` 的帧、WebGL / WebGPU canvas、`ImageBitmap` (render `Dom::image_pixels`), GPU 上的来源经 blit 着色器翻转 / 预乘写进去.
 - **查询和同步**: 遮挡查询每个绘制一个查询位, 提交后映射回读; fence 等 `on_submitted_work_done`. 两者都要在结束它们的任务之后才可用 (acde-dom 按任务计数).
