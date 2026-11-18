@@ -169,8 +169,7 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn load(machine: Machine) -> Self {
-        let path = Self::path();
+    pub fn load(path: Option<PathBuf>, machine: Machine) -> Self {
         let file = path
             .as_ref()
             .and_then(|p| std::fs::read_to_string(p).ok())

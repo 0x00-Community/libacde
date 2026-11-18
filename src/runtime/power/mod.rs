@@ -1,7 +1,9 @@
 mod backlight;
 mod bus;
 mod settings;
+mod shared;
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -13,6 +15,7 @@ use zbus::blocking::MessageIterator;
 use backlight::Backlight;
 pub use backlight::brightness as backlight_brightness;
 use settings::{Action, Group, Machine, Settings};
+use shared::PolicyMark;
 
 use crate::runtime::sync::Locked;
 
@@ -52,6 +55,8 @@ struct Inner {
     pump: Mutex<Option<Sender<Event>>>,
     policy: AtomicBool,
     system: Mutex<Option<zbus::blocking::Connection>>,
+    path: OnceLock<Option<PathBuf>>,
+    watching: AtomicBool,
 }
 
 #[derive(Clone, Default)]
@@ -77,6 +82,7 @@ struct Policy {
     critical: u64,
     critical_armed: bool,
     _inhibit: Option<zbus::zvariant::OwnedFd>,
+    _mark: Option<PolicyMark>,
 }
 
 struct Facts {
@@ -110,8 +116,41 @@ impl Power {
 
     fn settings<R>(&self, f: impl FnOnce(&mut Settings) -> R) -> R {
         let machine = self.machine();
+        let path = self.settings_path();
         let mut slot = self.inner.settings.locked();
-        f(slot.get_or_insert_with(|| Settings::load(machine)))
+        f(slot.get_or_insert_with(|| Settings::load(path, machine)))
+    }
+
+    fn settings_path(&self) -> Option<PathBuf> {
+        self.inner.path.get_or_init(Settings::path).clone()
+    }
+
+    fn reload(&self) {
+        let fresh = Settings::load(self.settings_path(), self.machine());
+        *self.inner.settings.locked() = Some(fresh);
+    }
+
+    fn watch_settings(&self) {
+        let Some(path) = self.settings_path() else { return };
+        if self.inner.watching.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        let inner = Arc::downgrade(&self.inner);
+        let changed = move || {
+            let Some(inner) = inner.upgrade() else { return false };
+            let power = Power { inner };
+            power.reload();
+            power.poke(Event::Configured);
+            true
+        };
+        if let Err(e) = shared::watch(path, changed) {
+            self.inner.watching.store(false, Ordering::Relaxed);
+            log::warn!(target: "crate::runtime::power", "电源设置文件的变化看不到, 别的进程改的设置要重启才生效: {e}");
+        }
+    }
+
+    fn policy_elsewhere() -> bool {
+        PolicyMark::path().is_some_and(|path| PolicyMark::held(&path))
     }
 
     fn group(on_battery: bool, percent: Option<f64>, low: u32) -> Group {
@@ -147,7 +186,7 @@ impl Power {
             "can": { "suspend": m.can_suspend, "hibernate": m.can_hibernate, "hybrid": m.can_hybrid, "suspendThenHibernate": m.can_then_hibernate },
             "brightness": backlight::brightness(),
             "inhibitors": bus::inhibitors(&bus),
-            "policy": self.inner.policy.load(Ordering::Relaxed),
+            "policy": self.running() || Self::policy_elsewhere(),
         });
         let facts = facts.map(|f| Facts { on_battery: f.on_battery, percent: f.percent, lid_present: f.lid_present, lid_closed: f.lid_closed });
         Ok((state, facts))
@@ -285,6 +324,7 @@ impl Power {
         let back = tx.clone();
         std::thread::Builder::new().name("acde-power".into()).spawn(move || power.run(&rx, &back)).map_err(|e| e.to_string())?;
         self.watch_bus(tx.clone());
+        self.watch_settings();
         *slot = Some(tx.clone());
         Ok(tx)
     }
@@ -344,6 +384,7 @@ impl Power {
         policy.group = None;
         policy.current = None;
         self.inner.policy.store(true, Ordering::Relaxed);
+        policy._mark = PolicyMark::path().and_then(|path| PolicyMark::claim(path).map_err(|e| log::warn!(target: "crate::runtime::power", "{e}")).ok());
         match self
             .system()
             .and_then(|b| bus::inhibit(&b, "handle-power-key:handle-lid-switch", "acde handles the power button and the lid (Power and battery settings)"))
@@ -351,7 +392,7 @@ impl Power {
             Ok(fd) => policy._inhibit = Some(fd),
             Err(e) => log::warn!(target: "crate::runtime::power", "logind 的电源键 / 合盖 inhibitor 拿不到, 由 logind 处理: {e}"),
         }
-        log::info!(target: "crate::runtime::power", "电源策略开始 ({:?})", Settings::path());
+        log::info!(target: "crate::runtime::power", "电源策略开始 ({:?})", self.settings_path());
     }
 
     fn refresh(&self, policy: &mut Policy, tx: &Sender<Event>) {
@@ -526,6 +567,30 @@ impl Power {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn at(file: &std::path::Path) -> Power {
+        let power = Power::default();
+        _ = power.inner.path.set(Some(file.to_path_buf()));
+        _ = power.inner.machine.set(Machine { can_suspend: true, ..Machine::default() });
+        power
+    }
+
+    #[test]
+    fn rereads_settings_another_process_saved() {
+        let dir = std::env::temp_dir().join(format!("acde-power-watch-{}", std::process::id()));
+        let file = dir.join("power.json");
+        let watcher = at(&file);
+        let writer = at(&file);
+        assert_eq!(watcher.settings(|s| s.general().low), 10);
+        watcher.watch_settings();
+        writer.configure(&json!({ "lowLevel": 20 })).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while watcher.settings(|s| s.general().low) != 20 {
+            assert!(Instant::now() < deadline, "the watching Power never reread {}", file.display());
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     #[ignore = "reads this machine's UPower, power-profiles-daemon and logind"]
