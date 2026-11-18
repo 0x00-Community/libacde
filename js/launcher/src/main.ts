@@ -252,7 +252,13 @@ class Launcher {
       ? desktopInit(session.page!, session.resources, grant.token, this.#place(), session.tier!, session.services)
       : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request: session.request, services: session.services }, grant.window)
     this.#backend?.start()
+    if (session.grants?.office) Launcher.#openOffice()
     this.#spawn(this.manager && session.lock ? { ...init, name: DevChannel.LOCK } : init)
+  }
+
+  static #openOffice(): void {
+    const failed = sys().openOffice?.()
+    if (failed) process.stderr.write(`acdev: office: ${failed}\n`)
   }
 
   #spawn(given: WebInit): void {
