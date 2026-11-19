@@ -32,6 +32,7 @@ mod functions;
 mod lex;
 mod offset;
 mod parser;
+mod preprocessor;
 mod token;
 mod types;
 mod variables;

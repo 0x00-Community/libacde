@@ -69,7 +69,7 @@ wgpu-types = { version = "30", features = ["serde"] }
 pollster = "0.4"
 # webgl: src/webgl/glsl is naga's GLSL frontend with the WebGL dialect
 naga = "30"
-pp-rs = "0.2"
+unicode-xid = "0.2"
 half = "2"
 thiserror = { version = "2", default-features = false }
 bitflags = "2"

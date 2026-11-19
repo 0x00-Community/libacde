@@ -201,6 +201,19 @@ fn vertex_shaders_sample_the_base_level() {
 }
 
 #[test]
+fn an_unused_macro_may_hold_what_is_not_glsl() {
+    link(
+        "#define SHADER_NAME bridge-stone-2s
+         #define ALSO 4h + 1.0l
+         attribute vec3 position; void main() { gl_Position = vec4(position, 1.0); }",
+        "#define SHADER_NAME bridge-stone-2s
+         precision mediump float; void main() { gl_FragColor = vec4(1.0); }",
+    );
+    let used = shader::compile(ShaderStage::Fragment, "precision mediump float; void main() { gl_FragColor = vec4(2s); }", &[], 15);
+    assert!(used.is_err(), "a 16-bit literal is still no GLSL ES");
+}
+
+#[test]
 fn the_varying_limit_is_the_contexts() {
     let declare = |n: usize, out: &str| (0..n).map(|i| format!("{out} vec4 v{i};")).collect::<String>();
     let sum = |n: usize| (0..n).map(|i| format!("v{i}")).collect::<Vec<_>>().join(" + ");
