@@ -10,8 +10,8 @@ use crate::host::rt::{self, Msg};
 
 pub const MAX_LIVE: usize = 64;
 pub const MAX_IN_FLIGHT: usize = 1 << 30;
-const FIRST_HEAP: usize = 64 << 20;
-const SMALLEST_HEAP: usize = 16 << 20;
+const FIRST_HEAP: usize = 16 << 20;
+const SMALLEST_HEAP: usize = 8 << 20;
 
 fn take(budget: &AtomicUsize, want: usize, least: usize) -> Option<usize> {
     let mut got = 0;
@@ -50,7 +50,7 @@ impl Grant {
 
     extern "C" fn near_limit(data: *mut std::ffi::c_void, current: usize, _initial: usize) -> usize {
         let grant = unsafe { &*(data as *const Self) };
-        if let Some(more) = take(&grant.budget, current / 2, (current / 4).max(1)) {
+        if let Some(more) = take(&grant.budget, (current / 2).max(SMALLEST_HEAP), SMALLEST_HEAP.min(current / 4).max(1)) {
             grant.granted.fetch_add(more, Ordering::AcqRel);
             return current + more;
         }
@@ -529,19 +529,19 @@ mod tests {
 
     #[test]
     fn workers_share_the_page_heap_budget() {
-        let budget = Arc::new(AtomicUsize::new(100 << 20));
+        let budget = Arc::new(AtomicUsize::new(25 << 20));
         let stop = || Arc::new(AtomicBool::new(false));
         let reason = || Arc::new(Mutex::new(None));
         let a = Grant::reserve(&budget, reason(), stop()).unwrap();
-        assert_eq!(a.mb(), 64);
+        assert_eq!(a.mb(), 16);
         let b = Grant::reserve(&budget, reason(), stop()).unwrap();
-        assert_eq!(b.mb(), 36, "the second gets what is left");
+        assert_eq!(b.mb(), 9, "the second gets what is left");
         assert!(Grant::reserve(&budget, reason(), stop()).is_none(), "nothing left for a third");
         assert_eq!(take(&budget, 1, 1), None);
         drop(a);
-        assert_eq!(budget.load(Ordering::Acquire), 64 << 20, "a worker's heap comes back when it ends");
+        assert_eq!(budget.load(Ordering::Acquire), 16 << 20, "a worker's heap comes back when it ends");
         drop(b);
-        assert_eq!(budget.load(Ordering::Acquire), 100 << 20);
+        assert_eq!(budget.load(Ordering::Acquire), 25 << 20);
     }
 
     #[test]
