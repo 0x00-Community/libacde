@@ -109,6 +109,7 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
   (`InputMethodGroupsChanged` 信号) 和当前输入法变时 (约 1 秒一次轮询, 只在页面订阅了才起) 也发. fcitx5 不在 (登录页会话不起它、没有会话总线)
   时 `running: false`、`group: []`、`imes: []`, 写 `ime` 报错; 其余设置照常.
   `acde:display` (能力 `display`, src/host `display.rs`): `state()` 是前端 `Platform::display()` 给的输出表 (acde_shell `display` 事件),
+  每个输出可带 `bounds` (在整个桌面坐标里的位置和大小) 与 `workArea` (去掉面板预留边后的可用区域), 都是 `{x, y, width, height}`, 没有时为 null 或不带 (SDK `DisplayInfo`, 多屏方案 A, 数据由 acdes 写出), 这里原样转交不改;
   内置屏的 `brightness` 由这里用 `acde:power` 的背光补上; `configure(id, {scale})` 经 acde_shell `set_scale` (只认 1..3 的整数, 别的键还没有),
   `setBrightness(id, v)` 只对内置屏 (logind 背光), `setNightLight` 还没有. 两者都是进程内模块, 不经 Broker; Linux only. `acde:office` 的根就是调用方 `acde:fs` 的根 (#96, `OfficeService::for_web` 带上这个 web 的 `Workspace`,
   runtime `Workspace::finder_roots`): 第 1 级应用是 `private`、点名的公共位置和选的文件夹, 按 `id` 认, 不给路径; 没有 `fs` 的应用没有根. 没批准或撤销了的
