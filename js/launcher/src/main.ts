@@ -554,6 +554,7 @@ class Launcher {
       else if (event.type === 'devreload') void this.#devReload(event['hot'] === true)
       else if (event.type === 'invoke') this.#thread?.post({ rpc: 'invoke', fn: event['fn'], args: event['args'] ?? [] })
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
+      else if (event.type === 'unlend' && !this.#desktop) this.#unlend(String(event['name'] ?? ''))
       else if (event.type === 'menuinvoke' && !this.#desktop) void this.#rpc?.call('window', 'menu', [event['menu'], event['item']]).catch(() => undefined)
       else if (this.#desktop) this.#thread?.post(event)
     }
@@ -562,6 +563,12 @@ class Launcher {
   #replaceServices(services: Readonly<Record<string, ServiceShape>> | undefined): void {
     this.#services = services ?? {}
     this.#thread?.post({ type: 'services', services: this.#services })
+  }
+
+  #unlend(name: string): void {
+    const app = this.session.found?.app.id
+    if (!app || !name || !sys().unlendRoot?.(app, name)) return
+    this.#thread?.post({ type: 'fsroots', removed: [name] })
   }
 
   #deliver(event: ManagerEvent): void {
