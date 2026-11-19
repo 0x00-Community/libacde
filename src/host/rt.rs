@@ -292,12 +292,18 @@ impl Runtime {
             }
             let local: Vec<_> = lp.local.borrow_mut().drain(..).collect();
             for task in local {
+                if lp.exit.get().is_some() {
+                    break;
+                }
                 self.task(task);
             }
             // only what is queued now: a task that posts another (a busy page's `waitThen` finding events ready again) would keep
             // this drain going forever, and timers that came due meanwhile never ran
             let queued: Vec<Msg> = std::iter::from_fn(|| lp.rx.try_recv().ok()).collect();
             for msg in queued {
+                if lp.exit.get().is_some() {
+                    break;
+                }
                 self.message(msg);
             }
             if lp.exit.get().is_some() || !lp.local.borrow().is_empty() {
