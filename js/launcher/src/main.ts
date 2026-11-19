@@ -17,7 +17,7 @@ import type { WireMenu } from '../../page/src/contract'
 import type { NativeFileChooser } from '../../page/src/native'
 import { API_LEVEL } from '@dopame/acde-api/manifest'
 import { LaunchArgs } from './args'
-import { refused, route, unsupported } from './app/calls'
+import { refused, route, unsupported, wallpaperOf } from './app/calls'
 import type { LentRoot } from '@dopame/acde-api'
 import { sessionOf, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
 import { toDesktop, type ShellEvent } from './app/events'
@@ -70,6 +70,7 @@ interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState
   removeDesk?(desk: number, into: number): unknown
   showDesk?(desk: number): unknown
   moveToDesk?(window: number, desk: number): unknown
+  setWallpaper?(color: string, image?: string | null): unknown
 }
 
 interface LauncherNatives extends Natives {
@@ -488,6 +489,8 @@ class Launcher {
         if (!call) throw unsupported('windows', method)
         return (call as (...numbers: number[]) => unknown).call(shell, ...args.map(Number))
       }
+      case 'setWallpaper':
+        return this.#setWallpaper(args[0])
       case 'launch':
         if (this.manager) return this.manager.call('launch', 'start', args)
         break
@@ -495,6 +498,12 @@ class Launcher {
         if (this.manager) return this.manager.call('windows', 'invokeMenu', args)
     }
     throw unsupported('windows', method)
+  }
+
+  #setWallpaper(given: unknown): unknown {
+    if (!this.#desktop || !this.#shell.setWallpaper) throw unsupported('windows', 'setWallpaper')
+    const { color, image } = wallpaperOf(given)
+    return image === undefined ? this.#shell.setWallpaper(color) : this.#shell.setWallpaper(color, image)
   }
 
   async close(force: boolean): Promise<boolean> {

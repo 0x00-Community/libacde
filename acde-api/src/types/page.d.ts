@@ -190,6 +190,12 @@ export interface AcdeWindows extends WindowsEvents {
   removeDesk?(desk: number, into: number): Promise<void>
   showDesk?(desk: number): Promise<void>
   moveToDesk?(window: number, desk: number): Promise<void>
+  setWallpaper?(wallpaper: DisplayWallpaper): Promise<void>
+}
+
+export interface DisplayWallpaper {
+  readonly color: string
+  readonly image?: string | null
 }
 
 export interface AcdeTerminals {

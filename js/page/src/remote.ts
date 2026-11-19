@@ -300,7 +300,7 @@ export class RemoteBridge {
     const globalWindows = () => ({
       ...windows.api,
       ...Rpc.calls(() => rpc, 'windows', 'kill', 'focus', 'hide', 'show', 'requestState', 'invokeMenu', 'stats', 'animate', 'shortcut', 'unshortcut', 'place',
-        'addDesk', 'removeDesk', 'showDesk', 'moveToDesk'),
+        'addDesk', 'removeDesk', 'showDesk', 'moveToDesk', 'setWallpaper'),
     })
     const tier = {
       packages: () => ({ ...Rpc.calls(() => rpc, 'packages', 'refresh', 'install', 'natives', 'runNative'), on: windows.notices.for('apps', ['changed']) }),
