@@ -38,7 +38,7 @@ test('navigator.clipboard.write puts every type of a ClipboardItem on the host; 
     'text/plain': 'hello',
     'image/png': new Blob([globalThis.__png], { type: 'image/png' }),
   })])`)
-  assert.deepEqual(host.entries.map((e) => e.type), ['text/plain', 'image/png'])
+  assert.deepEqual(Array.from(host.entries, (e) => e.type), ['text/plain', 'image/png'])
   assert.equal(new TextDecoder().decode(host.entries[0]!.data), 'hello')
   assert.deepEqual([...host.entries[1]!.data], [...PNG])
   const read = await web.run<Promise<{ types: string[]; text: string; png: number[] }>>(`(async () => {
@@ -46,7 +46,7 @@ test('navigator.clipboard.write puts every type of a ClipboardItem on the host; 
     const png = new Uint8Array(await (await item.getType('image/png')).arrayBuffer())
     return { types: [...item.types], text: await (await item.getType('text/plain')).text(), png: [...png] }
   })()`)
-  assert.deepEqual(read, { types: ['text/plain', 'image/png'], text: 'hello', png: [...PNG] })
+  assert.deepEqual(JSON.parse(JSON.stringify(read)), { types: ['text/plain', 'image/png'], text: 'hello', png: [...PNG] })
   assert.equal(await web.run('navigator.clipboard.readText()'), 'hello')
   assert.deepEqual(web.json(`[ClipboardItem.supports('image/png'), ClipboardItem.supports('text/html')]`), [true, false])
   await assert.rejects(web.run(`navigator.clipboard.write([new ClipboardItem({ 'text/html': '<b>x</b>' })])`), /not supported on write/)
