@@ -33,26 +33,26 @@ body { font-family: var(--f-sans, sans-serif); color: var(--ink, #1d1d1f); backg
     return entry.split(/[?#]/)[0]!.endsWith('/')
   }
 
-  static async served(window: { fetch(url: string, init?: object): Promise<{ status: number; text(): Promise<string> }> }, url: string): Promise<string> {
+  static async served(
+    window: { fetch(url: string, init?: object): Promise<{ status: number; headers: { get(name: string): string | null }; text(): Promise<string> }> },
+    url: string,
+  ): Promise<{ text: string; type: string }> {
     try {
       const response = await window.fetch(url, { headers: { accept: 'text/html,application/xhtml+xml,*/*;q=0.8' } })
-      return await response.text()
+      return { text: await response.text(), type: response.headers.get('content-type') ?? 'text/html' }
     } catch (error) {
       const esc = PageSource.escape
-      return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(url)}</title></head><body style="font: 14px/1.5 system-ui, sans-serif; padding: 24px"><p>${esc(url)}: ${esc(String((error as Error)?.message ?? error))}</p></body></html>`
+      const head = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(url)}</title></head>`
+      const reason = esc(String((error as Error)?.message ?? error))
+      const body = `<body style="font: 14px/1.5 system-ui, sans-serif; padding: 24px"><p>${esc(url)}: ${reason}</p></body></html>`
+      return { text: head + body, type: 'text/html' }
     }
   }
 
   static html(entry: string, resources: readonly { prefix: string; dirs: readonly string[] }[]): string {
     const file = PageSource.file(entry, resources)
     if (!file) throw new Error(`${entry}: not a file of the installed packages' assets`)
-    const base = dirname(normalize(entry.split(/[?#]/)[0]!))
-    return readFileSync(file, 'utf8').replace(/(<[a-z][\w-]*\b[^>]*?\s(?:src|href|poster)\s*=\s*)(["'])([^"']*)\2/gi, (whole, head: string, quote: string, value: string) => {
-      if (!value || /^(?:[a-z][\w+.-]*:|\/|#|\?|\{|%)/i.test(value)) return whole
-      const at = value.search(/[?#]/)
-      const path = at < 0 ? value : value.slice(0, at)
-      return `${head}${quote}${join(base, path)}${at < 0 ? '' : value.slice(at)}${quote}`
-    })
+    return readFileSync(file, 'utf8')
   }
 
   static rooted(entry: string, resources: readonly { prefix: string; dirs: string[] }[]): { prefix: string; dirs: string[] }[] {

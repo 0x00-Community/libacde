@@ -8,6 +8,7 @@ import { computedStyleOf, metricGetters, metricsOf, rectOf } from './layout'
 import { attributeObservers, observing, recordAttribute } from './mutation'
 import { ChildNodeMixin, insert, mixin, Node, ParentNodeMixin, remove, replaceAll, Text, type DocumentFragment } from './node'
 import { bodyId, changed, CONNECTED as CONNECTED_KEY, documentId, dom, ID, moved, wrap, inner } from './realm'
+import { requestPointerLock, type PointerLockOptions } from './pointerlock'
 import { string } from './reflect'
 import { documents, inHtmlDocument, namespaceOf, nullable, validAttributeLocalName, validateAndExtract } from './namespaces'
 
@@ -407,8 +408,8 @@ export class Element extends Node {
     return Promise.reject(new DOMException('Fullscreen is not supported', 'NotSupportedError'))
   }
 
-  requestPointerLock(): Promise<void> {
-    return Promise.reject(new DOMException('Pointer lock is not supported', 'NotSupportedError'))
+  requestPointerLock(options?: PointerLockOptions): Promise<void> {
+    return requestPointerLock(this, options)
   }
 }
 getters(Element.prototype, { assignedSlot: null })

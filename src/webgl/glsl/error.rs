@@ -5,7 +5,7 @@ use alloc::{
     vec::Vec,
 };
 
-use pp_rs::token::PreprocessorError;
+use super::preprocessor::token::PreprocessorError;
 use thiserror::Error;
 
 use super::token::TokenValue;

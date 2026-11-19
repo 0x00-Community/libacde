@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use pp_rs::{
+use super::preprocessor::{
     pp::Preprocessor,
     token::{PreprocessorError, Punct, TokenValue as PPTokenValue},
 };
@@ -200,7 +200,7 @@ impl Iterator for Lexer<'_> {
 mod tests {
     use alloc::vec;
 
-    use pp_rs::token::{Integer, Location, Token as PPToken, TokenValue as PPTokenValue};
+    use crate::webgl::glsl::preprocessor::token::{Integer, Location, Token as PPToken, TokenValue as PPTokenValue};
 
     use super::{
         super::token::{Directive, DirectiveKind, Token, TokenValue},

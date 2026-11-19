@@ -337,13 +337,14 @@ export default async function boot(natives: WebNatives): Promise<void> {
   StartupTimeline.mark('page load started')
   const htmlPage = htmlEntry ? PageSource.htmlFor(init.app!.entry, init.url, init.resources) : null
   const served = htmlEntry && PageSource.isServer(init.app!.entry)
+  const fetched = served ? await PageSource.served(page.window as never, init.url ?? `${PageSource.ORIGIN}/`) : null
   const html =
     init.kind === 'desktop'
       ? init.standalone
         ? standalone(init.standalone)
         : readFileSync(init.page!, 'utf8')
-      : served
-        ? await PageSource.served(page.window as never, init.url ?? `${PageSource.ORIGIN}/`)
+      : fetched
+        ? fetched.text
         : htmlPage
           ? PageSource.html(htmlPage, init.resources)
           : PageSource.window(init.app!, init.theme ?? '')
@@ -356,7 +357,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
       }
     }
   }
-  await page.loadPage(html)
+  await page.loadPage(html, fetched?.type)
   if (init.kind === 'window' && Frame.height(init.app) > 0) Frame.followScheme(page.window as never, surface, (run) => void setTimeout(run, 50))
   if (init.devState) {
     DevState.restore(page.window as never, init.devState as DevSnapshot, (restored, missed) =>
@@ -376,7 +377,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   const hot = reread
     ? new DevHot(page.window.document as never, parser, page.window.location.href, {
         read: (src) => {
-          const path = new URL(src, PageSource.ORIGIN).pathname
+          const path = new URL(src, page.window.location.href).pathname
           const file = PageSource.file(path, init.resources ?? [])
           return file ? readTextOr(file, null) : null
         },

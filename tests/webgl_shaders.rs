@@ -20,8 +20,8 @@ fn backends(module: &naga::Module) {
 }
 
 fn link(vs: &str, fs: &str) -> shader::Linked {
-    let v = shader::compile(ShaderStage::Vertex, vs, &[]).unwrap_or_else(|e| panic!("vertex: {e}"));
-    let f = shader::compile(ShaderStage::Fragment, fs, &[]).unwrap_or_else(|e| panic!("fragment: {e}"));
+    let v = shader::compile(ShaderStage::Vertex, vs, &[], LIMITS.varyings).unwrap_or_else(|e| panic!("vertex: {e}"));
+    let f = shader::compile(ShaderStage::Fragment, fs, &[], LIMITS.varyings).unwrap_or_else(|e| panic!("fragment: {e}"));
     let linked = shader::link(&v, &f, &HashMap::new(), &LIMITS).unwrap_or_else(|e| panic!("link: {e}"));
     backends(&linked.vertex);
     backends(&linked.fragment);
@@ -102,12 +102,17 @@ fn frag_data_and_blocks() {
 
 fn compile_on_web_stack(source: String) -> Result<(), String> {
     let mb = std::env::var("ACDE_TEST_STACK_MB").ok().and_then(|v| v.parse().ok()).unwrap_or(8usize);
-    std::thread::Builder::new().stack_size(mb << 20).spawn(move || shader::compile(ShaderStage::Fragment, &source, &[]).map(drop)).unwrap().join().unwrap()
+    std::thread::Builder::new()
+        .stack_size(mb << 20)
+        .spawn(move || shader::compile(ShaderStage::Fragment, &source, &[], LIMITS.varyings).map(drop))
+        .unwrap()
+        .join()
+        .unwrap()
 }
 
 #[test]
 fn errors() {
-    let e = shader::compile(ShaderStage::Fragment, "void main() { gl_FragColor = vec4(undefinedThing); }", &[]).err().unwrap();
+    let e = shader::compile(ShaderStage::Fragment, "void main() { gl_FragColor = vec4(undefinedThing); }", &[], LIMITS.varyings).err().unwrap();
     assert!(e.contains("ERROR"), "{e}");
     let n = 5000;
     for deep in [
@@ -153,8 +158,8 @@ fn captured() {
         let vs = std::fs::read_to_string(vert).unwrap();
         let fs = std::fs::read_to_string(&frag).unwrap();
         let result = std::panic::catch_unwind(|| {
-            let v = shader::compile(ShaderStage::Vertex, &vs, &[]).map_err(|e| format!("vertex: {e}"))?;
-            let f = shader::compile(ShaderStage::Fragment, &fs, &[]).map_err(|e| format!("fragment: {e}"))?;
+            let v = shader::compile(ShaderStage::Vertex, &vs, &[], LIMITS.varyings).map_err(|e| format!("vertex: {e}"))?;
+            let f = shader::compile(ShaderStage::Fragment, &fs, &[], LIMITS.varyings).map_err(|e| format!("fragment: {e}"))?;
             let linked = shader::link(&v, &f, &HashMap::new(), &LIMITS).map_err(|e| format!("link: {e}"))?;
             backends(&linked.vertex);
             backends(&linked.fragment);
@@ -173,4 +178,98 @@ fn captured() {
         }
     }
     assert_eq!(failed, 0);
+}
+
+#[test]
+fn vertex_shaders_sample_the_base_level() {
+    link(
+        "attribute vec3 position; uniform sampler2D boneTexture; uniform sampler2D displacementMap; varying vec4 vBone;
+         void main() { vBone = texture2D(boneTexture, vec2(0.5, 0.5));
+           gl_Position = vec4(position + vec3(texture2D(displacementMap, position.xy).x), 1.0); }",
+        "precision mediump float; varying vec4 vBone; void main() { gl_FragColor = vBone; }",
+    );
+    link(
+        "#version 300 es
+         in vec3 position; uniform highp sampler2D map; uniform highp usampler2D ids; out vec4 vColor;
+         void main() { vColor = texture(map, position.xy) + vec4(texelFetch(ids, ivec2(0), 0)) + textureLod(map, position.xy, 2.0);
+           gl_Position = vec4(position, 1.0); }",
+        "#version 300 es
+         precision mediump float; in vec4 vColor; out vec4 color; void main() { color = vColor; }",
+    );
+    let bias = shader::compile(ShaderStage::Vertex, "uniform sampler2D map; void main() { gl_Position = texture2D(map, vec2(0.0), 1.0); }", &[], 15);
+    assert!(bias.is_err(), "a bias has no meaning in a vertex shader");
+}
+
+#[test]
+fn an_unused_macro_may_hold_what_is_not_glsl() {
+    link(
+        "#define SHADER_NAME bridge-stone-2s
+         #define ALSO 4h + 1.0l
+         attribute vec3 position; void main() { gl_Position = vec4(position, 1.0); }",
+        "#define SHADER_NAME bridge-stone-2s
+         precision mediump float; void main() { gl_FragColor = vec4(1.0); }",
+    );
+    let used = shader::compile(ShaderStage::Fragment, "precision mediump float; void main() { gl_FragColor = vec4(2s); }", &[], 15);
+    assert!(used.is_err(), "a 16-bit literal is still no GLSL ES");
+}
+
+#[test]
+fn the_varying_limit_is_the_contexts() {
+    let declare = |n: usize, out: &str| (0..n).map(|i| format!("{out} vec4 v{i};")).collect::<String>();
+    let sum = |n: usize| (0..n).map(|i| format!("v{i}")).collect::<Vec<_>>().join(" + ");
+    let vs = format!(
+        "attribute vec3 position; {} void main() {{ {} gl_Position = vec4(position, 1.0); }}",
+        declare(17, "varying"),
+        (0..17).map(|i| format!("v{i} = vec4({i}.0);")).collect::<String>()
+    );
+    let fs = format!("precision mediump float; {} void main() {{ gl_FragColor = {}; }}", declare(17, "varying"), sum(17));
+    let v = shader::compile(ShaderStage::Vertex, &vs, &[], 30).unwrap();
+    let f = shader::compile(ShaderStage::Fragment, &fs, &[], 30).unwrap();
+    let narrow = shader::link(&v, &f, &HashMap::new(), &LIMITS).err().unwrap();
+    assert!(narrow.contains("too many varyings (17 vectors, at most 15)"), "{narrow}");
+    let wide = Limits { varyings: 30, ..LIMITS };
+    let linked = shader::link(&v, &f, &HashMap::new(), &wide).unwrap();
+    backends(&linked.vertex);
+    backends(&linked.fragment);
+    let max = shader::compile(ShaderStage::Vertex, "attribute vec4 p; void main() { gl_Position = p * float(gl_MaxVaryingVectors); }", &[], 30).unwrap();
+    assert!(format!("{:?}", max.module).contains("I32(30)"));
+}
+
+#[test]
+fn hostile_preprocessor_input_fails_to_compile_instead_of_exhausting_the_process() {
+    let compile = |source: String| shader::compile(ShaderStage::Fragment, &source, &[], LIMITS.varyings).map(drop);
+    let body = "precision mediump float; void main() { gl_FragColor = vec4(1.0); }";
+    let bangs = format!("#if {}1\n#endif\n{body}", "!".repeat(100_000));
+    assert!(compile(bangs).unwrap_err().contains("RecursionLimitReached"));
+    let parens = format!("#if {}1{}\n#endif\n{body}", "(".repeat(100_000), ")".repeat(100_000));
+    assert!(compile(parens).unwrap_err().contains("RecursionLimitReached"));
+    let empties = format!("#define E\n#if {} 1\n#endif\n{body}", "E ".repeat(100_000));
+    compile(empties).unwrap();
+    let mut doubling = String::from("#define M0 1.0\n");
+    for i in 1..40 {
+        doubling.push_str(&format!("#define M{i} M{} + M{}\n", i - 1, i - 1));
+    }
+    doubling.push_str("precision mediump float; void main() { gl_FragColor = vec4(M39); }");
+    assert!(compile(doubling).unwrap_err().contains("RecursionLimitReached"));
+    let long = format!("precision mediump float; void main() {{ float {} = 1.0; gl_FragColor = vec4(1.0); }}", "a".repeat(1025));
+    assert!(compile(long).unwrap_err().contains("IdentifierTooLong"));
+    let fits = format!("precision mediump float; void main() {{ float {} = 1.0; gl_FragColor = vec4(1.0); }}", "a".repeat(1024));
+    compile(fits).unwrap();
+    let mut wide = format!("#define W0 {}\n", "b".repeat(1000));
+    for i in 1..16 {
+        wide.push_str(&format!("#define W{i} W{} W{}\n", i - 1, i - 1));
+    }
+    wide.push_str("#define F(x) 1.0\nprecision mediump float; void main() { gl_FragColor = vec4(F(W15)); }");
+    assert!(compile(wide).unwrap_err().contains("RecursionLimitReached"), "32768 copies of a 1000-byte name are 32 MB");
+    let copied =
+        format!("#define F(x) x\nprecision mediump float; void main() {{ float y = {}1.0{}{}; }}", "F(".repeat(200), " + 1.0".repeat(20_000), ")".repeat(200));
+    assert!(compile(copied).unwrap_err().contains("RecursionLimitReached"), "200 nested copies of a 40000-token argument");
+    let mut ifs = String::from("#define M0 1\n");
+    for i in 1..16 {
+        ifs.push_str(&format!("#define M{i} M{} + M{}\n", i - 1, i - 1));
+    }
+    ifs.push_str(&"#if M15\n#endif\n".repeat(64));
+    assert!(compile(format!("{ifs}{body}")).unwrap_err().contains("RecursionLimitReached"), "the budget is the source's, not each #if's");
+    let nested = format!("#define F(x) x\nprecision mediump float; void main() {{ gl_FragColor = vec4({}1.0{}); }}", "F(".repeat(5_000), ")".repeat(5_000));
+    assert!(compile(nested).unwrap_err().contains("RecursionLimitReached"));
 }

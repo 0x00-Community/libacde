@@ -12,9 +12,9 @@ dependencies = [
 
 [[package]]
 name = "acss"
-version = "0.0.2"
+version = "0.0.5"
 source = "sparse+http://gitea.dopamine/api/packages/AC/cargo/"
-checksum = "b7ac6f5d601407aa397f9a66a594db458aec8f78ce82cc6e12b8733f4732d464"
+checksum = "1bcd194f2e2012a4441c6806aac7dd5e59644155a2f6b425b206b8e68156275d"
 dependencies = [
  "cssparser",
  "log",
@@ -2731,7 +2731,6 @@ dependencies = [
  "pipewire",
  "png",
  "pollster",
- "pp-rs",
  "rand 0.10.4",
  "rcgen",
  "roxmltree 0.21.2",
@@ -2749,6 +2748,7 @@ dependencies = [
  "stylo_traits",
  "symphonia",
  "thiserror 2.0.21",
+ "unicode-xid",
  "url",
  "uuid",
  "v8",
@@ -4259,15 +4259,6 @@ name = "powerfmt"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a6394b9e965e73d0a289ee54f589087e2c676aedf60885baf52c76b771e4958"
-
-[[package]]
-name = "pp-rs"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb458bb7f6e250e6eb79d5026badc10a3ebb8f9a15d1fff0f13d17c71f4d6dee"
-dependencies = [
- "unicode-xid",
-]
 
 [[package]]
 name = "ppv-lite86"

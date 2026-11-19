@@ -23,6 +23,9 @@ impl Engine {
     }
 
     pub(in crate::render::dom) fn fresh(&mut self, node: NodeId) -> u32 {
+        if self.ids.xml_owned(None) && self.owner_of(node).is_none() {
+            self.adopt_into(node, None);
+        }
         self.ids.fresh.push(node);
         self.ids.id_of(node)
     }
@@ -357,6 +360,7 @@ impl Engine {
     pub(in crate::render::dom) fn parse_document(&mut self, html: &str) {
         let document = self.doc.root_node().id;
         let old = self.doc.root_node().children.to_vec();
+        self.ids.page = None;
         let parsed = {
             let mut tree = self.tree();
             for &c in &old {
@@ -365,6 +369,32 @@ impl Engine {
             crate::render::parse::document(&mut tree.m, document, html)
         };
         self.adopt(parsed);
+        self.register(document);
+        self.collect(&old);
+    }
+
+    pub(in crate::render::dom) fn parse_xml_document(&mut self, text: &str, content_type: &str) {
+        let document = self.doc.root_node().id;
+        let old = self.doc.root_node().children.to_vec();
+        self.ids.page = Some(DocumentInfo::new("document", content_type, ""));
+        let parsed = {
+            let mut tree = self.tree();
+            for &c in &old {
+                tree.m.remove_node(c);
+            }
+            match crate::render::xml::document(&mut tree.m, document, text) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    for child in tree.m.child_ids(document) {
+                        tree.m.remove_and_drop_node(child);
+                    }
+                    crate::render::xml::parsererror(&mut tree.m, document, &error);
+                    crate::render::parse::Parsed::default()
+                }
+            }
+        };
+        self.adopt(parsed);
+        self.adopt_into(document, None);
         self.register(document);
         self.collect(&old);
     }
@@ -482,9 +512,12 @@ impl Engine {
         };
         if let Some(info) = tree.ids.documents.get(&node).cloned() {
             tree.ids.documents.insert(copy, info);
-        } else if let Some(&owner) = tree.ids.owners.get(&node) {
-            tree.ids.owners.insert(copy, owner);
-            let xml = tree.ids.documents.get(&owner).is_some_and(|info| info.xml);
+        } else {
+            let owner = tree.ids.owners.get(&node).copied();
+            if let Some(owner) = owner {
+                tree.ids.owners.insert(copy, owner);
+            }
+            let xml = tree.ids.xml_owned(owner);
             if let Some(data) = tree.m.doc.get_node_mut(copy) {
                 data.flags.set(blitz_dom::node::NodeFlags::IN_XML_DOCUMENT, xml);
             }
@@ -604,11 +637,14 @@ impl Engine {
     }
 
     pub(crate) fn in_xml_document(&self, node: NodeId) -> bool {
-        !self.ids.owners.is_empty() && self.owner_of(node).and_then(|d| self.ids.documents.get(&d)).is_some_and(|info| info.xml)
+        match self.ids.owners.is_empty() && self.ids.documents.is_empty() {
+            true => self.ids.xml_owned(None),
+            false => self.ids.xml_owned(self.owner_of(node)),
+        }
     }
 
     pub(in crate::render::dom) fn adopt_into(&mut self, node: NodeId, owner: Option<NodeId>) {
-        let xml = owner.and_then(|d| self.ids.documents.get(&d)).is_some_and(|info| info.xml);
+        let xml = self.ids.xml_owned(owner);
         let mut stack = vec![node];
         while let Some(n) = stack.pop() {
             if !self.ids.documents.contains_key(&n) {

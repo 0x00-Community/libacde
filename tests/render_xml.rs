@@ -190,3 +190,56 @@ fn selectors_match_in_xml_documents() {
     assert_eq!(page2.query_selector_all(page2.document(), "div").unwrap().len(), 1);
     assert_eq!(page2.query_selector_all(page2.document(), "DIV").unwrap().len(), 1, "HTML names are case-insensitive in HTML documents");
 }
+
+const GREEN_SQUARE: &str = r#"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+ <head>
+  <title>CSS Reftest Reference</title>
+  <style type="text/css"><![CDATA[
+  div
+  {
+  background-color: green;
+  height: 100px;
+  width: 100px;
+  }
+  ]]></style>
+ </head>
+ <body>
+  <p>Test passes if there is a filled green square and <strong>no red</strong>.</p>
+  <div></div>
+ </body>
+</html>"#;
+
+#[test]
+fn xhtml_page_is_an_xml_document_and_its_cdata_stylesheet_applies() {
+    let (_d, dom) = page();
+    let page = dom.document();
+    dom.parse_xml_document(GREEN_SQUARE, "application/xhtml+xml").unwrap();
+    assert_eq!(dom.document_info(page).unwrap(), ["document", "application/xhtml+xml", ""]);
+    let div = dom.query_selector(page, "div").unwrap();
+    assert_eq!(dom.namespace(div).unwrap(), Ns::Html);
+    assert_eq!(dom.computed_style(div, "", "background-color").unwrap(), "rgb(0, 128, 0)");
+    assert_eq!(dom.computed_style(div, "", "width").unwrap(), "100px");
+    assert_eq!(dom.rect(div).unwrap()[3], 100.0);
+    assert!(!dom.in_html_document(div).unwrap());
+    assert_eq!(dom.query_selector_all(page, "DIV").unwrap().len(), 0, "type selectors are case-sensitive in an XML page");
+    let made = dom.create_element(Ns::Html, "span").unwrap();
+    assert!(!dom.in_html_document(made).unwrap(), "elements created later belong to the XML page");
+    assert!(!dom.in_html_document(dom.clone(div, false).unwrap()).unwrap());
+
+    dom.parse_document(GREEN_SQUARE).unwrap();
+    assert_eq!(dom.document_info(page).unwrap(), ["html", "text/html", ""]);
+    let div = dom.query_selector(page, "div").unwrap();
+    assert!(dom.in_html_document(div).unwrap());
+    assert_eq!(dom.computed_style(div, "", "background-color").unwrap(), "rgba(0, 0, 0, 0)", "as HTML the CDATA markers are style text");
+}
+
+#[test]
+fn malformed_xhtml_page_shows_a_parser_error() {
+    let (_d, dom) = page();
+    let page = dom.document();
+    dom.parse_xml_document("<html xmlns='http://www.w3.org/1999/xhtml'><body><p></body></html>", "application/xhtml+xml").unwrap();
+    let kids = dom.children(page).unwrap();
+    assert_eq!(kids.len(), 1);
+    assert_eq!(dom.local_name(kids[0]).unwrap(), "parsererror");
+}

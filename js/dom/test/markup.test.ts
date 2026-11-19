@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { page } from './harness.ts'
+import { createWeb, page } from './harness.ts'
 
 test('innerHTML / outerHTML / insertAdjacentHTML / template round trips', async () => {
   using web = await page('<!doctype html><html><body><div id="box"></div></body></html>')
@@ -94,4 +94,24 @@ test('DOMParser and createHTMLDocument give inert documents; XMLSerializer', asy
     return { text: p.textContent, inBody: p.parentNode === doc.body, title: imp.title, bodyKids: imp.body.childNodes.length, seen, imported: document.body.innerHTML, svg: new XMLSerializer().serializeToString(Object.assign(document.createElementNS('http://www.w3.org/2000/svg', 'svg'))), docType: doc.nodeType, connected: p.isConnected }
   })()`)
   assert.deepEqual(result, { text: 'hi ', inBody: true, title: 't', bodyKids: 0, seen: ['BODY', 'P', '#text', 'IMG'], imported: '<p id="x">hi <img src="x" onerror="window.pwned = 1"></p>', svg: '<svg xmlns="http://www.w3.org/2000/svg"/>', docType: 9, connected: false })
+})
+
+test('a page served with an XML MIME type is an XML document; text/html and parameters stay HTML', async () => {
+  const xhtml = '<html xmlns="http://www.w3.org/1999/xhtml"><body><div Data-X="1"></div></body></html>'
+  const read = (web: ReturnType<typeof createWeb>) =>
+    web.json(`(() => {
+      const div = document.querySelector('div')
+      const made = document.createElement('Span')
+      return { type: document.contentType, tag: div.tagName, made: made.tagName, ns: made.namespaceURI, attr: div.getAttribute('data-x') }
+    })()`)
+  {
+    using web = createWeb()
+    await web.internals.loadPage(xhtml, 'Application/XHTML+XML; charset=utf-8')
+    assert.deepEqual(read(web), { type: 'application/xhtml+xml', tag: 'div', made: 'Span', ns: 'http://www.w3.org/1999/xhtml', attr: null })
+  }
+  {
+    using web = createWeb()
+    await web.internals.loadPage('<!doctype html><div Data-X="1"></div>', 'text/html; charset=utf-8')
+    assert.deepEqual(read(web), { type: 'text/html', tag: 'DIV', made: 'SPAN', ns: 'http://www.w3.org/1999/xhtml', attr: '1' })
+  }
 })

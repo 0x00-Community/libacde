@@ -41,7 +41,7 @@ import { CustomElementRegistry } from './dom/custom'
 import * as editing from './dom/editing'
 import { Document, DOMImplementation, DOMParser, documentState, FontFace, FontFaceSet, HTMLDocument, XMLDocument, XMLSerializer } from './dom/document'
 import { Attr, DOMStringMap, DOMTokenList, Element, flags, LOCAL, NamedNodeMap } from './dom/element'
-import { env, frames, loads } from './dom/env'
+import { documentUrlWatch, env, frames, loads } from './dom/env'
 import * as events from './dom/events'
 import { focus } from './dom/focus'
 import * as forms from './dom/forms'
@@ -49,6 +49,8 @@ import { DOMMatrix, DOMMatrixReadOnly, DOMPoint, DOMPointReadOnly, DOMQuad, DOMR
 import * as html from './dom/html'
 import { createHtml, HTMLElement } from './dom/html'
 import { Input } from './dom/input'
+import { pointerLockLost, pointerLockSettled } from './dom/pointerlock'
+import { UserActivation } from './dom/activation'
 import * as media from './dom/media'
 import { deliverLoads, presentVideos } from './dom/media'
 import { cssEventsWanted, deliverCssEvents, onCssEventsWanted } from './dom/cssevents'
@@ -141,7 +143,7 @@ export interface WebInternals {
   readonly handles: Handles
   idOf(node: unknown): number
   nodeOf(id: number): unknown
-  loadPage(html: string): Promise<void>
+  loadPage(source: string, contentType?: string): Promise<void>
   frame(time: number): void
   endTask(): void
   resize(): void
@@ -153,6 +155,7 @@ export interface WebInternals {
   clock(request: ClockRequest): Promise<ClockState> | ClockState
   reportError(error: unknown): void
   unhandledRejection(promise: Promise<unknown>, reason: unknown): boolean
+  pointerLock(change: 'granted' | 'denied' | 'lost'): void
   stats(): { strong: number; weak: number }
 }
 
@@ -184,6 +187,8 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
       if (destination === 'style') loads.expect()
     })
   })
+  documentUrlWatch.changed = (href) => domNative.setBaseUrl(href)
+  domNative.setBaseUrl(env.url)
   env.url = hostNative.parseUrl(options.url, null)?.href ?? options.url
   objectUrlOrigin.value = new URL(env.url).origin
   net.base = () => env.url
@@ -355,6 +360,10 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
       if (missed) unhandled('rejection', reason)
       return missed
     },
+    pointerLock(change) {
+      if (change === 'lost') pointerLockLost()
+      else pointerLockSettled(change === 'granted')
+    },
     stats: wrapperStats,
   }
   return installed
@@ -467,7 +476,7 @@ function interfaces(): Record<string, unknown> {
     SVGMatrix: DOMMatrix, SVGPoint: DOMPoint, SVGRect: DOMRect,
     CanvasRenderingContext2D: CanvasContext2d, CanvasGradient, CanvasPattern, Path2D, ImageData, TextMetrics, ImageBitmap, VideoFrame, VideoColorSpace,
     Animation, AnimationEffect, KeyframeEffect, AnimationTimeline, DocumentTimeline, AnimationPlaybackEvent,
-    CustomElementRegistry, Location, History, Navigator, Screen, ScreenOrientation, VisualViewport, Storage, MediaQueryList, Clipboard,
+    CustomElementRegistry, Location, History, Navigator, UserActivation, Screen, ScreenOrientation, VisualViewport, Storage, MediaQueryList, Clipboard,
     ClipboardItem, MediaDevices,
     Headers, Request, Response, XMLHttpRequest, XMLHttpRequestEventTarget, XMLHttpRequestUpload, WebSocket, EventSource,
     ReadableStream, ReadableStreamDefaultReader, ReadableStreamDefaultController, WritableStream, WritableStreamDefaultWriter,
