@@ -144,6 +144,7 @@ class Launcher {
   static readonly DEV_SETTLE_MS = 1000
   readonly #shell: LauncherShell
   readonly #snapshots = new WindowSnapshots()
+  readonly #held: ShellEvent[] = []
   #wake: (() => void) | null = null
   #ended: number | null = null
   #rpc: Rpc | null = null
@@ -323,6 +324,7 @@ class Launcher {
     this.#rpc = rpc
     this.#thread = thread
     this.#init = init
+    if (this.#desktop) this.#catchUp(thread)
   }
 
   #fromPage(message: unknown, rpc: Rpc): void {
@@ -553,8 +555,17 @@ class Launcher {
       else if (event.type === 'devtools') this.#devtools.pressed()
       else if (!this.#desktop && (event.type === 'menuselect' || event.type === 'shortcut')) this.#appKey(event)
       else if (event.type === 'devreload') void this.#devReload(event['title'] === 'hot')
-      else if (this.#desktop) this.#thread?.post(this.#snapshots.toDesktop(event))
+      else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event))
     }
+  }
+
+  #toDesktop(event: ShellEvent): void {
+    if (this.#thread && !this.#reloading) return void this.#thread.post(event)
+    if (!WindowSnapshots.FOLDED.has(event.type)) this.#held.push(event)
+  }
+
+  #catchUp(thread: WebThreadHandle): void {
+    for (const event of [...this.#snapshots.replay(), ...this.#held.splice(0)]) thread.post(event)
   }
 
   #menuKey(chord: string): void {
@@ -578,7 +589,7 @@ class Launcher {
       else if (event.type === 'invoke') this.#thread?.post({ rpc: 'invoke', fn: event['fn'], args: event['args'] ?? [] })
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
       else if (event.type === 'menuinvoke' && !this.#desktop) void this.#rpc?.call('window', 'menu', [event['menu'], event['item']]).catch(() => undefined)
-      else if (this.#desktop) this.#thread?.post(event)
+      else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event as ShellEvent))
     }
   }
 

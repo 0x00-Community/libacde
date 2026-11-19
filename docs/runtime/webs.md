@@ -113,10 +113,10 @@
     (`acde:timer is not a system module; if a desktop service provides it, list that service's name in the services of <应用>`; 拼错的模块名也落在这里), 不再让人把命名空间当服务名写进去
     (那样应用要求一个不存在的服务, 启动时 `needs "timer" (service not running)`). 别的名字 `unverified` 都是 null. 新的 `acde:packages` (refresh / install / natives / runNative)
     和 `acde:launch` (`start` 要 `launch`, `embed` 要 `slots`, `close` 只关自己起的窗口: 按窗口的 pid 认 `start` 起的, `embed` 走 claim) 桌面也有.
-    系统应用拿到 `acde:windows` 时也收全局窗口事件 (`Tiers.listens`). **窗口列表从 Broker 的记录起头**: 桌面页面和收全局窗口事件的系统应用起来时, `WebInit.windows`
-    带上当时所有窗口的行 (`broker/records.ts` `WindowRecords.rows()`: 嵌进 slot 的不算; `{id, appId, title, web?, state}`, `state` 是记录按 `windowstate` 事件记下的),
-    web 侧的 `WindowList` 从这些行开始再按事件维护, 所以晚起的系统应用 `list()` 和桌面一样全. 桌面页面 (重) 起时补发的 `windowopen` / `windowmenus` 只发给新的桌面页面,
-    不再发给正开着的系统应用. 每个包都按这里注入 (没有 `apiLevel` 的包根本不加载).
+    系统应用拿到 `acde:windows` 时也收全局窗口事件 (`Tiers.listens`). **窗口列表靠快照补齐**: 启动器不填 `WebInit.windows`, 页面的 `WindowList` 开局是空的. 窗口客户端连上 winman 时把现有窗口逐个报成 `first: true`
+    的 `window` 快照 (acdes 每次绑 `winman_desktop_v1` 都会重报); 启动器 (`js/launcher/src/main.ts` 的 `#toDesktop`、`app/events.ts` 的 `WindowSnapshots`) 记着每个窗口的最新快照,
+    桌面页线程还没起来或正在重载时, 窗口事件只记进快照, 其余事件暂存; 页面线程起来后先把所有开着的窗口按 `first: true` 重放 (`replay()`, 关掉的、崩溃的不算), 再交暂存的事件.
+    所以页面重载后 `list()` 和事件里的 `key` 都齐. 每个包都按这里注入 (没有 `apiLevel` 的包根本不加载).
     SDK 类型分层: `@dopame/acde-api/app` 只声明应用层, `@dopame/acde-api/shell` 再加外壳层; 包根声明全部.
 - **原生应用** (`launcher.ts`, 只有桌面和声明了 `packages` 的系统应用能调): `acde.packages.natives()` 列可见的 `.desktop` (`{id, name, comment, icon (绝对路径, 按 hicolor /
   breeze / Adwaita 找), keywords, wmClass}`, 缓存到 applications 目录的 mtime 变了), `runNative(id)` 用 `gio launch` 起.

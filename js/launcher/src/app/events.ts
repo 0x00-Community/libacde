@@ -25,7 +25,12 @@ const TEXT = (value: unknown): string | null => (typeof value === 'string' ? val
 const NO_RECT: Rect = { x: 0, y: 0, width: 0, height: 0 }
 
 export class WindowSnapshots {
+  static readonly FOLDED: ReadonlySet<string> = new Set(['window', 'windowclose', 'windowcrash'])
   readonly #windows = new Map<number, Snapshot>()
+
+  replay(): ShellEvent[] {
+    return [...this.#windows.values()].map(({ changed: _changed, previous: _previous, ...snapshot }) => ({ ...snapshot, first: true }))
+  }
 
   toDesktop(event: ShellEvent): ShellEvent {
     const id = event.window

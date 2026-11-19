@@ -217,3 +217,18 @@ describe('a service process stays up while its manager channel is open', () => {
   })
 })
 
+describe('a desktop page that starts late or reloads', () => {
+  test('replay gives every open window as a first snapshot, closed and crashed ones left out', () => {
+    const snapshots = new WindowSnapshots()
+    const rect = { x: 0, y: 0, width: 10, height: 10 }
+    const base = { type: 'window', appId: 'notes', title: 'Notes', state: 'normal', hidden: false, rect, active: false, desk: 0, key: 'w-1' }
+    snapshots.toDesktop({ ...base, window: 3, first: true })
+    snapshots.toDesktop({ ...base, window: 3, title: 'Draft', state: 'filled', previous: 'normal', first: false, changed: ['title', 'state'] })
+    snapshots.toDesktop({ ...base, window: 4, first: true })
+    snapshots.toDesktop({ ...base, window: 5, first: true })
+    snapshots.toDesktop({ type: 'windowclose', window: 4 })
+    snapshots.toDesktop({ type: 'windowcrash', window: 5, reason: 'killed' })
+    assert.deepEqual(snapshots.replay(), [{ ...base, window: 3, title: 'Draft', state: 'filled', first: true }])
+    assert.deepEqual(['window', 'windowclose', 'windowcrash', 'currentdesk'].map((type) => WindowSnapshots.FOLDED.has(type)), [true, true, true, false])
+  })
+})
