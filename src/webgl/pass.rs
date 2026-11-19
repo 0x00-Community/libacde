@@ -301,27 +301,32 @@ impl Context {
     }
 
     pub fn submit(&mut self) -> Option<wgpu::SubmissionIndex> {
+        let Some(ticket) = self.hand_off() else {
+            self.settle();
+            return None;
+        };
+        self.inflight = None;
+        ticket.wait()
+    }
+
+    pub(crate) fn hand_off(&mut self) -> Option<std::sync::Arc<crate::webgl::submit::Ticket>> {
         self.flush_pass();
         let encoder = self.recorder.encoder.take()?;
         self.recorder.passes = 0;
-        let gpu = self.gpu.clone();
-        let submitted = self.scoped(|_| gpu.submit([encoder.finish()]));
         self.generation += 1;
-        for readback in std::mem::take(&mut self.recorder.readbacks) {
-            let state = readback.state.clone();
-            readback.buffer.slice(..).map_async(wgpu::MapMode::Read, move |r| {
-                state.store(
-                    if r.is_ok() { crate::webgl::objects::Readback::MAPPED } else { crate::webgl::objects::Readback::FAILED },
-                    std::sync::atomic::Ordering::Release,
-                )
-            });
+        let readbacks = std::mem::take(&mut self.recorder.readbacks);
+        let ticket = crate::webgl::submit::submit(self.gpu.clone(), encoder, &readbacks);
+        self.inflight = Some(ticket.clone());
+        Some(ticket)
+    }
+
+    pub(crate) fn settle(&mut self) {
+        if let Some(ticket) = self.inflight.take() {
+            ticket.wait();
         }
-        match submitted {
-            Ok(index) => Some(index),
-            Err(e) => {
-                log::error!("webgl: submitting: {e}");
-                None
-            }
-        }
+    }
+
+    pub fn after_submitted(&mut self, then: Box<dyn FnOnce() + Send>) {
+        crate::webgl::submit::then(then);
     }
 }

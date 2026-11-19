@@ -206,6 +206,7 @@ impl Context {
         }
         let Some(raw) = b.raw.clone() else { return };
         let ordered = b.used == generation;
+        let in_flight = b.used + 1 == generation;
         let end = offset + data.len() as u64;
         let (start, stop) = (offset & !3, end.next_multiple_of(4));
         let aligned: std::borrow::Cow<[u8]> = if start == offset && stop == end {
@@ -230,6 +231,9 @@ impl Context {
             });
             self.encoder().copy_buffer_to_buffer(&staging, 0, &raw, start, stop - start);
         } else {
+            if in_flight {
+                self.settle();
+            }
             self.gpu.queue.write_buffer(&raw, start, &aligned);
         }
     }

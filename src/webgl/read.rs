@@ -453,7 +453,7 @@ impl Context {
 
     pub fn present(&mut self) -> Option<Arc<GpuImage>> {
         if !self.drawing.dirty {
-            self.submit();
+            self.hand_off();
             return None;
         }
         self.resolve_drawing();
@@ -517,7 +517,7 @@ impl Context {
             pass.set_bind_group(0, &group, &[]);
             pass.draw(0..3, 0..1);
         }
-        self.submit();
+        self.hand_off();
         image.painted();
         if let Some(i) = self.drawing.images.iter().position(|i| Arc::ptr_eq(i, &image)) {
             let shown = self.drawing.images.remove(i);

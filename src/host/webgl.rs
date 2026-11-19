@@ -298,10 +298,15 @@ fn source_of(node: u32, contexts: &mut bind::Slab<Entry>) -> Option<TexSource> {
 
 fn present_entry(entry: &mut Entry) -> bool {
     let Some(image) = entry.gl.present() else { return false };
-    let data = image.image();
-    if let Some(Err(e)) = crate::host::dom::with_dom(|dom| dom.canvas_image(entry.node, Some(data))) {
-        log::warn!("webgl: showing the canvas: {e}");
-    }
+    let (node, data, tx) = (entry.node, image.image(), rt::current().sender());
+    entry.gl.after_submitted(Box::new(move || {
+        let show = move |_: &mut v8::PinScope| {
+            if let Some(Err(e)) = crate::host::dom::with_dom(|dom| dom.canvas_image(node, Some(data))) {
+                log::warn!("webgl: showing the canvas: {e}");
+            }
+        };
+        _ = tx.send(Msg::Task(Box::new(show)));
+    }));
     true
 }
 
@@ -416,12 +421,7 @@ fn done(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::
         return;
     };
     let tx = rt::current().sender();
-    let held = gpu.clone();
-    held.hold_poll();
-    gpu.queue.on_submitted_work_done(move || {
-        _ = tx.send(Msg::Task(Box::new(settle)));
-        held.release_poll();
-    });
+    crate::webgl::submit::when_done(gpu, Box::new(move || _ = tx.send(Msg::Task(Box::new(settle)))));
 }
 
 fn pixels(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {

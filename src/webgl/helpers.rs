@@ -239,18 +239,21 @@ impl Context {
     }
 }
 
+pub(crate) fn scoped<T>(device: &wgpu::Device, f: impl FnOnce(&wgpu::Device) -> T) -> Result<T, String> {
+    let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let memory = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+    let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+    let value = f(device);
+    let errors = [pollster::block_on(internal.pop()), pollster::block_on(memory.pop()), pollster::block_on(validation.pop())];
+    match errors.into_iter().flatten().next() {
+        Some(wgpu::Error::Validation { description, .. } | wgpu::Error::Internal { description, .. }) => Err(description),
+        Some(e) => Err(e.to_string()),
+        None => Ok(value),
+    }
+}
+
 impl Context {
     pub(crate) fn scoped<T>(&self, f: impl FnOnce(&wgpu::Device) -> T) -> Result<T, String> {
-        let device = &self.gpu.device;
-        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let memory = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
-        let value = f(device);
-        let errors = [pollster::block_on(internal.pop()), pollster::block_on(memory.pop()), pollster::block_on(validation.pop())];
-        match errors.into_iter().flatten().next() {
-            Some(wgpu::Error::Validation { description, .. } | wgpu::Error::Internal { description, .. }) => Err(description),
-            Some(e) => Err(e.to_string()),
-            None => Ok(value),
-        }
+        scoped(&self.gpu.device, f)
     }
 }

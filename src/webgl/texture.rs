@@ -520,6 +520,7 @@ impl Context {
         let texture = alloc.texture.clone();
         let is_3d = t.target == TEXTURE_3D;
         let ordered = t.used == generation;
+        let in_flight = t.used + 1 == generation;
         t.version += 1;
         let [x, y, z] = origin;
         let [w, h, d] = size;
@@ -569,6 +570,9 @@ impl Context {
                 extent,
             );
         } else {
+            if in_flight {
+                self.settle();
+            }
             self.gpu.queue.write_texture(
                 destination,
                 tight,

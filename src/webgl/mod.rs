@@ -18,6 +18,7 @@ mod read;
 mod setters;
 pub mod shader;
 pub mod state;
+pub(crate) mod submit;
 mod texture;
 mod vertex;
 
