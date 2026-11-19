@@ -21,6 +21,11 @@ pub fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
+fn crop(rgba: &[u8], width: u32, [x, y, w, h]: [u32; 4]) -> Vec<u8> {
+    let (stride, row) = (width as usize * 4, w as usize * 4);
+    (y as usize..(y + h) as usize).flat_map(|line| &rgba[line * stride + x as usize * 4..][..row]).copied().collect()
+}
+
 pub(crate) enum Source {
     Raster(peniko::ImageBrush),
     Picture(Arc<Scene>, (f64, f64)),
@@ -300,17 +305,27 @@ impl Canvas {
     }
 
     pub(crate) fn data_url(&self) -> Option<String> {
-        let image = self.bitmap()?;
-        let (w, h) = (image.texture.width(), image.texture.height());
-        let png = encode_png(w, h, &gpu::read(&image, [0, 0, w, h])?)?;
+        let (w, h) = self.pixel_size()?;
+        let png = encode_png(w, h, &self.pixels([0, 0, w, h])?)?;
         Some(format!("data:image/png;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, png)))
     }
 
-    fn render(&self) -> Option<Arc<GpuImage>> {
+    fn pixel_size(&self) -> Option<(u32, u32)> {
         let (w, h) = (self.size.0 as u32, self.size.1 as u32);
-        if w == 0 || h == 0 || w > MAX_SIDE || h > MAX_SIDE {
-            return None;
+        (w > 0 && h > 0 && w <= MAX_SIDE && h <= MAX_SIDE).then_some((w, h))
+    }
+
+    fn pixels(&self, rect: [u32; 4]) -> Option<Vec<u8>> {
+        if let Some(image) = self.bitmap() {
+            return gpu::read(&image, rect);
         }
+        let size = self.pixel_size()?;
+        let all = gpu::cpu_raster(Arc::unwrap_or_clone(self.picture()), size)?;
+        Some(crop(&all, size.0, rect))
+    }
+
+    fn render(&self) -> Option<Arc<GpuImage>> {
+        let (w, h) = self.pixel_size()?;
         gpu::draw(Arc::unwrap_or_clone(self.picture()), (w, h), Affine::IDENTITY)
     }
 
@@ -825,15 +840,15 @@ impl Canvas {
         let area = area.abs().round();
         let (w, h) = (area.width() as usize, area.height() as usize);
         let mut out = vec![0u8; w * h * 4];
-        let Some(image) = self.bitmap() else { return out };
-        let (cw, ch) = (i64::from(image.texture.width()), i64::from(image.texture.height()));
+        let Some((cw, ch)) = self.pixel_size() else { return out };
+        let (cw, ch) = (i64::from(cw), i64::from(ch));
         let (x0, y0) = (area.x0 as i64, area.y0 as i64);
         let (from_x, to_x) = (x0.clamp(0, cw), (x0 + w as i64).clamp(0, cw));
         let (from_y, to_y) = (y0.clamp(0, ch), (y0 + h as i64).clamp(0, ch));
         if from_x >= to_x || from_y >= to_y {
             return out;
         }
-        let Some(data) = gpu::read(&image, [from_x as u32, from_y as u32, (to_x - from_x) as u32, (to_y - from_y) as u32]) else { return out };
+        let Some(data) = self.pixels([from_x as u32, from_y as u32, (to_x - from_x) as u32, (to_y - from_y) as u32]) else { return out };
         let row = ((to_x - from_x) * 4) as usize;
         for (i, line) in data.chunks_exact(row).enumerate() {
             let to = (((from_y - y0) as usize + i) * w + (from_x - x0) as usize) * 4;
@@ -963,5 +978,17 @@ impl Canvas {
             font_bounding_box_ascent: ascent,
             font_bounding_box_descent: descent,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::crop;
+
+    #[test]
+    fn crop_takes_the_rows_and_columns_of_the_rectangle() {
+        let rgba: Vec<u8> = (0..3 * 2).flat_map(|i| [i, i, i, 255]).collect();
+        assert_eq!(crop(&rgba, 3, [1, 0, 2, 2]), [1, 1, 1, 255, 2, 2, 2, 255, 4, 4, 4, 255, 5, 5, 5, 255]);
+        assert_eq!(crop(&rgba, 3, [0, 0, 3, 2]), rgba);
     }
 }
