@@ -82,6 +82,9 @@ describe('where the single-app launcher sends a page call', () => {
     assert.equal(route('panel', 'open', [], managed), 'manager')
     assert.equal(route('session', 'poweroff', [], managed), 'manager')
     assert.equal(route('desktops', 'choose', ['dopame'], managed), 'manager')
+    assert.equal(route('page', 'open', [{}], managed), 'page', 'the file pickers stay in the app process')
+    assert.equal(route('page', 'save', [{}], managed), 'page')
+    assert.equal(route('page', 'notify', [{}], managed), 'manager', 'a notification goes to the desktop')
   })
 
   test('the desktop answers panels and windows itself', () => {

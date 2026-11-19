@@ -59,6 +59,7 @@ interface SysNative {
   write?(pid: number, text: string): boolean
   endInput?(pid: number): void
   lendRoot?(app: string, root: LentRoot): string
+  unlendRoot?(app: string, name: string): boolean
   spawnWeb(
     name: string,
     init: unknown,

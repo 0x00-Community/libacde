@@ -193,11 +193,15 @@ fn dict(props: Option<&spa::utils::dict::DictRef>) -> HashMap<String, String> {
     props.map(|d| d.iter().map(|(k, v)| (k.to_owned(), v.to_owned())).collect()).unwrap_or_default()
 }
 
+pub(crate) fn pw_context(main: &pw::main_loop::MainLoopRc) -> Result<pw::context::ContextRc, pw::Error> {
+    pw::context::ContextRc::new(main, Some(pw::properties::properties! { "module.rt" => "false" }))
+}
+
 fn serve(hub: Weak<Mutex<Hub>>, ready: mpsc::SyncSender<Result<pw::channel::Sender<Cmd>, String>>) {
     let started = (|| -> Result<_, pw::Error> {
         pw::init();
         let main = pw::main_loop::MainLoopRc::new(None)?;
-        let context = pw::context::ContextRc::new(&main, None)?;
+        let context = pw_context(&main)?;
         let core = context.connect_rc(None)?;
         let registry = core.get_registry_rc()?;
         Ok((main, context, core, registry))
@@ -943,7 +947,7 @@ fn set_default(m: &Model, id: &str) -> Result<(), String> {
     } else if class.starts_with("Audio/Source") {
         "default.configured.audio.source"
     } else {
-        return Err(format!("{id} is not a sound device"));
+        return Err(crate::runtime::bad_request(format!("{id} is not a sound device")));
     };
     let name = node.global.get("node.name").or_else(|| node.info.get("node.name")).ok_or_else(|| format!("{id} has no name"))?;
     let (_, meta, _) = m.metadata.as_ref().ok_or("no session manager (WirePlumber) is running")?;
@@ -1005,7 +1009,7 @@ fn move_stream(m: &Model, id: &str, device: Option<&str>) -> Result<(), String> 
     let (stream, node) = m.node(id)?;
     let class = Model::class(node);
     if !class.starts_with("Stream/") {
-        return Err(format!("{id} is not a stream"));
+        return Err(crate::runtime::bad_request(format!("{id} is not a stream")));
     }
     let serial = match device {
         Some(device) => {

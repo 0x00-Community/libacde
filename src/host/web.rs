@@ -248,6 +248,13 @@ pub fn lend_root(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, 
     }
 }
 
+pub fn unlend_root(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let owner = args.get(0).to_rust_string_lossy(scope);
+    let name = args.get(1).to_rust_string_lossy(scope);
+    let removed = WEBS.with(|w| w.borrow().system.workspace.as_ref().is_some_and(|workspace| workspace.unlend(&owner, &name)));
+    rv.set_bool(removed);
+}
+
 impl Grants {
     fn install(self, scope: &mut v8::PinScope, natives: v8::Local<v8::Object>) {
         crate::host::capture::install(scope, natives, self.capture, self.app.as_deref());

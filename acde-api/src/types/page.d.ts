@@ -139,6 +139,11 @@ export interface AcdeFs {
   locate(path: string): Promise<{ root: string; path: string }>
   openPath(root: string, path: string): Promise<{ root: string; path: string; file: string }>
   revoke(rootPath: string): Promise<void>
+  on?(type: 'roots', handler: (event: FsRootsEvent) => void): () => boolean
+}
+
+export interface FsRootsEvent {
+  readonly removed: readonly string[]
 }
 
 export interface NativeWindow {
@@ -239,6 +244,7 @@ export interface OpenWindowOptions {
   readonly parent?: number
   readonly modal?: boolean
   readonly root?: LentRoot
+  readonly newWindow?: boolean
 }
 
 export interface OpenFileRequest {
@@ -273,8 +279,8 @@ export interface Opened {
 export interface AcdeOpen {
   (request: SystemRequest): Promise<Opened>
   (app: string, request: SystemRequest): Promise<Opened>
-  <R extends AppRequest>(app: string, request: R, options?: OpenWindowOptions): Promise<{ window: number; instance?: number }>
-  (app: string, request?: null, options?: OpenWindowOptions): Promise<{ window: number; instance?: number }>
+  <R extends AppRequest>(app: string, request: R, options?: OpenWindowOptions): Promise<{ window: number; instance?: number; running?: boolean }>
+  (app: string, request?: null, options?: OpenWindowOptions): Promise<{ window: number; instance?: number; running?: boolean }>
 }
 
 export interface AcdeAppList {
@@ -299,6 +305,7 @@ export interface AcdeApps extends AcdeAppList, AcdeOpenFiles {
   install(dir: string): Promise<{ id: string; dir: string; apps: DesktopApp[] }>
   natives(): Promise<NativeApp[]>
   runNative(id: string): Promise<number>
+  unlend?(dir: string): Promise<{ revoked: number }>
 }
 
 export interface AcdePackages {
@@ -577,6 +584,7 @@ export interface AcdeNetwork {
   disconnect(iface: string): Promise<void>
   setWifiEnabled(on: boolean): Promise<void>
   watch(callback: (state: NetworkState) => void): void
+  on(type: 'changed', handler: (state: NetworkState) => void): () => boolean
 }
 
 export interface PanelReserve {
@@ -683,6 +691,14 @@ export interface AcdeSystem {
   setNtp(on: boolean): Promise<void>
   setHostname(name: string): Promise<void>
   user(): Promise<SystemUser>
+  on(type: 'changed', handler: (change: SystemChange) => void): () => boolean
+}
+
+export interface SystemChange {
+  readonly storage: SystemVolume[]
+  readonly hostname: string
+  readonly timezone: string
+  readonly ntp: boolean
 }
 
 export interface BluetoothDevice {
@@ -991,11 +1007,24 @@ export interface InputTouchpad extends InputPointer {
   readonly clickMethods: readonly InputClick[]
 }
 
+export interface InputMethodItem {
+  readonly id: string
+  readonly name: string
+  readonly short: string
+}
+
+export interface InputMethodState {
+  readonly running: boolean
+  readonly current: string | null
+  readonly group: readonly InputMethodItem[]
+}
+
 export interface InputState {
   readonly keyboard: InputKeyboard
   readonly mouse: InputPointer
   readonly touchpad: InputTouchpad
   readonly devices: readonly { readonly name: string; readonly kind: 'mouse' | 'touchpad' }[]
+  readonly ime?: InputMethodState
 }
 
 type InputNullable<T> = { readonly [K in keyof T]?: T[K] | null }
@@ -1004,6 +1033,7 @@ export interface InputPatch {
   readonly keyboard?: InputNullable<Omit<InputKeyboard, 'active' | 'current'>>
   readonly mouse?: InputNullable<Omit<InputPointer, 'present'>>
   readonly touchpad?: InputNullable<Omit<InputTouchpad, 'present' | 'scrollMethods' | 'clickMethods'>>
+  readonly ime?: { readonly current?: string; readonly group?: readonly string[] }
 }
 
 export interface InputCatalog {
@@ -1021,6 +1051,7 @@ export interface InputCatalog {
     readonly multiple: boolean
     readonly options: readonly { readonly id: string; readonly name: string }[]
   }[]
+  readonly imes?: readonly (InputMethodItem & { readonly languages: readonly string[] })[]
 }
 
 export interface AcdeInput {
@@ -1085,8 +1116,28 @@ export interface AcdePower {
   setBrightness(value: number): Promise<void>
   setChargeLimit(percent: number | null): Promise<void>
   on(type: 'changed', handler: (state: PowerState) => void): () => boolean
-  on(type: 'prompt', handler: (event: { readonly type: 'prompt' }) => void): () => boolean
-  on(type: 'critical', handler: (event: { readonly type: 'critical'; readonly action: PowerIdleAction; readonly seconds: number }) => void): () => boolean
+  on(type: 'prompt', handler: (event: PowerPromptEvent) => void): () => boolean
+  on(type: 'critical', handler: (event: PowerCriticalEvent) => void): () => boolean
+}
+
+export interface PowerPromptEvent {
+  readonly type: 'prompt'
+}
+
+export interface PowerCriticalEvent {
+  readonly type: 'critical'
+  readonly action: PowerIdleAction
+  readonly seconds: number
+}
+
+export type AcdeErrorCode = 'bad_request' | 'forbidden' | 'unsupported' | 'service_not_running' | 'failed'
+
+export interface AcdeError extends Error {
+  readonly name: 'AcdeError'
+  readonly status: number
+  readonly code: AcdeErrorCode
+  readonly module: string
+  readonly reason?: string
 }
 
 export interface AcdePage {

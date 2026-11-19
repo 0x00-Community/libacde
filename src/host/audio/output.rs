@@ -217,7 +217,7 @@ impl Process {
 fn pw_run(ready: &mpsc::SyncSender<Sender>) -> Result<(), pw::Error> {
     pw::init();
     let main = pw::main_loop::MainLoopRc::new(None)?;
-    let context = pw::context::ContextRc::new(&main, None)?;
+    let context = crate::runtime::pw_context(&main)?;
     let core = context.connect_rc(None)?;
     let (tx, rx) = pw::channel::channel();
     _ = ready.send(Sender::Pw(tx.clone()));

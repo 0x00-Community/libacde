@@ -191,6 +191,26 @@ mod tests {
     }
 
     #[test]
+    fn an_unlent_root_is_gone_from_the_roots_and_refused() {
+        let home = Home::new("unlent");
+        let work = home.0.join("project");
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::write(work.join("plan.md"), "plan").unwrap();
+        let all = Workspace::at(&home.text());
+        let dir = work.to_string_lossy().into_owned();
+        all.lend("agent", LentRoot { name: "work".into(), dir, label: None }).unwrap();
+        let app = all.files(Files::new(&[], false), "agent");
+        assert_eq!(read(&app, "work", "plan.md"), "plan");
+        assert!(all.unlend("agent", "work"));
+        assert!(!all.unlend("agent", "work"), "a second unlend finds nothing");
+        assert!(!all.unlend("other", "work"));
+        let roots = json(app.call(FsCall::Roots));
+        let ids: Vec<&str> = roots.as_array().unwrap().iter().map(|root| root["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["private"]);
+        assert_eq!(read(&app, "work", "plan.md")["code"], "EACCES");
+    }
+
+    #[test]
     fn two_apps_have_separate_private_folders() {
         let home = Home::new("separate");
         let all = Workspace::at(&home.text());

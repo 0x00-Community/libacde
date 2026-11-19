@@ -1,3 +1,4 @@
+import { Notices } from './notices'
 import { install, installBackendTransport, observe } from '@dopame/acde-dom'
 import type { AudioNative, BackendTransport, CaptureNative, DeviceNative, DomNative, GpuNative, HostNative, StorageNative, WebglNative, WorkersNative } from '@dopame/acde-dom'
 import type { ServiceShape, WebInit } from './contract'
@@ -5,6 +6,7 @@ import { BluetoothModule, type BluetoothNatives } from './bluetooth'
 import { DevicesModule, type DevicesNatives } from './devices'
 import { Frame } from './frame'
 import { WatchFeed, Watched, type WatchNatives } from './watched'
+import { checkedModule, SystemWatch, type SystemSource } from './sysmodules'
 import { FsModule } from './fsmodule'
 import { Host } from './host'
 import type { ImeEvent, NativeIme } from './ime'
@@ -196,6 +198,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   })
   let devhot = (): void => {}
   const managerPower = new WatchFeed()
+  const fsRoots = new Notices()
   port.onMessage((message) => {
     if (rpc.receive(message)) return
     const m = message as {
@@ -239,6 +242,8 @@ export default async function boot(natives: WebNatives): Promise<void> {
         return devhot()
       case 'services':
         return bridge.replaceServices(m.services ?? {})
+      case 'fsroots':
+        return fsRoots.emit('roots', { removed: (m as { removed?: unknown }).removed ?? [] })
       case 'power':
         return managerPower.push((m as { event?: unknown }).event)
       case 'permit':
@@ -277,17 +282,43 @@ export default async function boot(natives: WebNatives): Promise<void> {
   if (bridge.value['desktop']) bridge.value['desktop'] = { ...(bridge.value['desktop'] as object), ...Frame.desktop(surface) }
   if (natives.fs) {
     const typed = FsModule.typed(natives.fs)
-    bridge.value['fs'] = { ...typed, roots: async () => HostStrings.roots(await (typed as unknown as { roots(): Promise<unknown> }).roots(), language) }
+    const roots = (handler: unknown) => {
+      if (typeof handler !== 'function') throw new TypeError('acde:fs on: the handler is not a function')
+      return fsRoots.on('roots', handler as (detail: unknown) => void)
+    }
+    const on = (type: string, handler: unknown) => {
+      if (type !== 'roots') throw new TypeError(`acde:fs has no ${String(type)} event (roots)`)
+      return roots(handler)
+    }
+    const listed = async () => HostStrings.roots(await (typed as unknown as { roots(): Promise<unknown> }).roots(), language)
+    bridge.value['fs'] = { ...typed, roots: listed, on }
   }
   if (natives.terminal) bridge.value['terminal'] = natives.terminal
-  if (natives.network) bridge.value['network'] = natives.network
-  if (natives.system) bridge.value['system'] = natives.system
-  if (natives.bluetooth) bridge.value['bluetooth'] = BluetoothModule.wrap(natives.bluetooth)
-  if (natives.sound) bridge.value['audio'] = Watched.module('audio', natives.sound)
-  if (natives.devices) bridge.value['devices'] = DevicesModule.wrap(natives.devices)
-  if (natives.power) bridge.value['power'] = Watched.typed('power', managerPower.feed(natives.power), ['changed', 'prompt', 'critical'])
-  if (natives.input) bridge.value['input'] = Watched.module('input', natives.input)
-  if (natives.display) bridge.value['display'] = Watched.module('display', natives.display)
+  const checked = (name: string, value: object) => {
+    bridge.value[name] = checkedModule(name, value)
+  }
+  if (natives.network) {
+    const network = natives.network as WatchNatives & Record<string, unknown>
+    checked('network', { ...Watched.module('network', network), watch: network.watch })
+  }
+  if (natives.system) {
+    type Setters = Record<'setHostname' | 'setTimezone' | 'setNtp', (value: unknown) => Promise<unknown>>
+    const system = natives.system as SystemSource & Setters & Record<string, unknown>
+    const watch = new SystemWatch(system)
+    checked('system', {
+      ...system,
+      setHostname: (name: unknown) => watch.after(system.setHostname(name)),
+      setTimezone: (zone: unknown) => watch.after(system.setTimezone(zone)),
+      setNtp: (on: unknown) => watch.after(system.setNtp(on)),
+      on: (type: string, handler: unknown) => watch.on(type, handler),
+    })
+  }
+  if (natives.bluetooth) checked('bluetooth', BluetoothModule.wrap(natives.bluetooth))
+  if (natives.sound) checked('audio', Watched.module('audio', natives.sound))
+  if (natives.devices) checked('devices', DevicesModule.wrap(natives.devices))
+  if (natives.power) checked('power', Watched.typed('power', managerPower.feed(natives.power), ['changed', 'prompt', 'critical']))
+  if (natives.input) checked('input', Watched.module('input', natives.input))
+  if (natives.display) checked('display', Watched.module('display', natives.display))
   if (natives.office) {
     const editorPage = async (setup: { api: string; config: unknown }, theme: 'light' | 'dark') => OfficePage.write(setup, theme)
     const office = natives.office as { state(...args: unknown[]): Promise<unknown>; open(path: string, writable: boolean): Promise<unknown> }

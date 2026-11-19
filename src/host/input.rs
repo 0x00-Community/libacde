@@ -50,8 +50,36 @@ fn call(scope: &mut v8::PinScope, rv: &mut v8::ReturnValue, work: impl FnOnce(Ar
     }
 }
 
+fn with_ime(mut state: Value) -> Value {
+    cfg_select! {
+        target_os = "linux" => {
+            if let Some(fields) = state.as_object_mut() {
+                fields.insert("ime".into(), crate::runtime::ime_state(&crate::runtime::Fcitx));
+            }
+        }
+        _ => {}
+    }
+    state
+}
+
+fn split(mut patch: Value) -> (Value, Option<Value>) {
+    let ime = patch.as_object_mut().and_then(|fields| fields.remove("ime"));
+    (patch, ime)
+}
+
+fn set_ime(patch: Option<Value>) -> Result<(), String> {
+    let Some(patch) = patch else { return Ok(()) };
+    cfg_select! {
+        target_os = "linux" => crate::runtime::ime_apply(&crate::runtime::Fcitx, &patch),
+        _ => {
+            let _ = patch;
+            Err(format!("{NAME}.set: no input method framework here"))
+        }
+    }
+}
+
 fn state(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
-    call(scope, &mut rv, |input| input.state());
+    call(scope, &mut rv, |input| input.state().map(with_ime));
 }
 
 fn set(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
@@ -60,13 +88,26 @@ fn set(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8
     if !patch.is_object() {
         return bind::throw_type_error(scope, &format!("{NAME}.set: the patch is an object"));
     }
-    call(scope, &mut rv, move |input| input.set(&patch).map(|()| Value::Null));
+    let (patch, ime) = split(patch);
+    call(scope, &mut rv, move |input| {
+        let rest = patch.as_object().is_some_and(|fields| !fields.is_empty());
+        if rest {
+            input.set(&patch)?;
+        }
+        set_ime(ime).map(|()| Value::Null)
+    });
 }
 
 fn catalog(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     let read = || -> Result<Value, String> {
         cfg_select! {
-            target_os = "linux" => crate::runtime::XkbCatalog::read(),
+            target_os = "linux" => {
+                let mut catalog = crate::runtime::XkbCatalog::read()?;
+                if let Some(fields) = catalog.as_object_mut() {
+                    fields.insert("imes".into(), crate::runtime::ime_catalog(&crate::runtime::Fcitx));
+                }
+                Ok(catalog)
+            }
             _ => Err(format!("{NAME}.catalog: no xkeyboard-config here")),
         }
     };
@@ -90,7 +131,24 @@ fn watch(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::R
         token
     });
     let tx = rt::current().sender();
-    input.listen(Box::new(move |state: Value| tx.send(Msg::Task(Box::new(move |scope| deliver(scope, token, &state)))).is_ok()));
+    let sent = tx.clone();
+    input.listen(Box::new(move |state: Value| {
+        let state = with_ime(state);
+        sent.send(Msg::Task(Box::new(move |scope| deliver(scope, token, &state)))).is_ok()
+    }));
+    cfg_select! {
+        target_os = "linux" => {
+            let source = input.clone();
+            crate::runtime::Fcitx::watch(move || match source.state() {
+                Ok(state) => {
+                    let state = with_ime(state);
+                    tx.send(Msg::Task(Box::new(move |scope| deliver(scope, token, &state)))).is_ok()
+                }
+                Err(_) => true,
+            });
+        }
+        _ => drop(tx),
+    }
 }
 
 fn deliver(scope: &mut v8::PinScope, token: u32, state: &Value) {
