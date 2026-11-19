@@ -2,6 +2,7 @@ import { Event, fire, type EventTarget } from '../core/event'
 import { DOMException } from '../core/exception'
 import { queueTask } from '../core/host'
 import type { Element } from './element'
+import { transientActivation } from './activation'
 import { env } from './env'
 import { focus } from './focus'
 import { CONNECTED, documentId, lifecycle, wrap, type Wrapper } from './realm'
@@ -18,6 +19,7 @@ export interface PointerLockOptions {
 
 let locked: Element | null = null
 let pending: Pending | null = null
+let releasedByPage = false
 
 function documentEvent(type: 'pointerlockchange' | 'pointerlockerror', then?: () => void): void {
   queueTask(() => {
@@ -44,11 +46,13 @@ export function requestPointerLock(element: Element, options?: PointerLockOption
     if (!access) return failed(reject, 'Pointer lock is not supported in this window.', 'NotSupportedError')
     if (!focus.windowActive) return failed(reject, 'The document is not focused.', 'WrongDocumentError')
     if (pending) return failed(reject, 'A pointer lock request is already pending.', 'InvalidStateError')
+    if (!locked && !transientActivation() && !releasedByPage) return failed(reject, 'Pointer lock needs a user gesture.', 'NotAllowedError')
     if (locked) {
       if (locked === element) return resolve()
       locked = element
       return documentEvent('pointerlockchange', resolve)
     }
+    releasedByPage = false
     pending = { element, resolve, reject }
     access.lock()
   })
@@ -57,6 +61,7 @@ export function requestPointerLock(element: Element, options?: PointerLockOption
 export function exitPointerLock(): void {
   if (!locked) return
   locked = null
+  releasedByPage = true
   env.pointerLock?.unlock()
   documentEvent('pointerlockchange')
 }

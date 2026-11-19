@@ -4,8 +4,14 @@ import { page, type Web } from './harness.ts'
 
 const PAGE = '<!doctype html><html><body><canvas id="view"></canvas><div id="other"></div><div id="host"></div></body></html>'
 
-function setup(web: Web, supported = true) {
+function gesture(web: Web): void {
+  web.internals.input.key('keydown', 'a', 'KeyA')
+  web.internals.input.key('keyup', 'a', 'KeyA')
+}
+
+function setup(web: Web, supported = true, gestured = true) {
   const calls: string[] = []
+  if (gestured) gesture(web)
   if (supported) web.internals.env.pointerLock = { lock: () => calls.push('lock'), unlock: () => calls.push('unlock') }
   web.run(`
     globalThis.log = []
@@ -126,3 +132,32 @@ test('pointer lock: a shadow root reports the locked element inside it', async (
   web.run('document.exitPointerLock()')
   assert.equal(web.run('document.getElementById("host").shadowRoot.pointerLockElement'), null)
 })
+
+test('pointer lock: a request needs a user gesture, unless the page itself let the last lock go', async () => {
+  using web = await page(PAGE)
+  const calls = setup(web, true, false)
+  assert.deepEqual(web.json('[navigator.userActivation.hasBeenActive, navigator.userActivation.isActive]'), [false, false])
+  web.run('settle(document.getElementById("view").requestPointerLock())')
+  await web.wait()
+  assert.deepEqual(web.json('log'), ['error', 'rejected:NotAllowedError'])
+  assert.deepEqual(calls, [])
+
+  web.internals.input.key('keydown', 'Escape', 'Escape')
+  web.run('log.length = 0; settle(document.getElementById("view").requestPointerLock())')
+  await web.wait()
+  assert.deepEqual(web.json('log'), ['error', 'rejected:NotAllowedError'])
+
+  gesture(web)
+  assert.deepEqual(web.json('[navigator.userActivation.hasBeenActive, navigator.userActivation.isActive, navigator.userActivation === navigator.userActivation]'), [true, true, true])
+  assert.equal(web.run('Object.prototype.toString.call(navigator.userActivation)'), '[object UserActivation]')
+  web.run('document.getElementById("view").requestPointerLock()')
+  web.internals.pointerLock('granted')
+  web.run('document.exitPointerLock()')
+  await web.wait()
+  web.run('log.length = 0; settle(document.getElementById("view").requestPointerLock())')
+  web.internals.pointerLock('granted')
+  await web.wait()
+  assert.deepEqual(web.json('log'), ['change:view', 'resolved'])
+  assert.deepEqual(calls, ['lock', 'unlock', 'lock'])
+})
+

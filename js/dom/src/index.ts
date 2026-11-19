@@ -50,6 +50,7 @@ import * as html from './dom/html'
 import { createHtml, HTMLElement } from './dom/html'
 import { Input } from './dom/input'
 import { pointerLockLost, pointerLockSettled } from './dom/pointerlock'
+import { UserActivation } from './dom/activation'
 import * as media from './dom/media'
 import { deliverLoads, presentVideos } from './dom/media'
 import { cssEventsWanted, deliverCssEvents, onCssEventsWanted } from './dom/cssevents'
@@ -473,7 +474,7 @@ function interfaces(): Record<string, unknown> {
     SVGMatrix: DOMMatrix, SVGPoint: DOMPoint, SVGRect: DOMRect,
     CanvasRenderingContext2D: CanvasContext2d, CanvasGradient, CanvasPattern, Path2D, ImageData, TextMetrics, ImageBitmap, VideoFrame, VideoColorSpace,
     Animation, AnimationEffect, KeyframeEffect, AnimationTimeline, DocumentTimeline, AnimationPlaybackEvent,
-    CustomElementRegistry, Location, History, Navigator, Screen, ScreenOrientation, VisualViewport, Storage, MediaQueryList, Clipboard,
+    CustomElementRegistry, Location, History, Navigator, UserActivation, Screen, ScreenOrientation, VisualViewport, Storage, MediaQueryList, Clipboard,
     ClipboardItem, MediaDevices,
     Headers, Request, Response, XMLHttpRequest, XMLHttpRequestEventTarget, XMLHttpRequestUpload, WebSocket, EventSource,
     ReadableStream, ReadableStreamDefaultReader, ReadableStreamDefaultController, WritableStream, WritableStreamDefaultWriter,

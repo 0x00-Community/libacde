@@ -5,6 +5,7 @@ import { NONE, NodeType } from '../native'
 import type { Element } from './element'
 import { KeyboardEvent, MouseEvent, PointerEvent, WheelEvent } from './events'
 import { focus, focusable, focusedElement, setFocus } from './focus'
+import { activate } from './activation'
 import { HTMLButtonElement } from './forms'
 import { pointerLockElement } from './pointerlock'
 import { SelectInput } from './select'
@@ -160,6 +161,7 @@ export class Input {
     this.#buttons |= buttonBit(button)
     const init = this.#init(x, y, options, button)
     this.#hoverTo(target, init)
+    activate()
     this.#pressed = target
     dom.setActive(target[ID])
     const now = host.now(), last = this.#lastDown
@@ -232,6 +234,7 @@ export class Input {
     const spacePress = this.#spacePress
     if (key === ' ' && (type === 'keyup' || !options.repeat)) this.#spacePress = null
     const keyCode = keyCodeOf(key)
+    if (type === 'keydown' && key !== 'Escape') activate()
     const init = { key, code, keyCode, which: keyCode, repeat: !!options.repeat, ...mods(options.modifiers) }
     if (!this.#fire(target, type, init, KeyboardEvent as never)) return false
     if (type === 'keyup') {
