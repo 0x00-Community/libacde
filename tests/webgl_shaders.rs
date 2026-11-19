@@ -181,6 +181,26 @@ fn captured() {
 }
 
 #[test]
+fn vertex_shaders_sample_the_base_level() {
+    link(
+        "attribute vec3 position; uniform sampler2D boneTexture; uniform sampler2D displacementMap; varying vec4 vBone;
+         void main() { vBone = texture2D(boneTexture, vec2(0.5, 0.5));
+           gl_Position = vec4(position + vec3(texture2D(displacementMap, position.xy).x), 1.0); }",
+        "precision mediump float; varying vec4 vBone; void main() { gl_FragColor = vBone; }",
+    );
+    link(
+        "#version 300 es
+         in vec3 position; uniform highp sampler2D map; uniform highp usampler2D ids; out vec4 vColor;
+         void main() { vColor = texture(map, position.xy) + vec4(texelFetch(ids, ivec2(0), 0)) + textureLod(map, position.xy, 2.0);
+           gl_Position = vec4(position, 1.0); }",
+        "#version 300 es
+         precision mediump float; in vec4 vColor; out vec4 color; void main() { color = vColor; }",
+    );
+    let bias = shader::compile(ShaderStage::Vertex, "uniform sampler2D map; void main() { gl_Position = texture2D(map, vec2(0.0), 1.0); }", &[], 15);
+    assert!(bias.is_err(), "a bias has no meaning in a vertex shader");
+}
+
+#[test]
 fn the_varying_limit_is_the_contexts() {
     let declare = |n: usize, out: &str| (0..n).map(|i| format!("{out} vec4 v{i};")).collect::<String>();
     let sum = |n: usize| (0..n).map(|i| format!("v{i}")).collect::<Vec<_>>().join(" + ");

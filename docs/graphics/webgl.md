@@ -10,7 +10,8 @@ WebGL 1 和 2 在每个 OS 上都有 (Windows 没验过), 是 wgpu 上的一台 
   (`ShaderSource::Naga`). `compileShader` 只解析校验, `linkProgram` 按两个着色器重新解析一遍: attribute 位置 (`bindAttribLocation` / layout / 依次)、
   varying 按名字配位置、不活跃的 attribute 和对面没有的 varying 降成普通全局. 活跃与否 (`getActiveUniform` 等) 按 `live.rs` 从语句往回追的表达式算.
   varying 上限 (`MAX_VARYING_VECTORS`、`gl_MaxVaryingVectors` 和输入输出分量) 是设备的 `max_inter_stage_shader_variables` 减一 (留一个给宽点的
-  `gl_PointCoord`), 每个 varying 按它占的 vec4 个数算, 不打包 (Mac 上是 30; 以前钉在 15, three.js 光照多的材质超出).
+  `gl_PointCoord`), 每个 varying 按它占的 vec4 个数算, 不打包 (Mac 上是 30; 以前钉在 15, three.js 光照多的材质超出). 顶点着色器里不带 LOD 的
+  `texture` / `texture2D` 取第 0 级 (ES 3.00 8.9, 顶点阶段没有导数; WGSL 只在片元阶段许隐式 LOD, 骨骼贴图和位移贴图要它), 带 bias 的照规范报错.
   每个阶段的散 uniform 是一个 uniform 块 (第 0 组, 顶点 0、片元 1, 动态偏移; std140, 但 matCx2 按 WGSL 的自然布局, bool 存成 uint);
   采样器拆成纹理和采样器两个全局 (第 1 组), uniform 块也在第 1 组. 拿常量下标的采样器数组可以, 循环下标不行 (编译错误).
 - **坐标**: 顶点着色器出口把 y 取反、z 从 [-w, w] 换到 [0, w], 所以纹理和帧缓冲里第 0 行是 GL 的最下面一行: 视口、剪裁、`gl_FragCoord`、
