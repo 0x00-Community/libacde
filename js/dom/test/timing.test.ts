@@ -241,3 +241,10 @@ test('CSS events reach webkit-prefixed listeners when the target has none for th
   assert.deepEqual(web.json('log'), ['a webkitAnimationEnd AnimationEvent', 'b animationend', 't webkitTransitionEnd'], 'events a script dispatches, and targets with a standard listener, get no prefixed call')
   assert.equal(web.run(`(() => { const e = new AnimationEvent('animationend'); document.getElementById('a').dispatchEvent(e); return e.type })()`), 'animationend')
 })
+
+test('an image with a fractional intrinsic size (an SVG 1706.667 wide) reports whole pixels, as Chrome does', async () => {
+  using web = await page('<!doctype html><html><body><img id="img" src="/cursor.svg"></body></html>')
+  const img = web.internals.idOf(web.run(`document.getElementById('img')`))
+  web.dom._imageDone(img, [1706.667, 0.4, 1])
+  assert.deepEqual(web.json(`(() => { const i = document.getElementById('img'); return [i.naturalWidth, i.naturalHeight] })()`), [1707, 0])
+})
