@@ -702,7 +702,9 @@ impl Frontend {
             "gl_MaxVertexAttribs" => Some(16),
             "gl_MaxVertexUniformVectors" => Some(1024),
             "gl_MaxFragmentUniformVectors" => Some(1024),
-            "gl_MaxVaryingVectors" | "gl_MaxVertexOutputVectors" | "gl_MaxFragmentInputVectors" => Some(15),
+            "gl_MaxVaryingVectors" | "gl_MaxVertexOutputVectors" | "gl_MaxFragmentInputVectors" => {
+                Some(self.webgl.as_ref().map_or(15, |s| i32::try_from(s.options.varyings).unwrap_or(i32::MAX)))
+            }
             "gl_MaxVertexTextureImageUnits" | "gl_MaxTextureImageUnits" => Some(16),
             "gl_MaxCombinedTextureImageUnits" => Some(32),
             "gl_MaxDrawBuffers" => Some(8),

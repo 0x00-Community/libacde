@@ -181,6 +181,8 @@ pub struct WebGlOptions {
     /// in `xy`), and passes the point coordinate at this location; a fragment shader reads
     /// `gl_PointCoord` from it.
     pub points: Option<u32>,
+    /// `gl_MaxVaryingVectors` (and the vertex output / fragment input vectors): the context's limit.
+    pub varyings: u32,
 }
 
 /// A shader input or output.

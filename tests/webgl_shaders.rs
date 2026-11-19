@@ -20,8 +20,8 @@ fn backends(module: &naga::Module) {
 }
 
 fn link(vs: &str, fs: &str) -> shader::Linked {
-    let v = shader::compile(ShaderStage::Vertex, vs, &[]).unwrap_or_else(|e| panic!("vertex: {e}"));
-    let f = shader::compile(ShaderStage::Fragment, fs, &[]).unwrap_or_else(|e| panic!("fragment: {e}"));
+    let v = shader::compile(ShaderStage::Vertex, vs, &[], LIMITS.varyings).unwrap_or_else(|e| panic!("vertex: {e}"));
+    let f = shader::compile(ShaderStage::Fragment, fs, &[], LIMITS.varyings).unwrap_or_else(|e| panic!("fragment: {e}"));
     let linked = shader::link(&v, &f, &HashMap::new(), &LIMITS).unwrap_or_else(|e| panic!("link: {e}"));
     backends(&linked.vertex);
     backends(&linked.fragment);
@@ -102,12 +102,17 @@ fn frag_data_and_blocks() {
 
 fn compile_on_web_stack(source: String) -> Result<(), String> {
     let mb = std::env::var("ACDE_TEST_STACK_MB").ok().and_then(|v| v.parse().ok()).unwrap_or(8usize);
-    std::thread::Builder::new().stack_size(mb << 20).spawn(move || shader::compile(ShaderStage::Fragment, &source, &[]).map(drop)).unwrap().join().unwrap()
+    std::thread::Builder::new()
+        .stack_size(mb << 20)
+        .spawn(move || shader::compile(ShaderStage::Fragment, &source, &[], LIMITS.varyings).map(drop))
+        .unwrap()
+        .join()
+        .unwrap()
 }
 
 #[test]
 fn errors() {
-    let e = shader::compile(ShaderStage::Fragment, "void main() { gl_FragColor = vec4(undefinedThing); }", &[]).err().unwrap();
+    let e = shader::compile(ShaderStage::Fragment, "void main() { gl_FragColor = vec4(undefinedThing); }", &[], LIMITS.varyings).err().unwrap();
     assert!(e.contains("ERROR"), "{e}");
     let n = 5000;
     for deep in [
@@ -153,8 +158,8 @@ fn captured() {
         let vs = std::fs::read_to_string(vert).unwrap();
         let fs = std::fs::read_to_string(&frag).unwrap();
         let result = std::panic::catch_unwind(|| {
-            let v = shader::compile(ShaderStage::Vertex, &vs, &[]).map_err(|e| format!("vertex: {e}"))?;
-            let f = shader::compile(ShaderStage::Fragment, &fs, &[]).map_err(|e| format!("fragment: {e}"))?;
+            let v = shader::compile(ShaderStage::Vertex, &vs, &[], LIMITS.varyings).map_err(|e| format!("vertex: {e}"))?;
+            let f = shader::compile(ShaderStage::Fragment, &fs, &[], LIMITS.varyings).map_err(|e| format!("fragment: {e}"))?;
             let linked = shader::link(&v, &f, &HashMap::new(), &LIMITS).map_err(|e| format!("link: {e}"))?;
             backends(&linked.vertex);
             backends(&linked.fragment);
@@ -173,4 +178,26 @@ fn captured() {
         }
     }
     assert_eq!(failed, 0);
+}
+
+#[test]
+fn the_varying_limit_is_the_contexts() {
+    let declare = |n: usize, out: &str| (0..n).map(|i| format!("{out} vec4 v{i};")).collect::<String>();
+    let sum = |n: usize| (0..n).map(|i| format!("v{i}")).collect::<Vec<_>>().join(" + ");
+    let vs = format!(
+        "attribute vec3 position; {} void main() {{ {} gl_Position = vec4(position, 1.0); }}",
+        declare(17, "varying"),
+        (0..17).map(|i| format!("v{i} = vec4({i}.0);")).collect::<String>()
+    );
+    let fs = format!("precision mediump float; {} void main() {{ gl_FragColor = {}; }}", declare(17, "varying"), sum(17));
+    let v = shader::compile(ShaderStage::Vertex, &vs, &[], 30).unwrap();
+    let f = shader::compile(ShaderStage::Fragment, &fs, &[], 30).unwrap();
+    let narrow = shader::link(&v, &f, &HashMap::new(), &LIMITS).err().unwrap();
+    assert!(narrow.contains("too many varyings (17 vectors, at most 15)"), "{narrow}");
+    let wide = Limits { varyings: 30, ..LIMITS };
+    let linked = shader::link(&v, &f, &HashMap::new(), &wide).unwrap();
+    backends(&linked.vertex);
+    backends(&linked.fragment);
+    let max = shader::compile(ShaderStage::Vertex, "attribute vec4 p; void main() { gl_Position = p * float(gl_MaxVaryingVectors); }", &[], 30).unwrap();
+    assert!(format!("{:?}", max.module).contains("I32(30)"));
 }

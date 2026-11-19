@@ -53,7 +53,7 @@ impl Limits {
             array_layers: l.max_texture_array_layers.min(2048),
             attributes: 16.min(l.max_vertex_attributes).min(l.max_vertex_buffers),
             units,
-            varyings: 15.min(l.max_inter_stage_shader_variables.saturating_sub(1)),
+            varyings: l.max_inter_stage_shader_variables.saturating_sub(1),
             uniform_vectors: (l.max_uniform_buffer_binding_size / 16).min(4096) as u32,
             draw_buffers: 8.min(l.max_color_attachments),
             samples: 4,
