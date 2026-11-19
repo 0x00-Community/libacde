@@ -61,16 +61,29 @@ export function checkedModule<T extends object>(module: string, value: T): T {
 
 type Handler = (change: unknown) => void
 
-export class StorageWatch {
+export interface SystemSource {
+  storage(): Promise<unknown>
+  info(): Promise<unknown>
+  time(): Promise<unknown>
+}
+
+export interface SystemSnapshot {
+  readonly storage: unknown
+  readonly hostname: string
+  readonly timezone: string
+  readonly ntp: boolean
+}
+
+export class SystemWatch {
   static readonly EVERY_MS = 30_000
-  readonly #read: () => Promise<unknown>
+  readonly #source: SystemSource
   readonly #every: number
   readonly #handlers = new Set<Handler>()
   #timer: ReturnType<typeof setInterval> | null = null
   #last = ''
 
-  constructor(read: () => Promise<unknown>, every = StorageWatch.EVERY_MS) {
-    this.#read = read
+  constructor(source: SystemSource, every = SystemWatch.EVERY_MS) {
+    this.#source = source
     this.#every = every
   }
 
@@ -87,6 +100,12 @@ export class StorageWatch {
     }
   }
 
+  async after<T>(change: Promise<T>): Promise<T> {
+    const done = await change
+    if (this.#handlers.size) await this.check(false)
+    return done
+  }
+
   #start(): void {
     void this.check(true)
     this.#timer = setInterval(() => void this.check(false), this.#every)
@@ -98,17 +117,24 @@ export class StorageWatch {
     this.#last = ''
   }
 
+  async #read(): Promise<SystemSnapshot> {
+    const [storage, info, time] = await Promise.all([this.#source.storage(), this.#source.info(), this.#source.time()])
+    const { hostname } = (info ?? {}) as { hostname?: unknown }
+    const { timezone, ntp } = (time ?? {}) as { timezone?: unknown; ntp?: unknown }
+    return { storage, hostname: String(hostname ?? ''), timezone: String(timezone ?? ''), ntp: ntp === true }
+  }
+
   async check(first: boolean): Promise<void> {
-    let storage: unknown
+    let snapshot: SystemSnapshot
     try {
-      storage = await this.#read()
+      snapshot = await this.#read()
     } catch {
       return
     }
-    const seen = JSON.stringify(storage)
+    const seen = JSON.stringify(snapshot)
     if (seen === this.#last) return
     this.#last = seen
     if (first) return
-    for (const handler of [...this.#handlers]) handler({ storage })
+    for (const handler of [...this.#handlers]) handler(snapshot)
   }
 }

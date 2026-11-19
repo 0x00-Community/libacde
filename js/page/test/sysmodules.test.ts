@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { checkedModule, StorageWatch, systemError } from '../src/sysmodules.ts'
+import { checkedModule, SystemWatch, systemError } from '../src/sysmodules.ts'
 import { Watched } from '../src/watched.ts'
 
 test('system module failures become AcdeError with a status and a code', async () => {
@@ -58,21 +58,33 @@ test('network on(changed) is cancellable and watch still works', () => {
   assert.deepEqual(seen, [{ online: true }, ['watch', { online: true }]])
 })
 
-test('storage changes reach subscribers, at most once per period, and polling stops with the last one', async () => {
+test('storage, hostname, time zone or automatic time changing reaches subscribers in one snapshot', async () => {
   let free = 100
+  let hostname = 'dopame'
   let reads = 0
-  const watch = new StorageWatch(async () => {
-    reads++
-    return [{ path: '/', label: 'disk', size: 1000, free }]
-  }, 60_000)
+  const source = {
+    storage: async () => {
+      reads++
+      return [{ path: '/', label: 'disk', size: 1000, free }]
+    },
+    info: async () => ({ hostname, uptimeSeconds: reads }),
+    time: async () => ({ timezone: 'Asia/Shanghai', ntp: true, canSetTime: true }),
+  }
+  const watch = new SystemWatch(source, 60_000)
   const seen: unknown[] = []
   const off = watch.on('changed', (change: unknown) => void seen.push(change))
   await watch.check(true)
   await watch.check(false)
+  assert.deepEqual(seen, [], 'uptime moving alone is no change')
   free = 90
   await watch.check(false)
-  assert.deepEqual(seen, [{ storage: [{ path: '/', label: 'disk', size: 1000, free: 90 }] }])
+  const storage = [{ path: '/', label: 'disk', size: 1000, free: 90 }]
+  assert.deepEqual(seen, [{ storage, hostname: 'dopame', timezone: 'Asia/Shanghai', ntp: true }])
+  await watch.after((async () => {
+    hostname = 'studio'
+  })())
+  assert.deepEqual(seen[1], { storage, hostname: 'studio', timezone: 'Asia/Shanghai', ntp: true }, 'a change made here is checked at once')
   assert.equal(off(), true)
-  assert.ok(reads >= 3)
+  assert.ok(reads >= 4)
   assert.throws(() => watch.on('mounted', () => undefined), /no mounted event/)
 })

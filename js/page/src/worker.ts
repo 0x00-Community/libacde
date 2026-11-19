@@ -5,7 +5,7 @@ import { BluetoothModule, type BluetoothNatives } from './bluetooth'
 import { DevicesModule, type DevicesNatives } from './devices'
 import { Frame } from './frame'
 import { WatchFeed, Watched, type WatchNatives } from './watched'
-import { checkedModule, StorageWatch } from './sysmodules'
+import { checkedModule, SystemWatch, type SystemSource } from './sysmodules'
 import { FsModule } from './fsmodule'
 import { Host } from './host'
 import type { ImeEvent, NativeIme } from './ime'
@@ -287,9 +287,16 @@ export default async function boot(natives: WebNatives): Promise<void> {
     checked('network', { ...Watched.module('network', network), watch: network.watch })
   }
   if (natives.system) {
-    const system = natives.system as { storage(): Promise<unknown> } & Record<string, unknown>
-    const storage = new StorageWatch(() => system.storage())
-    checked('system', { ...system, on: (type: string, handler: unknown) => storage.on(type, handler) })
+    type Setters = Record<'setHostname' | 'setTimezone' | 'setNtp', (value: unknown) => Promise<unknown>>
+    const system = natives.system as SystemSource & Setters & Record<string, unknown>
+    const watch = new SystemWatch(system)
+    checked('system', {
+      ...system,
+      setHostname: (name: unknown) => watch.after(system.setHostname(name)),
+      setTimezone: (zone: unknown) => watch.after(system.setTimezone(zone)),
+      setNtp: (on: unknown) => watch.after(system.setNtp(on)),
+      on: (type: string, handler: unknown) => watch.on(type, handler),
+    })
   }
   if (natives.bluetooth) checked('bluetooth', BluetoothModule.wrap(natives.bluetooth))
   if (natives.sound) checked('audio', Watched.module('audio', natives.sound))
