@@ -1,5 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+
+use crate::webgl::FastMap;
 use std::rc::Rc;
 
 use crate::webgl::consts::*;
@@ -16,12 +18,12 @@ pub struct Buffer {
     pub shadow: Option<Vec<u8>>,
     pub used: u64,
     pub version: u64,
-    pub ranges: HashMap<(u32, u64, u32), u32>,
+    pub ranges: FastMap<(u32, u64, u32), u32>,
 }
 
 impl Buffer {
     pub fn new() -> Self {
-        Buffer { raw: None, size: 0, usage: STATIC_DRAW, element: None, shadow: None, used: 0, version: 0, ranges: HashMap::new() }
+        Buffer { raw: None, size: 0, usage: STATIC_DRAW, element: None, shadow: None, used: 0, version: 0, ranges: FastMap::default() }
     }
 }
 
@@ -87,7 +89,7 @@ pub struct Alloc {
     pub mips: u32,
     pub samples: u32,
     pub serial: u64,
-    pub views: RefCell<HashMap<ViewKey, wgpu::TextureView>>,
+    pub views: RefCell<FastMap<ViewKey, wgpu::TextureView>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -122,7 +124,7 @@ impl Alloc {
 
 pub struct Texture {
     pub target: u32,
-    pub images: HashMap<(u32, u32), Image>,
+    pub images: FastMap<(u32, u32), Image>,
     pub alloc: Option<Alloc>,
     pub immutable: bool,
     pub immutable_levels: u32,
@@ -137,7 +139,7 @@ impl Texture {
     pub fn new() -> Self {
         Texture {
             target: 0,
-            images: HashMap::new(),
+            images: FastMap::default(),
             alloc: None,
             immutable: false,
             immutable_levels: 0,

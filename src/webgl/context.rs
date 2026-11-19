@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use crate::webgl::{FastMap, FastSet};
 use std::sync::Arc;
 
 use crate::gpu::Gpu;
@@ -90,7 +90,7 @@ pub struct Context {
     pub gpu: Arc<Gpu>,
     pub webgl2: bool,
     pub attrs: Attributes,
-    pub(crate) objects: HashMap<Id, Object>,
+    pub(crate) objects: FastMap<Id, Object>,
     next: Id,
     errors: Vec<u32>,
     pub lost: bool,
@@ -100,11 +100,11 @@ pub struct Context {
     pub(crate) recorder: Recorder,
     pub(crate) caches: Caches,
     pub limits: Limits,
-    pub(crate) enabled: HashSet<String>,
+    pub(crate) enabled: FastSet<String>,
     pub(crate) serial: u64,
     pub(crate) generation: u64,
     pub(crate) features: wgpu::Features,
-    pub(crate) converted: HashMap<ConvertKey, wgpu::Buffer>,
+    pub(crate) converted: FastMap<ConvertKey, wgpu::Buffer>,
     pub(crate) warned_depth_blit: bool,
 }
 
@@ -118,7 +118,7 @@ impl Context {
             gpu,
             webgl2,
             attrs,
-            objects: HashMap::new(),
+            objects: FastMap::default(),
             next: 0,
             errors: Vec::new(),
             lost: false,
@@ -144,11 +144,11 @@ impl Context {
             recorder: Recorder::default(),
             caches,
             limits,
-            enabled: HashSet::new(),
+            enabled: FastSet::default(),
             serial: 0,
             generation: 1,
             features,
-            converted: HashMap::new(),
+            converted: FastMap::default(),
             warned_depth_blit: false,
         };
         context.resize(width, height);

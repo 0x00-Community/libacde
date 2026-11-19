@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use crate::webgl::FastMap;
 use std::rc::Rc;
 
 use crate::webgl::consts::*;
@@ -572,7 +572,7 @@ impl Context {
             (None, Some((s, offset))) => Some((s, offset, index_format)),
             _ => None,
         };
-        let slots: HashMap<u32, u32> = vertex_layouts.iter().enumerate().map(|(i, l)| (l.0, i as u32)).collect();
+        let slots: FastMap<u32, u32> = vertex_layouts.iter().enumerate().map(|(i, l)| (l.0, i as u32)).collect();
         let vertex = vertex.into_iter().map(|(location, s, o)| (slots[&location], s, o)).collect();
         let call = match &index {
             Some(_) if generated => Call::Indexed { indices: 0..call_count, base_vertex: 0, instances: 0..instances },
@@ -644,7 +644,7 @@ impl Context {
         let mut bindings = Vec::new();
         let mut entries: Vec<Entry> = Vec::new();
         let mut sampled = Vec::new();
-        let mut used_units: HashMap<u32, (wgpu::TextureViewDimension, Sampled)> = HashMap::new();
+        let mut used_units: FastMap<u32, (wgpu::TextureViewDimension, Sampled)> = FastMap::default();
         for (si, s) in info.samplers.iter().enumerate() {
             for element in 0..s.size as usize {
                 let unit = units.get(si).and_then(|u| u.get(element)).copied().unwrap_or(0);

@@ -27,3 +27,6 @@ pub use objects::Id;
 pub use params::Param;
 pub use program::{ActiveInfo, Setter, Value};
 pub use texture::TexSource;
+
+pub(crate) type FastMap<K, V> = std::collections::HashMap<K, V, rustc_hash::FxBuildHasher>;
+pub(crate) type FastSet<K> = std::collections::HashSet<K, rustc_hash::FxBuildHasher>;
