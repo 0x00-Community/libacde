@@ -219,6 +219,16 @@
   - 还没有: `devicechange` (不监视插拔)、`getDisplayMedia` (录屏)、`MediaRecorder`、`createMediaStreamDestination`、回声消除等处理、
     `resizeMode: crop-and-scale`、轨道的 `mute` / `unmute` (系统暂停时).
 - **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`) 和 XML 文档的渲染 (只当 DOM 用)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、Web Worker、`crypto.subtle`、OffscreenCanvas、全屏和指针锁定、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
+- **剪贴板** (libacde 单子 11, 形状与 acdev-lead、system-lead 定): 宿主接口按网页 MIME 类型收发字节 (`render/surface.rs`): `SetClipboard(Vec<ClipboardEntry>)`
+  写一项的全部表示并整个替换剪贴板, `ClipboardTypes` 列出有哪些类型, `ReadClipboard {mime, reply}` 取一种 (没有时 `None`). 认的类型: `text/plain`
+  (UTF-8)、`image/png` (PNG 字节)、`text/uri-list` (UTF-8, CRLF 分行). Wayland 宿主上 `text/plain` 对应 `text/plain;charset=utf-8`、`text/plain`、
+  `UTF8_STRING` 三个 MIME, 写入时都给同一份字节; 列类型时按对方宣告的顺序换成网页名字, 不认识的去掉, 重复的合并 (`ClipboardEntry::wayland_mimes` /
+  `web_types`); 剪贴板是自己持有时读和列类型直接用本地条目, 不走管道 (免得自己等自己). C 的 ffi 只支持文本: 列出的只有 `text/plain`, 别的类型回空.
+  页面 (`webnative.rs` 的 `setClipboard` / `clipboardTypes` / `readClipboard`, 2 s 没回答当作空): `navigator.clipboard.readText` / `writeText`,
+  `read()` (一项 `ClipboardItem`, 剪贴板空时空数组) / `write([item])` (只写第一项; 有不认的类型时 `NotAllowedError`), `ClipboardItem`
+  (`types`、`getType` (没有时 `NotFoundError`)、`presentationStyle`、`supports()` 认上面三种). `paste` 事件的 `clipboardData` 带上剪贴板的全部类型:
+  文字类型照旧 `setData`, 图片是一个 `kind: 'file'`、`type: 'image/png'` 的项 (`files` 里是 `image.png`); 页面自己处理的 `copy` / `cut` 写
+  `text/plain` 和 `text/uri-list`. 权限照旧 (`clipboard-read` / `clipboard-write`). 宿主各平台的限制见 acdev `docs/hostwin.md`.
 - **密码框** (`<input type=password>`, 2026-11-18): 照成熟浏览器的做法. 显示: 渲染层给 blitz 的编辑器的是掩码 (`engine_state.rs` 的
   `show_form_state`, 每个 UTF-16 码元一个 `•`, 所以页面的选区偏移不用换算; 没改过值时也按 `value` 属性掩码, `type` 改掉后恢复明文),
   无障碍树里本来就只给 `•••`. 复制和剪切: 在密码框里不发 `copy` / `cut` 事件, 也不写剪贴板 (`js/page/src/text.ts` 的 `clipboard`),

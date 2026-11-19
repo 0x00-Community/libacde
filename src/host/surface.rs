@@ -57,8 +57,9 @@ impl Surface {
 
     commands! {
         request_frame() => C::RequestFrame;
-        set_clipboard(text: String) => C::SetClipboard(text);
-        read_clipboard(reply: Box<dyn FnOnce(String) + Send>) => C::ReadClipboard(reply);
+        set_clipboard(entries: Vec<crate::render::ClipboardEntry>) => C::SetClipboard(entries);
+        clipboard_types(reply: crate::render::ClipboardTypesReply) => C::ClipboardTypes(reply);
+        read_clipboard(mime: String, reply: crate::render::ClipboardReadReply) => C::ReadClipboard { mime, reply };
         start_drag(data: HashMap<String, String>, icon: Option<DragImage>) => C::StartDrag(data, icon);
         request_mode(mode: u32) => C::Mode(mode);
         request_state(state: u32) => C::State(state);

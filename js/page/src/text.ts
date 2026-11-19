@@ -2,7 +2,7 @@ import { hostTime } from '@dopame/acde-dom'
 import type { DomNative, WebInternals } from '@dopame/acde-dom'
 import { InputMethod, type ImePanelEvent } from './ime'
 import { ImePanel } from './panel'
-import type { Shell } from './native'
+import type { ClipboardBytes, Shell } from './native'
 
 type Field = HTMLInputElement | HTMLTextAreaElement
 
@@ -49,8 +49,41 @@ export class TextEntry {
     this.#shell = shell
     if (!this.#ime && shell.setImeArea) this.#ime = InputMethod.area((rect) => shell.setImeArea?.(rect.x, rect.y, rect.width, rect.height))
     this.#page.env.clipboard = {
-      writeText: async (text: string) => void this.#shell?.setClipboard(String(text)),
-      readText: async () => (await this.#shell?.readClipboard()) ?? '',
+      writeText: async (text: string) => this.#write([TextEntry.#text(String(text))]),
+      readText: async () => TextEntry.#decode(await this.#read(TextEntry.TEXT)),
+      types: async () => (await this.#shell?.clipboardTypes()) ?? [],
+      read: (type: string) => this.#read(type),
+      write: async (entries) => this.#write(entries),
+    }
+  }
+
+  static readonly TEXT = 'text/plain'
+  static readonly PNG = 'image/png'
+  static readonly URI_LIST = 'text/uri-list'
+
+  static #text(text: string, type = TextEntry.TEXT): ClipboardBytes {
+    return { type, data: new TextEncoder().encode(text) }
+  }
+
+  static #decode(data: Uint8Array | null): string {
+    return data ? new TextDecoder().decode(data) : ''
+  }
+
+  #write(entries: readonly ClipboardBytes[]): void {
+    this.#shell?.setClipboard(entries)
+  }
+
+  async #read(type: string): Promise<Uint8Array | null> {
+    return (await this.#shell?.readClipboard(type)) ?? null
+  }
+
+  async #pasted(data: DataTransfer): Promise<void> {
+    const types = (await this.#shell?.clipboardTypes()) ?? []
+    for (const type of types.includes(TextEntry.TEXT) ? types : [TextEntry.TEXT, ...types]) {
+      const bytes = await this.#read(type)
+      if (!bytes) continue
+      if (type === TextEntry.PNG) data.items.add(new this.#window.File([bytes as Uint8Array<ArrayBuffer>], 'image.png', { type }) as never)
+      else data.setData(type, TextEntry.#decode(bytes))
     }
   }
 
@@ -58,7 +91,7 @@ export class TextEntry {
     const data = new this.#window.DataTransfer()
     const type = key === 'c' ? 'copy' : key === 'x' ? 'cut' : 'paste'
     if (type !== 'paste' && TextEntry.#password(target)) return
-    if (type === 'paste') data.setData('text/plain', (await this.#shell?.readClipboard()) ?? '')
+    if (type === 'paste') await this.#pasted(data as never)
     const event = new this.#window.ClipboardEvent(type, { bubbles: true, cancelable: true, composed: true, clipboardData: data } as never)
     const handled = !target.dispatchEvent(event as unknown as Event)
     if (type === 'paste') {
@@ -67,7 +100,9 @@ export class TextEntry {
       return
     }
     const text = handled ? data.getData('text/plain') : this.#editing.selectedText(target as never)
-    if (text) this.#shell?.setClipboard(text)
+    const uris = handled ? data.getData(TextEntry.URI_LIST) : ''
+    const entries = [...(text ? [TextEntry.#text(text)] : []), ...(uris ? [TextEntry.#text(uris, TextEntry.URI_LIST)] : [])]
+    if (entries.length) this.#write(entries)
     if (type === 'cut' && !handled && text) this.#editing.insertText(target as never, '', 'deleteByCut')
   }
 
