@@ -10,6 +10,7 @@ pub struct Budget {
 }
 
 impl Budget {
+    #[cfg(test)]
     pub fn used(&self) -> usize {
         self.samples.load(Ordering::Acquire)
     }
