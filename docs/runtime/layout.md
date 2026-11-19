@@ -88,7 +88,9 @@
   对同一个窗口重新授予后再起 (url 须在 `http://acde.local/` 下); `capabilities.get/list` 按清单声明回 `available` / `not-declared`
   (临时, 不看平台与逐次同意). 桌面另答 `panel.open/place/close` (钉住的面板, 同旧管理中枢) 和 `windows.*` (`close`、`kill`、`focus`、`hide`、
   `show`、`requestState`、`screenshot`、`animate`、`stats`、`shortcut`、`unshortcut`、`place`、虚拟桌面的 `addDesk`、`removeDesk`、
-  `showDesk`、`moveToDesk` 交给 `native.Shell` 的同名方法; `launch` 有管家时转给 `launch.start`).
+  `showDesk`、`moveToDesk` 交给 `native.Shell` 的同名方法; `launch` 有管家时转给 `launch.start`; 多屏方案 A 的副屏壁纸 `setWallpaper({color, image?})`
+  只给桌面页, 先查 `color` 是 `#rrggbb` / `#rrggbbaa` (否则 400 `bad_color`)、`image` 是绝对路径或 null (否则 400 `bad_request`), 再交给
+  `native.Shell.setWallpaper(color, image?)` (acdes 实现, 值由桌面进程记住, 重载后保持); 不是桌面或宿主没有这个方法时 501 `unsupported`).
 - 窗口: 应用向窗口系统要一个占满宿主窗口的窗口; 桌面 `grant({desktop: true})` (窗口号 0). 窗口系统的关窗请求 (`windowcloserequest`, 如 xdg
   的 close) 先问页面 `window.beforeclose` (最多等 3 秒, 页面答 `false` 就不关), 再同样关掉. 桌面进程把窗口系统的其余事件 (`windowopen` 等)
   交给桌面页 (`js/launcher/src/app/events.ts`): `windowgeometry` 若带的是 `x`、`y`、`width`、`height` 就合成 `rect`; `windowopen` 的 `instance`
