@@ -578,6 +578,7 @@ export interface AcdeNetwork {
   disconnect(iface: string): Promise<void>
   setWifiEnabled(on: boolean): Promise<void>
   watch(callback: (state: NetworkState) => void): void
+  on(type: 'changed', handler: (state: NetworkState) => void): () => boolean
 }
 
 export interface PanelReserve {
@@ -684,6 +685,11 @@ export interface AcdeSystem {
   setNtp(on: boolean): Promise<void>
   setHostname(name: string): Promise<void>
   user(): Promise<SystemUser>
+  on(type: 'changed', handler: (change: SystemChange) => void): () => boolean
+}
+
+export interface SystemChange {
+  readonly storage: SystemVolume[]
 }
 
 export interface BluetoothDevice {
@@ -1101,8 +1107,27 @@ export interface AcdePower {
   setBrightness(value: number): Promise<void>
   setChargeLimit(percent: number | null): Promise<void>
   on(type: 'changed', handler: (state: PowerState) => void): () => boolean
-  on(type: 'prompt', handler: (event: { readonly type: 'prompt' }) => void): () => boolean
-  on(type: 'critical', handler: (event: { readonly type: 'critical'; readonly action: PowerIdleAction; readonly seconds: number }) => void): () => boolean
+  on(type: 'prompt', handler: (event: PowerPromptEvent) => void): () => boolean
+  on(type: 'critical', handler: (event: PowerCriticalEvent) => void): () => boolean
+}
+
+export interface PowerPromptEvent {
+  readonly type: 'prompt'
+}
+
+export interface PowerCriticalEvent {
+  readonly type: 'critical'
+  readonly action: PowerIdleAction
+  readonly seconds: number
+}
+
+export type AcdeErrorCode = 'bad_request' | 'forbidden' | 'unsupported' | 'service_not_running' | 'failed'
+
+export interface AcdeError extends Error {
+  readonly name: 'AcdeError'
+  readonly status: number
+  readonly code: AcdeErrorCode
+  readonly module: 'network' | 'system' | 'bluetooth' | 'audio' | 'devices' | 'power' | 'input' | 'display'
 }
 
 export interface AcdePage {

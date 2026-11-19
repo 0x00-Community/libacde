@@ -5,6 +5,7 @@ import { BluetoothModule, type BluetoothNatives } from './bluetooth'
 import { DevicesModule, type DevicesNatives } from './devices'
 import { Frame } from './frame'
 import { WatchFeed, Watched, type WatchNatives } from './watched'
+import { checkedModule, StorageWatch } from './sysmodules'
 import { FsModule } from './fsmodule'
 import { Host } from './host'
 import type { ImeEvent, NativeIme } from './ime'
@@ -278,14 +279,24 @@ export default async function boot(natives: WebNatives): Promise<void> {
     bridge.value['fs'] = { ...typed, roots: async () => HostStrings.roots(await (typed as unknown as { roots(): Promise<unknown> }).roots(), language) }
   }
   if (natives.terminal) bridge.value['terminal'] = natives.terminal
-  if (natives.network) bridge.value['network'] = natives.network
-  if (natives.system) bridge.value['system'] = natives.system
-  if (natives.bluetooth) bridge.value['bluetooth'] = BluetoothModule.wrap(natives.bluetooth)
-  if (natives.sound) bridge.value['audio'] = Watched.module('audio', natives.sound)
-  if (natives.devices) bridge.value['devices'] = DevicesModule.wrap(natives.devices)
-  if (natives.power) bridge.value['power'] = Watched.typed('power', managerPower.feed(natives.power), ['changed', 'prompt', 'critical'])
-  if (natives.input) bridge.value['input'] = Watched.module('input', natives.input)
-  if (natives.display) bridge.value['display'] = Watched.module('display', natives.display)
+  const checked = (name: string, value: object) => {
+    bridge.value[name] = checkedModule(name, value)
+  }
+  if (natives.network) {
+    const network = natives.network as WatchNatives & Record<string, unknown>
+    checked('network', { ...Watched.module('network', network), watch: network.watch })
+  }
+  if (natives.system) {
+    const system = natives.system as { storage(): Promise<unknown> } & Record<string, unknown>
+    const storage = new StorageWatch(() => system.storage())
+    checked('system', { ...system, on: (type: string, handler: unknown) => storage.on(type, handler) })
+  }
+  if (natives.bluetooth) checked('bluetooth', BluetoothModule.wrap(natives.bluetooth))
+  if (natives.sound) checked('audio', Watched.module('audio', natives.sound))
+  if (natives.devices) checked('devices', DevicesModule.wrap(natives.devices))
+  if (natives.power) checked('power', Watched.typed('power', managerPower.feed(natives.power), ['changed', 'prompt', 'critical']))
+  if (natives.input) checked('input', Watched.module('input', natives.input))
+  if (natives.display) checked('display', Watched.module('display', natives.display))
   if (natives.office) {
     const editorPage = async (setup: { api: string; config: unknown }, theme: 'light' | 'dark') => OfficePage.write(setup, theme)
     const office = natives.office as { state(...args: unknown[]): Promise<unknown>; open(path: string, writable: boolean): Promise<unknown> }
