@@ -1,6 +1,6 @@
 import { DOMException } from '../core/exception'
 import { defineHandlers, Event, EventTarget, fire } from '../core/event'
-import { getters, host, illegal, KEY, tag } from '../core/host'
+import { getters, host, illegal, KEY, queueTask, tag } from '../core/host'
 import type { AudioNative } from '../native'
 import { MediaStream, trackSource, watchTrack } from '../media/stream'
 
@@ -780,28 +780,43 @@ export class AudioBuffer {
 }
 tag(AudioBuffer)
 
+interface OfflineShape {
+  readonly channels: number
+  readonly length: number
+  readonly rate: number
+}
+
 export class BaseAudioContext extends EventTarget {
   readonly [ID]: number
   readonly #destination: AudioDestinationNode
+  readonly #rate: number
+  readonly #offline: boolean
   #listener: AudioListener | null = null
-  #state: 'suspended' | 'running' | 'closed' = 'running'
+  #state: 'suspended' | 'running' | 'closed'
   #frozen = 0
 
-  constructor(token: unknown) {
+  constructor(token: unknown, offline?: OfflineShape) {
     illegal(token)
     super()
-    if (!native) throw new DOMException("Failed to construct 'AudioContext': audio is not available in this web.", 'NotSupportedError')
+    const what = offline ? 'OfflineAudioContext' : 'AudioContext'
+    if (!native) throw new DOMException(`Failed to construct '${what}': audio is not available in this web.`, 'NotSupportedError')
     this[ID] = newId()
     const destination = newId()
-    native.createContext(this[ID], destination)
+    if (offline) native.createOfflineContext(this[ID], destination, offline.channels, offline.length, offline.rate)
+    else native.createContext(this[ID], destination)
+    this.#rate = offline ? offline.rate : native.sampleRate
+    this.#offline = !!offline
+    this.#state = offline ? 'suspended' : 'running'
     this.#destination = new AudioDestinationNode(KEY, this, 0, 1, 0, destination)
   }
 
   get sampleRate(): number {
-    return native?.sampleRate ?? 48000
+    return this.#rate
   }
   get currentTime(): number {
-    if (this.#state !== 'running' || !native) return this.#frozen
+    if (!native) return this.#frozen
+    if (this.#offline) return native.time(this[ID])
+    if (this.#state !== 'running') return this.#frozen
     return native.time(this[ID])
   }
   get state(): string {
@@ -879,7 +894,7 @@ export class BaseAudioContext extends EventTarget {
     }
     const view = ArrayBuffer.isView(audioData) ? new Uint8Array(audioData.buffer, audioData.byteOffset, audioData.byteLength) : new Uint8Array(audioData)
     const id = newId()
-    const decoding = native ? native.decode(id, view.slice()) : Promise.reject(new Error('audio is not available'))
+    const decoding = native ? native.decode(id, view.slice(), this.sampleRate) : Promise.reject(new Error('audio is not available'))
     return decoding.then(
       (info) => {
         const buffer = new AudioBuffer({ length: info.length, sampleRate: info.sampleRate, numberOfChannels: info.numberOfChannels }, id)
@@ -952,20 +967,104 @@ export class AudioContext extends BaseAudioContext {
 getters(AudioContext.prototype, { sinkId: '' })
 tag(AudioContext)
 
+function sourceEnded(id: number): void {
+  const node = playing.get(id)
+  if (!node) return
+  playing.delete(id)
+  fire(node, new Event('ended'))
+}
+
+export class OfflineAudioCompletionEvent extends Event {
+  readonly #buffer: AudioBuffer
+
+  constructor(type: string, init: { renderedBuffer: AudioBuffer; bubbles?: boolean; cancelable?: boolean; composed?: boolean }) {
+    if (!(init?.renderedBuffer instanceof AudioBuffer)) {
+      throw new TypeError("Failed to construct 'OfflineAudioCompletionEvent': Failed to read the 'renderedBuffer' property from 'OfflineAudioCompletionEventInit': Required member is undefined.")
+    }
+    super(type, init)
+    this.#buffer = init.renderedBuffer
+  }
+
+  get renderedBuffer(): AudioBuffer {
+    return this.#buffer
+  }
+}
+tag(OfflineAudioCompletionEvent)
+
+const MAX_OFFLINE_SAMPLES = 2 ** 28
+
+function offlineShape(options: unknown, length: unknown, sampleRate: unknown): OfflineShape {
+  const what = "Failed to construct 'OfflineAudioContext'"
+  let channels: number, frames: number, rate: number
+  if (typeof options === 'object' && options !== null) {
+    const o = options as { numberOfChannels?: unknown; length?: unknown; sampleRate?: unknown }
+    if (o.length === undefined) throw new TypeError(`${what}: Failed to read the 'length' property from 'OfflineAudioContextOptions': Required member is undefined.`)
+    if (o.sampleRate === undefined) throw new TypeError(`${what}: Failed to read the 'sampleRate' property from 'OfflineAudioContextOptions': Required member is undefined.`)
+    ;[channels, frames, rate] = [Number(o.numberOfChannels ?? 1), Number(o.length), Number(o.sampleRate)]
+  } else {
+    if (length === undefined || sampleRate === undefined) throw new TypeError(`${what}: 3 arguments required.`)
+    ;[channels, frames, rate] = [Number(options), Number(length), Number(sampleRate)]
+  }
+  if (!Number.isFinite(channels) || !Number.isFinite(frames) || !Number.isFinite(rate)) throw new TypeError(`${what}: The provided value is non-finite.`)
+  ;[channels, frames] = [Math.trunc(channels), Math.trunc(frames)]
+  if (!(channels >= 1 && channels <= 32)) throw new DOMException(`${what}: The number of channels provided (${channels}) is outside the range [1, 32].`, 'NotSupportedError')
+  if (channels > 2) throw new DOMException(`${what}: rendering more than 2 channels is not supported yet.`, 'NotSupportedError')
+  if (!(frames >= 1)) throw new DOMException(`${what}: The number of frames provided (${frames}) is less than the minimum bound (1).`, 'NotSupportedError')
+  if (!(rate >= 3000 && rate <= 768000)) throw new DOMException(`${what}: The sample rate provided (${rate}) is outside the range [3000, 768000].`, 'NotSupportedError')
+  if (frames * channels > MAX_OFFLINE_SAMPLES) throw new DOMException(`${what}: ${frames} frames of ${channels} channels are more than an offline rendering may hold (${MAX_OFFLINE_SAMPLES} samples).`, 'NotSupportedError')
+  return { channels, length: frames, rate }
+}
+
+export class OfflineAudioContext extends BaseAudioContext {
+  readonly #length: number
+  #rendering: Promise<AudioBuffer> | null = null
+
+  constructor(options: unknown, length?: unknown, sampleRate?: unknown) {
+    const shape = offlineShape(options, length, sampleRate)
+    super(KEY, shape)
+    this.#length = shape.length
+  }
+
+  get length(): number {
+    return this.#length
+  }
+
+  startRendering(): Promise<AudioBuffer> {
+    if (this.#rendering || this.state === 'closed') return Promise.reject(new DOMException("Failed to execute 'startRendering' on 'OfflineAudioContext': cannot call startRendering more than once", 'InvalidStateError'))
+    const buffer = newId()
+    this[SET_STATE]('running')
+    this.#rendering = native!.startRendering(this[ID], buffer).then((info) => {
+      const rendered = new AudioBuffer({ length: info.length, sampleRate: info.sampleRate, numberOfChannels: info.numberOfChannels }, buffer)
+      for (const id of info.ended) sourceEnded(id)
+      this[SET_STATE]('closed')
+      queueTask(() => fire(this, new OfflineAudioCompletionEvent('complete', { renderedBuffer: rendered })))
+      return rendered
+    })
+    return this.#rendering
+  }
+
+  suspend(_suspendTime: number): Promise<void> {
+    return Promise.reject(new DOMException("Failed to execute 'suspend' on 'OfflineAudioContext': suspending an offline rendering is not supported yet.", 'NotSupportedError'))
+  }
+
+  resume(): Promise<void> {
+    return Promise.reject(new DOMException("Failed to execute 'resume' on 'OfflineAudioContext': the rendering is not suspended.", 'InvalidStateError'))
+  }
+}
+defineHandlers(OfflineAudioContext.prototype, ['complete'])
+tag(OfflineAudioContext)
+
 export function installAudio(audio: AudioNative): Record<string, unknown> {
   native = audio
   audio.onEvent((kind, id) => {
     if (kind === 0) {
-      const node = playing.get(id)
-      if (!node) return
-      playing.delete(id)
-      fire(node, new Event('ended'))
+      sourceEnded(id)
     } else if (kind === 1) {
       mediaEvents.ended(id)
     }
   })
   return {
-    AudioContext, BaseAudioContext, AudioNode, AudioParam, AudioDestinationNode, AudioScheduledSourceNode,
+    AudioContext, BaseAudioContext, OfflineAudioContext, OfflineAudioCompletionEvent, AudioNode, AudioParam, AudioDestinationNode, AudioScheduledSourceNode,
     OscillatorNode, GainNode, AudioBufferSourceNode, StereoPannerNode, ConstantSourceNode, AudioBuffer, PeriodicWave,
     BiquadFilterNode, DynamicsCompressorNode, DelayNode, WaveShaperNode, ConvolverNode, AnalyserNode, MediaStreamAudioSourceNode,
     PannerNode, AudioListener,

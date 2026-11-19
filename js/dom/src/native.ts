@@ -532,6 +532,8 @@ export interface AudioNative {
   readonly sampleRate: number
   onEvent(callback: (kind: number, id: number) => void): void
   createContext(context: number, destination: number): void
+  createOfflineContext(context: number, destination: number, channels: number, length: number, sampleRate: number): void
+  startRendering(context: number, buffer: number): Promise<{ length: number; sampleRate: number; numberOfChannels: number; ended: number[] }>
   setRunning(context: number, running: boolean): void
   closeContext(context: number): void
   time(context: number): number
@@ -548,7 +550,7 @@ export interface AudioNative {
   start(node: number, when: number, offset: number, duration: number): void
   stop(node: number, when: number): void
   release(node: number): void
-  decode(buffer: number, bytes: Uint8Array): Promise<{ length: number; sampleRate: number; numberOfChannels: number }>
+  decode(buffer: number, bytes: Uint8Array, sampleRate: number): Promise<{ length: number; sampleRate: number; numberOfChannels: number }>
   createBuffer(buffer: number, sampleRate: number, channels: Float32Array[]): void
   channelData(buffer: number): Float32Array[]
   releaseBuffer(buffer: number): void

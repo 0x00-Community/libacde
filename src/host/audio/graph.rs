@@ -516,6 +516,10 @@ impl Graph {
         }
     }
 
+    pub fn rate(&self) -> f64 {
+        self.rate
+    }
+
     fn now(&self) -> f64 {
         self.frame as f64 / self.rate
     }

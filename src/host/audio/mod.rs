@@ -10,14 +10,14 @@ pub mod video;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use crate::host::bind::{self, arg_bool, arg_f64, arg_u32};
 use crate::host::{offload, rt};
-use graph::{AudioData, Kind, NodeOp, ParamOp, Shared, Wave};
-use mixer::{Clock, Cmd, MediaOp, Note, RATE};
+use graph::{AudioData, Graph, Kind, NodeOp, ParamOp, QUANTUM, Shared, Wave};
+use mixer::{Clock, Cmd, MediaOp, Mixer, Note, RATE};
 use output::Ctl;
 use video::{Picture, VideoSound};
 
@@ -40,6 +40,99 @@ struct State {
     buffers: HashMap<u32, Arc<AudioData>>,
     media: HashMap<u32, Arc<AtomicU64>>,
     videos: HashMap<u32, Video>,
+    offline: Mixer,
+    offline_contexts: HashMap<u32, Offline>,
+    offline_nodes: HashMap<u32, u32>,
+    rendering: Arc<Rendering>,
+}
+
+struct Offline {
+    channels: usize,
+    length: usize,
+}
+
+const MAX_OFFLINE_SAMPLES: usize = 1 << 28;
+
+#[derive(Default)]
+struct Rendering {
+    samples: AtomicUsize,
+    cancelled: AtomicBool,
+}
+
+struct Ticket {
+    rendering: Arc<Rendering>,
+    samples: usize,
+}
+
+impl Ticket {
+    fn take(rendering: &Arc<Rendering>, samples: usize) -> Option<Ticket> {
+        rendering
+            .samples
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| used.checked_add(samples).filter(|total| *total <= MAX_OFFLINE_SAMPLES))
+            .ok()?;
+        Some(Ticket { rendering: rendering.clone(), samples })
+    }
+}
+
+impl Drop for Ticket {
+    fn drop(&mut self) {
+        self.rendering.samples.fetch_sub(self.samples, Ordering::AcqRel);
+    }
+}
+
+const RENDERERS: usize = 4;
+
+fn renderers() -> &'static offload::Pool {
+    static POOL: OnceLock<offload::Pool> = OnceLock::new();
+    POOL.get_or_init(|| offload::Pool::new("acde-offline-audio", RENDERERS))
+}
+
+fn offline_cmd(s: &mut State, cmd: Cmd) -> Option<Cmd> {
+    let offline = match &cmd {
+        Cmd::CreateNode { ctx, node, .. } if s.offline_contexts.contains_key(ctx) => {
+            s.offline_nodes.insert(*node, *ctx);
+            true
+        }
+        Cmd::Connect { from, .. } | Cmd::Disconnect { from, .. } => s.offline_nodes.contains_key(from),
+        Cmd::Node { node, .. } => s.offline_nodes.contains_key(node),
+        Cmd::Running { ctx, .. } | Cmd::CloseContext { ctx } => s.offline_contexts.contains_key(ctx),
+        _ => false,
+    };
+    if !offline {
+        return Some(cmd);
+    }
+    s.offline.apply(cmd);
+    None
+}
+
+fn render_offline(mut graph: Graph, offline: Offline, clock: Arc<Clock>, cancelled: &AtomicBool) -> Result<(AudioData, Vec<u32>), String> {
+    let mut channels: Vec<Vec<f32>> = Vec::new();
+    for _ in 0..offline.channels {
+        let mut channel = Vec::new();
+        channel.try_reserve_exact(offline.length).map_err(|_| format!("not enough memory for {} frames of {} channels", offline.length, offline.channels))?;
+        channels.push(channel);
+    }
+    let mut ended = Vec::new();
+    let mut done = 0;
+    while done < offline.length {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err("the page that started the rendering is gone".into());
+        }
+        let mut bus = [[0.0; QUANTUM]; 2];
+        graph.render(&mut bus, &mut ended);
+        let n = (offline.length - done).min(QUANTUM);
+        match &mut channels[..] {
+            [mono] => mono.extend((0..n).map(|i| (bus[0][i] + bus[1][i]) * 0.5)),
+            [left, right] => {
+                left.extend_from_slice(&bus[0][..n]);
+                right.extend_from_slice(&bus[1][..n]);
+            }
+            _ => {}
+        }
+        done += n;
+        clock.frames.store(graph.frame, Ordering::Release);
+    }
+    Ok((AudioData { rate: graph.rate(), channels }, ended))
 }
 
 thread_local! {
@@ -66,6 +159,7 @@ fn web() -> Option<u64> {
 }
 
 fn send(cmd: Cmd) {
+    let Some(cmd) = with_state(|s| offline_cmd(s, cmd)) else { return };
     let web = with_state(|s| s.web);
     if web != 0 {
         output::send(Ctl::Cmd(web, cmd));
@@ -85,6 +179,8 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>) {
     crate::methods!(scope, audio,
         "onEvent" => on_event,
         "createContext" => create_context,
+        "createOfflineContext" => create_offline_context,
+        "startRendering" => start_rendering,
         "setRunning" => set_running,
         "closeContext" => close_context,
         "time" => time,
@@ -122,6 +218,7 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>) {
 
 pub fn clear() {
     let state = with_state(std::mem::take);
+    state.rendering.cancelled.store(true, Ordering::Relaxed);
     if state.web != 0 {
         output::send(Ctl::Close(state.web));
     }
@@ -227,7 +324,75 @@ fn create_context(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments,
     }
     let clock = Arc::new(Clock::new());
     with_state(|s| s.clocks.insert(ctx, clock.clone()));
-    send(Cmd::CreateContext { ctx, dest, clock });
+    send(Cmd::CreateContext { ctx, dest, clock, rate: RATE });
+}
+
+fn create_offline_context(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
+    let (ctx, dest) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1));
+    let channels = bind::arg_u32(scope, &args, 2) as usize;
+    let length = bind::arg_f64(scope, &args, 3);
+    let rate = bind::arg_f64(scope, &args, 4);
+    if !(1..=2).contains(&channels) || !(length >= 1.0 && length * channels as f64 <= MAX_OFFLINE_SAMPLES as f64) || !(3000.0..=768_000.0).contains(&rate) {
+        return bind::throw_type_error(scope, "audio.createOfflineContext: bad channels, length or sample rate");
+    }
+    let clock = Arc::new(Clock::offline(rate));
+    with_state(|s| {
+        s.clocks.insert(ctx, clock.clone());
+        s.offline_contexts.insert(ctx, Offline { channels, length: length as usize });
+        s.offline_nodes.insert(dest, ctx);
+        s.offline.apply(Cmd::CreateContext { ctx, dest, clock, rate });
+    });
+}
+
+fn start_rendering(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let (ctx, buffer) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1));
+    let taken = with_state(|s| {
+        let offline = s.offline_contexts.remove(&ctx)?;
+        let graph = s.offline.take_graph(ctx)?;
+        s.offline_nodes.retain(|_, c| *c != ctx);
+        Some((offline, graph, s.clocks.get(&ctx)?.clone()))
+    });
+    let Some((offline, graph, clock)) = taken else {
+        return bind::throw_error(scope, "audio.startRendering: not an offline context that has yet to render");
+    };
+    let rendering = with_state(|s| s.rendering.clone());
+    let Some(ticket) = Ticket::take(&rendering, offline.length * offline.channels) else {
+        let message = bind::string(scope, "this page is rendering too much audio offline at once");
+        let error = v8::Exception::range_error(scope, message);
+        let resolver = v8::PromiseResolver::new(scope).expect("a promise resolver");
+        resolver.reject(scope, error);
+        return rv.set(resolver.get_promise(scope).into());
+    };
+    renderers().run(
+        scope,
+        &mut rv,
+        move || {
+            let rendered = render_offline(graph, offline, clock, &ticket.rendering.cancelled);
+            (buffer, rendered, ticket)
+        },
+        |scope, resolver, (buffer, rendered, _ticket)| {
+            let (data, ended) = match rendered {
+                Ok(rendered) => rendered,
+                Err(message) => {
+                    let message = bind::string(scope, &message);
+                    let error = v8::Exception::range_error(scope, message);
+                    resolver.reject(scope, error);
+                    return;
+                }
+            };
+            let fields = [("length", data.len() as f64), ("sampleRate", data.rate), ("numberOfChannels", data.channels.len() as f64)];
+            with_state(|s| s.buffers.insert(buffer, Arc::new(data)));
+            let ended_list = v8::Array::new(scope, ended.len() as i32);
+            for (i, id) in ended.iter().enumerate() {
+                let id = v8::Integer::new_from_unsigned(scope, *id);
+                ended_list.set_index(scope, i as u32, id.into());
+            }
+            let mut values: Vec<(&str, v8::Local<v8::Value>)> = fields.iter().map(|(name, value)| (*name, v8::Number::new(scope, *value).into())).collect();
+            values.push(("ended", ended_list.into()));
+            let obj = bind::object(scope, &values);
+            resolver.resolve(scope, obj.into());
+        },
+    );
 }
 
 fn time(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
@@ -302,11 +467,13 @@ fn decode(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
         return bind::throw_type_error(scope, "audio.decode: not bytes");
     };
     let bytes: Arc<[u8]> = bytes.into();
+    let rate = bind::arg_f64(scope, &args, 2);
+    let rate = if (3000.0..=768_000.0).contains(&rate) { rate } else { RATE };
     offload::run(
         scope,
         &mut rv,
         "acde-decode",
-        move || (buffer, decode::decode_all(bytes, RATE)),
+        move || (buffer, decode::decode_all(bytes, rate)),
         |scope, resolver, (buffer, result)| {
             let result = result.map(|data| {
                 let fields: Fields = [("length", data.len() as f64), ("sampleRate", data.rate), ("numberOfChannels", data.channels.len() as f64)];
@@ -571,4 +738,57 @@ fn stream_node(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _:
     let (node, source) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1));
     let tap = crate::host::capture::source(source).map(|capture| Box::new(live::LiveTap::new(capture)));
     send(Cmd::Node { node, op: NodeOp::Stream(tap) });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn graph(rate: f64, stop: Option<f64>) -> Graph {
+        let mut graph = Graph::new(rate, 1);
+        graph.add(2, Kind::Oscillator, Arc::new(Shared::new(Kind::Oscillator)));
+        graph.node(2, NodeOp::Param(0, ParamOp::Value(1000.0)));
+        graph.connect(2, 1, None);
+        graph.node(2, NodeOp::Start { when: 0.0, offset: 0.0, duration: None });
+        if let Some(at) = stop {
+            graph.node(2, NodeOp::Stop(at));
+        }
+        graph
+    }
+
+    #[test]
+    fn an_offline_render_has_the_length_rate_and_channels_asked_for() {
+        let clock = Arc::new(Clock::offline(24000.0));
+        let (data, ended) = render_offline(graph(24000.0, None), Offline { channels: 2, length: 1000 }, clock.clone(), &AtomicBool::new(false)).unwrap();
+        assert_eq!((data.rate, data.channels.len(), data.len()), (24000.0, 2, 1000));
+        assert_eq!(data.channels[0], data.channels[1], "a mono oscillator reaches both channels");
+        let crossings = data.channels[0].windows(2).filter(|w| w[0] <= 0.0 && w[1] > 0.0).count();
+        assert!((40..=42).contains(&crossings), "1000 Hz for 1000 frames at 24 kHz is about 41 periods, got {crossings}");
+        assert_eq!(clock.seconds(), 1024.0 / 24000.0, "the clock stops at the last rendered quantum");
+        assert!(ended.is_empty());
+    }
+
+    #[test]
+    fn a_mono_render_mixes_down_and_a_stopped_source_ends() {
+        let (data, ended) =
+            render_offline(graph(48000.0, Some(0.001)), Offline { channels: 1, length: 300 }, Arc::new(Clock::offline(48000.0)), &AtomicBool::new(false))
+                .unwrap();
+        assert_eq!((data.channels.len(), data.len()), (1, 300));
+        assert!(data.channels[0][..48].iter().any(|v| v.abs() > 0.5), "the oscillator sounds before it stops");
+        assert!(data.channels[0][48..].iter().all(|v| *v == 0.0), "and is silent from its stop time on");
+        assert_eq!(ended, [2]);
+    }
+
+    #[test]
+    fn a_page_renders_at_most_its_budget_at_once_and_a_cancelled_render_stops() {
+        let rendering = Arc::new(Rendering::default());
+        let first = Ticket::take(&rendering, MAX_OFFLINE_SAMPLES - 10).unwrap();
+        assert!(Ticket::take(&rendering, 11).is_none(), "over the budget while the first renders");
+        let small = Ticket::take(&rendering, 10).unwrap();
+        drop((first, small));
+        assert_eq!(rendering.samples.load(Ordering::Relaxed), 0);
+        let cancelled = AtomicBool::new(true);
+        let stopped = render_offline(graph(48000.0, None), Offline { channels: 1, length: 1000 }, Arc::new(Clock::offline(48000.0)), &cancelled);
+        assert!(stopped.is_err_and(|e| e.contains("gone")));
+    }
 }

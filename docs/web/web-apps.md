@@ -134,6 +134,13 @@
 - **声音**: `Audio` / `AudioContext` (acde-dom `src/audio/`, src/host `audio/`): 解码 (symphonia) 和混音 (每个 web 一个 48 kHz 立体声 f32
   `Mixer`, 线程 `acde-audio`) 到处一样. 输出: Linux PipeWire (`output.rs`); macOS / Windows cpal 默认设备 (`output_cpal.rs`, 用设备当前的采样率,
   Hermite 重采样, 设备要 f32). 3 秒没声音关流; 没有设备 (或 `ACDE_AUDIO=null`) 按墙上时间渲染丢掉.
+  - **`OfflineAudioContext`** (2026-11-19): 两种构造写法, 采样率 3000–768000 Hz 照给的 (`sampleRate` 是 context 自己的, `decodeAudioData` 也重采样到它),
+    声道 1 或 2 (3–32 以 `NotSupportedError` 拒绝, 还没有), 状态从 `suspended` 开始. 它的图不进混音器: 建节点、连线、参数都落在页面线程上一个只给
+    离线 context 的 `Mixer` 里 (src/host `audio/mod.rs` `offline_cmd`), 不开声音设备; `startRendering()` 把整张图交给 `acde-offline-audio` 线程池 (4 条)
+    一次算完 `length` 帧 (最后一个 quantum 截断, 不钳到 ±1). 一次最多 2^28 个样本 (帧数乘声道, 1 GB; 构造时超了是 `NotSupportedError`), 一个页面同时在算的离线渲染加起来
+    也最多这么多 (超了 promise 以 `RangeError` 拒绝), 页面没了时它还在算的渲染停下, 结果存成 AudioBuffer: 先发结束的音源的 `ended`, 状态变 `closed`, 兑现 promise, 下一个任务
+    发 `complete` (`OfflineAudioCompletionEvent.renderedBuffer`). 第二次 `startRendering` 是 `InvalidStateError`; `suspend(time)` 还没有
+    (`NotSupportedError`), `resume()` 是 `InvalidStateError`. `currentTime` 是已经渲染到的帧 (按 quantum). 渲染开始后再对这张图做的改动不生效.
   - **空间化** (`PannerNode` / `AudioListener`, src/host `audio/spatial.rs`): 方位角、仰角、三种距离模型、声锥和 `equalpower` 照规范
     §6 的算法 (参数在一个 quantum 里变时逐样本算, 不变时每 quantum 算一次), 单元测试对着 Chrome 的 `OfflineAudioContext` 输出 (2e-5 内).
     和规范伪代码不同、照 Chrome 的一处: 声锥用「声源指向听者」的方向 (正对听者的声源增益是 1). 监听者是每个 context 一个隐藏的图节点

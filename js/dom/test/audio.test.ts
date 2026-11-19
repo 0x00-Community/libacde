@@ -21,6 +21,13 @@ function fakeAudio() {
       callback = fn
     },
     createContext: record('createContext'),
+    createOfflineContext: record('createOfflineContext'),
+    startRendering(ctx: number, buffer: number) {
+      calls.push({ name: 'startRendering', args: [ctx, buffer] })
+      const starts = calls.filter((c) => c.name === 'start').map((c) => c.args[0] as number)
+      const shape = calls.find((c) => c.name === 'createOfflineContext' && c.args[0] === ctx)!.args
+      return Promise.resolve({ length: shape[3], sampleRate: shape[4], numberOfChannels: shape[2], ended: starts })
+    },
     setRunning: record('setRunning'),
     closeContext: record('closeContext'),
     time: () => 1.5,
@@ -37,8 +44,8 @@ function fakeAudio() {
     start: record('start'),
     stop: record('stop'),
     release: record('release'),
-    decode(buffer: number, bytes: Uint8Array) {
-      calls.push({ name: 'decode', args: [buffer, bytes.length] })
+    decode(buffer: number, bytes: Uint8Array, rate: number) {
+      calls.push({ name: 'decode', args: [buffer, bytes.length, rate] })
       if (bytes[0] !== 0x52) return Promise.reject(new Error('unsupported audio'))
       return Promise.resolve({ length: 4800, sampleRate: 48000, numberOfChannels: 2 })
     },
@@ -429,3 +436,62 @@ test('a playing media element taken out of the document pauses; moving it does n
   assert.ok(w.json<string[]>('events').includes('pause'))
   w.close()
 })
+
+test('OfflineAudioContext: both constructor forms, its own sample rate, and the standard refusals', async () => {
+  const { web: w, audio } = web()
+  const result = w.json<{ a: unknown[]; b: unknown[]; errors: string[] }>(`(() => {
+    const a = new OfflineAudioContext(2, 1000, 24000)
+    const b = new OfflineAudioContext({ length: 300, sampleRate: 44100 })
+    const errors = []
+    for (const make of [
+      () => new OfflineAudioContext(0, 10, 48000),
+      () => new OfflineAudioContext(4, 10, 48000),
+      () => new OfflineAudioContext(1, 0, 48000),
+      () => new OfflineAudioContext(1, 10, 100),
+      () => new OfflineAudioContext({ sampleRate: 48000 }),
+      () => new OfflineAudioContext(1, 10),
+      () => new OfflineAudioContext(2, 2 ** 27 + 1, 48000),
+    ]) { try { make(); errors.push('none') } catch (e) { errors.push(e.name) } }
+    return { a: [a.length, a.sampleRate, a.state, a.currentTime, a instanceof BaseAudioContext], b: [b.length, b.sampleRate, b.state], errors }
+  })()`)
+  assert.deepEqual(result.a, [1000, 24000, 'suspended', 1.5, true])
+  assert.deepEqual(result.b, [300, 44100, 'suspended'])
+  assert.deepEqual(result.errors, ['NotSupportedError', 'NotSupportedError', 'NotSupportedError', 'NotSupportedError', 'TypeError', 'TypeError', 'NotSupportedError'])
+  assert.deepEqual(audio.named('createOfflineContext').map((c) => c.slice(2)), [[2, 1000, 24000], [1, 300, 44100]])
+  assert.deepEqual(audio.named('createContext'), [])
+})
+
+test('OfflineAudioContext: startRendering resolves the rendered buffer, ends sources, closes, then fires complete', async () => {
+  const { web: w, audio } = web()
+  w.run(`
+    globalThis.log = []
+    const ctx = new OfflineAudioContext(1, 4800, 24000)
+    const osc = ctx.createOscillator()
+    osc.connect(ctx.destination)
+    osc.onended = () => log.push('ended')
+    ctx.onstatechange = () => log.push('state ' + ctx.state)
+    ctx.oncomplete = (e) => log.push('complete ' + (e instanceof OfflineAudioCompletionEvent) + ' ' + (e.renderedBuffer === globalThis.rendered))
+    osc.start()
+    ctx.startRendering().then((buffer) => { globalThis.rendered = buffer; log.push('resolved ' + [buffer.length, buffer.sampleRate, buffer.numberOfChannels].join(',')) })
+    ctx.startRendering().catch((e) => log.push('again ' + e.name))
+  `)
+  await w.wait(10)
+  const log = w.json<string[]>('log')
+  assert.ok(log.includes('again InvalidStateError'))
+  assert.deepEqual(log.filter((l) => !l.startsWith('state') && !l.startsWith('again')), ['ended', 'resolved 4800,24000,1', 'complete true true'])
+  assert.equal(log.filter((l) => l.startsWith('state')).length, 2, 'statechange to running, then to closed')
+  assert.equal(w.run('rendered.getChannelData(0).length'), 4800)
+  assert.equal(audio.named('startRendering').length, 1)
+  assert.equal(w.json<string[]>('[ctx.state]')[0], 'closed')
+  w.run('ctx.suspend(1).catch((e) => log.push("suspend " + e.name)); ctx.resume().catch((e) => log.push("resume " + e.name))')
+  await w.wait(5)
+  assert.deepEqual(w.json<string[]>('log').slice(-2), ['suspend NotSupportedError', 'resume InvalidStateError'])
+})
+
+test('decodeAudioData resamples to the rate of its context', async () => {
+  const { web: w, audio } = web()
+  w.run(`new OfflineAudioContext(1, 10, 22050).decodeAudioData(new Uint8Array([0x52, 1, 2]).buffer).catch(() => {})`)
+  await w.wait(5)
+  assert.deepEqual(audio.named('decode')[0]!.slice(2), [22050])
+})
+
