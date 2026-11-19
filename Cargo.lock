@@ -12,9 +12,9 @@ dependencies = [
 
 [[package]]
 name = "acss"
-version = "0.0.3"
+version = "0.0.4"
 source = "sparse+http://gitea.dopamine/api/packages/AC/cargo/"
-checksum = "758675f45c3f4b9f1c7bd7525981bc2a1ea5723bea1f4744dc73ec4b0dd4d4d5"
+checksum = "7b721ea8c41ef5bebdd088d27fa624ea9f481096a5aeb2bd4ece0e3cdfa0aad9"
 dependencies = [
  "cssparser",
  "log",
