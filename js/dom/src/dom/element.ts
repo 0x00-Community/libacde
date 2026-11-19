@@ -903,7 +903,7 @@ export function windowHandlerOf(type: string): void {
   if (!flags.inlineHandlers || windowDecided.has(type) || !BODY_WINDOW_TYPES.has(type)) return
   const body = bodyId()
   if (body === NONE || dom.localName(body) !== 'body') return
-  const source = dom.getAttribute(body, `on${type}`)
+  const source = dom.getAttribute(body, `on${type.toLowerCase()}`)
   if (source === null) return
   windowDecided.add(type)
   if (getHandler(G as unknown as EventTarget, type) === null) setHandler(G as unknown as EventTarget, type, source)
@@ -920,7 +920,7 @@ export function handlerOf(element: Element, type: string): unknown {
   const seen = (holder[SEEN] ??= new Set())
   if (!seen.has(type)) {
     seen.add(type)
-    const source = dom.getAttribute(element[ID], `on${type}`)
+    const source = dom.getAttribute(element[ID], `on${type.toLowerCase()}`)
     if (source !== null && getHandler(element, type) === null) setHandler(element, type, source)
   }
   return getHandler(element, type)

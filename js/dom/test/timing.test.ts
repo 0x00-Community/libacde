@@ -222,3 +222,22 @@ test('CSS animation and transition events: asked for once a page listens, fired 
     'transitionend opacity 0.3 TransitionEvent',
   ])
 })
+
+test('CSS events reach webkit-prefixed listeners when the target has none for the standard name (SweetAlert2)', async () => {
+  using web = await page('<!doctype html><html><body><div id="a"></div><div id="b"></div><p id="t"></p></body></html>')
+  const id = (sel: string) => web.internals.idOf(web.run(`document.querySelector('${sel}')`))
+  const record = (type: string, target: number, name: string) => ({ type, transition: type.startsWith('transition'), target, name, elapsedTime: 0.1, pseudoElement: '' })
+  web.run(`
+    globalThis.log = []
+    document.getElementById('a').addEventListener('webkitAnimationEnd', (e) => log.push('a ' + e.type + ' ' + e.constructor.name))
+    const b = document.getElementById('b')
+    b.addEventListener('webkitAnimationEnd', () => log.push('b webkit'))
+    b.addEventListener('animationend', (e) => log.push('b ' + e.type))
+    document.getElementById('t').onwebkittransitionend = (e) => log.push('t ' + e.type)
+    document.getElementById('a').dispatchEvent(new AnimationEvent('animationend'))
+  `)
+  web.dom.animationEvents.push(record('animationend', id('#a'), 'pop'), record('animationend', id('#b'), 'pop'), record('transitionend', id('#t'), 'opacity'))
+  web.frame()
+  assert.deepEqual(web.json('log'), ['a webkitAnimationEnd AnimationEvent', 'b animationend', 't webkitTransitionEnd'], 'events a script dispatches, and targets with a standard listener, get no prefixed call')
+  assert.equal(web.run(`(() => { const e = new AnimationEvent('animationend'); document.getElementById('a').dispatchEvent(e); return e.type })()`), 'animationend')
+})

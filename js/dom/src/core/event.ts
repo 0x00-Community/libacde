@@ -140,7 +140,19 @@ export class Event {
     invoke = (target, event, capture) => {
       const map = (target as Targetish)[LISTENERS]
       const list = map?.get(event.#type)
-      if (!list || list.length === 0) return
+      if (list?.some((listener) => !listener.removed)) return run(target, event, capture, list)
+      const legacy = event.#trusted ? LEGACY_TYPES[event.#type] : undefined
+      const old = legacy === undefined ? undefined : map?.get(legacy)
+      if (!old?.length) return
+      const type = event.#type
+      event.#type = legacy!
+      try {
+        run(target, event, capture, old)
+      } finally {
+        event.#type = type
+      }
+    }
+    const run = (target: EventTarget, event: Event, capture: boolean, list: Listener[]): void => {
       event.#current = target
       for (let i = 0; i < list.length; i++) {
         const listener = list[i]!
@@ -369,9 +381,19 @@ export function getHandler(target: EventTarget, type: string): unknown {
   return typeof entry.value === 'function' || (entry.value && typeof entry.value === 'object') ? entry.value : null
 }
 
-export function defineHandlers(proto: object, types: readonly string[]): void {
-  for (const type of types) {
-    Object.defineProperty(proto, `on${type}`, {
+const LEGACY_TYPES: Record<string, string> = {
+  animationend: 'webkitAnimationEnd',
+  animationiteration: 'webkitAnimationIteration',
+  animationstart: 'webkitAnimationStart',
+  transitionend: 'webkitTransitionEnd',
+}
+
+const HANDLER_TYPES: Record<string, string> = Object.fromEntries(Object.values(LEGACY_TYPES).map((type) => [type.toLowerCase(), type]))
+
+export function defineHandlers(proto: object, names: readonly string[]): void {
+  for (const name of names) {
+    const type = HANDLER_TYPES[name] ?? name
+    Object.defineProperty(proto, `on${name}`, {
       get(this: EventTarget) {
         hooks.inline?.(this ?? G, type, false)
         return getHandler(this ?? G, type)
