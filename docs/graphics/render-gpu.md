@@ -22,11 +22,11 @@
   tick 只对齐到 vblank. `Frame {plane, panels, size, animating, commit, trace}`: plane 是整页 (含画布背景, 不含面板); `panels` 是
   `Dom::set_panel` 钉住的元素 `Panel {id, size, plane, extent}`. `Plane {drawing, layers, damage, damage_rects (最多 8 块), bounds}`;
   layers 是有 backdrop-filter / filter 时切成的段, 每段 `{drawing, bounds, backdrop, filter}` (`Drawing` 出 `scene` / `scene_for`): backdrop 先处理画布上已画的那块再画这段, filter
-  先画进临时纹理再合成. 光栅化方 (detour 的回退) 做 filter 的 drop-shadow、模糊、颜色矩阵, backdrop 的模糊和所有颜色函数 (`Backdrop::effect`:
+  先画进临时纹理再合成. 光栅化方 (src/vello) 做 filter 的 drop-shadow、模糊、颜色矩阵, backdrop 的模糊和所有颜色函数 (`Backdrop::effect`:
   按顺序合成一个颜色矩阵, 几个 blur 按平方和开方合并); backdrop-filter 里的 drop-shadow 不做; 只切最外层: 已有 filter 的元素里面再有 filter / backdrop-filter 时不做 (#46);
   这两种同一组滤镜只记一次 warn (最多记 64 组).
   窗口之间的毛玻璃 (`setBackdrop`、面板的 `backdrops`) 仍只带 blur / saturate / brightness.
-- 模糊 (detour `Composer`、shell `effects.rs`) 是降采样 / 升采样链, 几层、采样偏移多大由 acde-model `Blur::of(sigma)` 一处决定
+- 模糊 (src/vello `Composer`、shell `effects.rs`) 是降采样 / 升采样链, 几层、采样偏移多大由 acde-model `Blur::of(sigma)` 一处决定
   (也给出窗口之间毛玻璃的取样外扩 `margin`): 偏移在约 0.5–1.3 之间连续调 (一层时从 0 起, 五层时最多到 2), 强度随 sigma 连续变,
   近似同 sigma 的高斯 (`SPREAD` 是 DX12 上量出的每档方差, `tests/vello_compose.rs` 按相位平均量边缘的展宽对照); sigma 小于约
   0.96 px 时一层不偏移, 再按 `mix` 和原图混合. sigma 为 0 不模糊 (drop-shadow、backdrop 只拷一份). shell 的 GLES 链不做 `mix`.
@@ -36,7 +36,7 @@
   `getImageData` / `toDataURL` 同步读回. 提交都拿 `Gpu::submit_lock`. `drawImage` 一张 SVG 的 `<img>` 时按它的自然尺寸画成场景
   (blitz-paint `svg_picture`, 和 `<img>` 同一画法). `ctx.filter`: acde-dom 解析 `<filter-value-list>` (无效的值不改, 长度只认 px),
   命令 14 送效果 (blur、brightness、contrast、grayscale、hue-rotate、invert、opacity、saturate、sepia、drop-shadow; url() 不支持);
-  有滤镜时每次绘制先把它的范围 (加上效果外扩, 裁到画布) 画进一张图, detour `Offscreen::filtered` 依次做 (`blur.wgsl` 的
+  有滤镜时每次绘制先把它的范围 (加上效果外扩, 裁到画布) 画进一张图, src/vello `Offscreen::filtered` 依次做 (`blur.wgsl` 的
   `blur_rgba` 全通道模糊、`matrix.wgsl` 颜色矩阵、drop-shadow 是 alpha 模糊再垫在下面), 再画回去; 阴影还按没滤过的形状算.
 - `createImageBitmap` / `ImageBitmap` (acde-dom `dom/bitmap.ts`): 把 `<img>`、`Blob`、`ImageData`、canvas、`ImageBitmap` 画进一个不挂在文档上的
   2D 画布, 支持裁剪矩形、`resizeWidth` / `resizeHeight`、`imageOrientation: 'flipY'`、`premultiplyAlpha` (WebGL 上传时按它, 不看
@@ -82,11 +82,12 @@
 - **网页优先在 GPU 上画, 没有 GPU 时回退 CPU** (用户定 2026-11-13): 没有 vello_cpu; `acde::gpu::adapters` 真 GPU 排前, CPU 类型的设备 (lavapipe)
   排最后, 只有它时用它 (虚拟机 / VNC, 慢). 这时页面的 WebGPU 适配器 `isFallbackAdapter` (`GPUAdapter` 和 `GPUAdapterInfo` 上都有) 为 true, 页面可以据此降级 (src/host/webgpu `adapter_info`: 设备类型是 CPU). 什么设备都没有时网页图层不可用 (日志 `web layer unavailable`), 页面不出帧.
   合成器自己 (GLES) 不在此列. acdebin-system 的会话不走这条: 没有 GPU 时它在 CPU 上画页面, 不用 lavapipe (见它的 `docs/window-paint.md`).
-- **用 detour 的类型和回退, 不带专用驱动** (用户定 2026-11-14): 依赖 detour 不开 `compiler` (没有 MLIR / 驱动), 只开 `fallback-vulkan`, 即只经标准图形接口
-  (wgpu), 每个 OS 只编一个后端: Windows DX12、Linux Vulkan、macOS Metal (`acde::gpu::BACKEND`). 2D 场景 (`PaintScene` / `Scene` / `RenderCommand` /
-  `Filter`, blitz-paint 和 render 直接画进它) 和渲染器 (`Vello` / `Raster` / `Composer` / `Device` / `Offscreen` / `GpuImage`, Linux 上 dma-buf 画布导入和
-  sync_file) 都是 detour 的; src/gpu 的 `Gpu` (设备登记, 唯一一份) 包着 detour 的 `Shared`; Xe3 驱动只在 acdebin-system 的 paint 里用 (`PageRaster`); crates/paint
-  只剩线程、GBM 画布、损伤和区域、把帧拆成 `Part` (`plane.rs`).
+- **两种后端, 按 feature 选** (用户定 2026-11-19): wgpu (src/vello) 和 detour (还没有, 以后在 `src/detour`). acdev 只开 wgpu: 三个平台一致, 给开发者用;
+  acdes 开 detour 加 wgpu: Xe3 上走 detour, 别的 GPU 走 wgpu, 没有 GPU 时在 CPU 上画, WebGPU 总是 wgpu. wgpu 每个 OS 只编一个后端: Windows DX12、Linux Vulkan、
+  macOS Metal (`acde::gpu::BACKEND`). 2D 场景 (`PaintScene` / `Scene` / `RenderCommand` / `Filter`, blitz-paint 和 render 直接画进它) 是 `acde-scene` 的;
+  渲染器 (`Vello` / `Raster` / `Composer` / `Device` / `Offscreen` / `GpuImage`, Linux 上 dma-buf 画布导入和 sync_file) 在 src/vello; src/gpu 的 `Gpu`
+  (设备登记, 唯一一份) 包着 src/vello 的 `Shared`. acgpu 和 detour-gpu 0.1 都不再用. acdes 的 crates/paint 只剩线程、GBM 画布、损伤和区域、把帧拆成 `Part`
+  (`plane.rs`), 以及 CPU 画页面.
 - Windows DX12 的着色器编译器是静态链接的 DXC (wgpu `static-dxc`, mach-dxcompiler 的预编译库): 不用 FXC (FXC 编的 vello 着色器约 10 秒后
   `DXGI_ERROR_DEVICE_REMOVED`), 不用 dxcompiler.dll.
 - 原生应用经 linux-dmabuf v4 零拷贝, 全屏且格式合适时直扫; pre-commit 钩子等 syncobj acquire point 或 dmabuf 的读 fence. 缺口: presentation
@@ -103,7 +104,7 @@
 ## src/render 的已知问题和测试数据
 
 - canvas 的 `createPattern` 在第一次用时才取来源的位图 (规范是创建那一刻).
-- vello 0.11 没有图片的场景把图集当 1x1 重建、已上传的图片画空; 每个场景垫一块 1x1 渐变绕开 (detour `Vello::render`), 升级 vello 时看
+- vello 0.11 没有图片的场景把图集当 1x1 重建、已上传的图片画空; 每个场景垫一块 1x1 渐变绕开 (src/vello `Vello::render`), 升级 vello 时看
   上游修了没有.
 - `ACDE_PAINT_VERIFY=1` 下机器忙时 `tests/damage.rs` 偶发等帧超时, 单独重跑都过.
 - `tests/fixtures/replay/*.ops.gz` 是旧 acde-host 的 DOM 操作流 (`tests/replay.rs` 回放, 格式见它), `svg/*.svg` 是简单 SVG 的对比用例, 元素的特殊渲染

@@ -3,6 +3,14 @@
 version = 4
 
 [[package]]
+name = "acde-scene"
+version = "0.1.0"
+dependencies = [
+ "kurbo",
+ "peniko",
+]
+
+[[package]]
 name = "acss"
 version = "0.0.2"
 source = "sparse+http://gitea.dopamine/api/packages/AC/cargo/"
@@ -466,6 +474,7 @@ dependencies = [
 name = "blitz-dom"
 version = "0.3.0-beta.5"
 dependencies = [
+ "acde-scene",
  "acss",
  "app_units",
  "atomic_refcell",
@@ -474,7 +483,6 @@ dependencies = [
  "color",
  "cssparser",
  "debug_timer",
- "detour-gpu",
  "euclid",
  "html-escape",
  "icu_casemap",
@@ -513,11 +521,11 @@ dependencies = [
 name = "blitz-paint"
 version = "0.3.0-beta.5"
 dependencies = [
+ "acde-scene",
  "blitz-dom",
  "blitz-traits",
  "bytemuck",
  "color",
- "detour-gpu",
  "image",
  "kurbo",
  "parley",
@@ -1180,24 +1188,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "detour-gpu"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6eee242918ade196191f3b346f53a758a81ffd01db8f9b113dc2f9ed007966bb"
-dependencies = [
- "ash",
- "kurbo",
- "libc",
- "log",
- "peniko",
- "pollster",
- "rustix 1.1.6",
- "serde",
- "vello",
- "wgpu",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1775,17 +1765,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gl_generator"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a95dfc23a2b4a9a2f5ab41d194f8bfda3cabec42af4e39f08c339eb2a0c124d"
-dependencies = [
- "khronos_api",
- "log",
- "xml-rs",
-]
-
-[[package]]
 name = "glib"
 version = "0.22.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1833,27 +1812,6 @@ name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
-
-[[package]]
-name = "glow"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29038e1c483364cc6bb3cf78feee1816002e127c331a1eec55a4d202b9e1adb5"
-dependencies = [
- "js-sys",
- "slotmap",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
-name = "glutin_wgl_sys"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c4ee00b289aba7a9e5306d57c2d05499b2e5dc427f84ac708bd2c090212cf3e"
-dependencies = [
- "gl_generator",
-]
 
 [[package]]
 name = "gobject-sys"
@@ -2680,23 +2638,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "khronos-egl"
-version = "6.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6aae1df220ece3c0ada96b8153459b67eebe9ae9212258bb0134ae60416fdf76"
-dependencies = [
- "libc",
- "libloading 0.8.9",
- "pkg-config",
-]
-
-[[package]]
-name = "khronos_api"
-version = "3.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
-
-[[package]]
 name = "kstring"
 version = "2.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2733,6 +2674,7 @@ checksum = "744a4c881f502e98c2241d2e5f50040ac73b30194d64452bb6260393b53f0dc9"
 name = "libacde"
 version = "0.1.0"
 dependencies = [
+ "acde-scene",
  "aes",
  "ash",
  "async-channel",
@@ -2749,7 +2691,6 @@ dependencies = [
  "cpal",
  "cssparser",
  "data-url",
- "detour-gpu",
  "dispatch2",
  "encoding_rs",
  "env_logger",
@@ -6376,18 +6317,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wayland-sys"
-version = "0.31.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8eab23fefc9e41f8e841df4a9c707e8a8c4ed26e944ef69297184de2785e3be"
-dependencies = [
- "dlib",
- "log",
- "once_cell",
- "pkg-config",
-]
-
-[[package]]
 name = "web-sys"
 version = "0.3.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6500,7 +6429,6 @@ dependencies = [
  "smallvec",
  "thiserror 2.0.21",
  "wgpu-core-deps-apple",
- "wgpu-core-deps-emscripten",
  "wgpu-core-deps-windows-linux-android",
  "wgpu-hal",
  "wgpu-naga-bridge",
@@ -6512,15 +6440,6 @@ name = "wgpu-core-deps-apple"
 version = "30.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d3f2f24aee039ffe9ef527300daf6b7428c58edeefdaa1700f4fa0fd754df16"
-dependencies = [
- "wgpu-hal",
-]
-
-[[package]]
-name = "wgpu-core-deps-emscripten"
-version = "30.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55ccf093bd215ae9dc4f96df293e675513ac1f2569f8293a2911cc34ca3505d1"
 dependencies = [
  "wgpu-hal",
 ]
@@ -6549,19 +6468,14 @@ dependencies = [
  "bytemuck",
  "cfg-if",
  "cfg_aliases",
- "glow",
- "glutin_wgl_sys",
  "gpu-allocator",
  "hashbrown 0.17.1",
- "js-sys",
- "khronos-egl",
  "libc",
  "libloading 0.8.9",
  "log",
  "mach-dxcompiler-rs",
  "naga",
  "naga-types",
- "ndk-sys",
  "objc2",
  "objc2-core-foundation",
  "objc2-core-graphics",
@@ -6581,14 +6495,10 @@ dependencies = [
  "smallvec",
  "static_assertions",
  "thiserror 2.0.21",
- "wasm-bindgen",
- "wayland-sys",
- "web-sys",
  "wgpu-naga-bridge",
  "wgpu-types",
  "windows",
  "windows-core 0.62.2",
- "windows-result 0.4.1",
 ]
 
 [[package]]
@@ -7048,12 +6958,6 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
 ]
-
-[[package]]
-name = "xml-rs"
-version = "0.8.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xmlwriter"
