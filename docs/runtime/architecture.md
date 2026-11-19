@@ -102,6 +102,12 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
   `acde:input` (能力 `input`, src/host `input.rs`): 合成器的 xkb 布局 / 型号 / 选项、按键重复、NumLock 和鼠标 / 触控板的 libinput 设置;
   `state()` / `set(patch)` / `on('changed')` 走前端 `Platform::input()` 给的 `Input` (acdebin-system 的会话经 acde_shell `set_input` / `input` 事件;
   acdev runtime 没有, 调用就抛), `catalog()` 读 xkeyboard-config 的 `rules/evdev.xml` (runtime `XkbCatalog`).
+  输入法 (`ime`, runtime `fcitx.rs`, 和 `ime.rs` 同一条会话 D-Bus): `state()` 多一项 `ime {running, current, group}`, `set({ime: {current?, group?}})`、
+  `catalog()` 多一项 `imes`, 都经 fcitx5 的 `org.fcitx.Fcitx5` `/controller` `org.fcitx.Fcitx.Controller1`: 当前输入法 `CurrentInputMethod` /
+  `SetCurrentIM`; 分组 `CurrentInputMethodGroup` 加 `InputMethodGroupInfo` / `SetInputMethodGroupInfo` (改分组时保留原有项的布局, 不认识的 id 报错);
+  目录 `AvailableInputMethods` (名字取 nativeName, 没有时取 name; `short` 是 label; `languages` 是 languageCode). `on('changed')` 在分组变时
+  (`InputMethodGroupsChanged` 信号) 和当前输入法变时 (约 1 秒一次轮询, 只在页面订阅了才起) 也发. fcitx5 不在 (登录页会话不起它、没有会话总线)
+  时 `running: false`、`group: []`、`imes: []`, 写 `ime` 报错; 其余设置照常.
   `acde:display` (能力 `display`, src/host `display.rs`): `state()` 是前端 `Platform::display()` 给的输出表 (acde_shell `display` 事件),
   内置屏的 `brightness` 由这里用 `acde:power` 的背光补上; `configure(id, {scale})` 经 acde_shell `set_scale` (只认 1..3 的整数, 别的键还没有),
   `setBrightness(id, v)` 只对内置屏 (logind 背光), `setNightLight` 还没有. 两者都是进程内模块, 不经 Broker; Linux only. `acde:office` 的根就是调用方 `acde:fs` 的根 (#96, `OfficeService::for_web` 带上这个 web 的 `Workspace`,

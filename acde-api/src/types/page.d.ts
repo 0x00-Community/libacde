@@ -992,11 +992,24 @@ export interface InputTouchpad extends InputPointer {
   readonly clickMethods: readonly InputClick[]
 }
 
+export interface InputMethodItem {
+  readonly id: string
+  readonly name: string
+  readonly short: string
+}
+
+export interface InputMethodState {
+  readonly running: boolean
+  readonly current: string | null
+  readonly group: readonly InputMethodItem[]
+}
+
 export interface InputState {
   readonly keyboard: InputKeyboard
   readonly mouse: InputPointer
   readonly touchpad: InputTouchpad
   readonly devices: readonly { readonly name: string; readonly kind: 'mouse' | 'touchpad' }[]
+  readonly ime?: InputMethodState
 }
 
 type InputNullable<T> = { readonly [K in keyof T]?: T[K] | null }
@@ -1005,6 +1018,7 @@ export interface InputPatch {
   readonly keyboard?: InputNullable<Omit<InputKeyboard, 'active' | 'current'>>
   readonly mouse?: InputNullable<Omit<InputPointer, 'present'>>
   readonly touchpad?: InputNullable<Omit<InputTouchpad, 'present' | 'scrollMethods' | 'clickMethods'>>
+  readonly ime?: { readonly current?: string; readonly group?: readonly string[] }
 }
 
 export interface InputCatalog {
@@ -1022,6 +1036,7 @@ export interface InputCatalog {
     readonly multiple: boolean
     readonly options: readonly { readonly id: string; readonly name: string }[]
   }[]
+  readonly imes?: readonly (InputMethodItem & { readonly languages: readonly string[] })[]
 }
 
 export interface AcdeInput {
