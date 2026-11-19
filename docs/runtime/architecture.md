@@ -85,7 +85,7 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
   声卡配置和各应用的流 (默认设备、音量、静音、平衡、端口、配置、把流挪到别的设备); `on('changed')` 由 acde-host `watched.ts` (`Watched.module`,
   只有 changed 事件的模块共用) 包在原生 `watch` 上.
   `acde:devices` (能力 `devices`, src/host `devices.rs` → runtime `devices/`): UDisks2 上的可移动驱动器 (挂载、卸载、弹出)、
-  CUPS 打印机 (经 IPP: 默认打印机、暂停 / 恢复、任务和取消)、自动挂载设置 (登录时 / 插入时 / 未知设备, 每个设备单独设); 事件 `changed` / `added`
+  CUPS 打印机 (经 IPP: 默认打印机、暂停 / 恢复、任务和取消)、自动挂载设置 (登录时 / 插入时 / 未知设备, 每个设备单独设; 存在 `~/.config/acde/automount.json`, 默认插入时挂载、未知设备也挂, 登录时不挂, 用户 2026-11-20 定, 设置里可关; 文件里缺的键按默认); 事件 `changed` / `added`
   (新插入的驱动器) 由 acde-host `devices.ts` 包在原生 `watch(type)` / `unwatch(id)` 上. 自动挂载的监视只在自己的会话里由 Broker 调
   `sys.startDevices()` 起.
   `acde:power` (能力 `power`, src/host `power.rs` → runtime `power/`): UPower 的电池、power-profiles-daemon 的模式、
