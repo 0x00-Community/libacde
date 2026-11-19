@@ -54,7 +54,14 @@ pub(crate) fn client() -> ntex::client::Client {
     CLIENT.with(Clone::clone)
 }
 
+pub(crate) fn default_provider() {
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        _ = rustls::crypto::ring::default_provider().install_default();
+    }
+}
+
 fn build_client() -> ntex::client::Client {
+    default_provider();
     let tls = tls().expect("acde runtime: TLS");
     ntex::client::Client::builder().rustls((*tls).clone()).build(ntex::SharedCfg::new("acde-http").add(tls_config()))
 }
@@ -197,5 +204,15 @@ pub(crate) mod frames {
         reader.read_exact(&mut payload).expect("payload");
         payload.iter_mut().enumerate().for_each(|(i, b)| *b ^= key[i % 4]);
         (head[0] & 0x80 != 0, head[0] & 0x0f, payload)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_process_default_provider_is_there_before_ntex_builds_its_own_rustls_config() {
+        super::default_provider();
+        super::default_provider();
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
     }
 }

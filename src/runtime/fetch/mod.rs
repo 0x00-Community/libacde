@@ -136,11 +136,14 @@ impl Dial {
 
 thread_local! {
     static DIALED: RefCell<HashMap<String, IoBoxed>> = RefCell::default();
-    static CLIENT: ntex::client::Client = ntex::client::Client::builder()
+    static CLIENT: ntex::client::Client = {
+        crate::runtime::http::default_provider();
+        ntex::client::Client::builder()
         .connector(fn_service(async |connect: Connect<Url>| {
             DIALED.with(|dialed| dialed.borrow_mut().remove(connect.host())).ok_or_else(|| ntex::Error::from(ConnectError::Unresolved))
         }))
-        .build(ntex::SharedCfg::new("acde-fetch").add(ntex::client::ClientConfig::new().set_h1_connection_limit(0)));
+        .build(ntex::SharedCfg::new("acde-fetch").add(ntex::client::ClientConfig::new().set_h1_connection_limit(0)))
+    };
 }
 
 fn is_token(text: &str) -> bool {
