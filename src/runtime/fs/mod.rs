@@ -4,6 +4,7 @@ mod copy;
 pub(crate) mod path;
 mod picked;
 mod ranged;
+pub(crate) mod removable;
 mod save;
 pub(crate) mod workspace;
 
@@ -91,7 +92,7 @@ impl Shared {
 
     fn root_in(roots: &[FinderRoot], view: View, id: &str) -> Outcome<FinderRoot> {
         match view {
-            View::All(_) => roots.iter().find(|root| root.path == id).cloned().ok_or_else(|| Failure::invalid("not a Runtime workspace")),
+            View::All(_) => roots.iter().find(|root| root.path == id || root.id == id).cloned().ok_or_else(|| Failure::invalid("not a Runtime workspace")),
             View::Files(_) => Files::find(roots.iter().filter(|root| root.id == id).cloned().collect(), id),
         }
     }

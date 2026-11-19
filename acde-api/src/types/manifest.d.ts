@@ -1,4 +1,4 @@
-import type { SharedPlace } from './places'
+import type { FsRootName } from './places'
 import type { IconName, ShellModule } from './names'
 
 export type { IconName, ShellModule }
@@ -50,7 +50,7 @@ export interface AppBackend {
 }
 
 export interface Capabilities {
-  readonly fs?: boolean | { readonly roots: readonly SharedPlace[] }
+  readonly fs?: boolean | { readonly roots: readonly FsRootName[] }
   readonly terminal?: boolean
   readonly network?: boolean
   readonly system?: boolean
