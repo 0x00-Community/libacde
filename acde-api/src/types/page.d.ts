@@ -139,6 +139,11 @@ export interface AcdeFs {
   locate(path: string): Promise<{ root: string; path: string }>
   openPath(root: string, path: string): Promise<{ root: string; path: string; file: string }>
   revoke(rootPath: string): Promise<void>
+  on?(type: 'roots', handler: (event: FsRootsEvent) => void): () => boolean
+}
+
+export interface FsRootsEvent {
+  readonly removed: readonly string[]
 }
 
 export interface NativeWindow {
@@ -300,6 +305,7 @@ export interface AcdeApps extends AcdeAppList, AcdeOpenFiles {
   install(dir: string): Promise<{ id: string; dir: string; apps: DesktopApp[] }>
   natives(): Promise<NativeApp[]>
   runNative(id: string): Promise<number>
+  unlend?(dir: string): Promise<{ revoked: number }>
 }
 
 export interface AcdePackages {

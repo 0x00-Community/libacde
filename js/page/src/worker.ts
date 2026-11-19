@@ -1,3 +1,4 @@
+import { Notices } from './notices'
 import { install, installBackendTransport, observe } from '@dopame/acde-dom'
 import type { AudioNative, BackendTransport, CaptureNative, DeviceNative, DomNative, GpuNative, HostNative, StorageNative, WebglNative } from '@dopame/acde-dom'
 import type { ServiceShape, WebInit } from './contract'
@@ -195,6 +196,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   })
   let devhot = (): void => {}
   const managerPower = new WatchFeed()
+  const fsRoots = new Notices()
   port.onMessage((message) => {
     if (rpc.receive(message)) return
     const m = message as {
@@ -238,6 +240,8 @@ export default async function boot(natives: WebNatives): Promise<void> {
         return devhot()
       case 'services':
         return bridge.replaceServices(m.services ?? {})
+      case 'fsroots':
+        return fsRoots.emit('roots', { removed: (m as { removed?: unknown }).removed ?? [] })
       case 'power':
         return managerPower.push((m as { event?: unknown }).event)
       case 'permit':
@@ -276,7 +280,16 @@ export default async function boot(natives: WebNatives): Promise<void> {
   if (bridge.value['desktop']) bridge.value['desktop'] = { ...(bridge.value['desktop'] as object), ...Frame.desktop(surface) }
   if (natives.fs) {
     const typed = FsModule.typed(natives.fs)
-    bridge.value['fs'] = { ...typed, roots: async () => HostStrings.roots(await (typed as unknown as { roots(): Promise<unknown> }).roots(), language) }
+    const roots = (handler: unknown) => {
+      if (typeof handler !== 'function') throw new TypeError('acde:fs on: the handler is not a function')
+      return fsRoots.on('roots', handler as (detail: unknown) => void)
+    }
+    const on = (type: string, handler: unknown) => {
+      if (type !== 'roots') throw new TypeError(`acde:fs has no ${String(type)} event (roots)`)
+      return roots(handler)
+    }
+    const listed = async () => HostStrings.roots(await (typed as unknown as { roots(): Promise<unknown> }).roots(), language)
+    bridge.value['fs'] = { ...typed, roots: listed, on }
   }
   if (natives.terminal) bridge.value['terminal'] = natives.terminal
   const checked = (name: string, value: object) => {

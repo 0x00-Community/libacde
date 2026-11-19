@@ -26,6 +26,9 @@ root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOW
 - 登记的根放在进程内 (`fs/mod.rs` 的 `Shared.lent`, 按应用编号), 同一应用同名的后来的替换先前的, 进程结束就没了, 不记进批准.
   `roots()` 里排在私有文件夹和公共位置之后: `{id: name, label: label 或目录名, source: 'lent'}`, 可读写, 按 `name` 当 root 用.
   `name` 不能是 `private`、公共位置名或 `folder-` 开头, `dir` 要是绝对路径, 不合的拒绝 (`LentRoot::checked`).
+- 收回: 桌面调 `acde:apps` 的 `unlend(dir)` (管家的 `apps.unlend`, 只有桌面能调, 应答 `{revoked: 收回几个}`), 管家对借过这个目录的每个进程推 `{type: 'unlend', name}`;
+  启动器经 `sys.unlendRoot(应用编号, name)` 从 `Shared.lent` 去掉 (`Workspace::unlend`), 之后 `roots()` 不再列它, 拿它当 root 的调用按不是自己的根拒绝;
+  去掉了就给页面发 `acde:fs` 的 `roots` 事件 `{removed: [name]}`, 页面据此重新取 `roots()`. 宿主上没有管家, 没有这条路.
 - 桌面经 `acde:apps` 的 `open(app, request, {root: {name, dir, label?}})` 请管家借出 (SDK `OpenWindowOptions.root`, 只给桌面用), 管家决定给不给.
 
 **拖放和打开请求的句柄** (#68): 用户交给应用的文件和文件夹是标准的 `FileSystemHandle`, 页面拿不到路径.
