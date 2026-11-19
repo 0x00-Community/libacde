@@ -59,10 +59,10 @@ class AudioParam {
     this.#owner = owner
     this.#node = owner[ID]
     this.#index = index
-    this.#default = defaultValue
-    this.#min = min
-    this.#max = max
-    this.#value = defaultValue
+    this.#default = Math.fround(defaultValue)
+    this.#min = Math.fround(min)
+    this.#max = Math.fround(max)
+    this.#value = this.#default
   }
 
   get defaultValue(): number {
@@ -84,7 +84,7 @@ class AudioParam {
     return Math.min(this.#max, Math.max(this.#min, this.#value))
   }
   set value(value: number) {
-    const v = finite('AudioParam.value', value)
+    const v = Math.fround(finite('AudioParam.value', value))
     this.#value = v
     native?.automate(this.#node, this.#index, 0, v, 0, 0)
   }

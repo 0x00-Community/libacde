@@ -319,7 +319,7 @@ test('the effect nodes: their kinds, settings and checks reach the audio thread'
   })()`)
   assert.deepEqual(result, {
     type: 'highpass', mag: [0.5, 0.5, 0.5], errors: ['InvalidAccessError', 'NotSupportedError', 'NotSupportedError', 'RangeError', 'InvalidStateError', 'NotSupportedError', 'NotSupportedError', 'IndexSizeError', 'IndexSizeError', 'IndexSizeError'],
-    delayMax: 1.2, curve: [-1, 0, 1], oversample: '2x', reduction: -7.5, threshold: -24, bins: 32, bytes: [7, 7, 0], floats: -3, convolverChannels: 2, nyquist: 24000,
+    delayMax: Math.fround(1.2), curve: [-1, 0, 1], oversample: '2x', reduction: -7.5, threshold: -24, bins: 32, bytes: [7, 7, 0], floats: -3, convolverChannels: 2, nyquist: 24000,
   })
   const created = audio.named('createNode') as number[][]
   assert.deepEqual(created.map((n) => n[2]), [10, 11, 11, 12, 13, 14, 15])

@@ -955,6 +955,8 @@ impl Graph {
         for p in 0..node.params.len() {
             let values = &mut self.values[p];
             self.still[p] = node.params[p].fill(values, frame, self.rate) && node.param_inputs[p].is_empty();
+            let (lo, hi) = (node.params[p].min, node.params[p].max);
+            node.shared.params[p].store(values[QUANTUM - 1].clamp(lo, hi).to_bits(), Ordering::Relaxed);
             for input in &node.param_inputs[p] {
                 if let Some(from) = self.nodes.get(input)
                     && !from.silent
@@ -965,11 +967,9 @@ impl Graph {
                     }
                 }
             }
-            let (lo, hi) = (node.params[p].min, node.params[p].max);
             for v in values.iter_mut() {
                 *v = v.clamp(lo, hi);
             }
-            node.shared.params[p].store(values[QUANTUM - 1].to_bits(), Ordering::Relaxed);
         }
         if node.kind == Kind::Listener {
             self.listening.copy_from_slice(&self.values[..9]);
@@ -1516,7 +1516,7 @@ pub(crate) mod tests {
         let mut out = [[0.0; QUANTUM]; 2];
         g.render(&mut out, &mut Vec::new());
         assert!((out[0][0] - 0.75).abs() < 1e-6);
-        assert!((g.param_value(4, 0).unwrap() - 0.75).abs() < 1e-6);
+        assert_eq!(g.param_value(4, 0), Some(0.5), "value is the intrinsic value, without what the inputs add (as in Chrome)");
     }
 
     #[test]
