@@ -1,7 +1,7 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-use realfft::RealFftPlanner;
 use realfft::num_complex::Complex32;
+use realfft::{RealFftPlanner, RealToComplex};
 
 use super::graph::{Bus, QUANTUM};
 
@@ -42,32 +42,33 @@ impl Tap {
 
 #[derive(Default)]
 pub struct Spectrum {
-    fft_size: usize,
+    fft: Option<Arc<dyn RealToComplex<f32>>>,
     smoothed: Vec<f32>,
     decibels: Vec<f32>,
     computed: Option<u64>,
 }
 
 impl Spectrum {
-    pub fn decibels(&mut self, tap: &Tap, fft_size: usize, smoothing: f32) -> &[f32] {
-        if fft_size != self.fft_size {
-            *self = Spectrum { fft_size, smoothed: vec![0.0; fft_size / 2], decibels: vec![f32::NEG_INFINITY; fft_size / 2], computed: None };
+    pub fn decibels(&mut self, mut time: Vec<f32>, written: u64, smoothing: f32) -> &[f32] {
+        let fft_size = time.len();
+        if self.fft.as_ref().is_none_or(|f| f.len() != fft_size) {
+            let fft = RealFftPlanner::<f32>::new().plan_fft_forward(fft_size);
+            *self = Spectrum { fft: Some(fft), smoothed: vec![0.0; fft_size / 2], decibels: vec![f32::NEG_INFINITY; fft_size / 2], computed: None };
         }
-        if self.computed == Some(tap.written) {
+        if self.computed == Some(written) {
             return &self.decibels;
         }
-        self.computed = Some(tap.written);
-        let mut time = vec![0.0; fft_size];
-        tap.latest(fft_size, &mut time);
+        self.computed = Some(written);
         let n = fft_size as f64;
         for (i, v) in time.iter_mut().enumerate() {
             let x = i as f64 / n;
             let window = 0.42 - 0.5 * (2.0 * std::f64::consts::PI * x).cos() + 0.08 * (4.0 * std::f64::consts::PI * x).cos();
             *v = (f64::from(*v) * window) as f32;
         }
-        let fft = RealFftPlanner::<f32>::new().plan_fft_forward(fft_size);
         let mut spectrum = vec![Complex32::default(); fft_size / 2 + 1];
-        let _ = fft.process(&mut time, &mut spectrum);
+        if let Some(fft) = &self.fft {
+            let _ = fft.process(&mut time, &mut spectrum);
+        }
         let scale = 1.0 / fft_size as f32;
         for k in 0..fft_size / 2 {
             let magnitude = spectrum[k].norm() * scale;
@@ -104,7 +105,9 @@ mod tests {
         }
         let tap = tap.into_inner().unwrap();
         let mut spectrum = Spectrum::default();
-        let db = spectrum.decibels(&tap, 2048, 0.0).to_vec();
+        let mut time = vec![0.0; 2048];
+        tap.latest(2048, &mut time);
+        let db = spectrum.decibels(time, tap.written, 0.0).to_vec();
         let peak = (0..db.len()).max_by(|a, b| db[*a].total_cmp(&db[*b])).unwrap();
         assert_eq!(peak, 64, "1500 Hz in 2048 bins at 48 kHz is bin 64");
         let blackman = 20.0 * (0.42f32 * 0.5).log10();

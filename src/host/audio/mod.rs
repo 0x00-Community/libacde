@@ -393,8 +393,11 @@ fn set_impulse(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mu
     };
     let budget = with_state(|s| s.budget.clone());
     let convolver = Convolver::new(&response, normalize, &budget);
-    rv.set_bool(convolver.is_some() || response.len() == 0);
-    send(Cmd::Node { node, op: NodeOp::Impulse(convolver.map(Box::new)) });
+    let fits = convolver.is_some() || response.len() == 0;
+    rv.set_bool(fits);
+    if fits {
+        send(Cmd::Node { node, op: NodeOp::Impulse(convolver.map(Box::new)) });
+    }
 }
 
 fn create_offline_context(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
@@ -553,15 +556,13 @@ fn analyse(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv
     let smoothing = bind::arg_f64(scope, &args, 3).clamp(0.0, 1.0) as f32;
     let (min, max) = (bind::arg_f64(scope, &args, 4) as f32, bind::arg_f64(scope, &args, 5) as f32);
     let Some(shared) = with_state(|s| s.nodes.get(&node).cloned()) else { return };
-    let Some(tap) = shared.tap.as_ref().and_then(|t| t.lock().ok()) else { return };
-    let values = if what < 2 {
-        let mut samples = vec![0.0; fft_size];
+    let mut samples = vec![0.0; fft_size];
+    let written = {
+        let Some(tap) = shared.tap.as_ref().and_then(|t| t.lock().ok()) else { return };
         tap.latest(fft_size, &mut samples);
-        samples
-    } else {
-        with_state(|s| s.spectra.entry(node).or_default().decibels(&tap, fft_size, smoothing).to_vec())
+        tap.written
     };
-    drop(tap);
+    let values = if what < 2 { samples } else { with_state(|s| s.spectra.entry(node).or_default().decibels(samples, written, smoothing).to_vec()) };
     let array: v8::Local<v8::Value> = match what {
         0 | 2 => bind::float32_array(scope, &values).into(),
         1 => bind::uint8_array(scope, values.iter().map(|v| analyser::byte_time(*v)).collect()).into(),
