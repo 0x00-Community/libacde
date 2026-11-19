@@ -70,13 +70,19 @@
 ## 系统模块的错误与事件 (libacde 单子 12)
 
 - **统一错误** (`AcdeError`, `AcdeErrorCode`): `acde:network`、`acde:system`、`acde:bluetooth`、`acde:audio`、`acde:devices`、`acde:power`、`acde:input`、
-  `acde:display` 的方法失败时 (同步抛出或 Promise 拒绝) 都是 `name === 'AcdeError'` 的 `Error`, 带 `status`、`code`、`module`, 原错误放在 `cause`.
-  这个包只有类型, 判别用 `error.name === 'AcdeError'`. 由页面胶水 `js/page/src/sysmodules.ts` 的 `checkedModule` 统一换, 按原错误归类:
-  - `bad_request` (400): 参数不对 (原来抛 `TypeError` 的地方);
-  - `forbidden` (403): 这个模块没有授予这个页面 (`not given to this web`);
-  - `unsupported` (501): 这个运行时或平台做不了 (如没有合成器时的 `acde:input`、别的平台的 `acde:network`);
-  - `service_not_running` (503): 系统服务不在 (NetworkManager、BlueZ、UPower、fcitx5 等不在, 或没有系统 / 会话总线);
-  - `failed` (500): 其余. 原错误已经带 `status` / `code` 时 (经管家来的) 照用.
+  `acde:display` 的方法失败时 (同步抛出或 Promise 拒绝) 都是 `name === 'AcdeError'` 的 `Error`, 带 `status`、`code`、`module`, 原错误放在 `cause`;
+  原错误自己的代码 (如 napi 一侧 `network_failed`) 放在可选的 `reason`. 这个包只有类型, 判别用 `error.name === 'AcdeError'`.
+  页面胶水 `js/page/src/sysmodules.ts` 的 `checkedModule` 统一换: 原错误的消息是 `{"code", "message"}` 的 JSON (runtime `failure()` 和 `bad_request()`
+  这样编) 时先拆开, 消息用里面的原文. 归类顺序:
+  1. 显式带的代码是下面五种之一就照用 (Rust 一侧参数校验用 `crate::runtime::bad_request` 带上 `bad_request`, 如主机名、时区、电源设置、亮度、
+     蓝牙 / 声音设备号、输入法; offload 的 `settle_json` 把这种 JSON 拆成消息加 `code`);
+  2. `forbidden` (403): 消息含 `not given to` / `not in the capabilities` (没授予);
+  3. `unsupported` (501): 这个运行时或平台做不了; `service_not_running` (503): 系统服务或总线不在 (NetworkManager、BlueZ、UPower、fcitx5 等);
+  4. `bad_request` (400): 原错误是 `TypeError` (宿主一侧的参数检查);
+  5. `failed` (500): 其余. 原错误带数字 `status` 时照用.
+- **导入被拒** (`src/host/modules.rs` 的 `import_error`): `acde:*` 模块因为清单没声明而不给时, 动态 `import()` 拒绝、静态 `import` 抛出的都是
+  同一个 `AcdeError` (`code: 'forbidden'`、`status: 403`、`module` 是去掉 `acde:` 的名字, 消息保留原文); 提供它的服务停了而被拒时是
+  `service_not_running` / 503. 别的模块解析错误照旧是 `TypeError`.
 - **`acde:network` 的 `on('changed', handler)`**: 返回取消函数, 和别的系统模块一样; `watch(callback)` 保留作兼容写法.
 - **`acde:power` 的事件载荷**: `PowerPromptEvent` (`prompt`)、`PowerCriticalEvent` (`critical`, `action` 和 `seconds`) 具名导出.
 - **`acde:system` 的 `on('changed', handler)`**: 载荷 `SystemChange {storage, hostname, timezone, ntp}`, 每次是完整的一份. 有订阅者时页面胶水

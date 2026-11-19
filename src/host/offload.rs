@@ -128,10 +128,18 @@ pub fn settle_json<const NULL_IS_UNDEFINED: bool>(
             resolver.resolve(scope, value);
         }
         Err(message) => {
-            let thrown = failure(scope, &message, None, "GenericFailure");
+            let thrown = match coded(&message) {
+                Some((code, text)) => failure(scope, &text, None, &code),
+                None => failure(scope, &message, None, "GenericFailure"),
+            };
             resolver.reject(scope, thrown);
         }
     };
+}
+
+fn coded(message: &str) -> Option<(String, String)> {
+    let value: serde_json::Value = serde_json::from_str(message).ok()?;
+    Some((value.get("code")?.as_str()?.to_owned(), value.get("message")?.as_str()?.to_owned()))
 }
 
 pub fn json_sink(scope: &mut v8::PinScope, callback: v8::Local<v8::Function>) -> impl Fn(serde_json::Value) -> bool + Send + Sync + 'static {
