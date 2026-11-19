@@ -1,9 +1,13 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::gpu::{Gpu, GpuImage, Offscreen, Scene};
 use kurbo::Affine;
 
 static OFFSCREEN: Mutex<Option<(Arc<Gpu>, Box<dyn Offscreen>)>> = Mutex::new(None);
+
+pub type CpuRaster = Box<dyn Fn(Scene, (u32, u32)) -> Option<Vec<u8>> + Send + Sync>;
+
+static CPU_RASTER: OnceLock<CpuRaster> = OnceLock::new();
 
 #[derive(Debug, PartialEq)]
 enum Held {
@@ -72,13 +76,26 @@ pub fn filtered(scene: Scene, size: (u32, u32), place: Affine, filter: &crate::g
     with(|o| o.filtered(scene, size, place, filter))
 }
 
+pub fn set_cpu_raster(raster: CpuRaster) -> bool {
+    CPU_RASTER.set(raster).is_ok()
+}
+
+pub fn cpu_raster(scene: Scene, size: (u32, u32)) -> Option<Vec<u8>> {
+    let raster = CPU_RASTER.get()?;
+    raster(scene, size).filter(|pixels| whole(pixels, size))
+}
+
+fn whole(pixels: &[u8], (width, height): (u32, u32)) -> bool {
+    pixels.len() as u64 == u64::from(width) * u64::from(height) * 4
+}
+
 pub fn rasterize(scene: Scene, size: (u32, u32)) -> Vec<u8> {
     with(|o| Ok(o.rasterize(scene, size))).unwrap_or_else(|| vec![0; (size.0 * size.1 * 4) as usize])
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Held, held};
+    use super::{Held, held, whole};
 
     #[test]
     fn a_live_device_is_used_without_asking_the_registry() {
@@ -89,5 +106,12 @@ mod tests {
     fn a_lost_device_waits_until_a_new_one_is_published() {
         assert_eq!(held(true, || true), Held::Wait);
         assert_eq!(held(true, || false), Held::Rebuild);
+    }
+
+    #[test]
+    fn a_cpu_raster_answer_counts_only_with_four_bytes_for_every_pixel() {
+        assert!(whole(&[0; 2 * 3 * 4], (2, 3)));
+        assert!(!whole(&[0; 2 * 3 * 4 - 1], (2, 3)));
+        assert!(!whole(&[], (2, 3)));
     }
 }

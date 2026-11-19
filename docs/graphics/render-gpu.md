@@ -33,7 +33,9 @@
 - `Dom::capture(id, scale)`: 单独录一个元素 (拖动图标), 单边超过 2048 缩小; JS 拿 `picture` 编号 (`dom.rs`, 每个 web 留最后一个).
 - canvas 2D (acde-dom `dom/canvas.ts` 编成命令流, `Dom::canvas`): 要像素的都在 GPU 上 (render `gpu.rs`, 用 `acde::gpu::Gpu::publish` 登记的设备):
   超过 20000 条命令 (`ACDE_CANVAS_MAX_COMMANDS`) 画成纹理再接着记, canvas 当图片源是 `GpuImage`, `shadowBlur` 用 `blur.wgsl`,
-  `getImageData` / `toDataURL` 同步读回. 提交都拿 `Gpu::submit_lock`. `drawImage` 一张 SVG 的 `<img>` 时按它的自然尺寸画成场景
+  `getImageData` / `toDataURL` (`toBlob` 经它) 同步读回. 没有设备 (`Gpu::publish(None)`, 如 acdes 用 CPU 画页面时) 画布没有纹理, 这两个改由
+  `acde::render::gpu::set_cpu_raster` 登记的 CPU 光栅器把画布的场景画成整张 RGBA8 (非预乘、逐行、宽 × 高 × 4 字节, 长度不对当作没画出) 再裁出要的区域;
+  谁也没登记时照旧给全透明 / `data:,` (`toBlob` 得到 0 字节, libacde 单子 13). 提交都拿 `Gpu::submit_lock`. `drawImage` 一张 SVG 的 `<img>` 时按它的自然尺寸画成场景
   (blitz-paint `svg_picture`, 和 `<img>` 同一画法). `ctx.filter`: acde-dom 解析 `<filter-value-list>` (无效的值不改, 长度只认 px),
   命令 14 送效果 (blur、brightness、contrast、grayscale、hue-rotate、invert、opacity、saturate、sepia、drop-shadow; url() 不支持);
   有滤镜时每次绘制先把它的范围 (加上效果外扩, 裁到画布) 画进一张图, src/vello `Offscreen::filtered` 依次做 (`blur.wgsl` 的
