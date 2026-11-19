@@ -1,6 +1,7 @@
 use super::lexer::{self, Token as LexerToken, TokenValue as LexerTokenValue};
 use super::token::*;
 use std::{
+    cell::Cell,
     cmp::Ordering,
     collections::{HashMap, HashSet},
     convert::TryFrom,
@@ -82,6 +83,8 @@ struct DirectiveProcessor<'a> {
     line_offset: i64,
     had_directive: bool,
     had_non_directive_token: bool,
+    // acde: the expansion budget of the whole source, shared with the macro processors of #if and #line
+    budget: Rc<Cell<usize>>,
 }
 
 pub fn convert_lexer_token(token: LexerToken) -> Result<Token, (PreprocessorError, Location)> {
@@ -112,7 +115,7 @@ fn legal_redefinition(a: &Define, b: &Define) -> bool {
 }
 
 impl<'a> DirectiveProcessor<'a> {
-    pub fn new(input: &'a str) -> DirectiveProcessor<'a> {
+    fn with_budget(input: &'a str, budget: Rc<Cell<usize>>) -> DirectiveProcessor<'a> {
         DirectiveProcessor {
             lexer: lexer::Lexer::new(input),
             defines: Default::default(),
@@ -121,6 +124,7 @@ impl<'a> DirectiveProcessor<'a> {
             line_offset: 0,
             had_directive: false,
             had_non_directive_token: false,
+            budget,
         }
     }
 
@@ -299,7 +303,7 @@ impl<'a> DirectiveProcessor<'a> {
 
         let line = self.gather_until_newline()?;
 
-        let mut parser = if_parser::IfParser::new(line, &self.defines, directive_location, false);
+        let mut parser = if_parser::IfParser::new(line, &self.defines, directive_location, false, self.budget.clone());
         let line = parser.evaluate_expression()?;
 
         // Validates that the line is between 0 and 2^31 as per the C standard.
@@ -321,7 +325,7 @@ impl<'a> DirectiveProcessor<'a> {
     }
 
     fn evaluate_if_expression(&mut self, location: Location, line: Vec<Token>) -> Step<bool> {
-        let mut parser = if_parser::IfParser::new(line, &self.defines, location, true);
+        let mut parser = if_parser::IfParser::new(line, &self.defines, location, true, self.budget.clone());
         let res = parser.evaluate_expression()?;
 
         if let Some(token) = parser.peek()? { Err(StepExit::Error((PreprocessorError::UnexpectedToken(token.value), token.location))) } else { Ok(res != 0) }
@@ -549,16 +553,56 @@ impl<'a> MeLexer for DirectiveProcessor<'a> {
     }
 }
 
-#[derive(Default)]
 struct MacroProcessor {
     define_invocations: Vec<DefineInvocation>,
     defines_being_expanded: HashSet<String>,
 
     peeked: Option<Step<Token>>,
     define_line: u32,
+
+    // acde: macro arguments expand at most MAX_ARGUMENT_DEPTH deep (each level is a nested processor on the stack),
+    // and one source expands at most MAX_EXPANDED_BYTES out of macros in all (an identifier costs its length), so a
+    // shader cannot exhaust the stack or the memory with macros (ANGLE bounds the same).
+    depth: u32,
+    budget: Rc<Cell<usize>>,
+}
+
+const MAX_ARGUMENT_DEPTH: u32 = 256;
+const MAX_EXPANDED_BYTES: usize = 1 << 24;
+
+impl Default for MacroProcessor {
+    fn default() -> Self {
+        MacroProcessor {
+            define_invocations: Vec::new(),
+            defines_being_expanded: HashSet::new(),
+            peeked: None,
+            define_line: 0,
+            depth: 0,
+            budget: Rc::new(Cell::new(MAX_EXPANDED_BYTES)),
+        }
+    }
 }
 
 impl MacroProcessor {
+    fn with_budget(budget: Rc<Cell<usize>>) -> Self {
+        MacroProcessor { budget, ..Default::default() }
+    }
+
+    fn spend(&self, token: &Token) -> Step<()> {
+        let cost = match &token.value {
+            TokenValue::Ident(name) => name.len() + 1,
+            _ => 8,
+        };
+        let location = token.location;
+        match self.budget.get().checked_sub(cost) {
+            Some(left) => {
+                self.budget.set(left);
+                Ok(())
+            }
+            None => Err(StepExit::Error((PreprocessorError::RecursionLimitReached, location))),
+        }
+    }
+
     fn start_define_invocation(&mut self, name: &str, location: Location, lexer: &mut dyn MeLexer) -> Step<bool> {
         // Defines can be expanding only once, it is not possible to do recursive defines
         if self.defines_being_expanded.contains(name) {
@@ -699,7 +743,10 @@ impl MacroProcessor {
             fn step(&mut self) -> Step<Token> {
                 if let Some(token) = self.tokens.get(self.position) {
                     self.position += 1;
-                    Ok(token.clone())
+                    // acde: an argument is copied once per nesting level, and each copy counts against the budget
+                    let token = token.clone();
+                    self.expander.spend(&token)?;
+                    Ok(token)
                 } else {
                     Finished.into()
                 }
@@ -714,9 +761,13 @@ impl MacroProcessor {
             }
         }
 
+        if self.depth >= MAX_ARGUMENT_DEPTH {
+            let location = parameter.first().map_or_else(Location::default, |t| t.location);
+            return Err(StepExit::Error((PreprocessorError::RecursionLimitReached, location)));
+        }
         let mut parameter_lexer = ExpandParameterLexer { parent_lexer: lexer, expander: self, tokens: &parameter, position: 0 };
 
-        let mut processor: MacroProcessor = Default::default();
+        let mut processor = MacroProcessor { depth: self.depth + 1, budget: self.budget.clone(), ..Default::default() };
         let mut expanded_parameters = Default::default();
         loop {
             match processor.step(&mut parameter_lexer) {
@@ -750,7 +801,9 @@ impl MacroProcessor {
             if let Some(argument) = invocation.parameters.get(invocation.parameter_expanding) {
                 if let Some(token) = argument.get(invocation.parameter_position) {
                     invocation.parameter_position += 1;
-                    return Ok(token.clone());
+                    let token = token.clone();
+                    self.spend(&token)?;
+                    return Ok(token);
                 } else {
                     invocation.parameter_expanding = usize::MAX;
                     return Continue.into();
@@ -770,7 +823,9 @@ impl MacroProcessor {
                     }
                 }
 
-                return Ok(token.clone());
+                let token = token.clone();
+                self.spend(&token)?;
+                return Ok(token);
             } else {
                 self.defines_being_expanded.remove(&invocation.define.name);
                 self.define_invocations.pop();
@@ -816,7 +871,8 @@ pub struct Preprocessor<'a> {
 
 impl<'a> Preprocessor<'a> {
     pub fn new(input: &'a str) -> Preprocessor<'a> {
-        Preprocessor { directive_processor: DirectiveProcessor::new(input), macro_processor: Default::default() }
+        let budget = Rc::new(Cell::new(MAX_EXPANDED_BYTES));
+        Preprocessor { directive_processor: DirectiveProcessor::with_budget(input, budget.clone()), macro_processor: MacroProcessor::with_budget(budget) }
     }
 
     pub fn add_define(&mut self, name: &str, content: &str) -> Result<(), (PreprocessorError, Location)> {

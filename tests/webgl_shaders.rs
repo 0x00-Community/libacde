@@ -234,3 +234,42 @@ fn the_varying_limit_is_the_contexts() {
     let max = shader::compile(ShaderStage::Vertex, "attribute vec4 p; void main() { gl_Position = p * float(gl_MaxVaryingVectors); }", &[], 30).unwrap();
     assert!(format!("{:?}", max.module).contains("I32(30)"));
 }
+
+#[test]
+fn hostile_preprocessor_input_fails_to_compile_instead_of_exhausting_the_process() {
+    let compile = |source: String| shader::compile(ShaderStage::Fragment, &source, &[], LIMITS.varyings).map(drop);
+    let body = "precision mediump float; void main() { gl_FragColor = vec4(1.0); }";
+    let bangs = format!("#if {}1\n#endif\n{body}", "!".repeat(100_000));
+    assert!(compile(bangs).unwrap_err().contains("RecursionLimitReached"));
+    let parens = format!("#if {}1{}\n#endif\n{body}", "(".repeat(100_000), ")".repeat(100_000));
+    assert!(compile(parens).unwrap_err().contains("RecursionLimitReached"));
+    let empties = format!("#define E\n#if {} 1\n#endif\n{body}", "E ".repeat(100_000));
+    compile(empties).unwrap();
+    let mut doubling = String::from("#define M0 1.0\n");
+    for i in 1..40 {
+        doubling.push_str(&format!("#define M{i} M{} + M{}\n", i - 1, i - 1));
+    }
+    doubling.push_str("precision mediump float; void main() { gl_FragColor = vec4(M39); }");
+    assert!(compile(doubling).unwrap_err().contains("RecursionLimitReached"));
+    let long = format!("precision mediump float; void main() {{ float {} = 1.0; gl_FragColor = vec4(1.0); }}", "a".repeat(1025));
+    assert!(compile(long).unwrap_err().contains("IdentifierTooLong"));
+    let fits = format!("precision mediump float; void main() {{ float {} = 1.0; gl_FragColor = vec4(1.0); }}", "a".repeat(1024));
+    compile(fits).unwrap();
+    let mut wide = format!("#define W0 {}\n", "b".repeat(1000));
+    for i in 1..16 {
+        wide.push_str(&format!("#define W{i} W{} W{}\n", i - 1, i - 1));
+    }
+    wide.push_str("#define F(x) 1.0\nprecision mediump float; void main() { gl_FragColor = vec4(F(W15)); }");
+    assert!(compile(wide).unwrap_err().contains("RecursionLimitReached"), "32768 copies of a 1000-byte name are 32 MB");
+    let copied =
+        format!("#define F(x) x\nprecision mediump float; void main() {{ float y = {}1.0{}{}; }}", "F(".repeat(200), " + 1.0".repeat(20_000), ")".repeat(200));
+    assert!(compile(copied).unwrap_err().contains("RecursionLimitReached"), "200 nested copies of a 40000-token argument");
+    let mut ifs = String::from("#define M0 1\n");
+    for i in 1..16 {
+        ifs.push_str(&format!("#define M{i} M{} + M{}\n", i - 1, i - 1));
+    }
+    ifs.push_str(&"#if M15\n#endif\n".repeat(64));
+    assert!(compile(format!("{ifs}{body}")).unwrap_err().contains("RecursionLimitReached"), "the budget is the source's, not each #if's");
+    let nested = format!("#define F(x) x\nprecision mediump float; void main() {{ gl_FragColor = vec4({}1.0{}); }}", "F(".repeat(5_000), ")".repeat(5_000));
+    assert!(compile(nested).unwrap_err().contains("RecursionLimitReached"));
+}

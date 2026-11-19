@@ -1,7 +1,7 @@
 use super::super::token::{Integer, PreprocessorError, Punct};
 
 use super::{Define, Location, MacroProcessor, MeLexer, Step, StepExit, Token, TokenValue};
-use std::{collections::HashMap, convert::TryInto, rc::Rc, vec};
+use std::{cell::Cell, collections::HashMap, convert::TryInto, rc::Rc, vec};
 
 struct IfLexer<'macros> {
     tokens: vec::IntoIter<Token>,
@@ -15,36 +15,61 @@ pub(super) struct IfParser<'macros> {
 
     parsing_if: bool,
     carry: Option<Token>,
+    // acde: unary operators and parentheses nest at most MAX_NESTING deep, so an #if cannot exhaust the stack
+    nesting: u32,
 }
+
+const MAX_NESTING: u32 = 256;
 
 impl<'macros> IfParser<'macros> {
     /// Builds a new IfParser that can be reused
     ///
     /// `parsing_if` indicates wether or not non defined macros should be
     /// replaced with 0
-    pub fn new(tokens: Vec<Token>, defines: &'macros HashMap<String, Rc<Define>>, location: Location, parsing_if: bool) -> Self {
-        IfParser { lexer: IfLexer { tokens: tokens.into_iter(), defines }, macro_processor: MacroProcessor::default(), location, parsing_if, carry: None }
+    pub fn new(tokens: Vec<Token>, defines: &'macros HashMap<String, Rc<Define>>, location: Location, parsing_if: bool, budget: Rc<Cell<usize>>) -> Self {
+        IfParser { lexer: IfLexer { tokens: tokens.into_iter(), defines }, macro_processor: MacroProcessor::with_budget(budget), location, parsing_if, carry: None, nesting: 0 }
     }
 
     /// Helper method to consume the next token without define expansion
-    fn raw_next(&mut self) -> Option<Token> {
-        self.carry.take().or_else(|| self.macro_processor.step(&mut self.lexer).ok())
+    // acde: steps on past the end of a macro (Continue) instead of taking it for the end of the input, and passes errors on
+    fn raw_next(&mut self) -> Step<Option<Token>> {
+        if let Some(token) = self.carry.take() {
+            return Ok(Some(token));
+        }
+        loop {
+            match self.macro_processor.step(&mut self.lexer) {
+                Ok(token) => return Ok(Some(token)),
+                Err(StepExit::Continue) => continue,
+                Err(StepExit::Finished) => return Ok(None),
+                Err(error) => return Err(error),
+            }
+        }
     }
 
     /// Helper method to consume the next token with define expansion
     fn next(&mut self) -> Step<Option<Token>> {
-        let token = match self.raw_next() {
-            Some(t) => t,
-            None => return Ok(None),
-        };
+        // acde: a loop, not a recursion, past macros that expand to nothing
+        loop {
+            let Some(token) = self.raw_next()? else { return Ok(None) };
+            match token.value {
+                TokenValue::Ident(ref name) if name != "defined" => {
+                    if let Some(t) = self.add_define(name, token.location)? {
+                        return Ok(Some(t));
+                    }
+                }
+                _ => return Ok(Some(token)),
+            }
+        }
+    }
 
-        Ok(match token.value {
-            TokenValue::Ident(ref name) if name != "defined" => match self.add_define(name, token.location)? {
-                Some(t) => Some(t),
-                None => self.next()?,
-            },
-            _ => Some(token),
-        })
+    fn nested<T>(&mut self, parse: impl FnOnce(&mut Self) -> Step<T>) -> Step<T> {
+        if self.nesting >= MAX_NESTING {
+            return Err(StepExit::Error((PreprocessorError::RecursionLimitReached, self.location)));
+        }
+        self.nesting += 1;
+        let result = parse(self);
+        self.nesting -= 1;
+        result
     }
 
     /// Helper method to get the next token with define expansion
@@ -57,7 +82,7 @@ impl<'macros> IfParser<'macros> {
     ///
     /// Returns an EOI error if there are no further tokens
     fn expect_raw_next(&mut self) -> Step<Token> {
-        self.raw_next().ok_or(StepExit::Error((PreprocessorError::UnexpectedEndOfInput, self.location)))
+        self.raw_next()?.ok_or(StepExit::Error((PreprocessorError::UnexpectedEndOfInput, self.location)))
     }
 
     /// Helper method to consume the next token with define expansion
@@ -118,7 +143,7 @@ impl<'macros> IfParser<'macros> {
             }
             TokenValue::Integer(int) => Ok(int.value as i64),
             TokenValue::Punct(Punct::LeftParen) => {
-                let val = self.parse_logical_or()?;
+                let val = self.nested(Self::parse_logical_or)?;
 
                 let close_brace = self.expect_next()?;
 
@@ -137,7 +162,7 @@ impl<'macros> IfParser<'macros> {
                 Punct::Plus | Punct::Minus | Punct::Bang | Punct::Tilde => {
                     self.next()?;
 
-                    let val = self.parse_unary()?;
+                    let val = self.nested(Self::parse_unary)?;
 
                     Ok(match punct {
                         Punct::Plus => val,

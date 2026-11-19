@@ -2,6 +2,8 @@ use super::token::{Float, Integer, Location, PreprocessorError, Punct};
 use std::str::Chars;
 use unicode_xid::UnicodeXID;
 
+const MAX_IDENTIFIER: usize = 1024;
+
 type CharAndLine = (char, u32);
 
 // GLSL ES 3.20 specification section 3.10. Logical Phases of Compilation
@@ -298,6 +300,10 @@ impl<'a> Lexer<'a> {
 
         let rest = self.consume_chars(|c| c.is_xid_continue());
         identifier.push_str(&rest);
+        // acde: WebGL 2 allows identifiers of at most 1024 characters (WebGL 1: 256); longer ones are refused, as ANGLE does
+        if identifier.len() > MAX_IDENTIFIER {
+            return Err(PreprocessorError::IdentifierTooLong);
+        }
 
         // TODO check if identifier is larger than the limit.
         Ok(TokenValue::Ident(identifier))
