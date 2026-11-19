@@ -1,4 +1,4 @@
-pub use pp_rs::token::{Float, Integer, Location, Token as PPToken};
+pub use super::preprocessor::token::{Float, Integer, Location, Token as PPToken};
 
 use alloc::{string::String, vec::Vec};
 

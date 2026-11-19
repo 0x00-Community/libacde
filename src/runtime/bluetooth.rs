@@ -119,7 +119,7 @@ fn unblock() -> Result<(), String> {
 
 fn device_path(id: &str) -> Result<OwnedObjectPath, String> {
     if !id.starts_with("/org/bluez/") {
-        return Err(format!("{id} is not a Bluetooth device"));
+        return Err(crate::runtime::bad_request(format!("{id} is not a Bluetooth device")));
     }
     OwnedObjectPath::try_from(id.to_owned()).map_err(|e| e.to_string())
 }

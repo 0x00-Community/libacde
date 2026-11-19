@@ -43,6 +43,7 @@ pub enum RootSource {
     Private,
     Place,
     Lent,
+    Removable,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize)]
@@ -59,6 +60,8 @@ pub struct FinderRoot {
     pub exists: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub place: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drive: Option<String>,
 }
 
 impl FinderRoot {
@@ -73,6 +76,7 @@ impl FinderRoot {
             reason: None,
             exists: true,
             place: None,
+            drive: None,
         }
     }
 
@@ -364,26 +368,8 @@ impl WorkspaceFs {
         let downloads = self.downloads().filter(|dir| *dir != desktop && work.as_ref() != Some(dir));
         let down = downloads.map(|path| root(path, "Downloads", RootSource::Downloads));
         let work = work.filter(|path| *path != desktop).map(|path| root(path, "~/agentos-work", RootSource::Default));
-        let drives = Self::removable().into_iter().map(|path| {
-            let label = path.rsplit('/').next().unwrap_or_default().to_owned();
-            root(path, &label, RootSource::Default)
-        });
+        let drives = super::removable::mounted().into_iter().map(|mount| mount.root(true));
         Ok([root(desktop, "Desktop", RootSource::Desktop)].into_iter().chain(down).chain(work).chain(drives).collect())
-    }
-
-    fn removable() -> Vec<String> {
-        let user = std::env::var("USER").ok().filter(|u| !u.is_empty() && !u.contains('/'));
-        let Some(user) = user else { return Vec::new() };
-        let prefixes = [format!("/run/media/{user}/"), format!("/media/{user}/")];
-        let text = std::fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
-        let mut found: Vec<String> = text
-            .lines()
-            .filter_map(|line| line.split(' ').nth(4).map(unescape_mount))
-            .filter(|path| prefixes.iter().any(|p| path.strip_prefix(p.as_str()).is_some_and(|rest| !rest.is_empty() && !rest.contains('/'))))
-            .collect();
-        found.sort();
-        found.dedup();
-        found
     }
 
     pub fn granted(path: &str) -> FinderRoot {
@@ -872,32 +858,3 @@ mod windows_tests;
 #[cfg(all(test, unix))]
 #[path = "tests/unix.rs"]
 mod tests;
-
-fn unescape_mount(field: &str) -> String {
-    let bytes = field.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        let octal = bytes.get(i + 1..i + 4).filter(|d| bytes[i] == b'\\' && d.iter().all(|c| (b'0'..=b'7').contains(c)));
-        match octal {
-            Some(d) => {
-                out.push(u8::try_from(u32::from(d[0] - b'0') * 64 + u32::from(d[1] - b'0') * 8 + u32::from(d[2] - b'0')).unwrap_or(b'?'));
-                i += 4;
-            }
-            None => {
-                out.push(bytes[i]);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-#[cfg(test)]
-mod mount_tests {
-    #[test]
-    fn mount_points_unescape() {
-        assert_eq!(super::unescape_mount("/run/media/me/My\\040Stick"), "/run/media/me/My Stick");
-        assert_eq!(super::unescape_mount("/a\\134b\\9"), "/a\\b\\9");
-    }
-}

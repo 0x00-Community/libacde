@@ -59,15 +59,15 @@ pub fn ime_catalog(controller: &dyn ImeController) -> Value {
 }
 
 pub fn ime_apply(controller: &dyn ImeController, patch: &Value) -> Result<()> {
-    let patch = patch.as_object().ok_or("acde.input.set: ime is an object")?;
+    let patch = patch.as_object().ok_or_else(|| crate::runtime::bad_request("acde.input.set: ime is an object"))?;
     if let Some(group) = patch.get("group") {
         let ids: Vec<String> = group
             .as_array()
             .and_then(|list| list.iter().map(|id| id.as_str().map(str::to_owned)).collect())
-            .ok_or("acde.input.set: ime.group lists input method ids")?;
+            .ok_or_else(|| crate::runtime::bad_request("acde.input.set: ime.group lists input method ids"))?;
         let known = controller.available()?;
         if let Some(unknown) = ids.iter().find(|id| !known.iter().any(|entry| &entry.id == *id)) {
-            return Err(format!("acde.input.set: no input method {unknown}"));
+            return Err(crate::runtime::bad_request(format!("acde.input.set: no input method {unknown}")));
         }
         let mut next = controller.group()?;
         let layout = |id: &String| next.items.iter().find(|(had, _)| had == id).map(|(_, layout)| layout.clone()).unwrap_or_default();
@@ -76,7 +76,7 @@ pub fn ime_apply(controller: &dyn ImeController, patch: &Value) -> Result<()> {
         controller.set_group(&next)?;
     }
     if let Some(current) = patch.get("current") {
-        let id = current.as_str().ok_or("acde.input.set: ime.current is an input method id")?;
+        let id = current.as_str().ok_or_else(|| crate::runtime::bad_request("acde.input.set: ime.current is an input method id"))?;
         controller.set_current(id)?;
     }
     Ok(())

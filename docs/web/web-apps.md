@@ -13,6 +13,10 @@
   `fetch(init.url)` 取 HTML; `page.ts` `PageSource.served`). `backend: {entry, port?}` (默认 3000).
 - **脚本**: classic `<script>` (含 `src`, 先读本地资源, 没有再经后端取; 非 async 的按文档顺序在 DOMContentLoaded 前执行)、`type="module"`、
   `type="importmap"` (`modules.rs` 解析说明符时用: `imports` / `scopes`, 精确或 `/` 结尾前缀匹配, 多个合并先到先得).
+- **相对地址**: 都按文档的地址解析, 和浏览器一样: acde-dom 的 `env.url` 一变 (加载、`pushState` / `replaceState`、前进后退) 就经 DomNative
+  `setBaseUrl` 交给 render (blitz `set_base_url`), 所以 HTML 里写的、JS 设的属性 (`link.href`、`img.src`、`insertAdjacentHTML`)、内联样式和样式表里的
+  `url()` / `@import` 都对 (样式表里的相对文档时按样式表自己的地址). 页面源码原样交给解析器, `getAttribute` 读到的是写的原文 (2026-11-19 以前
+  `PageSource.html` 用正则把静态的 `src` / `href` / `poster` 改成绝对路径, 子目录页面里别的写法都按根目录解析). 还没有: `<base href>`.
 - **样式表和别的子资源** (`<link rel=stylesheet>`、`<img>`、`@font-face`、CSS 背景图): 应用包里的文件 render 直接读盘; 读不到的 http / https /
   `blob:` 地址 render 的 `Loader` 发到页面线程, 经页面的网络栈取 (acde-dom `core/resources.ts` `loadResource`: 和 `fetch` 同一套路由、代理、
   证书、重定向, `acdev network` 里是 `image` / `stylesheet` / `font`). 规则按 destination 照浏览器: 图片和样式表 no-cors (不带 `Origin`, body 照用),
@@ -88,6 +92,13 @@
   147 → 277 / 2369 (`DOMParser-parseFromString-xml-parsererror` 23 / 23、`XMLSerializer-serializeToString` 29 / 33、实体、CDATA、往返全过;
   剩下的大多是 `innerHTML` 的 Trusted Types、`createContextualFragment`、`positional-methods` 那批和 iframe); `dom/nodes` 3066 → 4114 / 6112
   (62 个文件变好, 没有变差的; `createElementNS`、`createDocument`、`*NS` 的属性和集合、处理指令、选择器大小写).
+- **XML 页面** (https://html.spec.whatwg.org/#read-xml, acde-dom `dom/page.ts` `loadPage`, render `Dom::parse_xml_document`): 从服务器取的页面
+  (`PageSource.served`) 带着响应的 `Content-Type` 交给 `loadPage`; 类型的本质 (去掉参数、转小写) 是 XML MIME 类型 (`text/xml`、
+  `application/xml` 或子类型以 `+xml` 结尾: `.xht` / `.xhtml` 的 `application/xhtml+xml`、`image/svg+xml` …) 时用上面的 XML 解析器解析成页面,
+  别的类型和没有类型时照旧按 HTML. 页面这时是 XML 文档 (`Ids.page`, `document.contentType` 是那个类型): 页面里的节点 (之后建的、克隆的、
+  `innerHTML` 解析的也是) 带 `IN_XML_DOCUMENT`, 属性名、`tagName`、选择器的类型名都区分大小写, `innerHTML` 用 XML 片段解析; `<style>` 里的
+  CDATA 段就是样式文字, 照常渲染 (WPT `css/` 两千多个 reftest 的参考页 `ref-filled-green-100px-square.xht` 靠它画出绿方块). 不良构时页面只有
+  一个 `parsererror` 元素. 按 HTML 再解析时页面回到 HTML 文档.
 - **按名字和序号取成员** (WebIDL 的 legacy platform object, acde-dom `dom/legacy.ts` 的 `legacy(shape)` 出 Proxy 的 handler, 照规范的
   [[GetOwnProperty]] / [[DefineOwnProperty]] / [[Delete]] / [[OwnPropertyKeys]]): 序号是可枚举的自有属性, 名字是不可枚举的
   (`Object.keys` 只有序号, `in` 和 `getOwnPropertyNames` 有名字), 没有 setter 的写入失败 (严格模式抛 TypeError), `preventExtensions` 失败.
@@ -121,8 +132,15 @@
   这时页面的 `Notification.permission` 是 `denied`、构造后发 `error` (`PageCalls` 不装 `env.notify`), Broker 的 `notify` 回 501 `unsupported`.
   Windows 完整桌面照常转给桌面.
 - **声音**: `Audio` / `AudioContext` (acde-dom `src/audio/`, src/host `audio/`): 解码 (symphonia) 和混音 (每个 web 一个 48 kHz 立体声 f32
-  `Mixer`, 线程 `acde-audio`) 到处一样. 输出: Linux PipeWire (`output.rs`); macOS / Windows cpal 默认设备 (`output_cpal.rs`, 用设备当前的采样率,
+  `Mixer`, 线程 `acde-audio`) 到处一样. 输出: Linux PipeWire (`output.rs`; libacde 的三处 PipeWire 连接, 即这里、`acde:audio` 的 runtime `sound.rs` 和语音输入 `voice/mic.rs`, 都经 `runtime::pw_context` 建, 带 `module.rt = "false"` 不加载 module-rt: 没有 RTKit 时它把整个进程的 RLIMIT_RTTIME 设成 0 且收不回来, 之后任何实时线程一次没睡满就被内核 SIGKILL (daily-run3 桌面被杀); 512 帧的延迟不靠实时调度也够); macOS / Windows cpal 默认设备 (`output_cpal.rs`, 用设备当前的采样率,
   Hermite 重采样, 设备要 f32). 3 秒没声音关流; 没有设备 (或 `ACDE_AUDIO=null`) 按墙上时间渲染丢掉.
+  - **`OfflineAudioContext`** (2026-11-19): 两种构造写法, 采样率 3000–768000 Hz 照给的 (`sampleRate` 是 context 自己的, `decodeAudioData` 也重采样到它),
+    声道 1 或 2 (3–32 以 `NotSupportedError` 拒绝, 还没有), 状态从 `suspended` 开始. 它的图不进混音器: 建节点、连线、参数都落在页面线程上一个只给
+    离线 context 的 `Mixer` 里 (src/host `audio/mod.rs` `offline_cmd`), 不开声音设备; `startRendering()` 把整张图交给 `acde-offline-audio` 线程池 (4 条)
+    一次算完 `length` 帧 (最后一个 quantum 截断, 不钳到 ±1). 一次最多 2^28 个样本 (帧数乘声道, 1 GB; 构造时超了是 `NotSupportedError`), 一个页面的声音内存 (src/host `audio/budget.rs`:
+    在算的离线渲染、延迟线、卷积核、振荡器波表) 加起来也最多这么多 (离线渲染超了 promise 以 `RangeError` 拒绝), 页面没了时它还在算的渲染停下, 结果存成 AudioBuffer: 先发结束的音源的 `ended`, 状态变 `closed`, 兑现 promise, 下一个任务
+    发 `complete` (`OfflineAudioCompletionEvent.renderedBuffer`). 第二次 `startRendering` 是 `InvalidStateError`; `suspend(time)` 还没有
+    (`NotSupportedError`), `resume()` 是 `InvalidStateError`. `currentTime` 是已经渲染到的帧 (按 quantum). 渲染开始后再对这张图做的改动不生效.
   - **空间化** (`PannerNode` / `AudioListener`, src/host `audio/spatial.rs`): 方位角、仰角、三种距离模型、声锥和 `equalpower` 照规范
     §6 的算法 (参数在一个 quantum 里变时逐样本算, 不变时每 quantum 算一次), 单元测试对着 Chrome 的 `OfflineAudioContext` 输出 (2e-5 内).
     和规范伪代码不同、照 Chrome 的一处: 声锥用「声源指向听者」的方向 (正对听者的声源增益是 1). 监听者是每个 context 一个隐藏的图节点
@@ -131,8 +149,28 @@
     0.10 m; 8 抽头加窗 sinc, 多 4 个样本的固定延迟) 和一个头影滤波器 (一极一零), 外加一个后方衰减; 各方向的宽带电平和耳间时差按 Chrome
     (IRCAM 数据) 的白噪声测量标定 (`EAR_LEVELS` / `REAR_LEVELS`, 测试里 ±0.05、±3 个样本). 没有耳廓的仰角线索. 照规范 HRTF 下参数按 k-rate,
     每 quantum 算一次, 增益、延迟和滤波系数在 quantum 内线性过渡 (不出拉链声); 立体声输入左进左耳、右进右耳 (和 Chrome 一样不交叉).
-    输入变静时清掉延迟线和滤波器状态. `BiquadFilterNode`、`ConvolverNode`、`DynamicsCompressorNode`、`WaveShaperNode`、`DelayNode` 还没渲染
-    (输入原样通过, 第一次用时 warn 一次).
+    输入变静时清掉延迟线和滤波器状态.
+  - **振荡器** (`OscillatorNode` / `PeriodicWave`, src/host `audio/wave.rs`): 四种基本波形和自定义 `PeriodicWave` 一样是规范的傅里叶级数,
+    照 Chromium 的 `PeriodicWave` 做成限带波表: 表长按采样率 (≤ 24 kHz 2048, ≤ 88.2 kHz 4096, 以上 16384), 每八度 3 档, 每档砍掉会混叠的
+    分量, 归一化 (峰值 1) 按第一档算; 播放时表内和相邻两档之间各线性插值. 波表在页面线程建好再交给混音线程: 基本波形按 (形状, 采样率)
+    缓存 (弱引用, 没有振荡器用了就释放), 自定义波形在构造 `PeriodicWave` 时建; 都记进页面的声音内存, 放不下时抛 `RangeError`.
+    对 Chrome: 四种波形各三个频率和指数扫频、负频率、detune、22.05 / 96 kHz、自定义 (归一化与否) 每样本差 5e-5 内.
+  - **效果节点** (2026-11-19, src/host `audio/` 下各一个文件, 在 `graph.rs` 的 `Effect` 里): 都在混音线程按 quantum 算, 页面只发设置 (`NodeOp`).
+    - `BiquadFilterNode` (`biquad.rs`): 系数照 Chromium `Biquad` (f64, 含频率 0 / 奈奎斯特和 Q ≤ 0 的边界), 参数在 quantum 里变时逐样本重算;
+      `getFrequencyResponse` 在页面线程用当前参数算 (超出 0–奈奎斯特的频率给 NaN).
+    - `DelayNode` (`delay.rs`): 每声道一条环形延迟线, 线性插值; `maxDelayTime` 0–180 s (以外 `NotSupportedError`). 延迟线在页面线程
+      分配、记进页面的声音内存, 放不下时构造抛 `RangeError` (和分配不出的 `ArrayBuffer` 一样), 不在混音线程分配. 在环路里的延迟节点
+      先读后写, 最少 128 帧 (规范的要求); 环路里没有延迟节点时整个环静音 (`muted`).
+    - `WaveShaperNode` (`shaper.rs`): 曲线映射和 2x / 4x 过采样的上下采样滤波器照 Chromium (128 / 256 抽头核, 4x 是两级 2x).
+    - `DynamicsCompressorNode` (`compressor.rs`): 移植 Chromium 的 `DynamicsCompressorKernel` (BSD), `reduction` 每 quantum 回填.
+    - `ConvolverNode` (`convolver.rs`, realfft): 三级非均匀分块的重叠保留 (128 / 1024 / 8192 帧一块), 没有额外延迟;
+      `normalize` 照规范的算法, 只是校准增益照 Chrome 和 Firefox 用 -58 dB (规范写成四舍五入的 0.00125, 差 0.7%). 设 `buffer` 时在页面线程
+      算好各块的频谱 (和 Chrome 一样同步), 单声道冲激响应的左右两路共用一份频谱, 记进页面的声音内存, 放不下时抛 `RangeError`. 冲激响应 1、2 声道 (4 声道是 `NotSupportedError`, 还没有), 采样率要和 context 相同.
+    - `AnalyserNode` (`analyser.rs`): 混音线程把输入的单声道下混记进 32768 帧的环 (`Shared.tap`); `get*Data` 在页面线程取最后 `fftSize`
+      帧, Blackman 窗、FFT、平滑和分贝照规范 (同一批样本只算一次).
+    - 尾巴 (`Node::tail`): 输入静了以后节点还会出声的帧数 (延迟 = `maxDelayTime`, 压缩器 1.625 s, 卷积 = 冲激响应长度, 滤波器到输出低于 1e-7),
+      尾巴没完的节点不回收、算作还活着.
+    - 对 Chrome: 同一段脚本 (`OfflineAudioContext`, 每种节点) 在 Chrome 和 acdev 里各跑一遍, 结果对比见 libacde 提交信息.
 - **视频** (src/media `acde-media`): 用系统的框架解码, 不随包带编解码器 (用户定, 2026-11-09; libacde 闭源, 不链接 GPL 的 ffmpeg).
   - `Player::open(bytes)` 探出 `Info {duration, width, height, audio, video}`, 每个轨一条读线程 (`acde-video` / `acde-video-audio`) 各自往
     有界队列里解: 视频 RGBA 帧 (领先 4 帧), 音频 48 kHz 立体声 f32 交错 (领先半秒). 两个轨分开读, 不会一个轨满了卡住解封装器让另一个轨饿死.
@@ -218,7 +256,50 @@
     "stream-properties=props,media.class=Video/Source,media.role=Camera"` 做一个 PipeWire 摄像头.
   - 还没有: `devicechange` (不监视插拔)、`getDisplayMedia` (录屏)、`MediaRecorder`、`createMediaStreamDestination`、回声消除等处理、
     `resizeMode: crop-and-scale`、轨道的 `mute` / `unmute` (系统暂停时).
-- **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`) 和 XML 文档的渲染 (只当 DOM 用)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、Web Worker、`crypto.subtle`、OffscreenCanvas、全屏和指针锁定、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
+- **Web Worker** (2026-11-19, 专用 worker; src/host `worker.rs`、`envelope.rs`, acde-dom `core/worker.ts` (页面一侧的 `Worker`) 和 `worker/` (worker 的全局),
+  页面胶水 `page/src/webworker.ts` 打成 `acde-runtime:/webworker.js`):
+  - 每个 worker 一条线程 (`acde-worker`, 8 MiB 栈) 一个 isolate; 名字 `<web>/worker-<n>[:<name>]` 进日志和 `perf::task`. 线程不阻塞页面地
+    起: 消息通道先建好 (`rt::Runtime::with_channel`), 脚本还没到时发的消息在 worker 里排着, 脚本跑完 (模块是开始求值后) 再按顺序派发.
+  - 顶层脚本由页面取 (`scriptSource`: 应用的文件、`blob:`、`data:`、后端), 只许同源、`blob:`、`data:` (别的 `SecurityError`); 取不到时 `Worker` 上发
+    普通的 `error` 事件, worker 结束. `type: 'module'` 的静态 `import` 在 worker 里经 `WebLoader` 读应用文件 (worker 带着页面的资源目录);
+    `blob:` / `data:` 的模块脚本照样要 JavaScript MIME 类型.
+  - worker 的全局是 `DedicatedWorkerGlobalScope` (`self`、`name`、`location` (`WorkerLocation`)、`navigator` (`WorkerNavigator`, 取页面的
+    userAgent、语言、核数)、`postMessage`、`close`、`importScripts`、`onmessage` / `onerror` …), 加核心接口 (定时器、console、URL、编码、
+    `structuredClone`、Blob、事件) 和网络 (`fetch`、XHR、WebSocket、EventSource、流; 应用文件和后端都通, 后端用页面的配置).
+  - 消息走 v8 的 ValueSerializer (`Envelope`): `postMessage` 当场序列化, 转移列表先整体检查 (重复、已分离、不可分离如 wasm 内存、不能转移的
+    类型都是 `DataCloneError`, 这时什么都不分离), 写完才分离; 转移的 ArrayBuffer 把 backing store 原样交给对方 isolate, 不复制 (发送方的
+    isolate 没了也照样能读). 反序列化失败发 `messageerror`.
+  - 错误: worker 里没捕获的异常先在 worker 的全局上发可取消的 `ErrorEvent`, 没取消就到页面的 `Worker` 上再发一次 (`message`、`filename`、
+    `lineno`、`colno`), 还没取消就按页面的未捕获错误报告. 未处理的 rejection 在 worker 里发 `unhandledrejection`, 不转给页面.
+  - `terminate()` 立刻停 (正在跑的 JS, 包括 wasm 死循环, 用 `terminate_execution` 打断), 之后的消息丢掉; `close()` 让当前任务跑完, 已排队的
+    任务和定时器都不再跑 (`rt` 的循环在 `exit` 后不再取任务). 页面没了时它的 worker 都停. `Worker` 对象在 worker 结束前由页面一侧持有, 不会因为
+    没人引用被回收.
+  - 限制: 一个页面同时跑的 worker 最多 64 个, 多出来的排队, 前面的结束了才起 (Firefox 也是排队); 页面和它的 worker 之间在路上 (发出还没送达)
+    的消息合计最多 1 GiB, 超了 `postMessage` 抛 `DataCloneError` (和 Chrome 序列化内存不够时一样). 页面有堆上限 (`heapMb`) 时, 它的 worker
+    合起来另有一份同样大的堆预算: 每个 worker 起时先领 16 MB (剩的不到 8 MB 就不起, `Worker` 上发 `error`), 堆快满时 (V8 的 near-heap-limit
+    回调) 再从预算里领当前的一半 (至少 8 MB), 领不到就只停这个 worker (报 `memory`), 结束时还回去; 所以一个 web 连同 worker 最多用两份 `heapMb`. worker
+    线程的 CPU (包括已经结束的) 算进这个 web 的 `cpuMs`.
+  - 对 Chrome: 同一页测试 (早到的消息、`name` / `location` / `navigator`、worker 里 `fetch` 和 `importScripts`、Float32Array 转移 300 次来回、错误
+    事件、`close`、模块 worker、`blob:` worker 里跑 wasm、`terminate` 打断死循环、各种拒绝) 结果一致; 256 KB 转移来回一次 0.016 ms (Chrome 0.017).
+  - 还没有: 把 `MessagePort` 转给 worker (抛 `DataCloneError`)、`SharedArrayBuffer`、克隆 `WebAssembly.Module`、worker 里的
+    `requestAnimationFrame` / OffscreenCanvas / IndexedDB / Cache API / cookie、嵌套 worker、`importScripts` 后端的脚本和页面建的 `blob:` URL
+    (`NetworkError`)、worker 里的同步 XHR; DevTools 看不到 worker (没有 worker 目标, Network 面板不记它的请求), dev 的 console 记录不含 worker 的输出.
+- **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`)、从文件读的页面 (`PageSource.html`) 只认 `.html` 入口 (`.xhtml` 文件不按 XML 解析)、页面按响应的字符编码解码 (现在总按 UTF-8)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、`SharedWorker` 和 Service Worker、`crypto.subtle`、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
+- **指针锁定** (https://w3c.github.io/pointerlock/, acde-dom `dom/pointerlock.ts`, 2026-11-19): `Element.requestPointerLock(options?)` 返回 promise,
+  `document.pointerLockElement` / `ShadowRoot.pointerLockElement` (和 `activeElement` 一样不往影子宿主换), `document.exitPointerLock()`,
+  `pointerlockchange` / `pointerlockerror` 发在 document 上 (同一个任务里先发事件再落定 promise). 拒绝: 元素不在文档里或窗口没有焦点
+  `WrongDocumentError`, `unadjustedMovement: true` 和不支持的窗口 `NotSupportedError`, 已有一个请求在等 `InvalidStateError`, 宿主不给
+  `NotAllowedError`, 没有用户激活 (见下条) 也 `NotAllowedError`, 除非上一次锁是页面自己 `exitPointerLock` 放开的; 宿主收回 (Esc 等) 之后要比收回更晚的一次激活, 页面不能在
+  `pointerlockchange` 里拿锁前那次点击马上再锁回去;
+  已经锁着时换元素直接成功, 不问宿主. Esc 由宿主收回, 页面拦不住. 窗口能不能锁看
+  surface 的 `pointerLock` (`platform::Window::pointer_lock`, 缺省 false: 会话和 C 接口没有; 宿主窗口见 acdev `docs/hostwin.md`「输入」),
+  能锁时 acde-host `host.ts` 把 `env.pointerLock` 接到 `surface.lockPointer(on)` (`SurfaceCommand::PointerLock`). 宿主的回答是
+  `pointerlock {code: 1 | 0, title: 'request'}` (每个请求恰好一次), 宿主收回 (Esc、失焦、焦点给了别的窗口) 是 `pointerlock {code: 0, title: 'lost'}`;
+  页面自己 `exitPointerLock` 不等回答. 锁着时 `pointermove` 带 `deltaX` / `deltaY` (按帧合并时相加) 成为 `movementX` / `movementY`, 位置停在锁定时的点,
+  所有指针事件 (含 click、wheel) 都发给锁定的元素, 不发 over / out / enter / leave. 元素离开文档时解锁 (发 `pointerlockchange`).
+- **用户激活** (https://html.spec.whatwg.org/#user-activation, acde-dom `dom/activation.ts`): 真的输入 (acde-dom `Input`) 里按下指针按钮、按下
+  Esc 以外的键时记一次激活, 在派发事件之前, 所以这次的处理函数里就有临时激活 (transient activation, 5 秒内有效, 不消耗). `navigator.userActivation`
+  是同一个 `UserActivation` (`hasBeenActive` / `isActive`). 页面自己 `dispatchEvent` 的事件不算. 现在只有指针锁定看它.
 - **剪贴板** (libacde 单子 11, 形状与 acdev-lead、system-lead 定): 宿主接口按网页 MIME 类型收发字节 (`render/surface.rs`): `SetClipboard(Vec<ClipboardEntry>)`
   写一项的全部表示并整个替换剪贴板, `ClipboardTypes` 列出有哪些类型, `ReadClipboard {mime, reply}` 取一种 (没有时 `None`). 认的类型: `text/plain`
   (UTF-8)、`image/png` (PNG 字节)、`text/uri-list` (UTF-8, CRLF 分行). Wayland 宿主上 `text/plain` 对应 `text/plain;charset=utf-8`、`text/plain`、

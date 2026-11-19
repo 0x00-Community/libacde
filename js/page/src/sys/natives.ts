@@ -59,6 +59,7 @@ interface SysNative {
   write?(pid: number, text: string): boolean
   endInput?(pid: number): void
   lendRoot?(app: string, root: LentRoot): string
+  unlendRoot?(app: string, name: string): boolean
   spawnWeb(
     name: string,
     init: unknown,
@@ -71,6 +72,7 @@ interface SysNative {
   openOffice?(): string | null
   restoreBluetooth?(): void
   startDevices?(): void
+  watchRemovable?(changed: (ids: string[]) => void): string[]
   closeOffice?(): void
   contentType?(extension: string): string | null
 }

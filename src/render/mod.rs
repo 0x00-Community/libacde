@@ -9,6 +9,7 @@ mod engine;
 mod error;
 mod geometry;
 pub mod gpu;
+mod hud;
 mod layers;
 mod net;
 mod parse;
@@ -28,6 +29,7 @@ pub use decoration::{Bar, ButtonSide, Decoration, FrameButton, FrameColors, Fram
 pub use dom::{AnimationEvent, AnimationEvents, Dom, NONE, NodeType, Ns, Quad, Viewport};
 pub use error::{Error, Result};
 pub use geometry::Metrics;
+pub use hud::{Hud, HudStats};
 pub use layers::{Backdrop, Drawing, Layer, LayerFilter};
 pub use net::{Load, Loader};
 pub use surface::{ClipboardEntry, ClipboardReadReply, ClipboardTypesReply, DragImage, SurfaceCommand};

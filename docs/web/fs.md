@@ -26,7 +26,29 @@ root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOW
 - 登记的根放在进程内 (`fs/mod.rs` 的 `Shared.lent`, 按应用编号), 同一应用同名的后来的替换先前的, 进程结束就没了, 不记进批准.
   `roots()` 里排在私有文件夹和公共位置之后: `{id: name, label: label 或目录名, source: 'lent'}`, 可读写, 按 `name` 当 root 用.
   `name` 不能是 `private`、公共位置名或 `folder-` 开头, `dir` 要是绝对路径, 不合的拒绝 (`LentRoot::checked`).
+- 收回: 桌面调 `acde:apps` 的 `unlend(dir)` (管家的 `apps.unlend`, 只有桌面能调, 应答 `{revoked: 收回几个}`), 管家对借过这个目录的每个进程推 `{type: 'unlend', name}`;
+  启动器经 `sys.unlendRoot(应用编号, name)` 从 `Shared.lent` 去掉 (`Workspace::unlend`), 之后 `roots()` 不再列它, 拿它当 root 的调用按不是自己的根拒绝;
+  去掉了就给页面发 `acde:fs` 的 `roots` 事件 `{removed: [name]}`, 页面据此重新取 `roots()`. 宿主上没有管家, 没有这条路.
 - 桌面经 `acde:apps` 的 `open(app, request, {root: {name, dir, label?}})` 请管家借出 (SDK `OpenWindowOptions.root`, 只给桌面用), 管家决定给不给.
+
+**U 盘的根** (用户 2026-11-19 同意按推荐路线做, 来源名 `removable`; runtime `fs/removable.rs`): 已挂载的 U 盘和移动硬盘自动成为根, 卸载或拔掉时自动去掉.
+- 哪些挂载算: `/proc/self/mountinfo` 里挂载点正好在 `/run/media/$USER/` 或 `/media/$USER/` 下一层 (UDisks2 给用户挂可移动盘的位置), 且来源是 `/dev/` 下的块设备;
+  `/mnt`、`/home` 这类别处的手动挂载、更深一层的挂载、网络和 FUSE 挂载都不算.
+- 根的样子: `{id: 'removable-<卷 UUID>', label, source: 'removable', mode, reason, exists, drive}`, 系统视图和带 `paths` 的应用另带 `path` (挂载路径).
+  - `id` 用卷 UUID (`/dev/disk/by-uuid`, 和 `acde:devices` 的 `device` 同源), 同一个盘拔插后不变; 没有 UUID 时用 `removable-<设备名>`, 不保证稳定.
+    不用设备名做 id: 设备名 (如 `sdb1`) 拔插后可能变成 `sdc1`.
+  - `drive` 是设备名, 等于 `acde:devices` 里那块盘的 `id`, 用来对上设备列表和推出; `label` 是卷标 (`/dev/disk/by-label`), 没有卷标时用设备名
+    (`acde:devices` 没有卷标时退到型号, 两边可能不同, 对盘用 `drive`).
+  - `mode` 按挂载选项: 带 `ro` 是 `read_only`, 否则 `writable`; 挂载点没了是 `unavailable`.
+- 谁能看到: 系统视图 (`grants.fs === true`, 如桌面) 总列出; 应用要在 `fs.roots` 里点名 `removable` (`"fs": {"roots": [..., "removable"]}`,
+  SDK `FS_ROOTS` / `FsRootName`), 和公共位置一样经批准 (`fs.removable`), 管家原样放进 `grants.fs.places`, `Files` 认到它才列 U 盘的根.
+  没批准或撤销时 `FileAccess.guard` 把 `source: 'removable'` 的根去掉, 对 `removable-*` 根的调用按 `fs.removable` 拒绝. 借出的根不能用 `removable-` 开头的名字.
+  按路径列表授权的旧形式 (`grants.fs` 是数组) 不认 `removable`, 只看路径.
+- 系统视图里按路径和按 `id` 都能当 root 用 (`Shared::root_in`).
+- 事件: 声明了的进程 (`fs: true` 或 places 含 `removable`) 起页面时, 启动器调 `sys.watchRemovable(回调)` (`src/host/web.rs`, 一个进程只起一个线程 `acde-mounts`):
+  线程对 `/proc/self/mountinfo` 等 `POLLPRI` (内核在挂载表变化时通知), 醒来后重算 U 盘根的 id, 变了就把新列表交给回调;
+  启动器和上次比较, 给页面发 `{type: 'fsroots', added, removed}`, 页面发出 `acde:fs` 的 `roots` 事件 `{added?, removed}` (`added` 只在有新盘时带).
+  不经管家, 也不订 UDisks2 的 D-Bus 信号. 只在 Linux 上有; 别的平台 `roots()` 不列 U 盘.
 
 **拖放和打开请求的句柄** (#68): 用户交给应用的文件和文件夹是标准的 `FileSystemHandle`, 页面拿不到路径.
 - 系统拖放: `dnddrop` 的 `files` 里每个路径 (acde-host `dnd.ts` `DragDrop`, 链接和别的类型跳过): 不超过 64 MiB 的普通文件进 `dataTransfer.files` (内容在 drop 时读进来),

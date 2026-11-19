@@ -64,6 +64,11 @@
     拒绝连接时重试 10 秒). 没有后端的 web 同源非资源路径失败, `localhost` 走下面的网络.
   - 别的主机 (`Dial::Url`, http / https / ws / wss) → 宿主的网络: 系统 DNS, TCP, https / wss 用 `http.rs` 的 `tls()` (只给 http/1.1 的 ALPN,
     验证证书和主机名). 不自动解压 (不发 `Accept-Encoding`).
+    rustls 的加密实现: 本库自己建的 TLS 配置 (`tls()`, 代理隧道, 豆包语音的 wss) 都显式用 ring (`builder_with_provider`), 不看进程默认.
+    但 ntex 4.9 的 `Client::builder()` 不论用不用都先按进程默认建一份 rustls 配置 (`ClientBuilder::new`, 之后才被 `.rustls(..)` 换掉),
+    而前端 (如 acdes) 的依赖同时开了 ring 和 aws-lc-rs 时 rustls 不会自己选默认, 这一步就 panic (第八轮点 Office 时 acde-rt 线程).
+    所以建 ntex 客户端之前 (`http::client()`、fetch 拨到后端用的客户端) 先调 `http::default_provider()`: 进程还没有默认时装上 ring,
+    已有 (前端自己装了) 就不动. `WsClient::new` 的默认连接器只有 TCP, 不建 rustls 配置; wss 照旧显式 `.rustls(tls())`.
   - 代理 (runtime `proxy/`): 契约照 Linux, 设了 `http_proxy` / `https_proxy` / `all_proxy` (大小写都认, 小写优先) 中任何一个就只看环境变量,
     各平台都一样; 没设时问平台: Windows 是用户的 Internet 设置 (WinHTTP: 自动检测 WPAD 和配置脚本按 URL 问
     `WinHttpGetProxyForUrl`, WPAD 没找到后 5 分钟内不再问; 没有答案时用手动代理和它的绕过列表, `<local>`、通配符), macOS 是系统配置

@@ -56,3 +56,14 @@ export function unsupported(service: string, method: string): Error {
 export function refused(what: string): Error {
   return Object.assign(new Error(`acdev: ${what}`), { status: 400, code: 'bad_request' })
 }
+
+export function wallpaperOf(given: unknown): { color: string; image?: string | null } {
+  const { color, image } = (given ?? {}) as { color?: unknown; image?: unknown }
+  if (typeof color !== 'string' || !/^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color)) {
+    throw Object.assign(new Error(`acdev: windows.setWallpaper: ${String(color)} is not #rrggbb or #rrggbbaa`), { status: 400, code: 'bad_color' })
+  }
+  if (image !== undefined && image !== null && (typeof image !== 'string' || !image.startsWith('/'))) {
+    throw refused('windows.setWallpaper: image is an absolute path or null')
+  }
+  return { color, ...(image !== undefined && { image }) }
+}

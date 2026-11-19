@@ -133,11 +133,27 @@ export class MockDom implements DomNative {
     return this._id(this.doc)
   }
 
+  baseUrl = ''
+
+  setBaseUrl(url: string): void {
+    this.baseUrl = url
+  }
+
   parseDocument(html: string): void {
     const old = [...this.doc.childNodes]
+    this.#docs.delete(this.document())
     this.doc.open()
     this.doc.write(html)
     this.doc.close()
+    for (const node of old) this._maybeFree(node)
+  }
+
+  parseXmlDocument(text: string, contentType: string): void {
+    const parsed = new this.window.DOMParser().parseFromString(text, contentType)
+    const old = [...this.doc.childNodes]
+    for (const node of old) this.doc.removeChild(node)
+    for (const child of [...parsed.childNodes]) this.doc.appendChild(this.doc.adoptNode(child))
+    this.#docs.set(this.document(), ['document', contentType, ''])
     for (const node of old) this._maybeFree(node)
   }
 

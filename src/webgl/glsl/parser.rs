@@ -1,7 +1,7 @@
 use alloc::{string::String, vec};
 use core::iter::Peekable;
 
-use pp_rs::token::{PreprocessorError, Token as PPToken, TokenValue as PPTokenValue};
+use super::preprocessor::token::{PreprocessorError, Token as PPToken, TokenValue as PPTokenValue};
 
 use super::compat::ConstValue as _;
 use super::{
@@ -289,7 +289,7 @@ impl Frontend {
                 };
 
                 match tokens.next() {
-                    Some(PPToken { value: PPTokenValue::Punct(pp_rs::token::Punct::Colon), .. }) => {}
+                    Some(PPToken { value: PPTokenValue::Punct(super::preprocessor::token::Punct::Colon), .. }) => {}
                     Some(PPToken { value, location }) => self
                         .errors
                         .push(Error { kind: ErrorKind::PreprocessorError(PreprocessorError::UnexpectedToken(value)), meta: super::compat::span(location) }),

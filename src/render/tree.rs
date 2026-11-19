@@ -17,6 +17,7 @@ pub(crate) struct Ids {
     pub(crate) cdata: HashSet<NodeId>,
     pub(crate) owners: HashMap<NodeId, NodeId>,
     pub(crate) documents: HashMap<NodeId, DocumentInfo>,
+    pub(crate) page: Option<DocumentInfo>,
     pub(crate) forms: HashMap<NodeId, Form>,
     pub(crate) masked: HashSet<NodeId>,
     pub(crate) scrolls: HashMap<NodeId, (f64, f64)>,
@@ -138,6 +139,13 @@ impl Ids {
 
     pub(crate) fn pinned(&self, node: NodeId) -> bool {
         self.slot(node).is_some_and(|s| s.pinned)
+    }
+
+    pub(crate) fn xml_owned(&self, owner: Option<NodeId>) -> bool {
+        match owner {
+            Some(document) => self.documents.get(&document).is_some_and(|info| info.xml),
+            None => self.page.as_ref().is_some_and(|info| info.xml),
+        }
     }
 }
 

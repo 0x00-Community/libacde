@@ -53,7 +53,8 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
 
 宿主窗口:
 运行时 (一个进程)   主线程: 平台事件循环 (Windows win32, 别处 winit); `acdev` 线程 (栈 64 MiB): Broker;
-                    每个 web 一条 JS 线程 + 一条出帧线程 `acde-host-<id>`; `acde-compose` 合成到宿主窗口的 surface
+                    每个 web 一条 JS 线程 + 一条出帧线程 `acde-host-<id>`, 它的每个 Web Worker 再一条 `acde-worker`;
+                    `acde-compose` 合成到宿主窗口的 surface
 ```
 
 - **主进程** (会话): 在 acdebin-system 的 `src/supervise.rs`, 起停和重起运行时子进程的规则见它的 `docs/architecture.md`.
@@ -62,6 +63,11 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
   线程 panic 只结束这个 web (134, `panic: …`). 句柄带 `busyMs` (当前任务跑了多久, 判卡死) 和 `cpuMs` (`/proc/self/task/<tid>/schedstat`).
   段错误、abort 带掉整个 runtime (主进程重起它), 所以共享的 Rust 状态里不写 `unsafe`, 绑定层不 `unwrap`, 每个绑定在边界上
   `catch_unwind`.
+- **Web Worker** (src/host `worker.rs`, 见 `docs/web/web-apps.md`「Web Worker」): web 线程起的 `acde-worker` 线程 (栈 8 MiB), 自己的 isolate
+  (它的 web 的所有 worker 合用一份 `heapMb` 大的堆预算, CPU 算进 web 的 `cpuMs`) 和事件循环; 和页面之间交换 `Envelope` (序列化的字节加转移的 backing store, 不复制), 投进对方事件循环.
+  唯一的 `unsafe` 是 `envelope.rs` 的 `Moved` 实现 `Send`: v8 的 `SharedRef<BackingStore>` 不是 `Send` (`BackingStore` 不是 `Sync`), 但转移后
+  发送方已把 ArrayBuffer 分离、不再碰这块内存, 引用计数是 `std::shared_ptr` 的原子计数, 内存由 isolate 共享持有的分配器释放 (rusty_v8 总是
+  设 `array_buffer_allocator_shared`), 所以交给别的线程安全; `envelope.rs` 的测试覆盖发送方 isolate 先没了的情况.
 - **一个 V8, 每个窗口一个 isolate**: 内存 (各自的堆上限)、生死 (一个死了只掉它的窗口)、CPU (每个 isolate 一个线程, 同一优先级) 各管各的.
 - **注入的系统能力** (`spawnWeb` 第 7 个参数 `{app, fs, terminal, network, system, office}`, Broker `#grants`: 桌面全给, 应用按清单): fs、terminal、
   network、office 和选文件夹在各 web 里绑定同一份 Rust 对象 (src/host `fs.rs` / `terminal.rs` / `network.rs` / `office.rs` /
@@ -85,7 +91,7 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
   声卡配置和各应用的流 (默认设备、音量、静音、平衡、端口、配置、把流挪到别的设备); `on('changed')` 由 acde-host `watched.ts` (`Watched.module`,
   只有 changed 事件的模块共用) 包在原生 `watch` 上.
   `acde:devices` (能力 `devices`, src/host `devices.rs` → runtime `devices/`): UDisks2 上的可移动驱动器 (挂载、卸载、弹出)、
-  CUPS 打印机 (经 IPP: 默认打印机、暂停 / 恢复、任务和取消)、自动挂载设置 (登录时 / 插入时 / 未知设备, 每个设备单独设); 事件 `changed` / `added`
+  CUPS 打印机 (经 IPP: 默认打印机、暂停 / 恢复、任务和取消)、自动挂载设置 (登录时 / 插入时 / 未知设备, 每个设备单独设; 存在 `~/.config/acde/automount.json`, 默认插入时挂载、未知设备也挂, 登录时不挂, 用户 2026-11-20 定, 设置里可关; 文件里缺的键按默认); 事件 `changed` / `added`
   (新插入的驱动器) 由 acde-host `devices.ts` 包在原生 `watch(type)` / `unwatch(id)` 上. 自动挂载的监视只在自己的会话里由 Broker 调
   `sys.startDevices()` 起.
   `acde:power` (能力 `power`, src/host `power.rs` → runtime `power/`): UPower 的电池、power-profiles-daemon 的模式、
@@ -109,6 +115,7 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
   (`InputMethodGroupsChanged` 信号) 和当前输入法变时 (约 1 秒一次轮询, 只在页面订阅了才起) 也发. fcitx5 不在 (登录页会话不起它、没有会话总线)
   时 `running: false`、`group: []`、`imes: []`, 写 `ime` 报错; 其余设置照常.
   `acde:display` (能力 `display`, src/host `display.rs`): `state()` 是前端 `Platform::display()` 给的输出表 (acdes 会话里来自 `wl_output` / `xdg_output`),
+  每个输出可带 `bounds` (在整个桌面坐标里的位置和大小) 与 `workArea` (去掉面板预留边后的可用区域), 都是 `{x, y, width, height}`, 没有时为 null 或不带 (SDK `DisplayInfo`, 多屏方案 A, 数据由 acdes 写出), 这里原样转交不改;
   内置屏的 `brightness` 由这里用 `acde:power` 的背光补上; `configure(id, {scale})` 在 acdes 会话里经 winman `winman_desktop_v1` v5 的 `set_scale` (winman 所有屏共用一个缩放),
   `setBrightness(id, v)` 只对内置屏 (logind 背光), `setNightLight` 还没有. 两者都是进程内模块, 不经 Broker; Linux only. `acde:office` 的根就是调用方 `acde:fs` 的根 (#96, `OfficeService::for_web` 带上这个 web 的 `Workspace`,
   runtime `Workspace::finder_roots`): 第 1 级应用是 `private`、点名的公共位置和选的文件夹, 按 `id` 认, 不给路径; 没有 `fs` 的应用没有根. 没批准或撤销了的

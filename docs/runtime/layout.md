@@ -26,9 +26,10 @@
 也不再有单独的 `web.js` 文件. `build.rs` 用 bun (`ACDEV_BUN`, 默认 `bun`) 把 `js/page/src/worker.ts` 打成一个 ES 模块
 (`$OUT_DIR/page.js`, 压缩空白和语法、保留名字), 契约级别取 `acde-api/api-level`、版本取包版本 (`ACDEV_API_LEVEL`、
 `ACDEV_RUNTIME_VERSION` 两个 define), `src/host/web.rs` 用 `include_str!` 嵌进二进制, web 线程从 `acde-runtime:/page.js` 加载它
-(`WebLoader` 认这个地址). 所以构建运行时库要有 bun. 打包命令只在 `js/bundle.ts` 一处 (`bun bundle.ts [输出目录] [版本]`, 默认 `js/dist`, `build.rs` 也调它).
-调试版运行时设了 `ACDEV_JS_DIR` 时从那个目录读 `page.js`、`launcher.js`, 读不到才用内嵌的 (发布版只用内嵌的): 改 `js/` 后
-`cd js && bun run bundle` 一两秒出新包, 重开页面即生效, 不重编 Rust; 进客户机时只推这两个文件. `js/tsconfig.json` 的 paths 把 `@dopame/acde-dom` 指向 `js/dom/src`,
+(`WebLoader` 认这个地址); 同样把 `js/page/src/webworker.ts` 打成 `webworker.js`, Web Worker 的线程从 `acde-runtime:/webworker.js` 加载它
+(它只引 acde-dom 的 `core/` 和 `worker/`, 不带 DOM). 所以构建运行时库要有 bun. 打包命令只在 `js/bundle.ts` 一处 (`bun bundle.ts [输出目录] [版本]`, 默认 `js/dist`, `build.rs` 也调它).
+调试版运行时设了 `ACDEV_JS_DIR` 时从那个目录读 `page.js`、`webworker.js`、`launcher.js`, 读不到才用内嵌的 (发布版只用内嵌的): 改 `js/` 后
+`cd js && bun run bundle` 一两秒出新包, 重开页面即生效, 不重编 Rust; 进客户机时只推这几个文件. `js/tsconfig.json` 的 paths 把 `@dopame/acde-dom` 指向 `js/dom/src`,
 `@dopame/acde-api` 指向 SDK 的声明 `acde-api/src`, `@dopame/acde-api/manifest` 指向清单模块 `manifest/`
 (acdev 的命令行用同一份清单规则, 见 `docs/acde-api.md`); 窗框主题的解析 (`FrameThemes`) 只有页面用, 在 `js/page/src/frametheme.ts`. 页面和启动方之间的类型
 (`WebInit`、服务形状、菜单、权限等级) 在 `js/page/src/contract.ts`; 管理中枢 (原 `broker.js`) 没有取回: 管家部分归 system (工作项 09).
@@ -88,7 +89,10 @@
   对同一个窗口重新授予后再起 (url 须在 `http://acde.local/` 下); `capabilities.get/list` 按清单声明回 `available` / `not-declared`
   (临时, 不看平台与逐次同意). 桌面另答 `panel.open/place/close` (钉住的面板, 同旧管理中枢) 和 `windows.*` (`close`、`kill`、`focus`、`hide`、
   `show`、`requestState`、`screenshot`、`animate`、`stats`、`shortcut`、`unshortcut`、`place`、虚拟桌面的 `addDesk`、`removeDesk`、
-  `showDesk`、`moveToDesk` 交给窗口系统对象的同名方法 (acdes 里是 `native.Windows.connect()`, acdev 宿主窗口里是 `native.Shell.broker()`; `animate`、`stats` 在 acdes 里不做事); `launch` 有管家时转给 `launch.start`).
+  `showDesk`、`moveToDesk` 交给窗口系统对象的同名方法 (acdes 里是 `native.Windows.connect()`, acdev 宿主窗口里是 `native.Shell.broker()`; `animate`、`stats` 在 acdes 里不做事); `launch` 有管家时转给 `launch.start`;
+  多屏方案 A 的副屏壁纸 `setWallpaper({color, image?})` 只给桌面页, 先查 `color` 是 `#rrggbb` / `#rrggbbaa` (否则 400 `bad_color`)、`image` 是绝对路径或 null
+  (否则 400 `bad_request`), 再交给窗口系统对象的 `setWallpaper(color, image?)` (acdes 里是 `native.Windows`, 值由桌面进程记住, 重载后保持; 宿主窗口没有这个方法);
+  不是桌面或窗口系统对象没有这个方法时 501 `unsupported`).
 - 窗口: 应用向窗口系统要一个占满宿主窗口的窗口; 桌面 `grant({desktop: true})` (窗口号 0). 窗口系统的关窗请求 (`windowcloserequest`, 如 xdg
   的 close) 先问页面 `window.beforeclose` (最多等 3 秒, 页面答 `false` 就不关), 再同样关掉. 桌面进程把窗口系统的其余事件
   交给桌面页 (`js/launcher/src/app/events.ts` 的 `WindowSnapshots`): acdes 给的是 winman 形状的快照 `window` (每个窗口一批变化后一条, `first` 表示新窗口,

@@ -11,8 +11,9 @@ export interface FinderRoot {
   id: string
   path?: string
   label: string
-  source: 'desktop' | 'downloads' | 'default' | 'granted' | 'private' | 'place' | 'lent'
+  source: 'desktop' | 'downloads' | 'default' | 'granted' | 'private' | 'place' | 'lent' | 'removable'
   place?: SharedPlace
+  drive?: string
   mode: RootMode
   reason: string | null
   exists: boolean
@@ -139,6 +140,12 @@ export interface AcdeFs {
   locate(path: string): Promise<{ root: string; path: string }>
   openPath(root: string, path: string): Promise<{ root: string; path: string; file: string }>
   revoke(rootPath: string): Promise<void>
+  on?(type: 'roots', handler: (event: FsRootsEvent) => void): () => boolean
+}
+
+export interface FsRootsEvent {
+  readonly added?: readonly string[]
+  readonly removed: readonly string[]
 }
 
 export interface NativeWindow {
@@ -186,6 +193,12 @@ export interface AcdeWindows extends WindowsEvents {
   removeDesk?(desk: number, into: number): Promise<void>
   showDesk?(desk: number): Promise<void>
   moveToDesk?(window: number, desk: number): Promise<void>
+  setWallpaper?(wallpaper: DisplayWallpaper): Promise<void>
+}
+
+export interface DisplayWallpaper {
+  readonly color: string
+  readonly image?: string | null
 }
 
 export interface AcdeTerminals {
@@ -301,6 +314,7 @@ export interface AcdeApps extends AcdeAppList, AcdeOpenFiles {
   install(dir: string): Promise<{ id: string; dir: string; apps: DesktopApp[] }>
   natives(): Promise<NativeApp[]>
   runNative(id: string): Promise<number>
+  unlend?(dir: string): Promise<{ revoked: number }>
 }
 
 export interface AcdePackages {
@@ -587,9 +601,12 @@ export interface PanelReserve {
   readonly thickness?: number
 }
 
+export type PanelKeyboard = 'exclusive' | 'on-demand'
+
 export interface PinOptions {
   readonly margin?: number
   readonly reserve?: PanelReserve
+  readonly keyboard?: PanelKeyboard
 }
 
 export interface PinnedPanel {
@@ -1075,6 +1092,8 @@ export interface DisplayInfo {
   readonly scales: readonly number[]
   readonly brightness: number | null
   readonly rotation: 0 | 90 | 180 | 270
+  readonly bounds?: WindowRect | null
+  readonly workArea?: WindowRect | null
 }
 
 export interface NightLight {
@@ -1131,7 +1150,8 @@ export interface AcdeError extends Error {
   readonly name: 'AcdeError'
   readonly status: number
   readonly code: AcdeErrorCode
-  readonly module: 'network' | 'system' | 'bluetooth' | 'audio' | 'devices' | 'power' | 'input' | 'display'
+  readonly module: string
+  readonly reason?: string
 }
 
 export interface AcdePage {

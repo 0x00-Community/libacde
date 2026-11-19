@@ -1,7 +1,7 @@
 use naga::proc::{ConstValueError, GlobalCtx};
 use naga::{Arena, Binding, Expression, Handle, Interpolation, Literal, Sampling, Span, TypeInner};
 
-pub fn span(location: pp_rs::token::Location) -> Span {
+pub fn span(location: super::preprocessor::token::Location) -> Span {
     Span::new(location.start, location.end)
 }
 

@@ -87,12 +87,12 @@ fn claim_surface(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, 
     let hosted = surface.hosted();
     let controls = surface.host_controls();
     let minimizable = surface.minimizable();
+    let pointer_lock = surface.pointer_lock();
     let (offset_x, offset_y) = surface.content_offset();
     STATE.with(|s| s.borrow_mut().surface = Some(surface));
     let offset = [offset_x, offset_y].map(|v| v8::Number::new(scope, v).into());
     let offset = v8::Array::new_with_elements(scope, &offset);
-    let obj =
-        crate::js_object!(scope, {"window" => window, "hosted" => hosted, "hostControls" => controls, "minimizable" => minimizable, "contentOffset" => offset});
+    let obj = crate::js_object!(scope, {"window" => window, "hosted" => hosted, "hostControls" => controls, "minimizable" => minimizable, "pointerLock" => pointer_lock, "contentOffset" => offset});
     crate::methods!(scope, obj,
         "pump" => pump,
         "wait" => wait,
@@ -105,6 +105,7 @@ fn claim_surface(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, 
         "requestActivate" => request_activate,
         "requestGrab" => request_grab,
         "releaseGrab" => release_grab,
+        "lockPointer" => lock_pointer,
         "openPanel" => open_panel,
         "placePanel" => place_panel,
         "closePanel" => close_panel,
@@ -305,7 +306,8 @@ fn open_panel(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: 
     };
     let (token, _) = token.u64_value();
     let rect = [2, 3, 4, 5].map(|i| bind::arg_f64(scope, &args, i).round() as i32);
-    with_surface(scope, |surface| surface.open_panel(id, token, rect));
+    let exclusive = args.get(6).is_true();
+    with_surface(scope, |surface| surface.open_panel(id, token, rect, exclusive));
 }
 
 fn place_panel(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
@@ -388,6 +390,11 @@ fn request_grab(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _
 fn release_grab(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
     let Some(kind) = grab_kind(scope, &args) else { return };
     with_surface(scope, |surface| surface.request_grab(kind, false));
+}
+
+fn lock_pointer(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
+    let on = bind::arg_bool(scope, &args, 0);
+    with_surface(scope, |surface| surface.lock_pointer(on));
 }
 
 fn set_title(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {

@@ -112,11 +112,12 @@ impl Context {
         let (kind, source) = (s.kind, s.source.clone());
         let stage = if kind == VERTEX_SHADER { ShaderStage::Vertex } else { ShaderStage::Fragment };
         let macros = self.extension_macros(kind);
+        let varyings = self.limits.varyings;
         let version = shader::version(&source);
         let result = if version == 300 && !self.webgl2 {
             Err("ERROR: 0:1: '300' : version number not supported\n".to_owned())
         } else {
-            std::panic::catch_unwind(|| shader::compile(stage, &source, &macros)).unwrap_or_else(|_| Err("ERROR: internal compiler error\n".into()))
+            std::panic::catch_unwind(|| shader::compile(stage, &source, &macros, varyings)).unwrap_or_else(|_| Err("ERROR: internal compiler error\n".into()))
         };
         let Some(s) = self.shader_mut(id) else { return };
         match result {

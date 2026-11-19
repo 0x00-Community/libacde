@@ -79,6 +79,8 @@ pub use portal::{Appearance, FileChooser, Filter as PortalFilter, choose_folder,
 pub use power::{Power, PowerCall, backlight_brightness};
 pub use proxy::backend_variables as backend_proxy_variables;
 #[cfg(target_os = "linux")]
+pub(crate) use sound::pw_context;
+#[cfg(target_os = "linux")]
 pub use sound::{SoundCall, Sounds};
 #[cfg(target_os = "linux")]
 pub use system::{SysCall, system_call};
@@ -92,6 +94,11 @@ pub use xkb::XkbCatalog;
 
 use napi::{Error, Result, Status};
 use serde_json::json;
+
+#[cfg(target_os = "linux")]
+pub fn bad_request(message: impl std::fmt::Display) -> String {
+    json!({ "code": "bad_request", "message": message.to_string() }).to_string()
+}
 
 fn failure(code: &str, message: &str) -> Error {
     Error::new(Status::GenericFailure, json!({"code":code,"message":message}).to_string())

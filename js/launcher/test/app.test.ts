@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { route } from '../src/app/calls.ts'
+import { route, wallpaperOf } from '../src/app/calls.ts'
 import { AppMenus } from '../src/app/menus.ts'
 import { PageCalls } from '../src/app/page.ts'
 import { bindNatives } from '../../page/src/sys/natives.ts'
@@ -72,4 +72,13 @@ describe('the single-app launcher answers its window and page calls', () => {
     assert.equal(await none.call('open', [{}]), null)
     assert.match(logged[0]!, /no file chooser/)
   })
+})
+
+test('a wallpaper is a #rrggbb or #rrggbbaa colour and an optional absolute image', () => {
+  assert.deepEqual(wallpaperOf({ color: '#0E0F14' }), { color: '#0E0F14' })
+  assert.deepEqual(wallpaperOf({ color: '#ffffff80', image: null }), { color: '#ffffff80', image: null })
+  assert.deepEqual(wallpaperOf({ color: '#FFFFFF', image: '/usr/share/wall.png' }), { color: '#FFFFFF', image: '/usr/share/wall.png' })
+  assert.throws(() => wallpaperOf({ color: 'white' }), (e: { code?: string }) => e.code === 'bad_color')
+  assert.throws(() => wallpaperOf({ color: '#fff' }), (e: { code?: string }) => e.code === 'bad_color')
+  assert.throws(() => wallpaperOf({ color: '#FFFFFF', image: 'wall.png' }), (e: { code?: string }) => e.code === 'bad_request')
 })

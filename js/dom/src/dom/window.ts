@@ -1,6 +1,7 @@
 declare const ACDEV_RUNTIME_VERSION: string | undefined
 const VERSION = typeof ACDEV_RUNTIME_VERSION === 'string' ? ACDEV_RUNTIME_VERSION : '0.0.0'
 import { defineHandlers, Event, EventTarget, fire, LISTENERS, windowEvent } from '../core/event'
+import { userActivation } from './activation'
 import { DOMException } from '../core/exception'
 import { dialogAnswer } from '../core/observe'
 import { G, getters, globals, host, KEY, tag } from '../core/host'
@@ -67,11 +68,11 @@ function navigate(url: string, replace: boolean): void {
   const next = new URL(url, env.url)
   const now = here()
   if (saves(next.href)) return saveUrl(next.href, '')
-  if (!sameDocument(next, now) || (next.hash === now.hash && next.href !== now.href)) {
+  if (!sameDocument(next, now) || !next.href.includes('#')) {
     env.navigate(next.href, '_self')
     return
   }
-  if (next.href === now.href) return void (next.hash && scrollToFragment(next.hash))
+  if (next.href === now.href) return void scrollToFragment(next.hash)
   const oldURL = env.url
   env.url = next.href
   if (replace) entries[index] = { url: env.url, state: null }
@@ -80,12 +81,10 @@ function navigate(url: string, replace: boolean): void {
     entries.push({ url: env.url, state: null })
     index = entries.length - 1
   }
-  if (next.hash !== now.hash) {
-    scrollToFragment(next.hash)
-    host.setTimer(0, () => {
-      fire(G as unknown as EventTarget, new HashChangeEvent('hashchange', { oldURL, newURL: next.href }))
-    })
-  }
+  scrollToFragment(next.hash)
+  host.setTimer(0, () => {
+    fire(G as unknown as EventTarget, new HashChangeEvent('hashchange', { oldURL, newURL: next.href }))
+  })
 }
 
 function saves(url: string): boolean {
@@ -150,6 +149,15 @@ export class Location {
   }
 }
 urlParts(Location.prototype, ['origin', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash'], here, (_, u) => navigate(u.href, false))
+Object.defineProperty(Location.prototype, 'hash', {
+  ...Object.getOwnPropertyDescriptor(Location.prototype, 'hash'),
+  set(value: unknown) {
+    const next = new URL(env.url)
+    const input = String(value).replace(/^#/, '')
+    next.hash = input
+    navigate(input === '' ? `${next.href.replace(/#.*$/, '')}#` : next.href, false)
+  },
+})
 getters(Location.prototype, { ancestorOrigins: () => ({ length: 0 }) })
 tag(Location)
 
@@ -516,7 +524,7 @@ export class Navigator {
 getters(Navigator.prototype, {
   appName: 'Netscape', appCodeName: 'Mozilla', product: 'Gecko', productSub: '20030107', vendor: '', vendorSub: '',
   onLine: true, cookieEnabled: true, deviceMemory: 8, maxTouchPoints: 0, pdfViewerEnabled: false, webdriver: false, doNotTrack: null,
-  userActivation: () => ({ hasBeenActive: true, isActive: false }),
+  userActivation: () => userActivation,
   mimeTypes: () => ({ length: 0 }),
   plugins: () => ({ length: 0 }),
 })

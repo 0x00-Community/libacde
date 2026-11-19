@@ -78,13 +78,13 @@ fn validate(module: &Module) -> Result<ModuleInfo, String> {
     })
 }
 
-pub fn compile(stage: ShaderStage, source: &str, extensions: &[&str]) -> Result<Compiled, String> {
+pub fn compile(stage: ShaderStage, source: &str, extensions: &[&str], varyings: u32) -> Result<Compiled, String> {
     let version = version(source);
     if version != 100 && version != 300 {
         return Err(format!("ERROR: 0:1: '{version}' : version number not supported\n"));
     }
     let options = options(stage, version, extensions);
-    let webgl = WebGlOptions { uniform_binding: 0, group: RESOURCES, first_binding: 0, draw_buffers: 8, ..Default::default() };
+    let webgl = WebGlOptions { uniform_binding: 0, group: RESOURCES, first_binding: 0, draw_buffers: 8, varyings, ..Default::default() };
     let (module, info) = Frontend::default().parse_webgl(&options, webgl, source).map_err(|e| log(source, e))?;
     validate(&compacted(&module))?;
     let live = Live::of(&module);
@@ -521,6 +521,7 @@ pub fn link(vs: &Compiled, fs: &Compiled, bound: &HashMap<String, u32>, limits: 
         draw_buffers,
         dropped: dropped_vs.into_iter().collect(),
         points: None,
+        varyings: limits.varyings,
     };
     let fragment_options = WebGlOptions {
         locations: varying_locations.into_iter().collect(),
@@ -530,6 +531,7 @@ pub fn link(vs: &Compiled, fs: &Compiled, bound: &HashMap<String, u32>, limits: 
         draw_buffers,
         dropped: dropped_fs.into_iter().collect(),
         points: None,
+        varyings: limits.varyings,
     };
     let extensions: Vec<&str> = Vec::new();
     let wide = vs.info.point_size.is_some_and(|g| vs.live.globals.contains(&g));

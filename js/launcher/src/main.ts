@@ -17,7 +17,7 @@ import type { WireMenu } from '../../page/src/contract'
 import type { NativeFileChooser } from '../../page/src/native'
 import { API_LEVEL } from '@dopame/acde-api/manifest'
 import { LaunchArgs } from './args'
-import { refused, route, unsupported } from './app/calls'
+import { refused, route, unsupported, wallpaperOf } from './app/calls'
 import type { LentRoot } from '@dopame/acde-api'
 import { sessionOf, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
 import { WindowSnapshots, type ShellEvent } from './app/events'
@@ -70,6 +70,7 @@ interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState
   removeDesk?(desk: number, into: number): unknown
   showDesk?(desk: number): unknown
   moveToDesk?(window: number, desk: number): unknown
+  setWallpaper?(color: string, image?: string | null): unknown
 }
 
 interface LauncherNatives extends Natives {
@@ -291,6 +292,24 @@ class Launcher {
     if (session.grants?.office) Launcher.#openOffice()
     if (this.#desktop && this.manager && session.grants?.devices) sys().startDevices?.()
     this.#spawn({ ...init, name: this.#webName(init.name) })
+    this.#watchRemovable()
+  }
+
+  #watchRemovable(): void {
+    const fs = this.session.grants?.fs
+    if (fs !== true && !(fs && !Array.isArray(fs) && fs.places.includes('removable'))) return
+    let known: readonly string[] = []
+    const changed = (ids: string[]) => {
+      const added = ids.filter((id) => !known.includes(id))
+      const removed = known.filter((id) => !ids.includes(id))
+      known = ids
+      if (added.length || removed.length) this.#thread?.post({ type: 'fsroots', added, removed })
+    }
+    try {
+      known = sys().watchRemovable?.(changed) ?? []
+    } catch (error) {
+      process.stderr.write(`acdev: removable drives: ${(error as Error).message}\n`)
+    }
   }
 
   #webName(given: string): string {
@@ -515,6 +534,8 @@ class Launcher {
         if (!call) throw unsupported('windows', method)
         return (call as (...numbers: number[]) => unknown).call(shell, ...args.map(Number))
       }
+      case 'setWallpaper':
+        return this.#setWallpaper(args[0])
       case 'launch':
         if (this.manager) return this.manager.call('launch', 'start', args)
         break
@@ -522,6 +543,12 @@ class Launcher {
         if (this.manager) return this.manager.call('windows', 'invokeMenu', args)
     }
     throw unsupported('windows', method)
+  }
+
+  #setWallpaper(given: unknown): unknown {
+    if (!this.#desktop || !this.#shell.setWallpaper) throw unsupported('windows', 'setWallpaper')
+    const { color, image } = wallpaperOf(given)
+    return image === undefined ? this.#shell.setWallpaper(color) : this.#shell.setWallpaper(color, image)
   }
 
   async close(force: boolean): Promise<boolean> {
@@ -594,6 +621,7 @@ class Launcher {
       else if (event.type === 'devreload') void this.#devReload(event['hot'] === true)
       else if (event.type === 'invoke') this.#thread?.post({ rpc: 'invoke', fn: event['fn'], args: event['args'] ?? [] })
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
+      else if (event.type === 'unlend' && !this.#desktop) this.#unlend(String(event['name'] ?? ''))
       else if (event.type === 'menuinvoke' && !this.#desktop) void this.#rpc?.call('window', 'menu', [event['menu'], event['item']]).catch(() => undefined)
       else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event as ShellEvent))
     }
@@ -602,6 +630,12 @@ class Launcher {
   #replaceServices(services: Readonly<Record<string, ServiceShape>> | undefined): void {
     this.#services = services ?? {}
     this.#thread?.post({ type: 'services', services: this.#services })
+  }
+
+  #unlend(name: string): void {
+    const app = this.session.found?.app.id
+    if (!app || !name || !sys().unlendRoot?.(app, name)) return
+    this.#thread?.post({ type: 'fsroots', removed: [name] })
   }
 
   #deliver(event: ManagerEvent): void {

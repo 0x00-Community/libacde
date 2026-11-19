@@ -371,9 +371,17 @@ fn deserialize(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mu
 }
 
 pub fn deserialize_bytes<'s>(scope: &mut v8::PinScope<'s, '_>, bytes: &[u8]) -> Option<v8::Local<'s, v8::Value>> {
+    deserialize_with(scope, bytes, &[])
+}
+
+pub fn deserialize_with<'s>(scope: &mut v8::PinScope<'s, '_>, bytes: &[u8], buffers: &[v8::SharedRef<v8::BackingStore>]) -> Option<v8::Local<'s, v8::Value>> {
     let outer = PLACEHOLDERS.with(|p| std::mem::take(&mut *p.borrow_mut()));
     let value = {
         let deserializer = v8::ValueDeserializer::new(scope, Box::new(Clone), bytes);
+        for (i, store) in buffers.iter().enumerate() {
+            let buffer = v8::ArrayBuffer::with_backing_store(scope, store);
+            deserializer.transfer_array_buffer(i as u32, buffer);
+        }
         let context = scope.get_current_context();
         deserializer.read_header(context).and_then(|_| deserializer.read_value(context))
     };
@@ -399,7 +407,14 @@ pub fn deserialize_bytes<'s>(scope: &mut v8::PinScope<'s, '_>, bytes: &[u8]) -> 
 }
 
 pub fn serialize_value(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Option<Vec<u8>> {
+    serialize_with(scope, value, &[])
+}
+
+pub fn serialize_with(scope: &mut v8::PinScope, value: v8::Local<v8::Value>, transfer: &[v8::Local<v8::ArrayBuffer>]) -> Option<Vec<u8>> {
     let serializer = v8::ValueSerializer::new(scope, Box::new(Clone));
+    for (i, buffer) in transfer.iter().enumerate() {
+        serializer.transfer_array_buffer(i as u32, *buffer);
+    }
     serializer.write_header();
     let context = scope.get_current_context();
     match serializer.write_value(context, value) {

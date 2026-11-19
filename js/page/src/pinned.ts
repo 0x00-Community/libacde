@@ -28,6 +28,7 @@ interface Panel {
   readonly element: Element
   readonly id: number
   readonly margin: number
+  readonly exclusive: boolean
   reserve: PanelReserve | null
   reserved: string
   window: number | null
@@ -39,6 +40,7 @@ interface Panel {
 
 export class Pinned {
   static readonly #EDGES: Record<WindowEdge, number> = { top: 1, bottom: 2, left: 4, right: 8 }
+  static readonly #SETTLED = ['animationend', 'transitionend'] as const
   readonly #rpc: Rpc
   readonly #surface: PanelSurface
   readonly #dom: PanelDom
@@ -58,12 +60,13 @@ export class Pinned {
   }
 
   pin(element: Element, options: PinOptions = {}): PinnedPanel {
+    const exclusive = Pinned.#exclusive(options.keyboard)
     const known = this.#panels.get(element)
     if (known) return this.#handle(known)
     const reserve = options.reserve && Pinned.#EDGES[options.reserve.edge] ? options.reserve : null
     const margin = Math.max(0, options.margin ?? 0)
     const id = this.#page.idOf(element)
-    const panel: Panel = { element, id, margin, reserve, reserved: '', window: null, opening: false, rect: null, extent: null, stops: [] }
+    const panel: Panel = { element, id, margin, exclusive, reserve, reserved: '', window: null, opening: false, rect: null, extent: null, stops: [] }
     this.#panels.set(element, panel)
     const { ResizeObserver, MutationObserver } = this.#page.window
     const resized = new ResizeObserver(() => this.#place(panel))
@@ -79,8 +82,19 @@ export class Pinned {
     })
     for (let at: Element | null = element; at; at = at.parentElement) changed.observe(at, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] })
     panel.stops.push(() => resized.disconnect(), () => changed.disconnect(), () => settle !== null && hostTime.clearTimeout(settle))
+    const settled = () => this.#place(panel)
+    for (const type of Pinned.#SETTLED) element.addEventListener(type, settled)
+    panel.stops.push(() => {
+      for (const type of Pinned.#SETTLED) element.removeEventListener(type, settled)
+    })
     this.#place(panel)
     return this.#handle(panel)
+  }
+
+  static #exclusive(keyboard: unknown): boolean {
+    if (keyboard === undefined || keyboard === 'on-demand') return false
+    if (keyboard === 'exclusive') return true
+    throw new TypeError(`pin: keyboard is 'exclusive' or 'on-demand', not ${String(keyboard)}`)
   }
 
   update(): void {
@@ -178,19 +192,21 @@ export class Pinned {
 
   #open(panel: Panel, rect: Box, input: Box): void {
     panel.opening = true
+    this.#dom.setPanel(panel.id, ...rect)
     this.#rpc.call('panel', 'open', [rect]).then(
       (granted) => {
         panel.opening = false
         const { window, token } = granted as { window: number; token: bigint }
         if (this.#panels.get(panel.element) !== panel) return void this.#rpc.call('panel', 'close', [window]).catch(() => undefined)
         panel.window = window
-        this.#surface.openPanel(panel.id, token, ...rect)
+        this.#surface.openPanel(panel.id, token, ...rect, panel.exclusive)
         this.#dom.setPanel(panel.id, ...rect)
         this.#surface.placePanel(panel.id, ...rect, ...input)
         this.#place(panel)
       },
       () => {
         panel.opening = false
+        if (this.#panels.get(panel.element) === panel) this.#dom.setPanel(panel.id, 0, 0, 0, 0)
       },
     )
   }

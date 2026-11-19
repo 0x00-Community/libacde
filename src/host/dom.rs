@@ -43,6 +43,14 @@ thread_local! {
     static ASSETS: RefCell<Assets> = RefCell::default();
 }
 
+pub fn resources() -> Vec<crate::render::Resource> {
+    ASSETS.with(|a| a.borrow().0.clone())
+}
+
+pub fn adopt_resources(resources: Vec<crate::render::Resource>) {
+    ASSETS.with(|a| *a.borrow_mut() = Assets(resources));
+}
+
 fn asset_file(url: &str) -> Option<PathBuf> {
     ASSETS.with(|a| a.borrow().file(url, false))
 }
@@ -412,6 +420,11 @@ fn ns(code: f64) -> crate::render::Ns {
 natives! {
     "document" => fn document(scope, args, dom) { Ok(Id(dom.document())) }
     "parseDocument" => fn parse_document(scope, args, dom) { text!(html = scope, args, 0); dom.parse_document(&html) }
+    "setBaseUrl" => fn set_base_url(scope, args, dom) { text!(url = scope, args, 0); dom.set_base_url(&url) }
+    "parseXmlDocument" => fn parse_xml_document(scope, args, dom) {
+        text!(text = scope, args, 0); text!(content_type = scope, args, 1);
+        dom.parse_xml_document(&text, &content_type)
+    }
     "viewport" => fn viewport(scope, args, dom) { Ok(dom.viewport()) }
     "nodeType" => fn node_type(scope, args, dom) { let id = id(scope, &args, 0); dom.node_type(id).map(|t| t as u8 as u32) }
     "parent" => fn parent(scope, args, dom) { let id = id(scope, &args, 0); dom.parent(id).map(Id) }

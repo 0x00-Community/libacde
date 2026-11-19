@@ -54,6 +54,10 @@
   `Bar.theme` (`FrameTheme`: `active` / `inactive` 两组 `FrameColors {background, title, line, buttons}`, RGBA, 没给的用默认; 失焦的组没给的项用
   有焦点的; `style` / `side` (`ButtonSide`) / `align` (`TitleAlign`) 没给时按 `Bar.style`: `Mac` 是左边、居中, `Windows` 是右边、靠左) 和
   `Bar.active` 只改样子; 按钮放在哪一边时命中和 `FrameTheme::grab_hints` 跟着换边. `buttons` 给圆点上色 (不给是红黄绿), 给图标上色 (不给是标题色).
+- 帧率面板 (`hud.rs`, 宿主窗口的调试用, 谁画、数从哪来见 acdev `docs/hostwin.md`「帧率面板」): `Hud::scene(Option<&HudStats>, scale)` → `Hud::SIZE`
+  (236 × 112 逻辑像素, `Hud::pixels(scale)` 是物理像素) 的场景: 圆角深色底, 大字 FPS (按平均帧间隔着色: 不超过预算的 1.25 倍绿、2 倍以内黄、
+  更长红), 平均 / 最长帧间隔和每帧光栅化时间, 下面是最近 `Hud::BARS` (120) 帧的帧间隔柱 (同样着色, 高度到 3 倍预算封顶) 和 1 倍、2 倍预算两条线.
+  `None` 是「idle」(一秒内没有新帧). 字和窗框共用 `draw_line`, 等宽字体 `ui-monospace, SF Mono, Menlo, monospace`.
 
 ## shell (napi 类 `Shell`)
 

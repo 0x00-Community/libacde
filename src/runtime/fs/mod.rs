@@ -4,6 +4,7 @@ mod copy;
 pub(crate) mod path;
 mod picked;
 mod ranged;
+pub(crate) mod removable;
 mod save;
 pub(crate) mod workspace;
 
@@ -81,9 +82,17 @@ impl Shared {
         Ok(name)
     }
 
+    fn unlend(&self, owner: &str, name: &str) -> bool {
+        let mut lent = self.lent.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(roots) = lent.get_mut(owner) else { return false };
+        let before = roots.len();
+        roots.retain(|known| known.name != name);
+        before != roots.len()
+    }
+
     fn root_in(roots: &[FinderRoot], view: View, id: &str) -> Outcome<FinderRoot> {
         match view {
-            View::All(_) => roots.iter().find(|root| root.path == id).cloned().ok_or_else(|| Failure::invalid("not a Runtime workspace")),
+            View::All(_) => roots.iter().find(|root| root.path == id || root.id == id).cloned().ok_or_else(|| Failure::invalid("not a Runtime workspace")),
             View::Files(_) => Files::find(roots.iter().filter(|root| root.id == id).cloned().collect(), id),
         }
     }
@@ -357,6 +366,10 @@ impl Workspace {
 
     pub(crate) fn lend(&self, owner: &str, root: LentRoot) -> Outcome<String> {
         self.shared.lend(owner, root)
+    }
+
+    pub(crate) fn unlend(&self, owner: &str, name: &str) -> bool {
+        self.shared.unlend(owner, name)
     }
 
     pub fn files(&self, files: Files, owner: &str) -> Self {

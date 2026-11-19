@@ -39,7 +39,7 @@ impl Backlight {
 
     pub fn set(&self, bus: &zbus::blocking::Connection, value: f64) -> Result<(), String> {
         if !value.is_finite() {
-            return Err("acde.power.setBrightness: the value is 0..1".into());
+            return Err(crate::runtime::bad_request("acde.power.setBrightness: the value is 0..1"));
         }
         let lowest = self.max.div_ceil(100).max(1);
         let raw = ((value.clamp(0.0, 1.0) * f64::from(self.max)).round() as u32).clamp(lowest, self.max);

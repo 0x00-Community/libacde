@@ -13,13 +13,19 @@ pub struct Known {
     pub attach: bool,
 }
 
-#[derive(Serialize, Deserialize, Default, Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub on_login: bool,
     pub on_attach: bool,
     pub unknown: bool,
     pub devices: BTreeMap<String, Known>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self { on_login: false, on_attach: true, unknown: true, devices: BTreeMap::new() }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -86,8 +92,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_plugged_drive_mounts_unless_turned_off() {
+        let s = Settings::default();
+        assert!(s.should("new", When::Attach), "on attach, unknown drives too, by default");
+        assert!(!s.should("new", When::Login));
+        let read: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(read, s, "a file without the keys reads as the defaults");
+        let off: Settings = serde_json::from_str(r#"{"onAttach": false}"#).unwrap();
+        assert!(!off.should("new", When::Attach), "turned off in the settings");
+    }
+
+    #[test]
     fn decides_like_kde() {
-        let mut s = Settings::default();
+        let mut s = Settings { on_attach: false, unknown: false, ..Settings::default() };
         assert!(!s.should("a", When::Attach));
         s.on_attach = true;
         assert!(!s.should("a", When::Attach), "never mounted, unknown devices off");

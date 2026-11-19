@@ -353,7 +353,7 @@ export class RemoteBridge {
     const globalWindows = () => ({
       ...windows.api,
       ...Rpc.calls(() => rpc, 'windows', 'kill', 'focus', 'hide', 'show', 'requestState', 'invokeMenu', 'stats', 'animate', 'shortcut', 'unshortcut', 'place',
-        'addDesk', 'removeDesk', 'showDesk', 'moveToDesk'),
+        'addDesk', 'removeDesk', 'showDesk', 'moveToDesk', 'setWallpaper'),
     })
     const tier = {
       packages: () => ({ ...Rpc.calls(() => rpc, 'packages', 'refresh', 'install', 'natives', 'runNative'), on: windows.notices.for('apps', ['changed']) }),
@@ -364,7 +364,8 @@ export class RemoteBridge {
     if (init.lock) {
       this.value['lock'] = Rpc.calls(() => rpc, 'lock', 'user', 'unlock')
     } else if (init.kind === 'desktop') {
-      this.value['apps'] = { ...apps, ...files, on: windows.notices.for('apps', ['changed']) }
+      const unlend = Rpc.calls(() => rpc, 'apps', 'unlend')
+      this.value['apps'] = { ...apps, ...files, ...unlend, on: windows.notices.for('apps', ['changed']) }
       const events = ['download', 'notification', 'screenshot', 'shortcut', 'edge']
       this.value['desktop'] = { apps: async () => ({ apps: await apps.list() }), on: windows.notices.for('desktop', events) }
       this.value['windows'] = globalWindows()

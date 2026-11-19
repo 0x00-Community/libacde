@@ -42,3 +42,10 @@ test('the other calls are the native ones, and a failed download stays the nativ
   const failing = FsModule.typed({ download: async (_root: string, _path: string) => Promise.reject(denied) }, () => shared)
   await assert.rejects(failing.download('private', 'gone.md'), (error) => error === denied)
 })
+
+test('a roots event carries the removed ids and the added ones only when a drive came', () => {
+  assert.deepEqual(FsModule.rootsEvent({ removed: ['work'] }), { removed: ['work'] })
+  assert.deepEqual(FsModule.rootsEvent({ added: ['removable-1234-ABCD'], removed: [] }), { removed: [], added: ['removable-1234-ABCD'] })
+  assert.deepEqual(FsModule.rootsEvent({ added: [], removed: ['removable-1234-ABCD', 7] }), { removed: ['removable-1234-ABCD'] })
+  assert.deepEqual(FsModule.rootsEvent({}), { removed: [] })
+})

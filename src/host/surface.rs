@@ -35,6 +35,10 @@ impl Surface {
         self.0.hosted()
     }
 
+    pub fn pointer_lock(&self) -> bool {
+        self.0.pointer_lock()
+    }
+
     pub fn window(&self) -> u32 {
         self.0.window()
     }
@@ -67,7 +71,8 @@ impl Surface {
         set_backdrop(rect: [i32; 4], effect: [f64; 4]) => C::Backdrop(rect, effect);
         request_activate() => C::Activate;
         request_grab(kind: u32, on: bool) => C::Grab(kind, on);
-        open_panel(id: u32, token: u64, rect: [i32; 4]) => C::OpenPanel { id, token, rect };
+        lock_pointer(on: bool) => C::PointerLock(on);
+        open_panel(id: u32, token: u64, rect: [i32; 4], exclusive: bool) => C::OpenPanel { id, token, rect, exclusive };
         place_panel(id: u32, rect: [i32; 4], input: [i32; 4]) => C::PlacePanel { id, rect, input };
         close_panel(id: u32) => C::ClosePanel(id);
         reserve_panel(id: u32, edge: u32, thickness: f64) => C::ReservePanel { id, edge, thickness };

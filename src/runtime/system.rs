@@ -310,7 +310,7 @@ fn timezones() -> Result<Value, String> {
 
 fn set_timezone(zone: &str) -> Result<Value, String> {
     if zone.is_empty() || zone.contains("..") {
-        return Err(format!("not a time zone: {zone}"));
+        return Err(crate::runtime::bad_request(format!("not a time zone: {zone}")));
     }
     timedate()?.call::<_, _, ()>("SetTimezone", &(zone, false)).map(|()| Value::Null).map_err(said)
 }
@@ -323,7 +323,7 @@ fn set_hostname(name: &str) -> Result<Value, String> {
             .split('.')
             .all(|part| !part.is_empty() && !part.starts_with('-') && !part.ends_with('-') && part.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
     if !valid {
-        return Err(format!("not a host name: {name}"));
+        return Err(crate::runtime::bad_request(format!("not a host name: {name}")));
     }
     let bus = system_bus()?;
     let proxy = Proxy::new(&bus, "org.freedesktop.hostname1", "/org/freedesktop/hostname1", "org.freedesktop.hostname1").map_err(said)?;

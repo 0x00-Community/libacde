@@ -1,5 +1,6 @@
+import { Notices } from './notices'
 import { install, installBackendTransport, observe } from '@dopame/acde-dom'
-import type { AudioNative, BackendTransport, CaptureNative, DeviceNative, DomNative, GpuNative, HostNative, StorageNative, WebglNative } from '@dopame/acde-dom'
+import type { AudioNative, BackendTransport, CaptureNative, DeviceNative, DomNative, GpuNative, HostNative, StorageNative, WebglNative, WorkersNative } from '@dopame/acde-dom'
 import type { ServiceShape, WebInit } from './contract'
 import { BluetoothModule, type BluetoothNatives } from './bluetooth'
 import { DevicesModule, type DevicesNatives } from './devices'
@@ -60,6 +61,7 @@ interface WebNatives extends Natives {
   readonly gpu?: GpuNative
   readonly webgl?: WebglNative
   readonly audio?: AudioNative
+  readonly workers?: WorkersNative
   readonly capture?: CaptureNative
   readonly device?: DeviceNative
   readonly storage?: StorageNative
@@ -124,6 +126,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
     gpu: natives.gpu,
     webgl: natives.webgl,
     audio: natives.audio,
+    workers: natives.workers,
     ...(natives.capture && { capture: permits.capture(natives.capture, access) }),
     ...(natives.device && { device: permits.device(natives.device, access) }),
     ...(init.screen && { screen: init.screen }),
@@ -195,6 +198,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   })
   let devhot = (): void => {}
   const managerPower = new WatchFeed()
+  const fsRoots = new Notices()
   port.onMessage((message) => {
     if (rpc.receive(message)) return
     const m = message as {
@@ -238,6 +242,8 @@ export default async function boot(natives: WebNatives): Promise<void> {
         return devhot()
       case 'services':
         return bridge.replaceServices(m.services ?? {})
+      case 'fsroots':
+        return fsRoots.emit('roots', FsModule.rootsEvent(m as { added?: unknown; removed?: unknown }))
       case 'power':
         return managerPower.push((m as { event?: unknown }).event)
       case 'permit':
@@ -276,7 +282,16 @@ export default async function boot(natives: WebNatives): Promise<void> {
   if (bridge.value['desktop']) bridge.value['desktop'] = { ...(bridge.value['desktop'] as object), ...Frame.desktop(surface) }
   if (natives.fs) {
     const typed = FsModule.typed(natives.fs)
-    bridge.value['fs'] = { ...typed, roots: async () => HostStrings.roots(await (typed as unknown as { roots(): Promise<unknown> }).roots(), language) }
+    const roots = (handler: unknown) => {
+      if (typeof handler !== 'function') throw new TypeError('acde:fs on: the handler is not a function')
+      return fsRoots.on('roots', handler as (detail: unknown) => void)
+    }
+    const on = (type: string, handler: unknown) => {
+      if (type !== 'roots') throw new TypeError(`acde:fs has no ${String(type)} event (roots)`)
+      return roots(handler)
+    }
+    const listed = async () => HostStrings.roots(await (typed as unknown as { roots(): Promise<unknown> }).roots(), language)
+    bridge.value['fs'] = { ...typed, roots: listed, on }
   }
   if (natives.terminal) bridge.value['terminal'] = natives.terminal
   const checked = (name: string, value: object) => {
@@ -324,13 +339,14 @@ export default async function boot(natives: WebNatives): Promise<void> {
   StartupTimeline.mark('page load started')
   const htmlPage = htmlEntry ? PageSource.htmlFor(init.app!.entry, init.url, init.resources) : null
   const served = htmlEntry && PageSource.isServer(init.app!.entry)
+  const fetched = served ? await PageSource.served(page.window as never, init.url ?? `${PageSource.ORIGIN}/`) : null
   const html =
     init.kind === 'desktop'
       ? init.standalone
         ? standalone(init.standalone)
         : readFileSync(init.page!, 'utf8')
-      : served
-        ? await PageSource.served(page.window as never, init.url ?? `${PageSource.ORIGIN}/`)
+      : fetched
+        ? fetched.text
         : htmlPage
           ? PageSource.html(htmlPage, init.resources)
           : PageSource.window(init.app!, init.theme ?? '')
@@ -343,7 +359,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
       }
     }
   }
-  await page.loadPage(html)
+  await page.loadPage(html, fetched?.type)
   if (init.kind === 'window' && Frame.height(init.app) > 0) Frame.followScheme(page.window as never, surface, (run) => void setTimeout(run, 50))
   if (init.devState) {
     DevState.restore(page.window as never, init.devState as DevSnapshot, (restored, missed) =>
@@ -363,7 +379,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   const hot = reread
     ? new DevHot(page.window.document as never, parser, page.window.location.href, {
         read: (src) => {
-          const path = new URL(src, PageSource.ORIGIN).pathname
+          const path = new URL(src, page.window.location.href).pathname
           const file = PageSource.file(path, init.resources ?? [])
           return file ? readTextOr(file, null) : null
         },
