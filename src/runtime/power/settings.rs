@@ -318,6 +318,12 @@ impl Settings {
     }
 
     pub fn apply(&mut self, patch: &Value) -> Result<(), String> {
+        let next = self.checked(patch).map_err(crate::runtime::bad_request)?;
+        self.file = next.file;
+        self.save()
+    }
+
+    fn checked(&self, patch: &Value) -> Result<Settings, String> {
         let patch = patch.as_object().ok_or("acde.power.configure: the patch is an object")?;
         let mut next = Settings { file: self.file.clone(), machine: self.machine, path: None };
         for (key, value) in patch {
@@ -348,8 +354,7 @@ impl Settings {
         if critical > general.low {
             return Err("acde.power.configure: the critical level is above the low level".into());
         }
-        self.file = next.file;
-        self.save()
+        Ok(next)
     }
 
     fn apply_field(&mut self, group: Group, field: &str, v: &Value) -> Result<(), String> {

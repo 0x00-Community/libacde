@@ -37,6 +37,17 @@ test('system module failures become AcdeError with a status and a code', async (
   assert.deepEqual(await caught(module.here), ['AcdeError', 501, 'unsupported', 'network'])
   assert.deepEqual(await caught(module.broke), ['AcdeError', 500, 'failed', 'network'])
   assert.equal(await module.fine(), 7)
+  type Fields = Error & { code: string; status: number; reason?: string }
+  const nm = 'org.freedesktop.DBus.Error.ServiceUnknown: no NetworkManager'
+  const packed = systemError('network', new Error(JSON.stringify({ code: 'network_failed', message: nm }))) as Fields
+  assert.deepEqual([packed.message, packed.code, packed.status, packed.reason], [nm, 'service_not_running', 503, 'network_failed'])
+  const checked = systemError('system', new Error(JSON.stringify({ code: 'bad_request', message: 'not a host name: -x' }))) as Fields
+  assert.deepEqual([checked.message, checked.code, 'reason' in checked], ['not a host name: -x', 'bad_request', false])
+  const denied = new TypeError("libacde: 'acde:network' is not given to page.js (the capabilities in its manifest)")
+  const refused = systemError('network', denied) as Fields
+  assert.deepEqual([refused.code, refused.status], ['forbidden', 403])
+  const plain = systemError('power', Object.assign(new Error('it broke'), { code: 'GenericFailure' }))
+  assert.equal('reason' in plain, false)
   const given = Object.assign(new Error('nope'), { status: 409, code: 'failed' })
   const converted = systemError('power', given) as Error & { status: number }
   assert.deepEqual([converted.name, converted.status], ['AcdeError', 409])

@@ -943,7 +943,7 @@ fn set_default(m: &Model, id: &str) -> Result<(), String> {
     } else if class.starts_with("Audio/Source") {
         "default.configured.audio.source"
     } else {
-        return Err(format!("{id} is not a sound device"));
+        return Err(crate::runtime::bad_request(format!("{id} is not a sound device")));
     };
     let name = node.global.get("node.name").or_else(|| node.info.get("node.name")).ok_or_else(|| format!("{id} has no name"))?;
     let (_, meta, _) = m.metadata.as_ref().ok_or("no session manager (WirePlumber) is running")?;
@@ -1005,7 +1005,7 @@ fn move_stream(m: &Model, id: &str, device: Option<&str>) -> Result<(), String> 
     let (stream, node) = m.node(id)?;
     let class = Model::class(node);
     if !class.starts_with("Stream/") {
-        return Err(format!("{id} is not a stream"));
+        return Err(crate::runtime::bad_request(format!("{id} is not a stream")));
     }
     let serial = match device {
         Some(device) => {

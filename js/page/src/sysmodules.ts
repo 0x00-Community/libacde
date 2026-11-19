@@ -10,32 +10,57 @@ const STATUS: Readonly<Record<SystemErrorCode, number>> = {
 
 const CODES = new Set(Object.keys(STATUS))
 
+const FORBIDDEN = /not given to|not in the capabilities/i
+
 const PATTERNS: readonly [RegExp, SystemErrorCode][] = [
-  [/not given to this web|not in the capabilities/i, 'forbidden'],
   [/no compositor|not supported|no xkeyboard-config|no input method framework|no .* here\b/i, 'unsupported'],
   [/ServiceUnknown|NameHasNoOwner|is not running|isn't running|system bus|session bus|not available/i, 'service_not_running'],
 ]
+
+const NOT_A_REASON = new Set(['GenericFailure'])
 
 type Callable = (...args: unknown[]) => unknown
 
 export const SYSTEM_ERROR = 'AcdeError'
 
-export function systemErrorCode(error: unknown): SystemErrorCode {
-  const given = (error as { code?: unknown } | null)?.code
-  if (typeof given === 'string' && CODES.has(given)) return given as SystemErrorCode
-  if (error instanceof TypeError || (error as { name?: unknown } | null)?.name === 'TypeError') return 'bad_request'
+interface Unpacked {
+  readonly message: string
+  readonly code: string | null
+}
+
+function unpack(error: unknown): Unpacked {
   const message = error instanceof Error ? error.message : String(error)
-  return PATTERNS.find(([pattern]) => pattern.test(message))?.[1] ?? 'failed'
+  const given = (error as { code?: unknown } | null)?.code
+  const own = typeof given === 'string' ? given : null
+  if (!message.startsWith('{')) return { message, code: own }
+  try {
+    const inner = JSON.parse(message) as { code?: unknown; message?: unknown }
+    if (typeof inner.code === 'string' && typeof inner.message === 'string') return { message: inner.message, code: inner.code }
+  } catch {
+    return { message, code: own }
+  }
+  return { message, code: own }
+}
+
+export function systemErrorCode(error: unknown): SystemErrorCode {
+  const { message, code } = unpack(error)
+  if (code !== null && CODES.has(code)) return code as SystemErrorCode
+  if (FORBIDDEN.test(message)) return 'forbidden'
+  const matched = PATTERNS.find(([pattern]) => pattern.test(message))?.[1]
+  if (matched) return matched
+  if (error instanceof TypeError || (error as { name?: unknown } | null)?.name === 'TypeError') return 'bad_request'
+  return 'failed'
 }
 
 export function systemError(module: string, error: unknown): Error {
   if ((error as { name?: unknown } | null)?.name === SYSTEM_ERROR) return error as Error
   const code = systemErrorCode(error)
-  const message = error instanceof Error ? error.message : String(error)
+  const unpacked = unpack(error)
+  const reason = unpacked.code !== null && !CODES.has(unpacked.code) && !NOT_A_REASON.has(unpacked.code) ? { reason: unpacked.code } : {}
   const status = (error as { status?: unknown } | null)?.status
-  const made = new Error(message, { cause: error })
+  const made = new Error(unpacked.message, { cause: error })
   made.name = SYSTEM_ERROR
-  return Object.assign(made, { status: typeof status === 'number' ? status : STATUS[code], code, module })
+  return Object.assign(made, { status: typeof status === 'number' ? status : STATUS[code], code, module, ...reason })
 }
 
 export function checkedModule<T extends object>(module: string, value: T): T {

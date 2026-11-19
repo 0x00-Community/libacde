@@ -1130,7 +1130,8 @@ export interface AcdeError extends Error {
   readonly name: 'AcdeError'
   readonly status: number
   readonly code: AcdeErrorCode
-  readonly module: 'network' | 'system' | 'bluetooth' | 'audio' | 'devices' | 'power' | 'input' | 'display'
+  readonly module: string
+  readonly reason?: string
 }
 
 export interface AcdePage {

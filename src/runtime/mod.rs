@@ -93,6 +93,11 @@ pub use xkb::XkbCatalog;
 use napi::{Error, Result, Status};
 use serde_json::json;
 
+#[cfg(target_os = "linux")]
+pub fn bad_request(message: impl std::fmt::Display) -> String {
+    json!({ "code": "bad_request", "message": message.to_string() }).to_string()
+}
+
 fn failure(code: &str, message: &str) -> Error {
     Error::new(Status::GenericFailure, json!({"code":code,"message":message}).to_string())
 }

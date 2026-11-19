@@ -202,7 +202,7 @@ fn imports(scope: &mut v8::PinScope, module: v8::Local<v8::Module>, url: &str) -
         let request = requests.get(scope, i)?;
         let request = v8::Local::<v8::ModuleRequest>::try_from(request).ok()?;
         let specifier = request.get_specifier().to_rust_string_lossy(scope);
-        let target = thrown(scope, target(&specifier, url))?;
+        let target = refused(scope, &specifier, target(&specifier, url))?;
         compile_graph(scope, &target)?;
     }
     Some(())
@@ -217,7 +217,7 @@ fn resolve_callback<'s>(
     v8::callback_scope!(unsafe scope, context);
     let specifier = specifier.to_rust_string_lossy(scope);
     let referrer = url_of(scope, referrer).unwrap_or_default();
-    let target = thrown(scope, target(&specifier, &referrer))?;
+    let target = refused(scope, &specifier, target(&specifier, &referrer))?;
     let module = cached(scope, &target);
     thrown(scope, module.ok_or_else(|| format!("libacde: module {target} was not loaded")))
 }
@@ -242,6 +242,37 @@ fn inline_source(scope: &mut v8::PinScope, url: &str) -> Option<String> {
 
 fn thrown<T>(scope: &mut v8::PinScope, result: Result<T, String>) -> Option<T> {
     result.map_err(|e| crate::host::bind::throw_type_error(scope, &e)).ok()
+}
+
+fn refused<T>(scope: &mut v8::PinScope, specifier: &str, result: Result<T, String>) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(message) => {
+            let error = import_error(scope, specifier, &message);
+            scope.throw_exception(error);
+            None
+        }
+    }
+}
+
+pub(crate) fn refusal(message: &str) -> (&'static str, u32) {
+    if message.contains("no longer running") { ("service_not_running", 503) } else { ("forbidden", 403) }
+}
+
+fn import_error<'s>(scope: &mut v8::PinScope<'s, '_>, specifier: &str, message: &str) -> v8::Local<'s, v8::Value> {
+    let text = crate::host::bind::string(scope, message);
+    let Some(module) = specifier.strip_prefix(SCHEME) else { return v8::Exception::type_error(scope, text) };
+    let error = v8::Exception::error(scope, text);
+    let Ok(object) = v8::Local::<v8::Object>::try_from(error) else { return error };
+    let (code, status) = refusal(message);
+    let fields = [("name", "AcdeError"), ("code", code), ("module", module)];
+    for (key, value) in fields {
+        let value = crate::host::bind::string(scope, value);
+        crate::host::bind::set(scope, object, key, value.into());
+    }
+    let status = v8::Integer::new_from_unsigned(scope, status);
+    crate::host::bind::set(scope, object, "status", status.into());
+    error
 }
 
 fn link<'s>(scope: &mut v8::PinScope<'s, '_>, module: v8::Local<'s, v8::Module>) -> Option<v8::Local<'s, v8::Value>> {
@@ -327,8 +358,7 @@ pub fn dynamic_import<'s>(
         Ok(url) => import(scope, &url),
         Err(e) => {
             let resolver = v8::PromiseResolver::new(scope)?;
-            let message = crate::host::bind::string(scope, &e);
-            let error = v8::Exception::type_error(scope, message);
+            let error = import_error(scope, &specifier, &e);
             resolver.reject(scope, error);
             Some(resolver.get_promise(scope))
         }
@@ -341,5 +371,14 @@ pub extern "C" fn import_meta(context: v8::Local<v8::Context>, module: v8::Local
         let key = v8::String::new(scope, "url").unwrap();
         let value = v8::String::new(scope, &url).unwrap();
         meta.create_data_property(scope, key.into(), value.into());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_refused_acde_module_is_forbidden_unless_its_service_stopped() {
+        assert_eq!(super::refusal("libacde: 'acde:network' is not given to page.js (the capabilities in its manifest)"), ("forbidden", 403));
+        assert_eq!(super::refusal("acde:desks: the service that provided it is no longer running"), ("service_not_running", 503));
     }
 }
