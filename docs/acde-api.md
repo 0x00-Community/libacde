@@ -66,3 +66,18 @@
 - `AcdeOpenFiles.setDefault`: 为一个 MIME 类型 (Windows 上为一个扩展名, 如 `.md`) 记住 `handler`; 不动系统自己的默认.
 - `AcdeWindow.setBackdrop`: 模糊窗口某块区域后面的东西. 平台画不准时可以近似 (见 `acde:capabilities` 的 `window.backdrop`).
 - `AcdeWindow.on('beforeclose')`: 原来是一个签名 `() => boolean | void | Promise<boolean | void>`, 拆成返回 `boolean` 和返回 `void` 的两个重载, 能传的函数不变.
+
+## 系统模块的错误与事件 (libacde 单子 12)
+
+- **统一错误** (`AcdeError`, `AcdeErrorCode`): `acde:network`、`acde:system`、`acde:bluetooth`、`acde:audio`、`acde:devices`、`acde:power`、`acde:input`、
+  `acde:display` 的方法失败时 (同步抛出或 Promise 拒绝) 都是 `name === 'AcdeError'` 的 `Error`, 带 `status`、`code`、`module`, 原错误放在 `cause`.
+  这个包只有类型, 判别用 `error.name === 'AcdeError'`. 由页面胶水 `js/page/src/sysmodules.ts` 的 `checkedModule` 统一换, 按原错误归类:
+  - `bad_request` (400): 参数不对 (原来抛 `TypeError` 的地方);
+  - `forbidden` (403): 这个模块没有授予这个页面 (`not given to this web`);
+  - `unsupported` (501): 这个运行时或平台做不了 (如没有合成器时的 `acde:input`、别的平台的 `acde:network`);
+  - `service_not_running` (503): 系统服务不在 (NetworkManager、BlueZ、UPower、fcitx5 等不在, 或没有系统 / 会话总线);
+  - `failed` (500): 其余. 原错误已经带 `status` / `code` 时 (经管家来的) 照用.
+- **`acde:network` 的 `on('changed', handler)`**: 返回取消函数, 和别的系统模块一样; `watch(callback)` 保留作兼容写法.
+- **`acde:power` 的事件载荷**: `PowerPromptEvent` (`prompt`)、`PowerCriticalEvent` (`critical`, `action` 和 `seconds`) 具名导出.
+- **`acde:system` 的 `on('changed', handler)`**: 载荷 `SystemChange {storage}`, 目前只报存储 (卷与剩余空间). 有订阅者时页面胶水每 30 秒读一次
+  `storage()`, 和上一次不同才发, 最后一个订阅者取消就停; 推送频率不会高过这个 (`StorageWatch`).
