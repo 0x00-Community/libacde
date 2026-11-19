@@ -6,6 +6,7 @@ import { observer, type PageErrorKind } from './core/observe'
 import { EventSource } from './core/net/eventsource'
 import { Headers } from './core/net/headers'
 import { fetch, moduleSource, net, Request, Response } from './core/net'
+import { installWorkers, Worker, type WorkersNative } from './core/worker'
 import { WebSocket } from './core/net/websocket'
 import { XMLHttpRequest, XMLHttpRequestEventTarget, XMLHttpRequestUpload } from './core/net/xhr'
 import { loadResource, reportServed } from './core/resources'
@@ -105,6 +106,7 @@ export { hostTime, type ClockRequest, type ClockState } from './core/clock'
 export type { DeviceNative } from './device'
 export type { AudioNative, CaptureNative, DomNative, GpuNative, HostNative, StorageAreaNative, StorageNative } from './native'
 export type { WebglNative } from './webgl/index'
+export type { WorkersNative } from './core/worker'
 export { installBackendTransport, type BackendTransport, type Header as BackendHeader, type HttpEvent, type WsEvent } from './core/backend'
 export { NO_NETWORK } from './core/net'
 export {
@@ -132,6 +134,7 @@ export interface InstallOptions extends CoreOptions, NavigatorOptions {
   readonly capture?: CaptureNative
   readonly device?: DeviceNative
   readonly screen?: { width: number; height: number }
+  readonly workers?: WorkersNative
 }
 
 export interface WebInternals {
@@ -243,6 +246,8 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
   if (options.webgl) globals(global, installWebgl(options.webgl, () => frames.request()))
   if (options.audio) globals(global, installAudio(options.audio))
   installCapture(options.capture)
+  installWorkers(options.workers)
+  globals(global, { Worker })
   installDevice(global, options.device)
   globals(global, { MediaStream, MediaStreamTrack, MediaDeviceInfo, InputDeviceInfo, OverconstrainedError, Permissions, PermissionStatus })
   inspectHooks.node = (value) => {

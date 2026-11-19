@@ -256,7 +256,32 @@
     "stream-properties=props,media.class=Video/Source,media.role=Camera"` 做一个 PipeWire 摄像头.
   - 还没有: `devicechange` (不监视插拔)、`getDisplayMedia` (录屏)、`MediaRecorder`、`createMediaStreamDestination`、回声消除等处理、
     `resizeMode: crop-and-scale`、轨道的 `mute` / `unmute` (系统暂停时).
-- **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`)、从文件读的页面 (`PageSource.html`) 只认 `.html` 入口 (`.xhtml` 文件不按 XML 解析)、页面按响应的字符编码解码 (现在总按 UTF-8)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、Web Worker、`crypto.subtle`、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
+- **Web Worker** (2026-11-19, 专用 worker; src/host `worker.rs`、`envelope.rs`, acde-dom `core/worker.ts` (页面一侧的 `Worker`) 和 `worker/` (worker 的全局),
+  页面胶水 `page/src/webworker.ts` 打成 `acde-runtime:/webworker.js`):
+  - 每个 worker 一条线程 (`acde-worker`, 8 MiB 栈) 一个 isolate, 堆上限和页面一样; 名字 `<web>/worker-<n>[:<name>]` 进日志和 `perf::task`. 线程不阻塞页面地
+    起: 消息通道先建好 (`rt::Runtime::with_channel`), 脚本还没到时发的消息在 worker 里排着, 脚本跑完 (模块是开始求值后) 再按顺序派发.
+  - 顶层脚本由页面取 (`scriptSource`: 应用的文件、`blob:`、`data:`、后端), 只许同源、`blob:`、`data:` (别的 `SecurityError`); 取不到时 `Worker` 上发
+    普通的 `error` 事件, worker 结束. `type: 'module'` 的静态 `import` 在 worker 里经 `WebLoader` 读应用文件 (worker 带着页面的资源目录);
+    `blob:` / `data:` 的模块脚本照样要 JavaScript MIME 类型.
+  - worker 的全局是 `DedicatedWorkerGlobalScope` (`self`、`name`、`location` (`WorkerLocation`)、`navigator` (`WorkerNavigator`, 取页面的
+    userAgent、语言、核数)、`postMessage`、`close`、`importScripts`、`onmessage` / `onerror` …), 加核心接口 (定时器、console、URL、编码、
+    `structuredClone`、Blob、事件) 和网络 (`fetch`、XHR、WebSocket、EventSource、流; 应用文件和后端都通, 后端用页面的配置).
+  - 消息走 v8 的 ValueSerializer (`Envelope`): `postMessage` 当场序列化, 转移列表先整体检查 (重复、已分离、不可分离如 wasm 内存、不能转移的
+    类型都是 `DataCloneError`, 这时什么都不分离), 写完才分离; 转移的 ArrayBuffer 把 backing store 原样交给对方 isolate, 不复制 (发送方的
+    isolate 没了也照样能读). 反序列化失败发 `messageerror`.
+  - 错误: worker 里没捕获的异常先在 worker 的全局上发可取消的 `ErrorEvent`, 没取消就到页面的 `Worker` 上再发一次 (`message`、`filename`、
+    `lineno`、`colno`), 还没取消就按页面的未捕获错误报告. 未处理的 rejection 在 worker 里发 `unhandledrejection`, 不转给页面.
+  - `terminate()` 立刻停 (正在跑的 JS, 包括 wasm 死循环, 用 `terminate_execution` 打断), 之后的消息丢掉; `close()` 让当前任务跑完, 已排队的
+    任务和定时器都不再跑 (`rt` 的循环在 `exit` 后不再取任务). 页面没了时它的 worker 都停. `Worker` 对象在 worker 结束前由页面一侧持有, 不会因为
+    没人引用被回收.
+  - 限制: 一个页面同时跑的 worker 最多 64 个, 多出来的排队, 前面的结束了才起 (Firefox 也是排队); 页面和它的 worker 之间在路上 (发出还没送达)
+    的消息合计最多 1 GiB, 超了 `postMessage` 抛 `DataCloneError` (和 Chrome 序列化内存不够时一样).
+  - 对 Chrome: 同一页测试 (早到的消息、`name` / `location` / `navigator`、worker 里 `fetch` 和 `importScripts`、Float32Array 转移 300 次来回、错误
+    事件、`close`、模块 worker、`blob:` worker 里跑 wasm、`terminate` 打断死循环、各种拒绝) 结果一致; 256 KB 转移来回一次 0.016 ms (Chrome 0.017).
+  - 还没有: 把 `MessagePort` 转给 worker (抛 `DataCloneError`)、`SharedArrayBuffer`、克隆 `WebAssembly.Module`、worker 里的
+    `requestAnimationFrame` / OffscreenCanvas / IndexedDB / Cache API / cookie、嵌套 worker、`importScripts` 后端的脚本和页面建的 `blob:` URL
+    (`NetworkError`)、worker 里的同步 XHR; DevTools 看不到 worker (没有 worker 目标, Network 面板不记它的请求), dev 的 console 记录不含 worker 的输出.
+- **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`)、从文件读的页面 (`PageSource.html`) 只认 `.html` 入口 (`.xhtml` 文件不按 XML 解析)、页面按响应的字符编码解码 (现在总按 UTF-8)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、`SharedWorker` 和 Service Worker、`crypto.subtle`、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
 - **指针锁定** (https://w3c.github.io/pointerlock/, acde-dom `dom/pointerlock.ts`, 2026-11-19): `Element.requestPointerLock(options?)` 返回 promise,
   `document.pointerLockElement` / `ShadowRoot.pointerLockElement` (和 `activeElement` 一样不往影子宿主换), `document.exitPointerLock()`,
   `pointerlockchange` / `pointerlockerror` 发在 document 上 (同一个任务里先发事件再落定 promise). 拒绝: 元素不在文档里或窗口没有焦点

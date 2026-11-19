@@ -28,6 +28,10 @@ export function installBackendTransport(given: BackendTransport | null): void {
   transport = given
 }
 
+export function backendPort(): number | null {
+  return transport?.port ?? null
+}
+
 export interface BackendTarget {
   readonly port: number
   readonly path: string

@@ -194,6 +194,16 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn new(heap_mb: Option<usize>, name: &str, platform: crate::host::platform::Shared) -> Self {
+        Self::with_channel(heap_mb, name, platform, channel(), true)
+    }
+
+    pub fn with_channel(
+        heap_mb: Option<usize>,
+        name: &str,
+        platform: crate::host::platform::Shared,
+        (tx, rx): (Sender<Msg>, Receiver<Msg>),
+        inspect: bool,
+    ) -> Self {
         crate::host::engine::init();
         let mut params = v8::CreateParams::default();
         if let Some(mb) = heap_mb {
@@ -204,7 +214,6 @@ impl Runtime {
         isolate.set_promise_reject_callback(promise_reject);
         isolate.set_host_import_module_dynamically_callback(crate::host::modules::dynamic_import);
         isolate.set_host_initialize_import_meta_object_callback(crate::host::modules::import_meta);
-        let (tx, rx) = channel();
         crate::host::engine::register(isolate_ptr(&mut isolate), tx.clone());
         let lp = Rc::new(Loop {
             tx,
@@ -229,7 +238,9 @@ impl Runtime {
             v8::scope!(let scope, &mut isolate);
             let context = v8::Context::new(scope, Default::default());
             let scope = &mut v8::ContextScope::new(scope, context);
-            crate::host::inspector::start(scope, name);
+            if inspect {
+                crate::host::inspector::start(scope, name);
+            }
             crate::host::profile::start(name);
             v8::Global::new(scope, context)
         };
@@ -606,6 +617,24 @@ mod tests {
     fn run(scope: &mut v8::PinScope, code: &str) -> Option<()> {
         let code = v8::String::new(scope, code)?;
         v8::Script::compile(scope, code, None)?.run(scope).map(|_| ())
+    }
+
+    #[test]
+    fn terminate_execution_stops_a_wasm_loop() {
+        let mut rt = Runtime::new(None, "wasm-loop", std::sync::Arc::new(crate::host::platform::Headless));
+        let handle = rt.isolate.thread_safe_handle();
+        let started = Instant::now();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            handle.terminate_execution();
+        });
+        let spin = "new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, \
+                    7, 8, 1, 4, 115, 112, 105, 110, 0, 0, 10, 9, 1, 7, 0, 3, 64, 12, 0, 11, 11]))).exports.spin()";
+        let finished = rt.task(|scope| run(scope, spin).is_some());
+        assert!(!finished, "the loop never returns on its own");
+        assert!(started.elapsed() < Duration::from_secs(5), "and termination ends it");
+        rt.isolate.cancel_terminate_execution();
+        assert!(rt.task(|scope| run(scope, "1").is_some()), "the isolate runs again afterwards");
     }
 
     #[test]

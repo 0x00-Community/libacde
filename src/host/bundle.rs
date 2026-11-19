@@ -2,20 +2,27 @@ use std::borrow::Cow;
 
 pub const PAGE_URL: &str = "acde-runtime:/page.js";
 pub const LAUNCHER_URL: &str = "acde-runtime:/launcher.js";
+pub const WORKER_URL: &str = "acde-runtime:/webworker.js";
 
 const PAGE: &str = include_str!(concat!(env!("OUT_DIR"), "/page.js"));
 const LAUNCHER: &str = include_str!(concat!(env!("OUT_DIR"), "/launcher.js"));
+const WORKER: &str = include_str!(concat!(env!("OUT_DIR"), "/webworker.js"));
 
 fn file_name(url: &str) -> Option<&'static str> {
     match url {
         PAGE_URL => Some("page.js"),
         LAUNCHER_URL => Some("launcher.js"),
+        WORKER_URL => Some("webworker.js"),
         _ => None,
     }
 }
 
 fn embedded(name: &str) -> &'static str {
-    if name == "page.js" { PAGE } else { LAUNCHER }
+    match name {
+        "page.js" => PAGE,
+        "webworker.js" => WORKER,
+        _ => LAUNCHER,
+    }
 }
 
 #[cfg(debug_assertions)]

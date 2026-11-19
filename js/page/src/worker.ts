@@ -1,5 +1,5 @@
 import { install, installBackendTransport, observe } from '@dopame/acde-dom'
-import type { AudioNative, BackendTransport, CaptureNative, DeviceNative, DomNative, GpuNative, HostNative, StorageNative, WebglNative } from '@dopame/acde-dom'
+import type { AudioNative, BackendTransport, CaptureNative, DeviceNative, DomNative, GpuNative, HostNative, StorageNative, WebglNative, WorkersNative } from '@dopame/acde-dom'
 import type { ServiceShape, WebInit } from './contract'
 import { BluetoothModule, type BluetoothNatives } from './bluetooth'
 import { DevicesModule, type DevicesNatives } from './devices'
@@ -59,6 +59,7 @@ interface WebNatives extends Natives {
   readonly gpu?: GpuNative
   readonly webgl?: WebglNative
   readonly audio?: AudioNative
+  readonly workers?: WorkersNative
   readonly capture?: CaptureNative
   readonly device?: DeviceNative
   readonly storage?: StorageNative
@@ -123,6 +124,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
     gpu: natives.gpu,
     webgl: natives.webgl,
     audio: natives.audio,
+    workers: natives.workers,
     ...(natives.capture && { capture: permits.capture(natives.capture, access) }),
     ...(natives.device && { device: permits.device(natives.device, access) }),
     ...(init.screen && { screen: init.screen }),

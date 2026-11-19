@@ -328,6 +328,7 @@ impl Spec {
 
     fn run(self, killed: Arc<AtomicBool>, ready: &std::sync::mpsc::SyncSender<Handle>, platform: crate::host::platform::Shared) -> (i32, Option<String>) {
         let heap = (self.heap_mb > 0.0).then_some(self.heap_mb as usize);
+        HEAP_MB.with(|h| h.set(heap));
         let mut runtime = rt::Runtime::new(heap, &self.name, platform);
         let isolate = runtime.isolate.thread_safe_handle();
         let reason = Arc::new(Mutex::new(None::<String>));
@@ -341,6 +342,7 @@ impl Spec {
         _ = ready.send(Handle { tx: runtime.lp.sender(), isolate, stopping: stopping.clone(), killed, busy: runtime.lp.busy(), tid });
         let code = run_web(&mut runtime, self.init, &self.env, self.grants, &stopping);
         ON_MESSAGE.with(|m| *m.borrow_mut() = None);
+        crate::host::worker::clear();
         crate::host::webnative::clear();
         crate::host::backend::clear();
         crate::host::dom::clear_loads();
@@ -480,14 +482,22 @@ fn cpu_ms(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
     rv.set_double(with_handle(scope, &args, Handle::cpu_ms).unwrap_or(0.0));
 }
 
-struct HeapGuard {
+thread_local! {
+    static HEAP_MB: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+pub fn heap_mb() -> Option<usize> {
+    HEAP_MB.with(|h| h.get())
+}
+
+pub(crate) struct HeapGuard {
     handle: v8::IsolateHandle,
     reason: Arc<Mutex<Option<String>>>,
     stopping: Arc<AtomicBool>,
 }
 
 impl HeapGuard {
-    fn install(runtime: &mut rt::Runtime, handle: v8::IsolateHandle, reason: Arc<Mutex<Option<String>>>, stopping: Arc<AtomicBool>) -> Box<Self> {
+    pub(crate) fn install(runtime: &mut rt::Runtime, handle: v8::IsolateHandle, reason: Arc<Mutex<Option<String>>>, stopping: Arc<AtomicBool>) -> Box<Self> {
         let guard = Box::new(Self { handle, reason, stopping });
         let data = &*guard as *const Self as *mut std::ffi::c_void;
         runtime.isolate.add_near_heap_limit_callback(Self::near_limit, data);
@@ -522,6 +532,7 @@ fn run_web(runtime: &mut rt::Runtime, init: Vec<u8>, env: &[(String, String)], g
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         crate::host::webgpu::install(scope, natives);
         crate::host::audio::install(scope, natives);
+        crate::host::worker::install(scope, natives);
         let port = v8::Object::new(scope);
         crate::methods!(scope, port,
             "post" => post_to_broker,
