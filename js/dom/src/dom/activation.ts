@@ -14,6 +14,10 @@ export function transientActivation(): boolean {
   return host.now() - last <= TRANSIENT_MS
 }
 
+export function activatedSince(time: number): boolean {
+  return last > time && transientActivation()
+}
+
 export class UserActivation {
   constructor(token?: unknown) {
     illegal(token)

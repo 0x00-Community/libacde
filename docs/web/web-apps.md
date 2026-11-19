@@ -223,7 +223,8 @@
   `document.pointerLockElement` / `ShadowRoot.pointerLockElement` (和 `activeElement` 一样不往影子宿主换), `document.exitPointerLock()`,
   `pointerlockchange` / `pointerlockerror` 发在 document 上 (同一个任务里先发事件再落定 promise). 拒绝: 元素不在文档里或窗口没有焦点
   `WrongDocumentError`, `unadjustedMovement: true` 和不支持的窗口 `NotSupportedError`, 已有一个请求在等 `InvalidStateError`, 宿主不给
-  `NotAllowedError`, 没有用户激活 (见下条) 也 `NotAllowedError`, 除非上一次锁是页面自己 `exitPointerLock` 放开的 (宿主收回的不算);
+  `NotAllowedError`, 没有用户激活 (见下条) 也 `NotAllowedError`, 除非上一次锁是页面自己 `exitPointerLock` 放开的; 宿主收回 (Esc 等) 之后要比收回更晚的一次激活, 页面不能在
+  `pointerlockchange` 里拿锁前那次点击马上再锁回去;
   已经锁着时换元素直接成功, 不问宿主. Esc 由宿主收回, 页面拦不住. 窗口能不能锁看
   surface 的 `pointerLock` (`platform::Window::pointer_lock`, 缺省 false: 会话和 C 接口没有; 宿主窗口见 acdev `docs/hostwin.md`「输入」),
   能锁时 acde-host `host.ts` 把 `env.pointerLock` 接到 `surface.lockPointer(on)` (`SurfaceCommand::PointerLock`). 宿主的回答是

@@ -109,6 +109,7 @@ test('pointer lock: the host taking it back or the element leaving the document 
   assert.deepEqual(web.json('log'), ['change:null'])
   assert.deepEqual(calls, ['lock'])
 
+  gesture(web)
   web.run('log.length = 0; document.getElementById("view").requestPointerLock()')
   web.internals.pointerLock('granted')
   web.run('document.getElementById("view").remove()')
@@ -159,5 +160,32 @@ test('pointer lock: a request needs a user gesture, unless the page itself let t
   await web.wait()
   assert.deepEqual(web.json('log'), ['change:view', 'resolved'])
   assert.deepEqual(calls, ['lock', 'unlock', 'lock'])
+})
+
+test('pointer lock: after the host takes the lock back, only a newer gesture can lock again', async () => {
+  using web = await page(PAGE)
+  const calls = setup(web)
+  web.run('document.getElementById("view").requestPointerLock()')
+  web.internals.pointerLock('granted')
+  await web.wait()
+  web.run(`
+    log.length = 0
+    document.addEventListener('pointerlockchange', () => {
+      if (!document.pointerLockElement) settle(document.getElementById('view').requestPointerLock())
+    })
+  `)
+  web.internals.pointerLock('lost')
+  await web.wait()
+  await web.wait()
+  assert.deepEqual(web.json('log'), ['change:null', 'error', 'rejected:NotAllowedError'])
+  assert.deepEqual(calls, ['lock'])
+
+  await new Promise((resolve) => setTimeout(resolve, 2))
+  gesture(web)
+  web.run('log.length = 0; settle(document.getElementById("view").requestPointerLock())')
+  web.internals.pointerLock('granted')
+  await web.wait()
+  assert.deepEqual(web.json('log'), ['change:view', 'resolved'])
+  assert.deepEqual(calls, ['lock', 'lock'])
 })
 
