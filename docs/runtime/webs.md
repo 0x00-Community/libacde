@@ -80,7 +80,7 @@
     `acde.window.hostControls` 为真时宿主 (平台) 提供窗口控件, 页面应藏起自己的最小化 / 最大化 / 关闭按钮.
     `requestActivate` 可能被拒或变成提醒用户 (attention), `requestGrab` 可能以 `denied` 拒绝, `animate` 可能立刻做完 (照样发 `windowanimated`).
     桌面 / 系统应用经 `acde.windows.requestState(id, state)` 改任何窗口 (不认识的状态 400, 会话里 501), 收 `on('state')`; `list()` 的每一行都带 `state`
-    (SDK `NativeWindow.state` 必有; web 侧 `remote.ts` 的 `WindowList.deliver` 按 `windowopen` / `windowtitle` / `windowstate` / `windowclose` 维护行再发给处理函数,
+    (SDK `NativeWindow.state` 必有; web 侧 `remote.ts` 的 `WindowList.deliver` 按 `window` 快照 (和 `windowclose`、`windowcrash`) 维护行, 先发 `window`, 再按快照的 `first` / `changed` 推出已过时的 `open` / `title` / `state` / `activate` / `parent` / `desk` / `geometry` 照发,
     没收到过 `windowstate` 的窗口是 `normal`, 换标题不丢状态), `acde:inspect` 的窗口 (driver 用的) 带 `state`.
   - window web: 清单给的服务和能力; `acde.window` (标题、菜单、关闭、最小化、`requestMode` / `setGrabHint` / `setBackdrop` /
     `requestActivate` / `requestGrab` / `releaseGrab`、app 级 `shortcut(combo)`; `beforeclose` 返回 false 留住窗口; `request` 是别的应用

@@ -20,7 +20,7 @@ import { LaunchArgs } from './args'
 import { refused, route, unsupported } from './app/calls'
 import type { LentRoot } from '@dopame/acde-api'
 import { sessionOf, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
-import { toDesktop, type ShellEvent } from './app/events'
+import { WindowSnapshots, type ShellEvent } from './app/events'
 import { ServiceHost } from './manager/service'
 import { DevChannel, type DevShell, type DevTarget } from './dev/dev'
 import { DevToolsEndpoint, type NativeDevTools } from './dev/devtools'
@@ -143,6 +143,7 @@ class Launcher {
   static readonly SIGNALS = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const
   static readonly DEV_SETTLE_MS = 1000
   readonly #shell: LauncherShell
+  readonly #snapshots = new WindowSnapshots()
   #wake: (() => void) | null = null
   #ended: number | null = null
   #rpc: Rpc | null = null
@@ -552,7 +553,7 @@ class Launcher {
       else if (event.type === 'devtools') this.#devtools.pressed()
       else if (!this.#desktop && (event.type === 'menuselect' || event.type === 'shortcut')) this.#appKey(event)
       else if (event.type === 'devreload') void this.#devReload(event['title'] === 'hot')
-      else if (this.#desktop) this.#thread?.post(toDesktop(event))
+      else if (this.#desktop) this.#thread?.post(this.#snapshots.toDesktop(event))
     }
   }
 

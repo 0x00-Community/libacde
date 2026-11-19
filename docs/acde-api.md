@@ -30,7 +30,13 @@
 
 ### 已过时
 
-(暂无; repo-split 04 合入后登记 `acde:windows` 的 open、title、state、activate、parent、desk、geometry 事件, 替代者为 `window`)
+| 接口 | 替代者 | 起于 |
+| --- | --- | --- |
+| `acde:windows` 事件 `open`、`title`、`state`、`activate`、`parent`、`desk`、`geometry` | `window` (每个窗口一批变化后的完整快照, `first` 表示新窗口, `changed` 列出变了的字段, `previous` 是上一个状态) | 0.1.0 之后的下一个小版本 (repo-split 04) |
+
+运行时照旧发这 7 个事件: page 一层收到 `window` 快照后按 `first` / `changed` 推出来再发.
+
+从没发出过、在小版本里删掉的: `acde:windows` 的 `minsize` (`WindowMinSizeEvent`) 与 `animated` 事件 (只有已删的旧合成器会发, winman 下从来没有).
 
 ## 结构
 

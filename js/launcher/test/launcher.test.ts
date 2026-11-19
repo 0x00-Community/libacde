@@ -5,7 +5,7 @@ import { AppLookup, webInit } from '../src/app/app.ts'
 import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/app/calls.ts'
 import { sessionOf, type Welcome } from '../src/manager/manager.ts'
-import { toDesktop } from '../src/app/events.ts'
+import { WindowSnapshots } from '../src/app/events.ts'
 import { incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
 
 bindNatives({ host: {}, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
@@ -128,12 +128,28 @@ describe('the session from the manager\'s welcome', () => {
 })
 
 describe('window system events on their way to the desktop page', () => {
-  test('a geometry change gets its rect as an object; other events pass as they are', () => {
-    assert.deepEqual(toDesktop({ type: 'windowgeometry', window: 3, x: 10, y: 20, width: 300, height: 200 }), {
-      type: 'windowgeometry', window: 3, rect: { x: 10, y: 20, width: 300, height: 200 },
+  test('winman snapshots pass as they are', () => {
+    const snapshots = new WindowSnapshots()
+    const rect = { x: 0, y: 0, width: 10, height: 10 }
+    const snapshot = { type: 'window', window: 3, appId: 'notes', title: 'Notes', state: 'normal', hidden: false, rect, active: true, desk: 0, first: true }
+    assert.equal(snapshots.toDesktop(snapshot), snapshot)
+    const crash = { type: 'windowcrash', window: 3, reason: 'killed' }
+    assert.equal(snapshots.toDesktop(crash), crash)
+  })
+
+  test('a host window\'s old events become snapshots that say what changed', () => {
+    const snapshots = new WindowSnapshots()
+    const open = snapshots.toDesktop({ type: 'windowopen', window: 3, title: 'Notes', appId: 'notes', instance: 7, web: true })
+    assert.deepEqual(open, {
+      type: 'window', window: 3, appId: 'notes', title: 'Notes', state: 'normal', hidden: false, rect: { x: 0, y: 0, width: 0, height: 0 },
+      active: false, desk: 0, instance: 7, web: true, first: true,
     })
-    const open = { type: 'windowopen', window: 3, title: 'Notes', appId: 'notes', instance: 7 }
-    assert.equal(toDesktop(open), open)
+    const moved = snapshots.toDesktop({ type: 'windowgeometry', window: 3, x: 10, y: 20, width: 300, height: 200 })
+    assert.deepEqual([moved['rect'], moved['changed'], moved['first']], [{ x: 10, y: 20, width: 300, height: 200 }, ['rect'], false])
+    const filled = snapshots.toDesktop({ type: 'windowstate', window: 3, state: 'filled', previous: 'normal' })
+    assert.deepEqual([filled['state'], filled['previous'], filled['changed']], ['filled', 'normal', ['state']])
+    const unknown = { type: 'windowtitle', window: 9, title: 'x' }
+    assert.equal(snapshots.toDesktop(unknown), unknown)
   })
 })
 

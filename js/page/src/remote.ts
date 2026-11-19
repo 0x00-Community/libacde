@@ -25,8 +25,54 @@ export class WindowList {
   }
 
   deliver(event: WindowEvent): void {
+    if (event.type === 'window') {
+      this.#snapshot(event)
+      return
+    }
     this.#track(event)
     this.notices.emit(`windows:${windowsEventName(event.type)}`, event)
+  }
+
+  #snapshot(event: WindowEvent): void {
+    const rect = WindowList.#bounds(event['rect'])
+    const state = WindowList.STATES.find((known) => known === event['state']) ?? 'normal'
+    const text = (value: unknown) => (typeof value === 'string' && value ? value : null)
+    const number = (value: unknown) => (typeof value === 'number' ? value : undefined)
+    const was = this.#windows.get(event.window)
+    const web = event['web'] === true || was?.web === true
+    const instance = number(event['instance'])
+    const desk = number(event['desk'])
+    const placed = { ...(rect ? { rect } : {}), ...(instance !== undefined ? { instance } : {}), ...(desk !== undefined ? { desk } : {}) }
+    this.#windows.set(event.window, { id: event.window, appId: text(event['appId']), title: text(event['title']), ...(web ? { web } : {}), state, ...placed })
+    this.notices.emit('windows:window', event)
+    for (const old of WindowList.older(event)) this.notices.emit(`windows:${windowsEventName(old.type)}`, old)
+  }
+
+  static older(event: WindowEvent): WindowEvent[] {
+    const window = event.window
+    const of = (type: WindowEvent['type'], fields: Record<string, unknown> = {}): WindowEvent => ({ type, window, ...fields })
+    const naming = { appId: event['appId'] ?? null, title: event['title'] ?? null }
+    if (event['first'] === true) return WindowList.#opened(event, of, naming)
+    const changed = new Set(Array.isArray(event['changed']) ? event['changed'] as string[] : [])
+    const out: WindowEvent[] = []
+    if (changed.has('appId') || changed.has('title')) out.push(of('windowtitle', naming))
+    if (changed.has('state')) out.push(of('windowstate', { state: event['state'], previous: event['previous'] ?? 'normal' }))
+    if (changed.has('active') && event['active'] === true) out.push(of('windowactivate'))
+    if (changed.has('parent')) out.push(of('windowparent', { parent: event['parent'] }))
+    if (changed.has('desk')) out.push(of('windowdesk', { desk: event['desk'] }))
+    if (changed.has('rect')) out.push(of('windowgeometry', { rect: event['rect'] }))
+    return out
+  }
+
+  static #opened(event: WindowEvent, of: (type: WindowEvent['type'], fields?: Record<string, unknown>) => WindowEvent, naming: object): WindowEvent[] {
+    const web = event['web'] === true ? { web: true } : {}
+    const icon = typeof event['icon'] === 'string' ? { icon: event['icon'] } : {}
+    const out = [of('windowopen', { ...naming, instance: event['instance'], desk: event['desk'], ...web, ...icon })]
+    if (event['state'] !== undefined && event['state'] !== 'normal') out.push(of('windowstate', { state: event['state'], previous: 'normal' }))
+    if (event['active'] === true) out.push(of('windowactivate'))
+    if (typeof event['parent'] === 'number') out.push(of('windowparent', { parent: event['parent'] }))
+    if (event['rect'] !== undefined) out.push(of('windowgeometry', { rect: event['rect'] }))
+    return out
   }
 
   #track(event: WindowEvent): void {
