@@ -68,11 +68,11 @@ function navigate(url: string, replace: boolean): void {
   const next = new URL(url, env.url)
   const now = here()
   if (saves(next.href)) return saveUrl(next.href, '')
-  if (!sameDocument(next, now) || (next.hash === now.hash && next.href !== now.href)) {
+  if (!sameDocument(next, now) || !next.href.includes('#')) {
     env.navigate(next.href, '_self')
     return
   }
-  if (next.href === now.href) return void (next.hash && scrollToFragment(next.hash))
+  if (next.href === now.href) return void scrollToFragment(next.hash)
   const oldURL = env.url
   env.url = next.href
   if (replace) entries[index] = { url: env.url, state: null }
@@ -81,12 +81,10 @@ function navigate(url: string, replace: boolean): void {
     entries.push({ url: env.url, state: null })
     index = entries.length - 1
   }
-  if (next.hash !== now.hash) {
-    scrollToFragment(next.hash)
-    host.setTimer(0, () => {
-      fire(G as unknown as EventTarget, new HashChangeEvent('hashchange', { oldURL, newURL: next.href }))
-    })
-  }
+  scrollToFragment(next.hash)
+  host.setTimer(0, () => {
+    fire(G as unknown as EventTarget, new HashChangeEvent('hashchange', { oldURL, newURL: next.href }))
+  })
 }
 
 function saves(url: string): boolean {

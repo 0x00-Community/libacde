@@ -23,6 +23,13 @@ test('links: a fragment moves location.hash (hashchange); other URLs and new win
     ['http://acde.local/other/page.html', '_self'],
     ['https://example.com/x', '_blank'],
   ])
+  web.run(`history.replaceState(null, '', location.pathname); globalThis.out = []; globalThis.depth = history.length
+    const empty = document.createElement('a'); empty.href = '#'; document.body.append(empty); empty.click()`)
+  await web.wait(5)
+  web.run('empty.click()')
+  await web.wait(5)
+  assert.deepEqual(web.json('[location.href.endsWith("#"), location.hash, out, history.length - depth]'), [true, '', [''], 1], 'href="#" stays in the page, as in Chrome: one hashchange, one history entry')
+  assert.equal(navigated.length, 2, 'and does not load the page again')
 })
 
 test('links: <a download>, blob: and data: URLs are saved through the host (the blob taken at the click)', async () => {
