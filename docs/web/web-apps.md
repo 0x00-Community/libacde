@@ -218,7 +218,17 @@
     "stream-properties=props,media.class=Video/Source,media.role=Camera"` 做一个 PipeWire 摄像头.
   - 还没有: `devicechange` (不监视插拔)、`getDisplayMedia` (录屏)、`MediaRecorder`、`createMediaStreamDestination`、回声消除等处理、
     `resizeMode: crop-and-scale`、轨道的 `mute` / `unmute` (系统暂停时).
-- **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`) 和 XML 文档的渲染 (只当 DOM 用)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、Web Worker、`crypto.subtle`、OffscreenCanvas、全屏和指针锁定、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
+- **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`) 和 XML 文档的渲染 (只当 DOM 用)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、Web Worker、`crypto.subtle`、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
+- **指针锁定** (https://w3c.github.io/pointerlock/, acde-dom `dom/pointerlock.ts`, 2026-11-19): `Element.requestPointerLock(options?)` 返回 promise,
+  `document.pointerLockElement` / `ShadowRoot.pointerLockElement` (和 `activeElement` 一样不往影子宿主换), `document.exitPointerLock()`,
+  `pointerlockchange` / `pointerlockerror` 发在 document 上 (同一个任务里先发事件再落定 promise). 拒绝: 元素不在文档里或窗口没有焦点
+  `WrongDocumentError`, `unadjustedMovement: true` 和不支持的窗口 `NotSupportedError`, 已有一个请求在等 `InvalidStateError`, 宿主不给
+  `NotAllowedError`; 已经锁着时换元素直接成功, 不问宿主. 没有用户激活 (transient activation) 的检查: 运行时还没有用户激活模型. 窗口能不能锁看
+  surface 的 `pointerLock` (`platform::Window::pointer_lock`, 缺省 false: 会话和 C 接口没有; 宿主窗口见 acdev `docs/hostwin.md`「输入」),
+  能锁时 acde-host `host.ts` 把 `env.pointerLock` 接到 `surface.lockPointer(on)` (`SurfaceCommand::PointerLock`). 宿主的回答是
+  `pointerlock {code: 1 | 0, title: 'request'}` (每个请求恰好一次), 宿主收回 (Esc、失焦、焦点给了别的窗口) 是 `pointerlock {code: 0, title: 'lost'}`;
+  页面自己 `exitPointerLock` 不等回答. 锁着时 `pointermove` 带 `deltaX` / `deltaY` (按帧合并时相加) 成为 `movementX` / `movementY`, 位置停在锁定时的点,
+  所有指针事件 (含 click、wheel) 都发给锁定的元素, 不发 over / out / enter / leave. 元素离开文档时解锁 (发 `pointerlockchange`).
 - **剪贴板** (libacde 单子 11, 形状与 acdev-lead、system-lead 定): 宿主接口按网页 MIME 类型收发字节 (`render/surface.rs`): `SetClipboard(Vec<ClipboardEntry>)`
   写一项的全部表示并整个替换剪贴板, `ClipboardTypes` 列出有哪些类型, `ReadClipboard {mime, reply}` 取一种 (没有时 `None`). 认的类型: `text/plain`
   (UTF-8)、`image/png` (PNG 字节)、`text/uri-list` (UTF-8, CRLF 分行). Wayland 宿主上 `text/plain` 对应 `text/plain;charset=utf-8`、`text/plain`、

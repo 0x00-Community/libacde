@@ -14,6 +14,7 @@
   `set_waker` 给的 `AcdeWaker*` 归 C (`acde_waker_wake` / `acde_waker_free`, NULL 即清掉).
 - 命令: `send` 收到 `AcdeCommand` (`kind` 决定哪些字段有意义; 指针只在回调期间有效). `READ_CLIPBOARD` 带 `AcdeReply*`, 必须恰好一次
   `acde_reply_send` 或 `acde_reply_free`. 还没进 C 的: `FRAME_THEME` 只有 kind, `START_DRAG` 不带拖拽图像, 帧本身 (`RenderHandle::frame`
-  是 GPU scene) 拿不到, `Platform::exports` 收 V8 scope 只在 Rust 里.
+  是 GPU scene) 拿不到, `Platform::exports` 收 V8 scope 只在 Rust 里. 指针锁定不进 C: `AcdeWindow` 没有 `pointer_lock`, 取 trait 缺省 (false),
+  页面因此直接以 `NotSupportedError` 拒绝, 不会发出 `PointerLock` (`Outgoing::of` 遇到也丢掉).
 - 导出表: `build.rs` 从 `src/ffi.rs` 收 `acde_*`, so 只导出它们 (Linux `--exclude-libs,ALL` + 版本脚本, macOS `-exported_symbols_list`, MSVC `.def`);
   V8 / napi / temporal 等依赖的符号都不导出 (napi 模块的 napi_* 只给静态链接的内置模块用, 不 dlopen 外部 .node).

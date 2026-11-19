@@ -49,6 +49,7 @@ import { DOMMatrix, DOMMatrixReadOnly, DOMPoint, DOMPointReadOnly, DOMQuad, DOMR
 import * as html from './dom/html'
 import { createHtml, HTMLElement } from './dom/html'
 import { Input } from './dom/input'
+import { pointerLockLost, pointerLockSettled } from './dom/pointerlock'
 import * as media from './dom/media'
 import { deliverLoads, presentVideos } from './dom/media'
 import { cssEventsWanted, deliverCssEvents, onCssEventsWanted } from './dom/cssevents'
@@ -153,6 +154,7 @@ export interface WebInternals {
   clock(request: ClockRequest): Promise<ClockState> | ClockState
   reportError(error: unknown): void
   unhandledRejection(promise: Promise<unknown>, reason: unknown): boolean
+  pointerLock(change: 'granted' | 'denied' | 'lost'): void
   stats(): { strong: number; weak: number }
 }
 
@@ -354,6 +356,10 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
       const missed = fire(global as unknown as EventTarget, event)
       if (missed) unhandled('rejection', reason)
       return missed
+    },
+    pointerLock(change) {
+      if (change === 'lost') pointerLockLost()
+      else pointerLockSettled(change === 'granted')
     },
     stats: wrapperStats,
   }

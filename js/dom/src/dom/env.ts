@@ -7,6 +7,7 @@ export const env = {
   reload: () => {},
   close: () => {},
   clipboard: null as null | ClipboardAccess,
+  pointerLock: null as null | PointerLockAccess,
   alert: null as null | ((message: string) => void),
   download: null as null | ((request: DownloadRequest) => void),
   files: null as null | FileChooser,
@@ -17,6 +18,11 @@ export const env = {
 export interface ClipboardBytes {
   readonly type: string
   readonly data: Uint8Array
+}
+
+export interface PointerLockAccess {
+  lock(): void
+  unlock(): void
 }
 
 export interface ClipboardAccess {

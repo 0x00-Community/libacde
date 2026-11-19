@@ -6,6 +6,7 @@ import type { Element } from './element'
 import { KeyboardEvent, MouseEvent, PointerEvent, WheelEvent } from './events'
 import { focus, focusable, focusedElement, setFocus } from './focus'
 import { HTMLButtonElement } from './forms'
+import { pointerLockElement } from './pointerlock'
 import { SelectInput } from './select'
 import { PointerSelection } from './textselect'
 import { RangeInput } from './rangeinput'
@@ -22,6 +23,7 @@ interface PointerOptions {
   readonly button?: number
   readonly modifiers?: Modifiers
   readonly target?: number | null
+  readonly movement?: readonly [number, number]
 }
 
 interface KeyOptions {
@@ -67,6 +69,8 @@ export class Input {
   onKeyDefault: (target: Element, key: string, modifiers: Modifiers) => void = () => {}
 
   elementAt(target: number | null | undefined, x: number, y: number, ignoreCapture = false): Element {
+    const locked = pointerLockElement()
+    if (locked) return locked
     if (!ignoreCapture && this.capture?.[CONNECTED]) return this.capture
     let id = target === undefined ? dom.hitTest(x, y) : (target ?? NONE)
     if (id !== NONE && dom.nodeType(id) === NodeType.Text) id = dom.parent(id)
@@ -79,7 +83,7 @@ export class Input {
   }
 
   #init(x: number, y: number, options: PointerOptions, button = 0) {
-    const movementX = x - this.#last.x, movementY = y - this.#last.y
+    const [movementX, movementY] = options.movement ?? [x - this.#last.x, y - this.#last.y]
     return { clientX: x, clientY: y, screenX: x, screenY: y, movementX, movementY, button, buttons: this.#buttons, pointerId: 1, pointerType: 'mouse', isPrimary: true, width: 1, height: 1, pressure: this.#buttons ? 0.5 : 0, ...mods(options.modifiers) }
   }
 
@@ -104,6 +108,7 @@ export class Input {
   }
 
   #hoverTo(target: Element | null, init: Record<string, unknown>): void {
+    if (pointerLockElement()) return
     if (this.#hover === target && (!target || inner(target, 'isConnected'))) return
     const old = this.#hover?.[CONNECTED] ? this.#hover : (this.#path.find((e) => inner(e, 'isConnected')) ?? null)
     const was = this.#chain(old), now = this.#chain(target)

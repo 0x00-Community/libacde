@@ -75,6 +75,7 @@ pub enum SurfaceCommand {
     Backdrop([i32; 4], [f64; 4]),
     Activate,
     Grab(u32, bool),
+    PointerLock(bool),
     OpenPanel { id: u32, token: u64, rect: [i32; 4] },
     PlacePanel { id: u32, rect: [i32; 4], input: [i32; 4] },
     ClosePanel(u32),

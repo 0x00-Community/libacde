@@ -154,7 +154,7 @@ export class Host {
       case 'pointermove': {
         const over = () => input.elementAt(event.target, event.x, event.y, true) as unknown as Element
         if ((this.#buttons & 1 || this.#drag.active) && this.#drag.move(over(), event.x, event.y, (source) => this.#cancelPointer(source))) return
-        return input.pointer('pointermove', event.x, event.y, { target: event.target, modifiers: event.modifiers })
+        return input.pointer('pointermove', event.x, event.y, { target: event.target, modifiers: event.modifiers, movement: event.movement })
       }
       case 'pointerdown': {
         const button = event.button ?? 0
@@ -244,6 +244,10 @@ export class Host {
     StartupTimeline.mark('shell running')
     this.#surface = surface
     this.#text.attach(surface)
+    if (surface.pointerLock && surface.lockPointer) {
+      const lockPointer = surface.lockPointer.bind(surface)
+      this.#page.env.pointerLock = { lock: () => lockPointer(true), unlock: () => lockPointer(false) }
+    }
     surface.requestFrame()
     if (surface.waitThen) {
       const waitThen = surface.waitThen.bind(surface)
@@ -278,6 +282,12 @@ export class Host {
           this.onGrab({ kind: 'lost', reason: Host.lost(raw.title) })
           continue
         }
+        if (raw.type === 'pointerlock') {
+          this.#flushMove(events)
+          this.#handle(events.splice(0))
+          this.#page.pointerLock(raw.title === 'lost' ? 'lost' : raw.code === 1 ? 'granted' : 'denied')
+          continue
+        }
         if (raw.type === 'framebutton') {
           this.onFrameButton(raw.key ?? '')
           continue
@@ -294,8 +304,9 @@ export class Host {
           continue
         }
         if (raw.type === 'pointermove') {
-          if (!this.#move) surface.requestFrame()
-          this.#move = raw
+          const last = this.#move
+          if (!last) surface.requestFrame()
+          this.#move = last && raw.deltaX !== undefined && last.deltaX !== undefined ? { ...raw, deltaX: last.deltaX + raw.deltaX, deltaY: (last.deltaY ?? 0) + (raw.deltaY ?? 0) } : raw
           continue
         }
         this.#flushMove(events)
