@@ -239,6 +239,7 @@ export interface OpenWindowOptions {
   readonly parent?: number
   readonly modal?: boolean
   readonly root?: LentRoot
+  readonly newWindow?: boolean
 }
 
 export interface OpenFileRequest {
@@ -273,8 +274,8 @@ export interface Opened {
 export interface AcdeOpen {
   (request: SystemRequest): Promise<Opened>
   (app: string, request: SystemRequest): Promise<Opened>
-  <R extends AppRequest>(app: string, request: R, options?: OpenWindowOptions): Promise<{ window: number; instance?: number }>
-  (app: string, request?: null, options?: OpenWindowOptions): Promise<{ window: number; instance?: number }>
+  <R extends AppRequest>(app: string, request: R, options?: OpenWindowOptions): Promise<{ window: number; instance?: number; running?: boolean }>
+  (app: string, request?: null, options?: OpenWindowOptions): Promise<{ window: number; instance?: number; running?: boolean }>
 }
 
 export interface AcdeAppList {
