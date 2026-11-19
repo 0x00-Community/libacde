@@ -121,7 +121,7 @@
   这时页面的 `Notification.permission` 是 `denied`、构造后发 `error` (`PageCalls` 不装 `env.notify`), Broker 的 `notify` 回 501 `unsupported`.
   Windows 完整桌面照常转给桌面.
 - **声音**: `Audio` / `AudioContext` (acde-dom `src/audio/`, src/host `audio/`): 解码 (symphonia) 和混音 (每个 web 一个 48 kHz 立体声 f32
-  `Mixer`, 线程 `acde-audio`) 到处一样. 输出: Linux PipeWire (`output.rs`); macOS / Windows cpal 默认设备 (`output_cpal.rs`, 用设备当前的采样率,
+  `Mixer`, 线程 `acde-audio`) 到处一样. 输出: Linux PipeWire (`output.rs`; libacde 的三处 PipeWire 连接, 即这里、`acde:audio` 的 runtime `sound.rs` 和语音输入 `voice/mic.rs`, 都经 `runtime::pw_context` 建, 带 `module.rt = "false"` 不加载 module-rt: 没有 RTKit 时它把整个进程的 RLIMIT_RTTIME 设成 0 且收不回来, 之后任何实时线程一次没睡满就被内核 SIGKILL (daily-run3 桌面被杀); 512 帧的延迟不靠实时调度也够); macOS / Windows cpal 默认设备 (`output_cpal.rs`, 用设备当前的采样率,
   Hermite 重采样, 设备要 f32). 3 秒没声音关流; 没有设备 (或 `ACDE_AUDIO=null`) 按墙上时间渲染丢掉.
   - **空间化** (`PannerNode` / `AudioListener`, src/host `audio/spatial.rs`): 方位角、仰角、三种距离模型、声锥和 `equalpower` 照规范
     §6 的算法 (参数在一个 quantum 里变时逐样本算, 不变时每 quantum 算一次), 单元测试对着 Chrome 的 `OfflineAudioContext` 输出 (2e-5 内).

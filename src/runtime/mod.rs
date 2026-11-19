@@ -79,6 +79,8 @@ pub use portal::{Appearance, FileChooser, Filter as PortalFilter, choose_folder,
 pub use power::{Power, PowerCall, backlight_brightness};
 pub use proxy::backend_variables as backend_proxy_variables;
 #[cfg(target_os = "linux")]
+pub(crate) use sound::pw_context;
+#[cfg(target_os = "linux")]
 pub use sound::{SoundCall, Sounds};
 #[cfg(target_os = "linux")]
 pub use system::{SysCall, system_call};

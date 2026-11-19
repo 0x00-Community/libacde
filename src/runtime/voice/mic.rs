@@ -28,7 +28,7 @@ fn capture(id: u32, pcm: async_channel::Sender<Vec<u8>>, ready: async_channel::S
     let started = (|| -> Result<_, pw::Error> {
         pw::init();
         let main = pw::main_loop::MainLoopRc::new(None)?;
-        let context = pw::context::ContextRc::new(&main, None)?;
+        let context = crate::runtime::pw_context(&main)?;
         let core = context.connect_rc(None)?;
         let props = pw::properties::properties! {
             *pw::keys::MEDIA_TYPE => "Audio",
