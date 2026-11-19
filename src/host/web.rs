@@ -307,6 +307,7 @@ impl Spec {
                     }
                 };
                 UPSTREAM.with(|u| u.borrow_mut().take());
+                crate::host::webnative::release_surface();
                 let killed = dead.load(Ordering::SeqCst);
                 let (code, reason) = if killed { (Self::KILLED, None) } else { (code, reason) };
                 _ = broker.send(Msg::Task(Box::new(move |scope| {

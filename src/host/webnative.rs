@@ -34,6 +34,11 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>) {
     );
 }
 
+pub fn release_surface() {
+    let surface = STATE.with(|s| s.borrow_mut().surface.take());
+    drop(surface);
+}
+
 pub fn bind_app(app: Option<String>) {
     STATE.with(|s| s.borrow_mut().app = app);
 }
