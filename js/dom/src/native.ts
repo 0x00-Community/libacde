@@ -37,6 +37,7 @@ export interface Metrics {
 export interface DomNative {
   document(): number
   parseDocument(html: string): void
+  parseXmlDocument(text: string, contentType: string): void
   viewport(): { width: number; height: number; scale: number }
 
   nodeType(id: number): NodeType

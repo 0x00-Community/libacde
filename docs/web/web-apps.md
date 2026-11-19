@@ -88,6 +88,13 @@
   147 → 277 / 2369 (`DOMParser-parseFromString-xml-parsererror` 23 / 23、`XMLSerializer-serializeToString` 29 / 33、实体、CDATA、往返全过;
   剩下的大多是 `innerHTML` 的 Trusted Types、`createContextualFragment`、`positional-methods` 那批和 iframe); `dom/nodes` 3066 → 4114 / 6112
   (62 个文件变好, 没有变差的; `createElementNS`、`createDocument`、`*NS` 的属性和集合、处理指令、选择器大小写).
+- **XML 页面** (https://html.spec.whatwg.org/#read-xml, acde-dom `dom/page.ts` `loadPage`, render `Dom::parse_xml_document`): 从服务器取的页面
+  (`PageSource.served`) 带着响应的 `Content-Type` 交给 `loadPage`; 类型的本质 (去掉参数、转小写) 是 XML MIME 类型 (`text/xml`、
+  `application/xml` 或子类型以 `+xml` 结尾: `.xht` / `.xhtml` 的 `application/xhtml+xml`、`image/svg+xml` …) 时用上面的 XML 解析器解析成页面,
+  别的类型和没有类型时照旧按 HTML. 页面这时是 XML 文档 (`Ids.page`, `document.contentType` 是那个类型): 页面里的节点 (之后建的、克隆的、
+  `innerHTML` 解析的也是) 带 `IN_XML_DOCUMENT`, 属性名、`tagName`、选择器的类型名都区分大小写, `innerHTML` 用 XML 片段解析; `<style>` 里的
+  CDATA 段就是样式文字, 照常渲染 (WPT `css/` 两千多个 reftest 的参考页 `ref-filled-green-100px-square.xht` 靠它画出绿方块). 不良构时页面只有
+  一个 `parsererror` 元素. 按 HTML 再解析时页面回到 HTML 文档.
 - **按名字和序号取成员** (WebIDL 的 legacy platform object, acde-dom `dom/legacy.ts` 的 `legacy(shape)` 出 Proxy 的 handler, 照规范的
   [[GetOwnProperty]] / [[DefineOwnProperty]] / [[Delete]] / [[OwnPropertyKeys]]): 序号是可枚举的自有属性, 名字是不可枚举的
   (`Object.keys` 只有序号, `in` 和 `getOwnPropertyNames` 有名字), 没有 setter 的写入失败 (严格模式抛 TypeError), `preventExtensions` 失败.
@@ -218,7 +225,7 @@
     "stream-properties=props,media.class=Video/Source,media.role=Camera"` 做一个 PipeWire 摄像头.
   - 还没有: `devicechange` (不监视插拔)、`getDisplayMedia` (录屏)、`MediaRecorder`、`createMediaStreamDestination`、回声消除等处理、
     `resizeMode: crop-and-scale`、轨道的 `mute` / `unmute` (系统暂停时).
-- **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`) 和 XML 文档的渲染 (只当 DOM 用)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、Web Worker、`crypto.subtle`、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
+- **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`)、从文件读的页面 (`PageSource.html`) 只认 `.html` 入口 (`.xhtml` 文件不按 XML 解析)、页面按响应的字符编码解码 (现在总按 UTF-8)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、Web Worker、`crypto.subtle`、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
 - **指针锁定** (https://w3c.github.io/pointerlock/, acde-dom `dom/pointerlock.ts`, 2026-11-19): `Element.requestPointerLock(options?)` 返回 promise,
   `document.pointerLockElement` / `ShadowRoot.pointerLockElement` (和 `activeElement` 一样不往影子宿主换), `document.exitPointerLock()`,
   `pointerlockchange` / `pointerlockerror` 发在 document 上 (同一个任务里先发事件再落定 promise). 拒绝: 元素不在文档里或窗口没有焦点

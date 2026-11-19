@@ -6,6 +6,7 @@ import { noteMarkup, parsed, type Element } from './element'
 import type { Node } from './node'
 import { env, resolveUrl } from './env'
 import { documentState } from './document'
+import { documents } from './namespaces'
 import { HTMLScriptElement } from './html'
 import { detach, documentId, dom, ID, lifecycle, roots, strongIds, treeChanged, wrap, type Wrapper } from './realm'
 
@@ -13,6 +14,12 @@ const STARTED = Symbol('started')
 type Script = HTMLScriptElement & { [STARTED]?: boolean }
 
 const JS_TYPE = /^(text|application)\/(x-)?(java|ecma)script$/i
+const XML_TYPE = /^(?:text\/xml|application\/xml|[^/]+\/[^/]+\+xml)$/
+
+function documentType(contentType: string): string {
+  const essence = contentType.split(';', 1)[0]!.trim().toLowerCase()
+  return XML_TYPE.test(essence) ? essence : 'text/html'
+}
 
 function kind(script: Element): 'classic' | 'module' | 'importmap' | null {
   const type = dom.getAttribute(script[ID], 'type')
@@ -101,12 +108,18 @@ async function runModule(script: Script): Promise<void> {
   }
 }
 
-export async function loadPage(html: string): Promise<void> {
+export async function loadPage(source: string, contentType = 'text/html'): Promise<void> {
   const old = strongIds().filter((id) => id !== documentId)
   if (old.length) detach(old)
   documentState.readyState = 'loading'
-  noteMarkup(html)
-  dom.parseDocument(html)
+  noteMarkup(source)
+  const type = documentType(contentType)
+  if (type === 'text/html') dom.parseDocument(source)
+  else {
+    documents.xml = true
+    dom.parseXmlDocument(source, type)
+  }
+  documentState.kind = dom.documentInfo(documentId)
   treeChanged()
   roots()
   parsed(wrap<Node>(documentId)!)

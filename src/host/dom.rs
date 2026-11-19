@@ -412,6 +412,10 @@ fn ns(code: f64) -> crate::render::Ns {
 natives! {
     "document" => fn document(scope, args, dom) { Ok(Id(dom.document())) }
     "parseDocument" => fn parse_document(scope, args, dom) { text!(html = scope, args, 0); dom.parse_document(&html) }
+    "parseXmlDocument" => fn parse_xml_document(scope, args, dom) {
+        text!(text = scope, args, 0); text!(content_type = scope, args, 1);
+        dom.parse_xml_document(&text, &content_type)
+    }
     "viewport" => fn viewport(scope, args, dom) { Ok(dom.viewport()) }
     "nodeType" => fn node_type(scope, args, dom) { let id = id(scope, &args, 0); dom.node_type(id).map(|t| t as u8 as u32) }
     "parent" => fn parent(scope, args, dom) { let id = id(scope, &args, 0); dom.parent(id).map(Id) }

@@ -24,6 +24,7 @@ export const documentState = {
   readyState: 'loading' as 'loading' | 'interactive' | 'complete',
   hidden: false,
   currentScript: null as Element | null,
+  kind: ['html', 'text/html'] as string[],
 }
 
 function createElementNamed(namespace: string | null, prefix: string | null, local: string): Element {
@@ -47,7 +48,7 @@ export class Document extends Node {
   }
 
   get #info(): string[] {
-    if (this.#live) return ['html', 'text/html', env.url]
+    if (this.#live) return [documentState.kind[0]!, documentState.kind[1]!, env.url]
     return (this.#kind ??= dom.documentInfo(this[ID]))
   }
 

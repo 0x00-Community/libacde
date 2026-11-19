@@ -143,7 +143,7 @@ export interface WebInternals {
   readonly handles: Handles
   idOf(node: unknown): number
   nodeOf(id: number): unknown
-  loadPage(html: string): Promise<void>
+  loadPage(source: string, contentType?: string): Promise<void>
   frame(time: number): void
   endTask(): void
   resize(): void
