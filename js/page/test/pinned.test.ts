@@ -25,6 +25,7 @@ function harness(opacity = '1') {
     window: {
       innerWidth: 800,
       innerHeight: 600,
+      devicePixelRatio: 1,
       ResizeObserver: Observer,
       MutationObserver: Observer,
       addEventListener: () => {},
@@ -51,7 +52,7 @@ function harness(opacity = '1') {
   }
   const dom = { setPanel: (...args: number[]) => calls.push(['setPanel', ...args]) }
   const pinned = new Pinned(rpc, surface as never, dom, page as never)
-  return { calls, listeners, style, element, pinned, answer: () => answer! }
+  return { calls, listeners, style, element, pinned, page, answer: () => answer! }
 }
 
 test('a pinned element leaves the page plane before the panel opens, so it is never shown where no input reaches it', () => {
@@ -106,4 +107,18 @@ test('keyboard: anything else is a TypeError and pins nothing', () => {
   const { calls, element, pinned } = harness()
   assert.throws(() => pinned.pin(element as unknown as Element, { keyboard: 'grab' as never }), TypeError)
   assert.deepEqual(calls, [])
+})
+
+test('after the viewport shrinks, an extent drawn before it is dropped and the panel is the element again', async () => {
+  const { calls, element, pinned, answer, page } = harness()
+  const handle = pinned.pin(element as unknown as Element)
+  answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  pinned.extend(7, [0, 0, 700, 90])
+  assert.deepEqual(calls.filter((c) => c[0] === 'placePanel').at(-1)?.slice(0, 6), ['placePanel', 7, 0, 0, 700, 90])
+  page.window.innerWidth = 533
+  page.window.devicePixelRatio = 1.5
+  element.getBoundingClientRect = () => ({ left: 200, top: 20, right: 300, bottom: 70, width: 100, height: 50 })
+  handle.update()
+  assert.deepEqual(calls.filter((c) => c[0] === 'placePanel').at(-1), ['placePanel', 7, 200, 20, 100, 50, 0, 0, 100, 50])
 })

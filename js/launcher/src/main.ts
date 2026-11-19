@@ -20,7 +20,7 @@ import { LaunchArgs } from './args'
 import { refused, route, unsupported, wallpaperOf } from './app/calls'
 import type { LentRoot } from '@dopame/acde-api'
 import { sessionOf, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
-import { toDesktop, type ShellEvent } from './app/events'
+import { WindowSnapshots, type ShellEvent } from './app/events'
 import { ServiceHost } from './manager/service'
 import { DevChannel, type DevShell, type DevTarget } from './dev/dev'
 import { DevToolsEndpoint, type NativeDevTools } from './dev/devtools'
@@ -54,13 +54,13 @@ interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState
   grant(options: GrantOptions): Grant
   place(window: number, x: number, y: number, width: number, height: number): void
   hide(window: number, hidden: boolean): void
-  release(window: number): void
+  release?(window: number): void
   focus(window: number): void
   close(window: number): void
   kill?(window: number): void
   setState?(window: number, state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
   windows(): ReturnType<InspectShell['windows']>
-  inject(event: Parameters<InspectShell['inject']>[0]): void
+  inject?(event: Parameters<InspectShell['inject']>[0]): void
   screenshot(path: string): Promise<{ width: number; height: number }>
   animate?(window: number, options: object): void
   shortcut?(combo: string, scope: string, owner: number): void
@@ -75,7 +75,8 @@ interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState
 
 interface LauncherNatives extends Natives {
   readonly native: {
-    readonly Shell: { broker(options?: { title?: string }): LauncherShell }
+    readonly Windows?: { connect(): LauncherShell }
+    readonly Shell?: { broker(options?: { title?: string }): LauncherShell }
     readonly Manager?: { connect(): ManagerLink }
     readonly DevTools?: NativeDevTools
     readonly FileChooser?: { open(): Promise<NativeFileChooser> }
@@ -143,6 +144,9 @@ class Launcher {
   static readonly SIGNALS = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const
   static readonly DEV_SETTLE_MS = 1000
   readonly #shell: LauncherShell
+  readonly #snapshots = new WindowSnapshots()
+  readonly #held: ShellEvent[] = []
+  readonly #replays: boolean
   #wake: (() => void) | null = null
   #ended: number | null = null
   #rpc: Rpc | null = null
@@ -167,7 +171,8 @@ class Launcher {
   readonly #backend: AppBackend | null
 
   constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
-    this.#shell = natives.native.Shell.broker({ title: session.label })
+    this.#shell = Launcher.shell(natives, session.label)
+    this.#replays = !natives.native.Windows
     this.#shell.onEvents(() => this.#wake?.())
     manager?.onEvents(() => this.#wake?.())
     this.#services = session.services
@@ -201,10 +206,31 @@ class Launcher {
     this.#backend = session.kind === 'app' && session.found?.app.backend ? new AppBackend(session.found) : null
   }
 
+  static shell(natives: LauncherNatives, title: string): LauncherShell {
+    const { Windows, Shell } = natives.native
+    if (Windows) return Windows.connect()
+    if (Shell) return Shell.broker({ title })
+    throw new Error('the runtime offers no windows: neither native.Windows (acdes) nor native.Shell (acdev)')
+  }
+
+  #inspectShell(): InspectShell {
+    const shell = this.#shell
+    return {
+      focus: (window) => shell.focus(window),
+      ...(shell.setState && { setState: (window, state) => shell.setState!(window, state) }),
+      windows: () => shell.windows(),
+      ...(shell.menus && { menus: (window) => shell.menus!(window) }),
+      inject: (event) => {
+        if (!shell.inject) throw new Error('input: this runtime injects no input here (in a guest it goes through the manager)')
+        shell.inject(event)
+      },
+    }
+  }
+
   #inspector(): Inspect {
     if (this.#inspect) return this.#inspect
     const host: InspectHost = {
-      shell: this.#shell,
+      shell: this.#inspectShell(),
       web: (window) => (window === this.#window ? this.#rpc : null),
       record: (window) => (window === this.#window ? { kind: 'web', app: this.session.found?.app.id ?? null, title: this.#title } : null),
       panel: (window) => this.#panels.has(window),
@@ -319,6 +345,7 @@ class Launcher {
     this.#rpc = rpc
     this.#thread = thread
     this.#init = init
+    if (this.#desktop) this.#catchUp(thread)
   }
 
   #fromPage(message: unknown, rpc: Rpc): void {
@@ -452,7 +479,7 @@ class Launcher {
         return this.#shell.hide(id, false)
       }
       case 'close':
-        if (this.#panels.delete(id)) this.#shell.release(id)
+        if (this.#panels.delete(id)) this.#shell.release?.(id)
         return undefined
     }
     throw unsupported('panel', method)
@@ -557,8 +584,21 @@ class Launcher {
       else if (event.type === 'devtools') this.#devtools.pressed()
       else if (!this.#desktop && (event.type === 'menuselect' || event.type === 'shortcut')) this.#appKey(event)
       else if (event.type === 'devreload') void this.#devReload(event['title'] === 'hot')
-      else if (this.#desktop) this.#thread?.post(toDesktop(event))
+      else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event))
     }
+  }
+
+  #toDesktop(event: ShellEvent): void {
+    if (this.#thread && !this.#reloading) return void this.#thread.post(event)
+    const folded = WindowSnapshots.FOLDED.has(event.type)
+    if (folded && (this.#replays || this.#reloading)) return
+    this.#held.push(event)
+  }
+
+  #catchUp(thread: WebThreadHandle): void {
+    const replayed = this.#replays ? this.#snapshots.replay() : []
+    if (!this.#replays) this.#snapshots.clear()
+    for (const event of [...replayed, ...this.#held.splice(0)]) thread.post(event)
   }
 
   #menuKey(chord: string): void {
@@ -583,7 +623,7 @@ class Launcher {
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
       else if (event.type === 'unlend' && !this.#desktop) this.#unlend(String(event['name'] ?? ''))
       else if (event.type === 'menuinvoke' && !this.#desktop) void this.#rpc?.call('window', 'menu', [event['menu'], event['item']]).catch(() => undefined)
-      else if (this.#desktop) this.#thread?.post(event)
+      else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event as ShellEvent))
     }
   }
 

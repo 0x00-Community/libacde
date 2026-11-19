@@ -20,7 +20,7 @@
   `Frame.HEIGHT` (32), 经 `claimSurface(token, {frame})` 交给 surface; 画法在 render 的 `Decoration`. 全屏时窗框照旧在. `acde:inspect` 看不到窗框
   (页面坐标加 `contentOffset`).
 - **钉住的面板** (Dock、菜单栏、弹出层): 桌面页面调 `acde.desktop.pin(element, {margin?})` → `{update(), unpin()}`, 元素成为单独的 `pinned`
-  窗口, 状态和 React 树还在同一个文档里. `pinned.ts` 量元素 (并上 render 报的绘制范围 `panelmove`), 要令牌 (`Shell.grant({mode: 'pinned', rect})`),
+  窗口, 状态和 React 树还在同一个文档里. `pinned.ts` 量元素 (并上 render 报的绘制范围 `panelmove`; 绘制范围记在当时的视口坐标里, 视口宽高或 `devicePixelRatio` 变了就丢掉重量, 并完截到视口以内是裁边不是平移), 要令牌 (`Shell.grant({mode: 'pinned', rect})`),
   再开一个 toplevel (acdebin-system 的 `crates/window` `panel.rs`; 宿主窗口里是 owner 为桌面的表项), `Dom::set_panel` 让 render 单独画它 (`Frame.panels`). 输入区域只是
   元素的盒子 (`pointer-events: none` / 不可见时为空), 指针送回同一个文档; 主窗口或任一面板有焦点就算 `activate`. 元素变了 (ResizeObserver +
   MutationObserver, 700 ms 后补量; 元素上的 `animationend` / `transitionend` 也补量, 淡入时量到的不透明度 0 不会让输入区域一直空着) 重新量, 量不到时 `hide`.
@@ -34,9 +34,8 @@
   面板隐藏、挪动、改尺寸、取消钉住或输出变了时重算 (`refill`): `filled` 的窗口跟着改 rect, 全屏不管工作区; 工作区变了给 Broker 发
   `workarea {x, y, width, height}`, Broker (`broker/output.ts`) 把它放进发给每个 web 的 `screen` 消息和 `WebInit.screen.workArea`
   (`acde:window.output.workArea`). 不写 reserve 的面板什么都不占. 钉住后用句柄的 `reserve({edge, thickness?} | null)` 就地换占的边或厚度 (不用 unpin 再钉,
-  工作区只变一次, 中间没有整个输出的一步; `null` 不再占, 不认识的边或负的厚度抛 TypeError). 一个宿主窗口就是一个输出. 会话里 acdebin-system 的 `crates/window` 把 `reservePanel` 经面板的 `acde_window.reserve` 交给合成器 (工作区怎么算见它的 `docs/workspace.md`), 工作区
-  (shell `compositor/workarea.rs`) 是输出减去 layer-shell 的独占区, 再减去显示着的面板占的边 (同一条边取最大); 面板占的边变了、面板隐藏 / 显示 /
-  关掉或输出变了时重算, 变了经 `acde_shell.work_area` 给 Broker, 铺满的窗口跟着改 rect. 元素要是 stacking context, 不带祖先的裁剪和透明度.
+  工作区只变一次, 中间没有整个输出的一步; `null` 不再占, 不认识的边或负的厚度抛 TypeError). 一个宿主窗口就是一个输出. 会话里 acdes 的 `crates/window` 把面板做成 wlr-layer-shell 的面, `reservePanel` 设它的独占区, 工作区由 winman 算 (输出减去各面的独占区),
+  变了经 `winman_desktop_v1.work_area` 报给桌面进程, 铺满的窗口由 winman 跟着改 rect (acdes 的 `docs/workspace.md`). 元素要是 stacking context, 不带祖先的裁剪和透明度.
   `acde.desktop.setDoubleClick('fill' | 'minimize' | 'none')` (SDK `DoubleClickAction`) 声明双击标题栏做什么, 随时可以再设, 下一次双击就按新的;
   不认识的值抛 TypeError. 桌面页面和声明了 `acde:desktop` 的系统应用窗口都有 (经自己的 surface 的 `setDoubleClick`, 整个宿主一份), 服务没有;
   会话里还没有 (只记 debug 日志).
@@ -62,10 +61,8 @@
   节点的创建和改样式, 每边多轮中位数); 设 `BASE_ACDERT` / `BASE_APP` 时与基准版本交替跑, 任一项比值超过 `DOM_PERF_LIMIT` (默认 1.1, 即 #206 的验收线: 不超过基准版本的 110%) 退出码非零. 还没判断时当作不支持. 会话侧待实现 (会话的标题栏还没有主题).
   `acde.desktop.on('edge', fn)` (SDK `ScreenEdgeEvent` `{type: 'screenedge', edge: 'top' | 'right' | 'bottom' | 'left', entered, output}`, #113):
   指针进入、离开屏幕的一条边时各发一次 (角上是两条边各一次), 给桌面藏起菜单栏和 Dock 时用; 只发事件, 不动焦点和输入. 边的判断在 acde-model
-  `ScreenEdge::touched` (离边不到 1 个逻辑像素, 且那一侧外面没有别的输出; 边的变化 `ScreenEdge::changes`). 会话: 合成器 (acdebin-system 的 `crates/shell` `input.rs`
-  `screen_edges`) 在指针移动后按所在输出算, 经 acde_shell 的 `screen_edge(output, edge, entered)` 交给 Broker, `output` 是输出名 (如 `HDMI-A-1`),
-  换了输出先离开旧输出的边; 宿主窗口 (hostwin `App::moved`) 按宿主内容区算, 指针离开宿主窗口时离开所有边, `output` 是 `host`, 宿主窗口不论是否全屏都发
-  (运行时不抓窗口外的输入). 两边都给 Broker 推 `edgeenter` / `edgeleave` (`key` 是边, `title` 是输出), Broker 转给桌面和声明了 `acde:desktop` 的系统应用.
+  `ScreenEdge::touched` (离边不到 1 个逻辑像素, 且那一侧外面没有别的输出; 边的变化 `ScreenEdge::changes`). 会话里 winman 不报屏幕边 (旧合成器的 `screen_edge` 随 repo-split 删掉, Dopame 没有用它); 宿主窗口 (hostwin `App::moved`) 按宿主内容区算, 指针离开宿主窗口时离开所有边, `output` 是 `host`, 宿主窗口不论是否全屏都发
+  (运行时不抓窗口外的输入). 宿主窗口给 Broker 推 `edgeenter` / `edgeleave` (`key` 是边, `title` 是输出), Broker 转给桌面和声明了 `acde:desktop` 的系统应用.
   调试端点 `pointer {x, y}` 把指针移到屏幕坐标 (经 `Shell.inject` 的 `move`, 和真的移动走同一段), 用来模拟指针到边.
 - **帧**: `requestFrame` 之后, 上一帧交出去就给下一帧, 两帧之间至少隔最快输出刷新周期的 0.9 倍; 页面没出新帧时退回 wl_surface 的
   frame 回调. `ACDE_WEB_FPS` 指定帧率.
@@ -85,8 +82,9 @@
     `acde.window.hostControls` 为真时宿主 (平台) 提供窗口控件, 页面应藏起自己的最小化 / 最大化 / 关闭按钮.
     `requestActivate` 可能被拒或变成提醒用户 (attention), `requestGrab` 可能以 `denied` 拒绝, `animate` 可能立刻做完 (照样发 `windowanimated`).
     桌面 / 系统应用经 `acde.windows.requestState(id, state)` 改任何窗口 (不认识的状态 400, 会话里 501), 收 `on('state')`; `list()` 的每一行都带 `state`
-    (SDK `NativeWindow.state` 必有; web 侧 `remote.ts` 的 `WindowList.deliver` 按 `windowopen` / `windowtitle` / `windowstate` / `windowclose` 维护行再发给处理函数,
-    没收到过 `windowstate` 的窗口是 `normal`, 换标题不丢状态), `acde:inspect` 的窗口 (driver 用的) 带 `state`.
+    (SDK `NativeWindow.state` 必有; web 侧 `remote.ts` 的 `WindowList.deliver` 按 `window` 快照 (和 `windowclose`、`windowcrash`) 维护行, 先发 `window`, 再按快照的 `first` / `changed` 推出已过时的 `open` / `title` / `state` / `activate` / `parent` / `desk` / `geometry` 照发,
+    没收到过 `windowstate` 的窗口是 `normal`, 换标题不丢状态; `key` 是桌面页重载后也不变的窗口键 (winman window v4 的 identifier, acdes 原样转成 `key`),
+    `window` 快照和 `windowopen` 带了就记在行上, 后来的事件不带时保留, 推出的 `open` 也带上; 合成器不给时没有这个字段), `acde:inspect` 的窗口 (driver 用的) 带 `state`.
   - window web: 清单给的服务和能力; `acde.window` (标题、菜单、关闭、最小化、`requestMode` / `setGrabHint` / `setBackdrop` /
     `requestActivate` / `requestGrab` / `releaseGrab`、app 级 `shortcut(combo)`; `beforeclose` 返回 false 留住窗口; `request` 是别的应用
     `acde.open(<id>, {…})` 要它打开的东西, 要对方清单的 `open` 允许, 为一个请求开的窗口把它交给第一个 `request` 处理函数, 只给一次;
@@ -120,10 +118,12 @@
     (`acde:timer is not a system module; if a desktop service provides it, list that service's name in the services of <应用>`; 拼错的模块名也落在这里), 不再让人把命名空间当服务名写进去
     (那样应用要求一个不存在的服务, 启动时 `needs "timer" (service not running)`). 别的名字 `unverified` 都是 null. 新的 `acde:packages` (refresh / install / natives / runNative)
     和 `acde:launch` (`start` 要 `launch`, `embed` 要 `slots`, `close` 只关自己起的窗口: 按窗口的 pid 认 `start` 起的, `embed` 走 claim) 桌面也有.
-    系统应用拿到 `acde:windows` 时也收全局窗口事件 (`Tiers.listens`). **窗口列表从 Broker 的记录起头**: 桌面页面和收全局窗口事件的系统应用起来时, `WebInit.windows`
-    带上当时所有窗口的行 (`broker/records.ts` `WindowRecords.rows()`: 嵌进 slot 的不算; `{id, appId, title, web?, state}`, `state` 是记录按 `windowstate` 事件记下的),
-    web 侧的 `WindowList` 从这些行开始再按事件维护, 所以晚起的系统应用 `list()` 和桌面一样全. 桌面页面 (重) 起时补发的 `windowopen` / `windowmenus` 只发给新的桌面页面,
-    不再发给正开着的系统应用. 每个包都按这里注入 (没有 `apiLevel` 的包根本不加载).
+    系统应用拿到 `acde:windows` 时也收全局窗口事件 (`Tiers.listens`). **窗口列表靠快照补齐**: 启动器不填 `WebInit.windows`, 页面的 `WindowList` 开局是空的. 窗口客户端连上 winman 时把现有窗口逐个报成 `first: true`
+    的 `window` 快照. 启动器 (`js/launcher/src/main.ts` 的 `#toDesktop` / `#catchUp`、`app/events.ts` 的 `WindowSnapshots`) 在桌面页线程没起来或正在重载时不丢事件:
+    - acdes (`native.Windows`): 进程内重载时旧页面的 Surface 放掉、窗口线程结束, 新页面 claim 时重新绑 `winman_desktop_v1`, winman 重报全部窗口, 窗口号是新的 (整个进程往上数, 不复用),
+      `key` 不变, 旧号失效. 所以启动器不重放: 首次起来前的事件按序暂存; 重载期间到的 `window` / `windowclose` / `windowcrash` (旧号) 丢掉, 其余暂存; 线程起来后交暂存的, 再等 acdes 重报.
+    - acdev 宿主窗口 (`native.Shell`, 不重报): 启动器记着每个窗口的最新快照, 线程起来后先把开着的窗口按 `first: true` 重放 (`replay()`, 关掉的、崩溃的不算), 再交暂存的其余事件.
+    所以页面重载后 `list()` 和事件里的 `key` 都齐. 每个包都按这里注入 (没有 `apiLevel` 的包根本不加载).
     SDK 类型分层: `@dopame/acde-api/app` 只声明应用层, `@dopame/acde-api/shell` 再加外壳层; 包根声明全部.
 - **原生应用** (`launcher.ts`, 只有桌面和声明了 `packages` 的系统应用能调): `acde.packages.natives()` 列可见的 `.desktop` (`{id, name, comment, icon (绝对路径, 按 hicolor /
   breeze / Adwaita 找), keywords, wmClass}`, 缓存到 applications 目录的 mtime 变了), `runNative(id)` 用 `gio launch` 起.

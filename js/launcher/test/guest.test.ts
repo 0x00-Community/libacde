@@ -97,7 +97,7 @@ describe('a drag to another process window in the guest', () => {
   test('drops at the screen point the driver worked out', async () => {
     const sent: { type: string; x?: number; y?: number }[] = []
     const plain = base(1, [])
-    const rpc = { call: async () => ({ x: 10, y: 20 }) } as never
+    const rpc = { call: async (_service: string, method: string) => (method === 'tree' ? { nodes: [] } : { x: 10, y: 20 }) } as never
     const guest = new GuestWindows(42, 'app')
     const host = guest.host({ ...plain, web: (w) => (w === 1 ? rpc : null) }, () => 1, { inject: (e) => void sent.push(e) })
     guest.place([{ ...row(7, 42), x: 100, y: 50 }, row(9, 50)])

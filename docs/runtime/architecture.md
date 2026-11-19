@@ -106,7 +106,7 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
   会话总管跑策略时写标记 `$XDG_RUNTIME_DIR/acde/power-policy` (`shared::PolicyMark`, 内容是 pid, 停时删); 页面的
   `PowerState.policy` 是标记里的进程还活着.
   `acde:input` (能力 `input`, src/host `input.rs`): 合成器的 xkb 布局 / 型号 / 选项、按键重复、NumLock 和鼠标 / 触控板的 libinput 设置;
-  `state()` / `set(patch)` / `on('changed')` 走前端 `Platform::input()` 给的 `Input` (acdebin-system 的会话经 acde_shell `set_input` / `input` 事件;
+  `state()` / `set(patch)` / `on('changed')` 走前端 `Platform::input()` 给的 `Input` (acdes 会话里由窗口客户端经 winman `winman_desktop_v1` v5 的输入设置提供, repo-split 第一阶段接上;
   acdev runtime 没有, 调用就抛), `catalog()` 读 xkeyboard-config 的 `rules/evdev.xml` (runtime `XkbCatalog`).
   输入法 (`ime`, runtime `fcitx.rs`, 和 `ime.rs` 同一条会话 D-Bus): `state()` 多一项 `ime {running, current, group}`, `set({ime: {current?, group?}})`、
   `catalog()` 多一项 `imes`, 都经 fcitx5 的 `org.fcitx.Fcitx5` `/controller` `org.fcitx.Fcitx.Controller1`: 当前输入法 `CurrentInputMethod` /
@@ -114,9 +114,9 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
   目录 `AvailableInputMethods` (名字取 nativeName, 没有时取 name; `short` 是 label; `languages` 是 languageCode). `on('changed')` 在分组变时
   (`InputMethodGroupsChanged` 信号) 和当前输入法变时 (约 1 秒一次轮询, 只在页面订阅了才起) 也发. fcitx5 不在 (登录页会话不起它、没有会话总线)
   时 `running: false`、`group: []`、`imes: []`, 写 `ime` 报错; 其余设置照常.
-  `acde:display` (能力 `display`, src/host `display.rs`): `state()` 是前端 `Platform::display()` 给的输出表 (acde_shell `display` 事件),
+  `acde:display` (能力 `display`, src/host `display.rs`): `state()` 是前端 `Platform::display()` 给的输出表 (acdes 会话里来自 `wl_output` / `xdg_output`),
   每个输出可带 `bounds` (在整个桌面坐标里的位置和大小) 与 `workArea` (去掉面板预留边后的可用区域), 都是 `{x, y, width, height}`, 没有时为 null 或不带 (SDK `DisplayInfo`, 多屏方案 A, 数据由 acdes 写出), 这里原样转交不改;
-  内置屏的 `brightness` 由这里用 `acde:power` 的背光补上; `configure(id, {scale})` 经 acde_shell `set_scale` (只认 1..3 的整数, 别的键还没有),
+  内置屏的 `brightness` 由这里用 `acde:power` 的背光补上; `configure(id, {scale})` 在 acdes 会话里经 winman `winman_desktop_v1` v5 的 `set_scale` (winman 所有屏共用一个缩放),
   `setBrightness(id, v)` 只对内置屏 (logind 背光), `setNightLight` 还没有. 两者都是进程内模块, 不经 Broker; Linux only. `acde:office` 的根就是调用方 `acde:fs` 的根 (#96, `OfficeService::for_web` 带上这个 web 的 `Workspace`,
   runtime `Workspace::finder_roots`): 第 1 级应用是 `private`、点名的公共位置和选的文件夹, 按 `id` 认, 不给路径; 没有 `fs` 的应用没有根. 没批准或撤销了的
   公共位置和文件夹和 `acde:fs` 一样经 `FileAccess.guard` 拒绝 403 `denied`、从 `state().roots` 去掉. `state(handle)` 按交来的文件句柄打开 (web 侧认

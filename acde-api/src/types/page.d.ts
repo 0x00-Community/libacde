@@ -157,6 +157,7 @@ export interface NativeWindow {
   readonly rect?: WindowRect
   readonly instance?: number
   readonly desk?: number
+  readonly key?: string
 }
 
 export interface AcdeWindows extends WindowsEvents {

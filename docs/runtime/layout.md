@@ -10,7 +10,7 @@
 | `scene/` | `acde-scene`: 2D 场景 (`Scene` / `PaintScene` / `RenderCommand`)、滤镜 (`Filter` / `FilterEffect`)、合成的部件 (`Part` / `Pass` / `Content` / `Px` / `Backdrop` / `Shadow` / `Effect`, unix 上 `Dmabuf` / `Submitted`). blitz fork、本库和后端共用, 只依赖 kurbo / peniko; 发到 ac |
 | `src/webgl` | `acde-webgl`: wgpu 上的 WebGL 1 / 2 (见 `docs/graphics/webgl.md`「WebGL」). 检查: `cargo test --release -p libacde webgl` |
 | `src/runtime` | 系统接口 (napi 导出 + 注入用的 Rust 对象). 异步执行器 `rt.rs`: `acde-rt` 线程上的 ntex System (不用 tokio, TLS 用 rustls + ring (不用 aws-lc: Windows 要 NASM, 每个平台都多编一个 C 库; 用户定 2026-11-18), 证书校验用 rustls-platform-verifier). 检查: `cargo test -p libacde runtime` (含真 pty / Windows 伪控制台上的终端、unix socket 上的 HTTP / WebSocket)、`ime-check.sh`、`portal-check.sh`、`atspi-check.sh` (经 `tests/run.sh`) |
-| `src/model` | canvas / 窗口表、计划、快捷键、shell 事件 (`Event` / `Inbox`)、`acde_window` / `acde_shell` 协议 |
+| `src/model` | canvas / 窗口表、计划、快捷键、shell 事件 (`Event` / `Inbox`) |
 | `src/log` | `acde-log`: 日志和计时 |
 | `src/media` | `acde-media`: 解码音视频, 读摄像头和麦克风 (Linux GStreamer, macOS AVFoundation; 见 `docs/web/web-apps.md`「视频」「摄像头和麦克风」). 检查: `cargo test --release -p libacde media` (`tests/fixtures` 是 ffmpeg 命令行生成的 1 秒小片段; `tests/capture.rs` 用假设备; `tests/devices.rs` 里 `--ignored` 的列出 / 读真设备、在 macOS 上问权限) |
 | `src/storage` | `acde-storage`: 网页存储的分区和 SQLite (见 `docs/web/storage.md`「网页存储」). 检查: `cargo test --release -p libacde storage` |
@@ -89,13 +89,15 @@
   对同一个窗口重新授予后再起 (url 须在 `http://acde.local/` 下); `capabilities.get/list` 按清单声明回 `available` / `not-declared`
   (临时, 不看平台与逐次同意). 桌面另答 `panel.open/place/close` (钉住的面板, 同旧管理中枢) 和 `windows.*` (`close`、`kill`、`focus`、`hide`、
   `show`、`requestState`、`screenshot`、`animate`、`stats`、`shortcut`、`unshortcut`、`place`、虚拟桌面的 `addDesk`、`removeDesk`、
-  `showDesk`、`moveToDesk` 交给 `native.Shell` 的同名方法; `launch` 有管家时转给 `launch.start`; 多屏方案 A 的副屏壁纸 `setWallpaper({color, image?})`
-  只给桌面页, 先查 `color` 是 `#rrggbb` / `#rrggbbaa` (否则 400 `bad_color`)、`image` 是绝对路径或 null (否则 400 `bad_request`), 再交给
-  `native.Shell.setWallpaper(color, image?)` (acdes 实现, 值由桌面进程记住, 重载后保持); 不是桌面或宿主没有这个方法时 501 `unsupported`).
+  `showDesk`、`moveToDesk` 交给窗口系统对象的同名方法 (acdes 里是 `native.Windows.connect()`, acdev 宿主窗口里是 `native.Shell.broker()`; `animate`、`stats` 在 acdes 里不做事); `launch` 有管家时转给 `launch.start`;
+  多屏方案 A 的副屏壁纸 `setWallpaper({color, image?})` 只给桌面页, 先查 `color` 是 `#rrggbb` / `#rrggbbaa` (否则 400 `bad_color`)、`image` 是绝对路径或 null
+  (否则 400 `bad_request`), 再交给窗口系统对象的 `setWallpaper(color, image?)` (acdes 里是 `native.Windows`, 值由桌面进程记住, 重载后保持; 宿主窗口没有这个方法);
+  不是桌面或窗口系统对象没有这个方法时 501 `unsupported`).
 - 窗口: 应用向窗口系统要一个占满宿主窗口的窗口; 桌面 `grant({desktop: true})` (窗口号 0). 窗口系统的关窗请求 (`windowcloserequest`, 如 xdg
-  的 close) 先问页面 `window.beforeclose` (最多等 3 秒, 页面答 `false` 就不关), 再同样关掉. 桌面进程把窗口系统的其余事件 (`windowopen` 等)
-  交给桌面页 (`js/launcher/src/app/events.ts`): `windowgeometry` 若带的是 `x`、`y`、`width`、`height` 就合成 `rect`; `windowopen` 的 `instance`
-  (管家给的应用实例编号)、`windowdesk`、`currentdesk` 原样转. 页面的窗口列表 (`js/page/src/remote.ts` 的 `WindowList`) 记下 `rect`、`instance`、`desk`.
+  的 close) 先问页面 `window.beforeclose` (最多等 3 秒, 页面答 `false` 就不关), 再同样关掉. 桌面进程把窗口系统的其余事件
+  交给桌面页 (`js/launcher/src/app/events.ts` 的 `WindowSnapshots`): acdes 给的是 winman 形状的快照 `window` (每个窗口一批变化后一条, `first` 表示新窗口,
+  `changed` 列出变了的字段, `previous` 是上一个状态), 原样转; acdev 宿主窗口还发旧的 `windowopen` / `windowtitle` / `windowstate` / `windowactivate` /
+  `windowparent` / `windowdesk` / `windowgeometry`, 这里按窗口记下快照, 转成同样的 `window` 再交; `windowclose`、`windowcrash`、`currentdesk` 原样转. 页面的窗口列表 (`js/page/src/remote.ts` 的 `WindowList`) 记下 `rect`、`instance`、`desk`.
 - 启动方的 isolate 里先装好核心全局对象 (定时器、console 等, `installCore`). 宿主窗口关闭、页面退出或 `--seconds` 到时退出, 退出码是页面的; 收到 SIGTERM / SIGINT / SIGHUP 时 (`acdev dev` 停运行时就是 SIGTERM) 也照常收尾 (停后端、删 socket 目录) 再以 0 退出 (同原 Broker: 按要求停下不算出错), 同一信号再来一次就直接退出 (SIGINT 130, 其余 143). 不收尾的话 macOS 上后端会成孤儿: 那里没有 Linux 的父进程退出信号.
   `--shot` 在 `--shot-after` (默认 2000) 毫秒后存一张宿主窗口截图, 无头 (`ACDE_HEADLESS=1`) 也行; 首帧没画完时截到的是空屏 (WSL 的 Dozen 上
   调试版首帧要 5～6 秒, 验证时用 `--shot-after 15000`).

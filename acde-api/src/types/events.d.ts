@@ -11,6 +11,7 @@ export interface WindowOpenEvent extends WindowsEventOf<'windowopen'> {
   readonly web?: true
   readonly icon?: string
   readonly instance?: number
+  readonly key?: string
 }
 
 export interface WindowGeometryEvent extends WindowsEventOf<'windowgeometry'> {
@@ -34,11 +35,6 @@ export interface WindowTitleEvent extends WindowsEventOf<'windowtitle'> {
 export interface WindowsStateEvent extends WindowsEventOf<'windowstate'> {
   readonly state: WindowState
   readonly previous: WindowState
-}
-
-export interface WindowMinSizeEvent extends WindowsEventOf<'windowminsize'> {
-  readonly width: number
-  readonly height: number
 }
 
 export interface WindowParentEvent extends WindowsEventOf<'windowparent'> {
@@ -68,13 +64,39 @@ export interface WindowCrashEvent extends WindowsEventOf<'windowcrash'> {
   readonly reason: string
 }
 
+export type WindowChange = 'appId' | 'title' | 'state' | 'hidden' | 'rect' | 'active' | 'parent' | 'desk'
+
+export interface WindowEvent extends WindowsEventOf<'window'> {
+  readonly appId: string | null
+  readonly title: string | null
+  readonly pid?: number
+  readonly instance?: number
+  readonly state: WindowState
+  readonly previous?: WindowState
+  readonly hidden: boolean
+  readonly rect: WindowRect
+  readonly active: boolean
+  readonly parent?: number
+  readonly desk: number
+  readonly first: boolean
+  readonly changed?: readonly WindowChange[]
+  readonly web?: true
+  readonly icon?: string
+  readonly key?: string
+}
+
 export interface WindowsEventMap {
+  readonly window: WindowEvent
+  /** @deprecated 改用 window */
   readonly open: WindowOpenEvent
   readonly close: WindowsEventOf<'windowclose'>
+  /** @deprecated 改用 window */
   readonly title: WindowTitleEvent
+  /** @deprecated 改用 window */
   readonly state: WindowsStateEvent
+  /** @deprecated 改用 window */
   readonly activate: WindowsEventOf<'windowactivate'>
-  readonly minsize: WindowMinSizeEvent
+  /** @deprecated 改用 window */
   readonly parent: WindowParentEvent
   readonly menus: WindowMenusEvent
   readonly crash: WindowCrashEvent
@@ -83,8 +105,9 @@ export interface WindowsEventMap {
   readonly attention: WindowsEventOf<'windowattention'>
   readonly ready: WindowsEventOf<'windowready'>
   readonly show: WindowsEventOf<'windowshow'>
-  readonly animated: WindowsEventOf<'windowanimated'>
+  /** @deprecated 改用 window */
   readonly geometry: WindowGeometryEvent
+  /** @deprecated 改用 window */
   readonly desk: WindowDeskEvent
   readonly currentdesk: CurrentDeskEvent
 }

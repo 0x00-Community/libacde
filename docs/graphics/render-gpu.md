@@ -63,14 +63,13 @@
 
 ## shell (napi 类 `Shell`)
 
-合成器本身 (smithay + GLES, DRM/KMS、RDP、支持的协议、HiDPI 和它的环境变量) 在 acdebin-system 的 `crates/shell`, 见它的 `docs/compositor.md`;
+会话里的合成器是 winman (协议、DRM/KMS、HiDPI 见 winman 的 docs), 远程桌面是 acdes 的远程进程;
 宿主窗口里是 acdev runtime 的 `crates/hostwin`, 见它的 `docs/hostwin.md`. 下面是 Broker 和 web 看到的接口.
 
-- Broker 侧: `Shell.broker()`; `onEvents(cb)` / `pump()`; `grant({desktop?, window?, mode?, rect?, size?, parent?, modal?})` → `{window, token}` (随机 64 位令牌,
-  客户端在 `acde_window.bind` 里交回一次; `parent` / `modal` 在窗口绑上时写进窗口表, 客户端自己的 xdg parent 优先); `release`、`place`、`windows()`、`animate`、`shortcut` / `unshortcut`
-  (冲突抛错)、`focus`、`hide`、`close`、`quit` (等合成器线程拆完, 最多 3 秒)、`socketName`、`launch(argv, {cwd, env})`、`stats(reset?)`、
-  `screenshot(path)`、`inject(...)`.
-- web 侧: `claimSurface(token, {frame?})` (src/host `webnative.rs` → 前端的 `Platform::claim`, 会话里是 acdebin-system 的 `crates/window` `Surface::claim`: 连上合成器、开 toplevel、bind 令牌;
+- 启动器侧的窗口系统对象: acdes 里是 `native.Windows.connect()`, acdev 宿主窗口里是 `native.Shell.broker()`. 都有 `onEvents(cb)` / `pump()`、
+  `grant({desktop?, window?, mode?, rect?, size?, parent?, modal?})` → `{window, token}` (随机 64 位令牌, acdes 的窗口客户端在本进程里按令牌取回)、`place`、`windows()`、
+  `shortcut` / `unshortcut` (冲突抛错)、`focus`、`hide`、`close`、`socketName`、`screenshot(path)`; 宿主窗口另有 `release`、`animate`、`stats`、`inject` 等.
+- web 侧: `claimSurface(token, {frame?})` (src/host `webnative.rs` → 前端的 `Platform::claim`, 会话里是 acdes 的 `crates/window` `Surface::claim`: 连上 winman、开 toplevel 或 layer 面;
   一条 `acde-window` 线程管 Wayland 和光栅化) 给出 surface: `pump`、`wait()` (队列非空时落定)、`waitThen(cb)` (队列非空时在一个新任务里调 cb, 不在微任务里: acde-host `Host.run` 每轮取一批输入就是一个任务, 输入事件经 acde-dom `Input` 用 `fireFromTask` 派发, 每个监听器后跑微任务检查点, React 的离散事件在下一个按键前就提交; 原先循环 `await wait()` 之后都在微任务里, 检查点不生效, 连按三次只算一次)、`requestFrame`、`setClipboard`、
   `readClipboard()`、`startDrag(data, icon?)`、`setTitle`、`setImeArea`、`window`、`hosted`、`contentOffset`.
 - 事件 (`Event`, 坐标逻辑像素, button / code 是 evdev 码). 给 surface 的: `pointermove` / `pointerdown` / `pointerup` / `wheel` /

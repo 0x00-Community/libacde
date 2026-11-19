@@ -13,6 +13,7 @@ interface PinnedPage {
   readonly window: {
     innerWidth: number
     innerHeight: number
+    devicePixelRatio?: number
     ResizeObserver: typeof ResizeObserver
     MutationObserver: typeof MutationObserver
     addEventListener(type: string, fn: () => void): void
@@ -35,6 +36,7 @@ interface Panel {
   opening: boolean
   rect: Box | null
   extent: Box | null
+  view: string
   stops: (() => void)[]
 }
 
@@ -66,7 +68,7 @@ export class Pinned {
     const reserve = options.reserve && Pinned.#EDGES[options.reserve.edge] ? options.reserve : null
     const margin = Math.max(0, options.margin ?? 0)
     const id = this.#page.idOf(element)
-    const panel: Panel = { element, id, margin, exclusive, reserve, reserved: '', window: null, opening: false, rect: null, extent: null, stops: [] }
+    const panel: Panel = { element, id, margin, exclusive, reserve, reserved: '', window: null, opening: false, rect: null, extent: null, view: '', stops: [] }
     this.#panels.set(element, panel)
     const { ResizeObserver, MutationObserver } = this.#page.window
     const resized = new ResizeObserver(() => this.#place(panel))
@@ -104,11 +106,25 @@ export class Pinned {
   extend(id: number, [x, y, width, height]: readonly [number, number, number, number]): void {
     const panel = [...this.#panels.values()].find((p) => p.id === id)
     if (!panel) return
-    const e = panel.extent
+    const e = this.#extent(panel)
     const right = Math.max(x + width, e ? e[0] + e[2] : -Infinity), bottom = Math.max(y + height, e ? e[1] + e[3] : -Infinity)
     const left = Math.min(x, e?.[0] ?? Infinity), top = Math.min(y, e?.[1] ?? Infinity)
     panel.extent = [left, top, right - left, bottom - top]
     this.#place(panel)
+  }
+
+  #view(): string {
+    const { innerWidth, innerHeight, devicePixelRatio } = this.#page.window
+    return `${innerWidth}x${innerHeight}@${devicePixelRatio ?? 1}`
+  }
+
+  #extent(panel: Panel): Box | null {
+    const view = this.#view()
+    if (panel.view !== view) {
+      panel.extent = null
+      panel.view = view
+    }
+    return panel.extent
   }
 
   #handle(panel: Panel): PinnedPanel {
@@ -140,7 +156,7 @@ export class Pinned {
     const box = panel.element.getBoundingClientRect()
     if (!panel.element.isConnected || box.width <= 0 || box.height <= 0) return null
     const { innerWidth, innerHeight } = this.#page.window
-    const e = panel.extent
+    const e = this.#extent(panel)
     const x = Math.max(0, Math.floor(Math.min(box.left - panel.margin, e?.[0] ?? Infinity)))
     const y = Math.max(0, Math.floor(Math.min(box.top - panel.margin, e?.[1] ?? Infinity)))
     const right = Math.min(innerWidth, Math.ceil(Math.max(box.right + panel.margin, e ? e[0] + e[2] : -Infinity)))

@@ -34,7 +34,9 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
   `libacde` 只发到内网 cargo 源 ac (`publish = ["ac"]`, 见 `docs/dev/release.md`「cargo 源 ac」); 仓库和 release 不公开.
   `vendor/` 和 `src/napi` 保留上游的许可证文件和版权行.
 - Rust 和 TypeScript 代码不写注释 (`//`、`/* */`、`///`、JSDoc 都不写), 要说明的写进 `docs/` 里对应的文件. 例外: 版权和许可证行 (`src/napi` 的
-  Deno 版权)、工具指令 (`/// <reference>`, `@ts-expect-error`)、`vendor/` 改动处的 `acrender:` (blitz fork 里) / `acde:` 标记. derive 要读的文字写成属性.
+  Deno 版权)、工具指令 (`/// <reference>`, `@ts-expect-error`)、`vendor/` 改动处的 `acrender:` (blitz fork 里) / `acde:` 标记、
+  SDK 声明文件 (`acde-api/` 的 `.d.ts`) 里过时接口上方单行的 `/** @deprecated 改用 … */` (写明替代者, 让编辑器划线;
+  用户 2026-11-20 定, 见 `docs/acde-api.md`「版本与兼容」). derive 要读的文字写成属性.
 - 改了包清单、`acde:` 模块或别的对外可见的行为, 同时告知 acdev (它的命令行和 skill `npm/skills/acdev/` 要跟着改).
 - 系统调用走 rustix, 不直接依赖 libc; rustix 没有的用专门的 crate (signal-hook、jiff). 按平台的代码用 `#[cfg]` / `cfg_select!`, 先用 std.
 - 依赖版本 1.0 及以上只写主版本号 (`wgpu = "30"`), 0.x 写到次版本 (`log = "0.4"`), 用最新的; 例外是换成 `vendor/` 的 crate 和配套的 (blitz-*、stylo*、
@@ -79,7 +81,7 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 | 第一次接手运行时, 要弄清各仓的分工、两种跑法 (会话 / 宿主窗口) 或进程与线程 | `docs/runtime/architecture.md` |
 | 找运行时的某个模块或目录归谁, 新加文件前确认放哪 | `docs/runtime/layout.md` |
 | 改 C 接口 (`src/ffi.rs`、`include/acde.h`)、`Platform` 回调或 so 的导出表 | `docs/runtime/ffi.md` |
-| 改窗口表、窗口模式与状态、焦点 / 模态 / grab、全局快捷键, 或 `protocol/` 里的 `acde_window` / `acde_shell` | `docs/runtime/window-model.md` |
+| 改窗口表、窗口模式与状态、焦点 / 模态 / grab、全局快捷键, 或窗口协议的去向 (已全归 winman) | `docs/runtime/window-model.md` |
 | 改包清单的 `acde` 字段、桌面服务、契约级别 `apiLevel`、选哪个桌面、交出会话或登录页 | `docs/runtime/packages.md` |
 | 改 SDK `@dopame/acde-api` (`acde-api/`, 只有类型声明) 或清单规则 (`manifest/`), 或在别的工程里引用它们 | `docs/acde-api.md` |
 | 改 web 的出帧、窗框、钉住的面板、`acde:` 模块的注入 (层级、能力、批准)、沙箱或 web 的生命周期 | `docs/runtime/webs.md` |
