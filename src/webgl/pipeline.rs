@@ -39,10 +39,17 @@ impl SampleKind {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct VertexSlot {
+    pub stride: u64,
+    pub instance: bool,
+    pub attributes: Vec<(u32, u64, wgpu::VertexFormat)>,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct PipelineKey {
     pub program: u64,
     pub layout: Vec<Binding>,
-    pub vertex: Vec<(u32, u64, bool, wgpu::VertexFormat)>,
+    pub vertex: Vec<VertexSlot>,
     pub topology: wgpu::PrimitiveTopology,
     pub strip: Option<wgpu::IndexFormat>,
     pub front_face: wgpu::FrontFace,

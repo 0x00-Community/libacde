@@ -67,6 +67,20 @@ pub struct Pass {
     pub data: Vec<u8>,
     pub span: u32,
     pub queries: Vec<crate::webgl::objects::Id>,
+    pub uniform_data: crate::webgl::FastMap<(u64, u64), [u32; 2]>,
+}
+
+#[derive(Default)]
+struct Bound {
+    pipeline: Option<wgpu::RenderPipeline>,
+    uniforms: Option<[u32; 2]>,
+    resources: Option<wgpu::BindGroup>,
+    vertex: Vec<Option<(wgpu::Buffer, u64)>>,
+    index: Option<(wgpu::Buffer, u64, wgpu::IndexFormat)>,
+    viewport: Option<[f32; 6]>,
+    scissor: Option<[u32; 4]>,
+    stencil: Option<u32>,
+    blend: Option<[f64; 4]>,
 }
 
 #[derive(Default)]
@@ -99,7 +113,17 @@ impl Context {
         if !same {
             self.flush_pass();
             let colors = vec![None; target.colors.len()];
-            self.recorder.pass = Some(Pass { target, colors, depth: None, stencil: None, draws: Vec::new(), data: Vec::new(), span: 16, queries: Vec::new() });
+            self.recorder.pass = Some(Pass {
+                target,
+                colors,
+                depth: None,
+                stencil: None,
+                draws: Vec::new(),
+                data: Vec::new(),
+                span: 16,
+                queries: Vec::new(),
+                uniform_data: Default::default(),
+            });
         }
         self.recorder.pass.as_mut().unwrap_or_else(|| unreachable!())
     }
@@ -167,6 +191,7 @@ impl Context {
             multiview_mask: None,
         });
         let mut query = None;
+        let mut last = Bound::default();
         for draw in &pass.draws {
             if draw.occlusion != query {
                 if query.is_some() {
@@ -177,32 +202,64 @@ impl Context {
                 }
                 query = draw.occlusion;
             }
-            rp.set_pipeline(&draw.pipeline);
-            rp.set_bind_group(0, &uniforms, &draw.uniforms);
-            if let Some(resources) = &draw.resources {
+            if last.pipeline.as_ref() != Some(&draw.pipeline) {
+                rp.set_pipeline(&draw.pipeline);
+                last.pipeline = Some(draw.pipeline.clone());
+            }
+            if last.uniforms != Some(draw.uniforms) {
+                rp.set_bind_group(0, &uniforms, &draw.uniforms);
+                last.uniforms = Some(draw.uniforms);
+            }
+            if let Some(resources) = &draw.resources
+                && last.resources.as_ref() != Some(resources)
+            {
                 rp.set_bind_group(1, resources, &[]);
+                last.resources = Some(resources.clone());
             }
             for (slot, source, offset) in &draw.vertex {
                 let b = match source {
                     Source::Buffer(b) => b,
                     Source::Data => &buffer,
                 };
+                let at = *slot as usize;
+                if last.vertex.len() <= at {
+                    last.vertex.resize(at + 1, None);
+                }
+                if last.vertex[at].as_ref().is_some_and(|(lb, lo)| lb == b && lo == offset) {
+                    continue;
+                }
                 rp.set_vertex_buffer(*slot, b.slice(*offset..));
+                last.vertex[at] = Some((b.clone(), *offset));
             }
             if let Some((source, offset, format)) = &draw.index {
                 let b = match source {
                     Source::Buffer(b) => b,
                     Source::Data => &buffer,
                 };
-                rp.set_index_buffer(b.slice(*offset..), *format);
+                if last.index.as_ref().is_none_or(|(lb, lo, lf)| lb != b || lo != offset || lf != format) {
+                    rp.set_index_buffer(b.slice(*offset..), *format);
+                    last.index = Some((b.clone(), *offset, *format));
+                }
             }
-            let [x, y, w, h, near, far] = draw.viewport;
-            rp.set_viewport(x, y, w, h, near, far);
-            let [sx, sy, sw, sh] = draw.scissor;
-            rp.set_scissor_rect(sx, sy, sw, sh);
-            rp.set_stencil_reference(draw.stencil);
-            let [r, g, b, a] = draw.blend;
-            rp.set_blend_constant(wgpu::Color { r, g, b, a });
+            if last.viewport != Some(draw.viewport) {
+                let [x, y, w, h, near, far] = draw.viewport;
+                rp.set_viewport(x, y, w, h, near, far);
+                last.viewport = Some(draw.viewport);
+            }
+            if last.scissor != Some(draw.scissor) {
+                let [sx, sy, sw, sh] = draw.scissor;
+                rp.set_scissor_rect(sx, sy, sw, sh);
+                last.scissor = Some(draw.scissor);
+            }
+            if last.stencil != Some(draw.stencil) {
+                rp.set_stencil_reference(draw.stencil);
+                last.stencil = Some(draw.stencil);
+            }
+            if last.blend != Some(draw.blend) {
+                let [r, g, b, a] = draw.blend;
+                rp.set_blend_constant(wgpu::Color { r, g, b, a });
+                last.blend = Some(draw.blend);
+            }
             match &draw.call {
                 Call::Draw { vertices, instances } => rp.draw(vertices.clone(), instances.clone()),
                 Call::Indexed { indices, base_vertex, instances } => rp.draw_indexed(indices.clone(), *base_vertex, instances.clone()),

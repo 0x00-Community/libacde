@@ -6,7 +6,7 @@ use crate::webgl::context::Context;
 use crate::webgl::format::Class;
 use crate::webgl::objects::*;
 use crate::webgl::pass::{Call, Draw, Source, Target};
-use crate::webgl::pipeline::{Binding, BlendKey, DepthKey, GroupKey, PipelineKey, SampleKind, SamplerKey, SamplerKind};
+use crate::webgl::pipeline::{Binding, BlendKey, DepthKey, GroupKey, PipelineKey, SampleKind, SamplerKey, SamplerKind, VertexSlot};
 use crate::webgl::shader::{Kind, Sampled};
 use crate::webgl::state::Generic;
 
@@ -120,6 +120,53 @@ fn direct_format(a: &Attrib) -> Option<wgpu::VertexFormat> {
         (UNSIGNED_INT_2_10_10_10_REV, 4, true, _) => V::Unorm10_10_10_2,
         _ => return None,
     })
+}
+
+enum Fetched {
+    Buffer(wgpu::Buffer),
+    Generic([u8; 16]),
+    Unused,
+}
+
+struct Fetch {
+    location: u32,
+    buffer: Option<Id>,
+    source: Fetched,
+    offset: u64,
+    stride: u64,
+    instance: bool,
+    format: wgpu::VertexFormat,
+}
+
+fn slots(mut fetches: Vec<Fetch>) -> (Vec<VertexSlot>, Vec<(u32, Fetched, u64)>) {
+    fetches.sort_by_key(|f| (f.buffer.is_none(), f.buffer, f.stride, f.instance, f.offset, f.location));
+    let mut groups: Vec<(VertexSlot, Fetched, u64, Option<Id>)> = Vec::new();
+    for f in fetches {
+        let size = f.format.size();
+        if let Some((slot, _, base, buffer)) = groups.last_mut()
+            && f.buffer.is_some()
+            && *buffer == f.buffer
+            && slot.stride == f.stride
+            && slot.instance == f.instance
+            && f.offset - *base + size <= f.stride
+        {
+            slot.attributes.push((f.location, f.offset - *base, f.format));
+            continue;
+        }
+        let slot = VertexSlot { stride: f.stride, instance: f.instance, attributes: vec![(f.location, 0, f.format)] };
+        groups.push((slot, f.source, f.offset, f.buffer));
+    }
+    for group in &mut groups {
+        group.0.attributes.sort_by_key(|a| a.0);
+    }
+    groups.sort_by_key(|g| g.0.attributes[0].0);
+    let mut layout = Vec::with_capacity(groups.len());
+    let mut bound = Vec::with_capacity(groups.len());
+    for (i, (slot, source, base, _)) in groups.into_iter().enumerate() {
+        layout.push(slot);
+        bound.push((i as u32, source, base));
+    }
+    (layout, bound)
 }
 
 pub(crate) struct Resolved {
@@ -368,9 +415,7 @@ impl Context {
             }
         }
         let instances = instances as u32;
-        let mut vertex_layouts = Vec::new();
-        let mut sources: Vec<(u32, Source, u64)> = Vec::new();
-        let mut generics: Vec<(u32, [u8; 16])> = Vec::new();
+        let mut fetches: Vec<Fetch> = Vec::new();
         let attribs = self.vao().attribs;
         for attribute in &info.attributes {
             for slot in 0..attribute.slots {
@@ -388,8 +433,7 @@ impl Context {
                         Generic::Int(_) => wgpu::VertexFormat::Sint32x4,
                         Generic::Uint(_) => wgpu::VertexFormat::Uint32x4,
                     };
-                    vertex_layouts.push((location, 0, false, format));
-                    generics.push((location, g.bytes()));
+                    fetches.push(Fetch { location, buffer: None, source: Fetched::Generic(g.bytes()), offset: 0, stride: 0, instance: false, format });
                     continue;
                 }
                 let Some(buffer_id) = a.buffer else { return self.error(INVALID_OPERATION) };
@@ -399,7 +443,15 @@ impl Context {
                 }
                 let elements = if a.divisor == 0 { vertex_count } else { u64::from(instances.div_ceil(a.divisor)) };
                 if elements == 0 || count == 0 {
-                    vertex_layouts.push((location, u64::from(a.effective_stride()), a.divisor > 0, direct_format(&a).unwrap_or(wgpu::VertexFormat::Float32x4)));
+                    fetches.push(Fetch {
+                        location,
+                        buffer: None,
+                        source: Fetched::Unused,
+                        offset: 0,
+                        stride: u64::from(a.effective_stride()),
+                        instance: a.divisor > 0,
+                        format: direct_format(&a).unwrap_or(wgpu::VertexFormat::Float32x4),
+                    });
                     continue;
                 }
                 let stride = u64::from(a.effective_stride());
@@ -430,8 +482,15 @@ impl Context {
                 });
                 match direct {
                     Some(format) => {
-                        vertex_layouts.push((location, stride, a.divisor > 0, format));
-                        sources.push((location, Source::Buffer(raw), a.offset));
+                        fetches.push(Fetch {
+                            location,
+                            buffer: Some(buffer_id),
+                            source: Fetched::Buffer(raw),
+                            offset: a.offset,
+                            stride,
+                            instance: a.divisor > 0,
+                            format,
+                        });
                     }
                     None => {
                         let converted = self.convert_attribute(buffer_id, version, &raw, &a, elements as u32);
@@ -440,8 +499,15 @@ impl Context {
                             (true, _) => wgpu::VertexFormat::Uint32x4,
                             _ => wgpu::VertexFormat::Float32x4,
                         };
-                        vertex_layouts.push((location, 16, a.divisor > 0, format));
-                        sources.push((location, Source::Buffer(converted), 0));
+                        fetches.push(Fetch {
+                            location,
+                            buffer: None,
+                            source: Fetched::Buffer(converted),
+                            offset: 0,
+                            stride: 16,
+                            instance: a.divisor > 0,
+                            format,
+                        });
                     }
                 }
                 let generation = self.generation;
@@ -463,10 +529,11 @@ impl Context {
                 t.used = generation;
             }
         }
-        let wide = mode == POINTS && index.is_none() && instances == 1 && linked.points.is_some() && vertex_layouts.iter().all(|l| !l.2);
+        let wide = mode == POINTS && index.is_none() && instances == 1 && linked.points.is_some() && fetches.iter().all(|f| !f.instance);
+        let (mut vertex_slots, bound) = slots(fetches);
         if wide {
-            for layout in &mut vertex_layouts {
-                layout.2 = true;
+            for slot in &mut vertex_slots {
+                slot.instance = true;
             }
         }
         let (topology, generated) = match mode {
@@ -529,7 +596,7 @@ impl Context {
         if call_count == 0 {
             return;
         }
-        let pipeline = match self.pipeline(&linked, &target, &vertex_layouts, &layout_bindings, (topology, indexed_strip.then_some(index_format), wide)) {
+        let pipeline = match self.pipeline(&linked, &target, &vertex_slots, &layout_bindings, (topology, indexed_strip.then_some(index_format), wide)) {
             Some(p) => p,
             None => return,
         };
@@ -543,26 +610,43 @@ impl Context {
         let [sf, ..] = self.state.stencil;
         let blend = self.blend_constant();
         let align = self.limits.uniform_alignment;
-        let mut data = self.program(program).map(|p| (p.data.clone(), p.data_version)).unwrap_or_default();
-        let mut sizes = info.uniform_sizes;
-        if let Some(points) = info.points.as_ref().filter(|_| wide) {
-            let vertex = &mut data.0[0];
-            vertex.resize(points.size as usize, 0);
-            let at = points.viewport as usize;
-            vertex[at..at + 4].copy_from_slice(&(vw.max(1) as f32).to_le_bytes());
-            vertex[at + 4..at + 8].copy_from_slice(&(vh.max(1) as f32).to_le_bytes());
-            sizes[0] = points.size;
-        }
+        let version = (linked.serial, self.program(program).map_or(0, |p| p.data_version));
         self.pass_for_draw(target);
+        let cached = if wide { None } else { self.recorder.pass.as_ref().and_then(|p| p.uniform_data.get(&version).copied()) };
+        let uniforms = match cached {
+            Some(at) => at,
+            None => {
+                let mut data = self.program(program).map(|p| p.data.clone()).unwrap_or_default();
+                let mut sizes = info.uniform_sizes;
+                if let Some(points) = info.points.as_ref().filter(|_| wide) {
+                    let vertex = &mut data[0];
+                    vertex.resize(points.size as usize, 0);
+                    let at = points.viewport as usize;
+                    vertex[at..at + 4].copy_from_slice(&(vw.max(1) as f32).to_le_bytes());
+                    vertex[at + 4..at + 8].copy_from_slice(&(vh.max(1) as f32).to_le_bytes());
+                    sizes[0] = points.size;
+                }
+                let pass = self.recorder.pass.as_mut().unwrap_or_else(|| unreachable!());
+                let at = [pass.push_data(&data[0], align), pass.push_data(&data[1], align)];
+                pass.span = pass.span.max(sizes[0]).max(sizes[1]).max(16);
+                if !wide {
+                    pass.uniform_data.insert(version, at);
+                }
+                at
+            }
+        };
         let pass = self.recorder.pass.as_mut().unwrap_or_else(|| unreachable!());
-        let uniforms = [pass.push_data(&data.0[0], align), pass.push_data(&data.0[1], align)];
-        pass.span = pass.span.max(sizes[0]).max(sizes[1]).max(16);
-        let mut vertex: Vec<(u32, Source, u64)> = sources;
-        for (location, bytes) in generics {
-            let at = pass.push_data(&bytes, 4);
-            vertex.push((location, Source::Data, u64::from(at)));
+        let mut vertex: Vec<(u32, Source, u64)> = Vec::with_capacity(bound.len());
+        for (slot, source, offset) in bound {
+            match source {
+                Fetched::Buffer(b) => vertex.push((slot, Source::Buffer(b), offset)),
+                Fetched::Generic(bytes) => {
+                    let at = pass.push_data(&bytes, 4);
+                    vertex.push((slot, Source::Data, u64::from(at)));
+                }
+                Fetched::Unused => {}
+            }
         }
-        vertex.sort_by_key(|v| v.0);
         let occlusion = self.state.queries[..2].iter().find_map(|q| q.1).map(|id| {
             pass.queries.push(id);
             pass.queries.len() as u32 - 1
@@ -572,8 +656,6 @@ impl Context {
             (None, Some((s, offset))) => Some((s, offset, index_format)),
             _ => None,
         };
-        let slots: FastMap<u32, u32> = vertex_layouts.iter().enumerate().map(|(i, l)| (l.0, i as u32)).collect();
-        let vertex = vertex.into_iter().map(|(location, s, o)| (slots[&location], s, o)).collect();
         let call = match &index {
             Some(_) if generated => Call::Indexed { indices: 0..call_count, base_vertex: 0, instances: 0..instances },
             Some(_) => Call::Indexed { indices: 0..call_count, base_vertex: 0, instances: 0..instances },
@@ -760,7 +842,7 @@ impl Context {
         &mut self,
         linked: &Rc<Linked>,
         target: &Target,
-        vertex: &[(u32, u64, bool, wgpu::VertexFormat)],
+        vertex: &[VertexSlot],
         bindings: &[Binding],
         (topology, strip, wide): (wgpu::PrimitiveTopology, Option<wgpu::IndexFormat>, bool),
     ) -> Option<wgpu::RenderPipeline> {
@@ -866,16 +948,19 @@ impl Context {
         }
         let device = self.gpu.device.clone();
         let layout = self.caches.layout(&device, bindings);
-        let attributes: Vec<[wgpu::VertexAttribute; 1]> =
-            key.vertex.iter().map(|(location, _, _, format)| [wgpu::VertexAttribute { format: *format, offset: 0, shader_location: *location }]).collect();
+        let attributes: Vec<Vec<wgpu::VertexAttribute>> = key
+            .vertex
+            .iter()
+            .map(|slot| slot.attributes.iter().map(|&(location, offset, format)| wgpu::VertexAttribute { format, offset, shader_location: location }).collect())
+            .collect();
         let buffers: Vec<Option<wgpu::VertexBufferLayout>> = key
             .vertex
             .iter()
             .zip(&attributes)
-            .map(|((_, stride, instance, _), attrs)| {
+            .map(|(slot, attrs)| {
                 Some(wgpu::VertexBufferLayout {
-                    array_stride: *stride,
-                    step_mode: if *instance { wgpu::VertexStepMode::Instance } else { wgpu::VertexStepMode::Vertex },
+                    array_stride: slot.stride,
+                    step_mode: if slot.instance { wgpu::VertexStepMode::Instance } else { wgpu::VertexStepMode::Vertex },
                     attributes: attrs,
                 })
             })
