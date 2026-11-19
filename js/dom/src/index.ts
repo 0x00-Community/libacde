@@ -75,7 +75,7 @@ import { handedOver, pickedOf, type Mode } from './dom/picker'
 import { AbstractRange, CaretPosition, getSelection, Range, Selection, StaticRange } from './dom/range'
 import { bindDom, changed, documentId, dom, existing, idOf, moved, rootElementId, version, wrap, wrapperStats, inner } from './dom/realm'
 import { attachShadow, shadowRootOf, ShadowRoot } from './dom/shadow'
-import { CSS, CSSRule, CSSRuleList, CSSStyleDeclaration, CSSStyleRule, CSSStyleSheet, StyleSheetList } from './dom/style'
+import { CSS, CSSConditionRule, CSSGroupingRule, CSSMediaRule, CSSRule, CSSRuleList, CSSStyleDeclaration, CSSStyleRule, CSSStyleSheet, CSSSupportsRule, StyleSheetList } from './dom/style'
 import * as svg from './dom/svg'
 import { NodeFilter, NodeIterator, TreeWalker } from './dom/traversal'
 import {
@@ -473,7 +473,7 @@ function interfaces(): Record<string, unknown> {
   const out: Record<string, unknown> = {
     Window, Node, CharacterData, Text, CDATASection, Comment, ProcessingInstruction, DocumentType, DocumentFragment, ShadowRoot,
     Document, HTMLDocument, XMLDocument, Element, HTMLElement, Attr, NamedNodeMap, NodeList, HTMLCollection, DOMTokenList, DOMStringMap,
-    CSSStyleDeclaration, CSSStyleSheet, CSSRule, CSSRuleList, CSSStyleRule, StyleSheetList, CSS,
+    CSSStyleDeclaration, CSSStyleSheet, CSSRule, CSSRuleList, CSSStyleRule, CSSGroupingRule, CSSConditionRule, CSSMediaRule, CSSSupportsRule, StyleSheetList, CSS,
     MutationObserver, MutationRecord, ResizeObserver, ResizeObserverEntry, IntersectionObserver, IntersectionObserverEntry,
     AbstractRange, Range, StaticRange, Selection, CaretPosition, TreeWalker, NodeIterator, NodeFilter,
     DOMParser, XMLSerializer, DOMImplementation, FontFace, FontFaceSet,

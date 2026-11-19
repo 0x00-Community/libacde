@@ -131,3 +131,37 @@ test('only a constructed sheet can be replaced', async () => {
   assert.deepEqual(result, [2, null, "NotAllowedError: Failed to execute 'replaceSync' on 'CSSStyleSheet': Can't call replaceSync on non-constructed CSSStyleSheets."])
   assert.equal(await web.run<Promise<string>>(`document.styleSheets[0].replace('a {}').then(() => 'resolved', (error) => error.name)`), 'NotAllowedError')
 })
+
+test('rules keep their identity across inserts, and @media / @supports are grouping rules with their own insertRule', async () => {
+  using web = await page('<!doctype html><html><head></head><body></body></html>')
+  const result = web.json(`(() => {
+    const o = new CSSStyleSheet()
+    o.insertRule('@media{}', 0)
+    o.insertRule('--sxs{--sxs:0}', 0)
+    const group = o.cssRules[1]
+    o.insertRule('@media{}', 0)
+    o.insertRule('--sxs{--sxs:1}', 0)
+    const kept = o.cssRules[3] === group
+    group.insertRule('.a { color: red }', group.cssRules.length)
+    group.insertRule('.b { color: blue }', 0)
+    const inner = [...group.cssRules].map((r) => r.cssText)
+    const first = group.cssRules[0]
+    group.deleteRule(1)
+    let index = ''
+    try { group.insertRule('.c {}', 5) } catch (e) { index = e.name }
+    o.insertRule('@supports (display: grid) { .g { display: grid } }', 0)
+    const supports = o.cssRules[0]
+    o.replaceSync('')
+    return {
+      kept, name: group.constructor.name, type: group.type, inner, sameFirst: group.cssRules[0] === first, parentRule: first.parentRule === group,
+      count: group.cssRules.length, text: group.cssText, index, supports: [supports.constructor.name, supports.conditionText, supports.cssRules.length],
+      media: group.media.mediaText, conditionText: group.conditionText, detached: group.parentStyleSheet,
+      classes: [typeof CSSMediaRule, typeof CSSGroupingRule, typeof CSSConditionRule, typeof CSSSupportsRule],
+    }
+  })()`)
+  assert.deepEqual(result, {
+    kept: true, name: 'CSSMediaRule', type: 4, inner: ['.b { color: blue }', '.a { color: red }'], sameFirst: true, parentRule: true,
+    count: 1, text: '@media {\n  .b { color: blue }\n}', index: 'IndexSizeError', supports: ['CSSSupportsRule', '(display: grid)', 1],
+    media: '', conditionText: '', detached: null, classes: ['function', 'function', 'function', 'function'],
+  })
+})
