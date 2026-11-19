@@ -75,7 +75,7 @@ impl Engine {
 
 impl Dom {
     pub fn highlight(&self, id: u32) -> Result<()> {
-        let changed = self.shared.call(&self.wake, |e| {
+        let changed = self.shared.script_call(&self.wake, |e| {
             let node = match id {
                 NONE => None,
                 id => Some(e.n(id)?),

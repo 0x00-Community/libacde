@@ -30,6 +30,8 @@ pub(crate) struct Engine {
     pub(crate) ids: Ids,
     clock: Clock,
     resolved_at: f64,
+    pub(crate) in_task: Option<u64>,
+    task_time: Option<(u64, f64)>,
     arrived: Arc<AtomicBool>,
     pub(crate) stale: bool,
     pub(crate) dirty: bool,
@@ -74,6 +76,8 @@ impl Engine {
             ids: Ids::default(),
             clock: Clock::default(),
             resolved_at: 0.0,
+            in_task: None,
+            task_time: None,
             arrived,
             stale: true,
             dirty: true,
@@ -441,12 +445,26 @@ impl Engine {
         self.stats.frame = Default::default();
     }
 
+    fn animation_time(&mut self) -> f64 {
+        let now = self.clock.now();
+        let at = match (self.in_task, self.task_time) {
+            (None, _) => now,
+            (Some(task), Some((pinned, at))) if pinned == task => at,
+            (Some(task), _) => {
+                self.task_time = Some((task, now));
+                now
+            }
+        };
+        at.max(self.resolved_at)
+    }
+
     pub(crate) fn resolved(&mut self) -> &BaseDocument {
-        let animation_due = self.doc.is_animating() && self.clock.now() - self.resolved_at >= FRAME;
+        let now = self.animation_time();
+        let animation_due = self.doc.is_animating() && now - self.resolved_at >= FRAME;
         if self.stale || animation_due {
             self.dirty |= self.doc.is_animating();
             let start = Instant::now();
-            self.resolved_at = self.clock.now();
+            self.resolved_at = now;
             self.doc.resolve(self.resolved_at);
             self.stats.resolve_ms = crate::log::since_ms(start);
             self.stats.resolve.add(self.stats.resolve_ms);
