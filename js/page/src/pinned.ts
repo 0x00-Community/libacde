@@ -39,6 +39,7 @@ interface Panel {
 
 export class Pinned {
   static readonly #EDGES: Record<WindowEdge, number> = { top: 1, bottom: 2, left: 4, right: 8 }
+  static readonly #SETTLED = ['animationend', 'transitionend'] as const
   readonly #rpc: Rpc
   readonly #surface: PanelSurface
   readonly #dom: PanelDom
@@ -79,6 +80,11 @@ export class Pinned {
     })
     for (let at: Element | null = element; at; at = at.parentElement) changed.observe(at, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] })
     panel.stops.push(() => resized.disconnect(), () => changed.disconnect(), () => settle !== null && hostTime.clearTimeout(settle))
+    const settled = () => this.#place(panel)
+    for (const type of Pinned.#SETTLED) element.addEventListener(type, settled)
+    panel.stops.push(() => {
+      for (const type of Pinned.#SETTLED) element.removeEventListener(type, settled)
+    })
     this.#place(panel)
     return this.#handle(panel)
   }
@@ -178,6 +184,7 @@ export class Pinned {
 
   #open(panel: Panel, rect: Box, input: Box): void {
     panel.opening = true
+    this.#dom.setPanel(panel.id, ...rect)
     this.#rpc.call('panel', 'open', [rect]).then(
       (granted) => {
         panel.opening = false
@@ -191,6 +198,7 @@ export class Pinned {
       },
       () => {
         panel.opening = false
+        if (this.#panels.get(panel.element) === panel) this.#dom.setPanel(panel.id, 0, 0, 0, 0)
       },
     )
   }

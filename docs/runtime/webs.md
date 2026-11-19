@@ -23,7 +23,9 @@
   窗口, 状态和 React 树还在同一个文档里. `pinned.ts` 量元素 (并上 render 报的绘制范围 `panelmove`), 要令牌 (`Shell.grant({mode: 'pinned', rect})`),
   再开一个 toplevel (acdebin-system 的 `crates/window` `panel.rs`; 宿主窗口里是 owner 为桌面的表项), `Dom::set_panel` 让 render 单独画它 (`Frame.panels`). 输入区域只是
   元素的盒子 (`pointer-events: none` / 不可见时为空), 指针送回同一个文档; 主窗口或任一面板有焦点就算 `activate`. 元素变了 (ResizeObserver +
-  MutationObserver, 700 ms 后补量) 重新量, 量不到时 `hide`. backdrop-filter 转成 `set_backdrop`.
+  MutationObserver, 700 ms 后补量; 元素上的 `animationend` / `transitionend` 也补量, 淡入时量到的不透明度 0 不会让输入区域一直空着) 重新量, 量不到时 `hide`.
+  要令牌之前就 `set_panel`, 元素从此不画在主窗口里: 面板生效前它哪儿都不显示, 不会出现“看得见、点击却落到下面窗口”的一段
+  (桌面页的主窗口在 background 层, 应用窗口盖在它上面); 令牌要不到时取消 `set_panel`, 元素回到主窗口. backdrop-filter 转成 `set_backdrop`.
   `pin(element, {reserve: {edge, thickness?}})` 让面板在输出的一条边上占一条 (像 layer-shell 的 exclusive zone; 不给 thickness 时是从那条边到面板远端的距离,
   跟着量的结果变), 经 surface 的 `reservePanel(id, edge, thickness)` 交给运行时. 宿主窗口 (`State::work_area`) 用输出减去显示着的面板占的边得到工作区,
   面板隐藏、挪动、改尺寸、取消钉住或输出变了时重算 (`refill`): `filled` 的窗口跟着改 rect, 全屏不管工作区; 工作区变了给 Broker 发
