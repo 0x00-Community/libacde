@@ -127,8 +127,9 @@ impl PeriodicWave {
     }
 
     pub fn sample(&self, tables: &Tables, index: f64) -> f32 {
-        let r0 = index as usize;
-        let r1 = (r0 + 1) & (self.size - 1);
+        let mask = self.size - 1;
+        let r0 = (index as usize) & mask;
+        let r1 = (r0 + 1) & mask;
         let t = index as f32 - r0 as f32;
         let higher = (1.0 - t) * tables.higher[r0] + t * tables.higher[r1];
         let lower = (1.0 - t) * tables.lower[r0] + t * tables.lower[r1];
@@ -168,6 +169,17 @@ mod tests {
         assert_eq!((low.higher.as_ptr(), low.mix), (saw.tables[0].as_ptr(), 0.0));
         let high = saw.tables(13000.0);
         assert!(std::ptr::eq(high.higher, &saw.tables[31][..]) && high.mix > 0.0, "{}", high.mix);
+    }
+
+    #[test]
+    fn any_phase_reads_inside_the_table() {
+        let p = wave(Wave::Sawtooth);
+        let t = p.tables(440.0);
+        for index in [4096.0, 4096.5, 1e12, -0.0] {
+            assert!(p.sample(&t, index).is_finite(), "{index}");
+        }
+        p.sample(&t, f64::NAN);
+        p.sample(&t, f64::INFINITY);
     }
 
     #[test]

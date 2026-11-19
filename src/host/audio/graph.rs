@@ -1073,6 +1073,9 @@ impl Graph {
                         node.out[0][i] = wave.sample(&tables, node.phase);
                         node.phase += f64::from(f * scale);
                         node.phase -= (node.phase / size).floor() * size;
+                        if !(0.0..size).contains(&node.phase) {
+                            node.phase = 0.0;
+                        }
                     }
                 } else {
                     node.out[0][from..to].fill(0.0);
