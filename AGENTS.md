@@ -1,7 +1,7 @@
 # libacde
 
 libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acdert/`, 2026-11-18 连历史拆成本仓库): 内嵌 V8、自研 DOM 与排版绘制
-(Blitz fork + detour / vello)、网页存储、媒体、WebGPU / WebGL 绑定和 `acde:` 系统模块, 拥有全部跨仓契约 (包清单与清单规则、SDK `@dopame/acde-api`、
+(Blitz fork + acde-scene / vello)、网页存储、媒体、WebGPU / WebGL 绑定和 `acde:` 系统模块, 拥有全部跨仓契约 (包清单与清单规则、SDK `@dopame/acde-api`、
 `acde_*` 协议). 对外是 Rust 包 `libacde` (库名 `acde`, 代码里 `use acde::…`; rlib + `libacde.so` + `include/acde.h`), 两个前端都和本仓库并排检出、以 path 依赖 `../libacde` 链它:
 
 - [acdev](http://gitea.dopamine/AC/acdev): 跨平台调试运行时 (宿主窗口)、多平台模拟器和开发者命令行 `acdev`.

@@ -5,16 +5,17 @@ acdev (Agent Computer Desktop Environment) 是 Dopame 的桌面基座, 分三个
 | 仓库 (gitea AC/) | 是什么 | 产出 |
 | --- | --- | --- |
 | libacde (本仓库, 包名 `libacde`, 库名 `acde`) | 通用运行时逻辑: V8、DOM、render、存储、媒体、WebGPU / WebGL 绑定; 平台特化的接口 (`src/host/platform.rs` 的 `Platform` / `Window`, 合成器接口) | 根包 `libacde`: rlib + `libacde.so` + `include/acde.h` |
-| acdev runtime ([acdev](http://gitea.dopamine/AC/acdev) 根上的 `src/`、`crates/hostwin`) | 跨平台调试运行时: 宿主窗口 (hostwin)、DevTools、`acdev dev` 拉起的就是它; 合成器用 OpenGL / Vulkan (wgpu) 或 detour | 二进制 `acdev runtime` |
-| [acdebin-system](http://gitea.dopamine/AC/acdebin-system) | Dopame OS 特化运行时: Wayland 合成器、DRM/KMS、会话、RDP、系统服务; 合成器是 smithay + GLES, 只有网页的光栅化 (`crates/paint`) 用 detour | 二进制 `acdebin-system` |
+| acdev runtime ([acdev](http://gitea.dopamine/AC/acdev) 根上的 `src/`、`crates/hostwin`) | 跨平台调试运行时: 宿主窗口 (hostwin)、DevTools、`acdev dev` 拉起的就是它; 合成器用 OpenGL / Vulkan (wgpu) | 二进制 `acdev runtime` |
+| [acdebin-system](http://gitea.dopamine/AC/acdebin-system) | Dopame OS 特化运行时: Wayland 合成器、DRM/KMS、会话、RDP、系统服务; 合成器是 smithay + GLES, 网页的光栅化 (`crates/paint`) 用本库的 wgpu / vello, 没有 GPU 时用 vello_cpu; Xe3 上的 detour 后端还没接上 | 二进制 `acdebin-system` |
 | acdev 的 `npm/` | 开发者 CLI `acdev` (bun) | `acdev` |
 
 平台特化的部分只经接口进来: 前端 (acdev runtime / acdebin-system 的 main) 实现 `Platform` (认领窗口 surface、文件选择器、`native` 上多挂的导出、内容类型),
 交给 `acde::start` / `acde::common`; 运行时把它放在每个事件循环上 (`rt::Loop::platform`, web 线程从 Broker 那里继承), 不用全局变量.
 根包 `libacde` (仓库根的 `Cargo.toml` + `src/`) 是对外唯一的包, 前端只依赖它 (acdev 和 acdes 并排检出本仓库: `libacde = { path = "../libacde" }`, 代码里 `use acde::…`). 代码都在这一个包里:
 `src/host` 的公开项由 `src/lib.rs` 平铺导出, 其余是公开模块 `acde::log` / `media` / `model` / `napi` / `render` / `runtime` / `storage` / `vello` /
-`webgl` / `gpu` (模块内互相引用写 `crate::render::…`); `acde::gpu` (src/gpu) 是 detour 之上的设备登记 (`Gpu`) 和合成器接口, 平铺导出
-detour 的 2D 场景类型; blitz fork 直接画进 detour 的场景 (用户定 2026-11-14: acgpu 接管 acde-gpu, 这个 crate 已删; 2026-11-16 acgpu 换成 crates.io 的 detour-gpu, lib 名 detour). feature `napi` 打开 model 的 `#[napi(object)]`. 测试在根 `tests/` (`<原模块>_<名字>.rs`, 夹具 `tests/fixtures`,
+`webgl` / `gpu` (模块内互相引用写 `crate::render::…`); `acde::gpu` (src/gpu) 是设备登记 (`Gpu`) 和合成器接口, 平铺导出
+2D 场景类型 (workspace 里的 `acde-scene`, `scene/`); blitz fork 直接画进这个场景. GPU 后端按 feature 选 (用户定 2026-11-19): wgpu (src/vello, acdev 只开它, 管三个平台的一致) 和 detour
+(还没有, acdes 开 detour 加 wgpu: Xe3 上走 detour, 别的 GPU 走 wgpu); 以前的 acgpu / detour-gpu 0.1 不再用. feature `napi` 打开 model 的 `#[napi(object)]`. 测试在根 `tests/` (`<原模块>_<名字>.rs`, 夹具 `tests/fixtures`,
 runtime 的手动检查脚本 `tests/runtime/`), Wayland 协议在 `protocol/`. crate-type 是 rlib + cdylib, cdylib 即 `libacde.so`.
 
 C 接口见 `docs/runtime/ffi.md`; 发布到 cargo 源 ac 见 `docs/dev/release.md`「cargo 源 ac」.

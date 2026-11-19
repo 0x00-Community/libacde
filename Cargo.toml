@@ -9,12 +9,13 @@ edition = "2024"
 repository = "http://gitea.dopamine/AC/libacde"
 
 [workspace.dependencies]
+acde-scene = { path = "scene", version = "0.1.0", registry = "ac" }
 # blitz: our fork (submodule vendor/blitz, Gitea AC/blitz), published to ac with the same names
 blitz-dom = { path = "vendor/blitz/packages/blitz-dom", version = "=0.3.0-beta.5", registry = "ac", default-features = false }
 blitz-paint = { path = "vendor/blitz/packages/blitz-paint", version = "=0.3.0-beta.5", registry = "ac", default-features = false }
 blitz-traits = { path = "vendor/blitz/packages/blitz-traits", version = "=0.3.0-beta.5", registry = "ac", default-features = false }
 
-# 对外唯一的包: src/ 下的模块 (host / render / runtime / webgl / …) (gpu 是 detour 之上的设备注册表和合成器接口) 平铺导出 (Rust 用 rlib), 并以 cdylib 出 libacde.so
+# 对外唯一的包: src/ 下的模块 (host / render / runtime / webgl / …) (gpu 是 2D 场景、设备注册表和合成器接口, vello 是它在 wgpu 上的实现) 平铺导出 (Rust 用 rlib), 并以 cdylib 出 libacde.so
 # (C 接口在 src/ffi.rs, 头文件 include/acde.h 由 build.rs 经 cbindgen 生成). acdev 和 acdes 并排检出本仓库, 以 path 依赖 "../libacde" 链它
 [package]
 name = "libacde"
@@ -34,9 +35,7 @@ name = "acde"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-# the 2D scene, filters, compose types, GPU images, the compositor and the page rasterizer are detour's (src/gpu, src/vello);
-# no `compiler`, so no MLIR and no jemalloc; its Vulkan fallback is plain wgpu off Linux
-detour = { package = "detour-gpu", version = "0.1.6", default-features = false, features = ["fallback-vulkan"] }
+acde-scene = { workspace = true }
 v8 = "152"
 log = { version = "0.4", features = ["std"] }
 # log: env_logger behind the log module (written on its own thread)

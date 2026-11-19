@@ -1,13 +1,41 @@
+mod blur_plan;
+mod compose;
+#[cfg(target_os = "linux")]
+mod device;
+mod offscreen;
+#[cfg(target_os = "linux")]
+mod raster;
+mod vello_scene;
+
 use std::sync::Arc;
 
-use crate::gpu::detour::fallback;
-use crate::gpu::{Filter, Gpu, GpuImage, Scene};
+use crate::gpu::{Filter, Gpu, Scene};
 use kurbo::Affine;
 
+pub use blur_plan::Blur;
+pub use compose::{Composer, Op};
 #[cfg(target_os = "linux")]
-pub use fallback::Raster;
-pub use fallback::{Composer, Op, Overrides, Vello};
+pub use device::{Device, Exported, Fence};
+#[cfg(not(target_os = "linux"))]
+pub use offscreen::Exported;
+pub use offscreen::{GpuImage, ImageSet, Overrides, Shared};
+#[cfg(target_os = "linux")]
+pub use raster::Raster;
+pub use vello_scene::Vello;
 pub use {crate::gpu, vello};
+
+fn texture(device: &wgpu::Device, (width, height): (u32, u32), usage: wgpu::TextureUsages, label: &str) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage,
+        view_formats: &[],
+    })
+}
 
 /// Turns image brushes that stand for GPU images of a replaced device into transparent paint, in place. Such an image is no
 /// longer in the device's image set and carries no bytes, so vello would read it as an empty image and panic; it shows
@@ -32,11 +60,11 @@ pub fn clear_stale_images(scene: &mut Scene, gpu: &Gpu) {
     }
 }
 
-pub struct Offscreen(fallback::Offscreen, Arc<Gpu>);
+pub struct Offscreen(offscreen::Offscreen, Arc<Gpu>);
 
 impl Offscreen {
     pub fn new(gpu: Arc<Gpu>) -> Result<Self, String> {
-        fallback::Offscreen::new(gpu.shared.clone()).map(|o| Self(o, gpu))
+        offscreen::Offscreen::new(gpu.shared.clone()).map(|o| Self(o, gpu))
     }
 
     fn clear_stale(&self, scene: &mut Scene) {
@@ -45,15 +73,15 @@ impl Offscreen {
 }
 
 impl std::ops::Deref for Offscreen {
-    type Target = fallback::Offscreen;
+    type Target = offscreen::Offscreen;
 
-    fn deref(&self) -> &fallback::Offscreen {
+    fn deref(&self) -> &offscreen::Offscreen {
         &self.0
     }
 }
 
 impl std::ops::DerefMut for Offscreen {
-    fn deref_mut(&mut self) -> &mut fallback::Offscreen {
+    fn deref_mut(&mut self) -> &mut offscreen::Offscreen {
         &mut self.0
     }
 }

@@ -1,0 +1,11 @@
+[package]
+name = "acde-scene"
+description = "The 2D scene that blitz paints into and the GPU backends draw: commands, filters, compose parts"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+publish = ["ac"]
+
+[dependencies]
+kurbo = "0.13"
+peniko = "0.6"
