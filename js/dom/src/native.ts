@@ -534,10 +534,10 @@ export interface AudioNative {
   createContext(context: number, destination: number): void
   createOfflineContext(context: number, destination: number, channels: number, length: number, sampleRate: number): void
   setFilterType(node: number, type: number): void
-  setDelayMax(node: number, seconds: number): void
+  setDelayMax(node: number, seconds: number, sampleRate: number): boolean
   setCurve(node: number, curve: Float32Array | null): void
   setOversample(node: number, oversample: number): void
-  setImpulse(node: number, buffer: number, normalize: boolean): void
+  setImpulse(node: number, buffer: number, normalize: boolean): boolean
   reduction(node: number): number
   biquadResponse(type: number, frequency: number, detune: number, q: number, gain: number, sampleRate: number, frequencies: Float32Array): Float32Array
   analyse(node: number, what: number, fftSize: number, smoothing: number, minDecibels: number, maxDecibels: number): Float32Array | Uint8Array | undefined

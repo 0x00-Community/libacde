@@ -1,5 +1,6 @@
 mod analyser;
 mod biquad;
+mod budget;
 mod compressor;
 mod convolver;
 mod decode;
@@ -16,12 +17,15 @@ pub mod video;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use crate::host::bind::{self, arg_bool, arg_f64, arg_u32};
 use crate::host::{offload, rt};
+use budget::{Budget, MAX_SAMPLES, Ticket};
+use convolver::Convolver;
+use delay::Delay;
 use graph::{AudioData, Graph, Kind, NodeOp, ParamOp, QUANTUM, Shared, Wave};
 use mixer::{Clock, Cmd, MediaOp, Mixer, Note, RATE};
 use output::Ctl;
@@ -50,42 +54,13 @@ struct State {
     offline: Mixer,
     offline_contexts: HashMap<u32, Offline>,
     offline_nodes: HashMap<u32, u32>,
-    rendering: Arc<Rendering>,
+    budget: Arc<Budget>,
     spectra: HashMap<u32, analyser::Spectrum>,
 }
 
 struct Offline {
     channels: usize,
     length: usize,
-}
-
-const MAX_OFFLINE_SAMPLES: usize = 1 << 28;
-
-#[derive(Default)]
-struct Rendering {
-    samples: AtomicUsize,
-    cancelled: AtomicBool,
-}
-
-struct Ticket {
-    rendering: Arc<Rendering>,
-    samples: usize,
-}
-
-impl Ticket {
-    fn take(rendering: &Arc<Rendering>, samples: usize) -> Option<Ticket> {
-        rendering
-            .samples
-            .try_update(Ordering::AcqRel, Ordering::Acquire, |used| used.checked_add(samples).filter(|total| *total <= MAX_OFFLINE_SAMPLES))
-            .ok()?;
-        Some(Ticket { rendering: rendering.clone(), samples })
-    }
-}
-
-impl Drop for Ticket {
-    fn drop(&mut self) {
-        self.rendering.samples.fetch_sub(self.samples, Ordering::AcqRel);
-    }
 }
 
 const RENDERERS: usize = 4;
@@ -234,7 +209,7 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>) {
 
 pub fn clear() {
     let state = with_state(std::mem::take);
-    state.rendering.cancelled.store(true, Ordering::Relaxed);
+    state.budget.cancelled.store(true, Ordering::Relaxed);
     if state.web != 0 {
         output::send(Ctl::Close(state.web));
     }
@@ -307,13 +282,8 @@ senders! {
     };
     stop(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Stop(arg_f64(s, &a, 1)) };
     set_filter_type(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Filter(biquad::FilterType::from_code(arg_u32(s, &a, 1))) };
-    set_delay_max(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::DelayMax(finite(s, &a, 1).clamp(0.0, 180.0)) };
     set_curve(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Curve(floats(a.get(1)).map(Into::into)) };
     set_oversample(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Oversample(shaper::Oversample::from_code(arg_u32(s, &a, 1))) };
-    set_impulse(s, a) => {
-        let (node, buffer, normalize) = (arg_u32(s, &a, 0), arg_u32(s, &a, 1), arg_bool(s, &a, 2));
-        Cmd::Node { node, op: NodeOp::Impulse(with_state(|state| state.buffers.get(&buffer).cloned()), normalize) }
-    };
     release(s, a) => {
         let node = arg_u32(s, &a, 0);
         with_state(|state| {
@@ -354,12 +324,34 @@ fn create_context(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments,
     send(Cmd::CreateContext { ctx, dest, clock, rate: RATE });
 }
 
+fn set_delay_max(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let (node, seconds, rate) = (arg_u32(scope, &args, 0), finite(scope, &args, 1), finite(scope, &args, 2));
+    let budget = with_state(|s| s.budget.clone());
+    let delay = (seconds <= 180.0).then(|| Delay::new(seconds, rate, &budget)).flatten();
+    rv.set_bool(delay.is_some());
+    if let Some(delay) = delay {
+        send(Cmd::Node { node, op: NodeOp::Delay(Box::new(delay)) });
+    }
+}
+
+fn set_impulse(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let (node, buffer, normalize) = (arg_u32(scope, &args, 0), arg_u32(scope, &args, 1), arg_bool(scope, &args, 2));
+    let Some(response) = with_state(|s| s.buffers.get(&buffer).cloned()) else {
+        rv.set_bool(true);
+        return send(Cmd::Node { node, op: NodeOp::Impulse(None) });
+    };
+    let budget = with_state(|s| s.budget.clone());
+    let convolver = Convolver::new(&response, normalize, &budget);
+    rv.set_bool(convolver.is_some() || response.len() == 0);
+    send(Cmd::Node { node, op: NodeOp::Impulse(convolver.map(Box::new)) });
+}
+
 fn create_offline_context(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
     let (ctx, dest) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1));
     let channels = bind::arg_u32(scope, &args, 2) as usize;
     let length = bind::arg_f64(scope, &args, 3);
     let rate = bind::arg_f64(scope, &args, 4);
-    if !(1..=2).contains(&channels) || !(length >= 1.0 && length * channels as f64 <= MAX_OFFLINE_SAMPLES as f64) || !(3000.0..=768_000.0).contains(&rate) {
+    if !(1..=2).contains(&channels) || !(length >= 1.0 && length * channels as f64 <= MAX_SAMPLES as f64) || !(3000.0..=768_000.0).contains(&rate) {
         return bind::throw_type_error(scope, "audio.createOfflineContext: bad channels, length or sample rate");
     }
     let clock = Arc::new(Clock::offline(rate));
@@ -382,9 +374,9 @@ fn start_rendering(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments
     let Some((offline, graph, clock)) = taken else {
         return bind::throw_error(scope, "audio.startRendering: not an offline context that has yet to render");
     };
-    let rendering = with_state(|s| s.rendering.clone());
-    let Some(ticket) = Ticket::take(&rendering, offline.length * offline.channels) else {
-        let message = bind::string(scope, "this page is rendering too much audio offline at once");
+    let budget = with_state(|s| s.budget.clone());
+    let Some(ticket) = Ticket::take(&budget, offline.length * offline.channels) else {
+        let message = bind::string(scope, "this page already holds too much audio (offline renders, delay lines, convolvers)");
         let error = v8::Exception::range_error(scope, message);
         let resolver = v8::PromiseResolver::new(scope).expect("a promise resolver");
         resolver.reject(scope, error);
@@ -394,7 +386,7 @@ fn start_rendering(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments
         scope,
         &mut rv,
         move || {
-            let rendered = render_offline(graph, offline, clock, &ticket.rendering.cancelled);
+            let rendered = render_offline(graph, offline, clock, &ticket.budget().cancelled);
             (buffer, rendered, ticket)
         },
         |scope, resolver, (buffer, rendered, _ticket)| {
@@ -863,13 +855,7 @@ mod tests {
     }
 
     #[test]
-    fn a_page_renders_at_most_its_budget_at_once_and_a_cancelled_render_stops() {
-        let rendering = Arc::new(Rendering::default());
-        let first = Ticket::take(&rendering, MAX_OFFLINE_SAMPLES - 10).unwrap();
-        assert!(Ticket::take(&rendering, 11).is_none(), "over the budget while the first renders");
-        let small = Ticket::take(&rendering, 10).unwrap();
-        drop((first, small));
-        assert_eq!(rendering.samples.load(Ordering::Relaxed), 0);
+    fn a_cancelled_render_stops() {
         let cancelled = AtomicBool::new(true);
         let stopped = render_offline(graph(48000.0, None), Offline { channels: 1, length: 1000 }, Arc::new(Clock::offline(48000.0)), &cancelled);
         assert!(stopped.is_err_and(|e| e.contains("gone")));

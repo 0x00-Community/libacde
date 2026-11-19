@@ -137,8 +137,8 @@
   - **`OfflineAudioContext`** (2026-11-19): 两种构造写法, 采样率 3000–768000 Hz 照给的 (`sampleRate` 是 context 自己的, `decodeAudioData` 也重采样到它),
     声道 1 或 2 (3–32 以 `NotSupportedError` 拒绝, 还没有), 状态从 `suspended` 开始. 它的图不进混音器: 建节点、连线、参数都落在页面线程上一个只给
     离线 context 的 `Mixer` 里 (src/host `audio/mod.rs` `offline_cmd`), 不开声音设备; `startRendering()` 把整张图交给 `acde-offline-audio` 线程池 (4 条)
-    一次算完 `length` 帧 (最后一个 quantum 截断, 不钳到 ±1). 一次最多 2^28 个样本 (帧数乘声道, 1 GB; 构造时超了是 `NotSupportedError`), 一个页面同时在算的离线渲染加起来
-    也最多这么多 (超了 promise 以 `RangeError` 拒绝), 页面没了时它还在算的渲染停下, 结果存成 AudioBuffer: 先发结束的音源的 `ended`, 状态变 `closed`, 兑现 promise, 下一个任务
+    一次算完 `length` 帧 (最后一个 quantum 截断, 不钳到 ±1). 一次最多 2^28 个样本 (帧数乘声道, 1 GB; 构造时超了是 `NotSupportedError`), 一个页面的声音内存 (src/host `audio/budget.rs`:
+    在算的离线渲染、延迟线、卷积核) 加起来也最多这么多 (离线渲染超了 promise 以 `RangeError` 拒绝), 页面没了时它还在算的渲染停下, 结果存成 AudioBuffer: 先发结束的音源的 `ended`, 状态变 `closed`, 兑现 promise, 下一个任务
     发 `complete` (`OfflineAudioCompletionEvent.renderedBuffer`). 第二次 `startRendering` 是 `InvalidStateError`; `suspend(time)` 还没有
     (`NotSupportedError`), `resume()` 是 `InvalidStateError`. `currentTime` 是已经渲染到的帧 (按 quantum). 渲染开始后再对这张图做的改动不生效.
   - **空间化** (`PannerNode` / `AudioListener`, src/host `audio/spatial.rs`): 方位角、仰角、三种距离模型、声锥和 `equalpower` 照规范
@@ -153,12 +153,14 @@
   - **效果节点** (2026-11-19, src/host `audio/` 下各一个文件, 在 `graph.rs` 的 `Effect` 里): 都在混音线程按 quantum 算, 页面只发设置 (`NodeOp`).
     - `BiquadFilterNode` (`biquad.rs`): 系数照 Chromium `Biquad` (f64, 含频率 0 / 奈奎斯特和 Q ≤ 0 的边界), 参数在 quantum 里变时逐样本重算;
       `getFrequencyResponse` 在页面线程用当前参数算 (超出 0–奈奎斯特的频率给 NaN).
-    - `DelayNode` (`delay.rs`): 每声道一条环形延迟线, 线性插值; `maxDelayTime` 0–180 s (以外 `NotSupportedError`). 在环路里的延迟节点
+    - `DelayNode` (`delay.rs`): 每声道一条环形延迟线, 线性插值; `maxDelayTime` 0–180 s (以外 `NotSupportedError`). 延迟线在页面线程
+      分配、记进页面的声音内存, 放不下时构造抛 `RangeError` (和分配不出的 `ArrayBuffer` 一样), 不在混音线程分配. 在环路里的延迟节点
       先读后写, 最少 128 帧 (规范的要求); 环路里没有延迟节点时整个环静音 (`muted`).
     - `WaveShaperNode` (`shaper.rs`): 曲线映射和 2x / 4x 过采样的上下采样滤波器照 Chromium (128 / 256 抽头核, 4x 是两级 2x).
     - `DynamicsCompressorNode` (`compressor.rs`): 移植 Chromium 的 `DynamicsCompressorKernel` (BSD), `reduction` 每 quantum 回填.
     - `ConvolverNode` (`convolver.rs`, realfft): 三级非均匀分块的重叠保留 (128 / 1024 / 8192 帧一块), 没有额外延迟;
-      `normalize` 照规范的算法. 冲激响应 1、2 声道 (4 声道是 `NotSupportedError`, 还没有), 采样率要和 context 相同.
+      `normalize` 照规范的算法, 只是校准增益照 Chrome 和 Firefox 用 -58 dB (规范写成四舍五入的 0.00125, 差 0.7%). 设 `buffer` 时在页面线程
+      算好各块的频谱 (和 Chrome 一样同步), 单声道冲激响应的左右两路共用一份频谱, 记进页面的声音内存, 放不下时抛 `RangeError`. 冲激响应 1、2 声道 (4 声道是 `NotSupportedError`, 还没有), 采样率要和 context 相同.
     - `AnalyserNode` (`analyser.rs`): 混音线程把输入的单声道下混记进 32768 帧的环 (`Shared.tap`); `get*Data` 在页面线程取最后 `fftSize`
       帧, Blackman 窗、FFT、平滑和分贝照规范 (同一批样本只算一次).
     - 尾巴 (`Node::tail`): 输入静了以后节点还会出声的帧数 (延迟 = `maxDelayTime`, 压缩器 1.625 s, 卷积 = 冲激响应长度, 滤波器到输出低于 1e-7),

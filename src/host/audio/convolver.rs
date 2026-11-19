@@ -3,6 +3,7 @@ use std::sync::Arc;
 use realfft::num_complex::Complex32;
 use realfft::{ComplexToReal, RealFftPlanner, RealToComplex};
 
+use super::budget::{Budget, Ticket};
 use super::graph::{AudioData, Bus, QUANTUM};
 
 const LEVELS: [(usize, usize, usize); 3] = [(QUANTUM, 0, 1024), (1024, 1024, 8192), (8192, 8192, usize::MAX)];
@@ -27,7 +28,7 @@ struct Level {
     start: usize,
     forward: Arc<dyn RealToComplex<f32>>,
     inverse: Arc<dyn ComplexToReal<f32>>,
-    spectra: Vec<Vec<Complex32>>,
+    spectra: Arc<Vec<Vec<Complex32>>>,
     history: Vec<Vec<Complex32>>,
     newest: usize,
     input: Vec<f32>,
@@ -38,24 +39,49 @@ struct Level {
 }
 
 impl Level {
-    fn new<'r>(planner: &mut RealFftPlanner<f32>, response: &'r [f32], (block, start, end): (usize, usize, usize)) -> Option<(Level, &'r [f32])> {
-        let segment = response.get(start..end.min(response.len())).filter(|s| !s.is_empty())?;
-        Some((Level::empty(planner, block, start, segment.len().div_ceil(block)), segment))
+    fn floats(response: usize, (block, start, end): (usize, usize, usize)) -> usize {
+        let partitions = end.min(response).saturating_sub(start).div_ceil(block);
+        partitions * (block + 1) * 2 + 8 * block
     }
 
-    fn empty(planner: &mut RealFftPlanner<f32>, block: usize, start: usize, partitions: usize) -> Level {
+    fn new(planner: &mut RealFftPlanner<f32>, response: &[f32], scale: f32, (block, start, end): (usize, usize, usize)) -> Option<Level> {
+        let segment = response.get(start..end.min(response.len())).filter(|s| !s.is_empty())?;
         let size = 2 * block;
         let forward = planner.plan_fft_forward(size);
         let inverse = planner.plan_fft_inverse(size);
-        let bins = size / 2 + 1;
+        let mut scratch = vec![Complex32::default(); forward.get_scratch_len().max(inverse.get_scratch_len())];
+        let spectra = segment
+            .chunks(block)
+            .map(|part| {
+                let mut time = vec![0.0; size];
+                for (t, v) in time.iter_mut().zip(part) {
+                    *t = v * scale / size as f32;
+                }
+                let mut spectrum = vec![Complex32::default(); block + 1];
+                let _ = forward.process_with_scratch(&mut time, &mut spectrum, &mut scratch);
+                spectrum
+            })
+            .collect();
+        Some(Level::with(block, start, forward, inverse, Arc::new(spectra)))
+    }
+
+    fn with(
+        block: usize,
+        start: usize,
+        forward: Arc<dyn RealToComplex<f32>>,
+        inverse: Arc<dyn ComplexToReal<f32>>,
+        spectra: Arc<Vec<Vec<Complex32>>>,
+    ) -> Level {
+        let size = 2 * block;
+        let bins = block + 1;
         let scratch_len = forward.get_scratch_len().max(inverse.get_scratch_len());
         Level {
             block,
             start,
+            history: vec![vec![Complex32::default(); bins]; spectra.len()],
             forward,
             inverse,
-            spectra: Vec::with_capacity(partitions),
-            history: vec![vec![Complex32::default(); bins]; partitions],
+            spectra,
             newest: 0,
             input: vec![0.0; size],
             filled: 0,
@@ -65,18 +91,8 @@ impl Level {
         }
     }
 
-    fn load(&mut self, segment: &[f32], scale: f32) {
-        let size = 2 * self.block;
-        let bins = size / 2 + 1;
-        for part in segment.chunks(self.block) {
-            let mut time = vec![0.0; size];
-            for (t, v) in time.iter_mut().zip(part) {
-                *t = v * scale / size as f32;
-            }
-            let mut spectrum = vec![Complex32::default(); bins];
-            let _ = self.forward.process_with_scratch(&mut time, &mut spectrum, &mut self.scratch);
-            self.spectra.push(spectrum);
-        }
+    fn sibling(&self) -> Level {
+        Level::with(self.block, self.start, self.forward.clone(), self.inverse.clone(), self.spectra.clone())
     }
 
     fn push(&mut self, samples: &[f32], now: u64, ring: &mut [f32]) {
@@ -120,15 +136,16 @@ struct Path {
 
 impl Path {
     fn new(planner: &mut RealFftPlanner<f32>, response: &[f32], scale: f32) -> Path {
-        let levels = LEVELS
-            .iter()
-            .filter_map(|level| {
-                let (mut level, segment) = Level::new(planner, response, *level)?;
-                level.load(segment, scale);
-                Some(level)
-            })
-            .collect();
+        let levels = LEVELS.iter().filter_map(|level| Level::new(planner, response, scale, *level)).collect();
         Path { levels, ring: vec![0.0; RING] }
+    }
+
+    fn floats(response: usize) -> usize {
+        LEVELS.iter().map(|level| Level::floats(response, *level)).sum::<usize>() + RING
+    }
+
+    fn sibling(&self) -> Path {
+        Path { levels: self.levels.iter().map(Level::sibling).collect(), ring: vec![0.0; RING] }
     }
 
     fn process(&mut self, input: &[f32; QUANTUM], now: u64, out: &mut [f32; QUANTUM]) {
@@ -148,19 +165,27 @@ pub struct Convolver {
     stereo_response: bool,
     length: usize,
     now: u64,
+    _ticket: Ticket,
 }
 
 impl Convolver {
-    pub fn new(response: &AudioData, normalize: bool) -> Convolver {
-        let scale = if normalize { normalization(response) } else { 1.0 };
-        let mut planner = RealFftPlanner::new();
+    pub fn new(response: &AudioData, normalize: bool, budget: &Arc<Budget>) -> Option<Convolver> {
+        let length = response.len();
+        if length == 0 || response.channels.is_empty() {
+            return None;
+        }
         let stereo_response = response.channels.len() >= 2;
         let responses = if stereo_response { &response.channels[..2] } else { &response.channels[..1] };
+        let spectra = LEVELS.iter().map(|(block, start, end)| end.min(&length).saturating_sub(*start).div_ceil(*block) * (block + 1) * 2).sum::<usize>();
+        let floats = Path::floats(length).checked_mul(2)?.checked_add(spectra.checked_mul(responses.len())?)?;
+        let ticket = Ticket::take(budget, floats)?;
+        let scale = if normalize { normalization(response) } else { 1.0 };
+        let mut planner = RealFftPlanner::new();
         let mut paths: Vec<Path> = responses.iter().map(|r| Path::new(&mut planner, r, scale)).collect();
         if !stereo_response {
-            paths.push(Path::new(&mut planner, &response.channels[0], scale));
+            paths.push(paths[0].sibling());
         }
-        Convolver { paths, stereo_response, length: response.len(), now: 0 }
+        Some(Convolver { paths, stereo_response, length, now: 0, _ticket: ticket })
     }
 
     pub fn tail_frames(&self) -> u64 {
@@ -199,7 +224,12 @@ mod tests {
         let length = 20000;
         let response: Vec<f32> = (0..length).map(|i| ((i * 7919 % 1000) as f32 / 1000.0 - 0.5) * (-(i as f32) / 6000.0).exp()).collect();
         let data = AudioData { rate: 48000.0, channels: vec![response.clone()] };
-        let mut convolver = Convolver::new(&data, false);
+        let budget = Arc::new(Budget::default());
+        let mut convolver = Convolver::new(&data, false, &budget).unwrap();
+        assert!(Arc::ptr_eq(&convolver.paths[0].levels[2].spectra, &convolver.paths[1].levels[2].spectra), "a mono response's paths share its spectra");
+        let charged = budget.used();
+        let path = Path::floats(length);
+        assert!(charged > 2 * path && charged < 3 * path - 2 * RING, "two paths, the spectra charged once: {charged}");
         let quanta = 200;
         let signal: Vec<f32> = (0..quanta * QUANTUM).map(|i| if i % 997 == 0 { 1.0 } else { ((i as f32) * 0.01).sin() * 0.1 }).collect();
         let mut got = Vec::new();
@@ -213,6 +243,8 @@ mod tests {
         let want = direct(&signal, &response);
         let worst = got.iter().zip(&want).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
         assert!(worst < 2e-3, "{worst}");
+        drop(convolver);
+        assert_eq!(budget.used(), 0);
     }
 
     #[test]

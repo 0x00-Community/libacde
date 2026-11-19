@@ -1,15 +1,24 @@
+use std::sync::Arc;
+
+use super::budget::{Budget, Ticket, zeroed};
 use super::graph::{Bus, QUANTUM};
 
 pub struct Delay {
     lines: [Vec<f32>; 2],
     write: usize,
     max: f64,
+    _ticket: Ticket,
 }
 
 impl Delay {
-    pub fn new(max_seconds: f64, rate: f64) -> Delay {
-        let len = (max_seconds * rate).ceil() as usize + 2 * QUANTUM + 1;
-        Delay { lines: [vec![0.0; len], vec![0.0; len]], write: 0, max: max_seconds }
+    pub fn new(max_seconds: f64, rate: f64, budget: &Arc<Budget>) -> Option<Delay> {
+        let frames = max_seconds * rate;
+        if !(frames.is_finite() && frames > 0.0) {
+            return None;
+        }
+        let len = (frames.ceil() as usize).checked_add(2 * QUANTUM + 1)?;
+        let ticket = Ticket::take(budget, len.checked_mul(2)?)?;
+        Some(Delay { lines: [zeroed(len, 0.0)?, zeroed(len, 0.0)?], write: 0, max: max_seconds, _ticket: ticket })
     }
 
     pub fn max_seconds(&self) -> f64 {
@@ -57,7 +66,9 @@ mod tests {
     #[test]
     fn a_delay_reads_what_was_written_that_many_frames_before() {
         let rate = 32768.0;
-        let mut d = Delay::new(1.0, rate);
+        let budget = Arc::new(Budget::default());
+        let mut d = Delay::new(1.0, rate, &budget).unwrap();
+        assert_eq!(budget.used(), 2 * (32768 + 2 * QUANTUM + 1), "both lines are charged to the page");
         let mut input = [[0.0; QUANTUM]; 2];
         input[0][5] = 1.0;
         let mut out = [[0.0; QUANTUM]; 2];
@@ -69,5 +80,9 @@ mod tests {
         d.write(&[[0.0; QUANTUM]; 2], true);
         d.read(&[64.5 / 32768.0; QUANTUM], 0.0, rate, &mut out);
         assert!(out[0].iter().all(|v| *v == 0.0), "the impulse has passed");
+        drop(d);
+        assert_eq!(budget.used(), 0);
+        assert!(Delay::new(180.0, 768_000.0, &budget).is_none(), "180 s at 768 kHz is over a page's audio memory");
+        assert_eq!(budget.used(), 0, "and a refusal charges nothing");
     }
 }

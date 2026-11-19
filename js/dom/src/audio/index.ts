@@ -190,7 +190,7 @@ class AudioNode extends EventTarget {
     this[ID] = id ?? newId()
     if (kind > 0) {
       native?.createNode(context[ID], this[ID], kind)
-      releasedNodes.register(this, this[ID])
+      releasedNodes.register(this, this[ID], this)
     }
   }
 
@@ -488,7 +488,11 @@ class DelayNode extends AudioNode {
     const max = Number(options?.maxDelayTime ?? 1)
     if (!(max > 0 && max < 180)) throw new DOMException(`Failed to construct 'DelayNode': The max delay time provided (${options?.maxDelayTime}) is outside the range (0, 180).`, 'NotSupportedError')
     super(KEY, context, Kind.Delay)
-    native?.setDelayMax(this[ID], max)
+    if (native && !native.setDelayMax(this[ID], max, context.sampleRate)) {
+      releasedNodes.unregister(this)
+      native.release(this[ID])
+      throw new RangeError(`Failed to construct 'DelayNode': there is not enough audio memory for a ${max} s delay line.`)
+    }
     const [delayTime] = params(this, options, [['delayTime', 0, 0, max]])
     Object.defineProperty(this, 'delayTime', { value: delayTime, enumerable: true })
   }
@@ -590,8 +594,8 @@ class ConvolverNode extends AudioNode {
     const channels = value.numberOfChannels
     if (channels !== 1 && channels !== 2 && channels !== 4) throw new DOMException(`${what}: The buffer must have 1, 2, or 4 channels, not ${channels}.`, 'NotSupportedError')
     if (channels === 4) throw new DOMException(`${what}: true stereo (4-channel) impulse responses are not supported yet.`, 'NotSupportedError')
+    if (native && !native.setImpulse(this[ID], value[UPLOAD](), this.#normalize)) throw new RangeError(`${what}: there is not enough audio memory for this impulse response.`)
     this.#buffer = value
-    native?.setImpulse(this[ID], value[UPLOAD](), this.#normalize)
   }
 }
 tag(ConvolverNode)

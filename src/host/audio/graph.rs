@@ -178,10 +178,10 @@ pub enum NodeOp {
     Stream(Option<Box<super::live::LiveTap>>),
     Panner(PannerConfig),
     Filter(FilterType),
-    DelayMax(f64),
+    Delay(Box<Delay>),
     Curve(Option<Arc<[f32]>>),
     Oversample(Oversample),
-    Impulse(Option<Arc<AudioData>>, bool),
+    Impulse(Option<Box<Convolver>>),
 }
 
 #[derive(Clone, Debug)]
@@ -462,7 +462,7 @@ struct Node {
 enum Effect {
     None,
     Biquad(Box<Biquad>),
-    Delay(Box<Delay>, bool),
+    Delay(Option<Box<Delay>>, bool),
     Shaper(Box<Shaper>),
     Compressor(Box<Compressor>),
     Convolver(Option<Box<Convolver>>),
@@ -499,7 +499,7 @@ impl Node {
             panner: (kind == Kind::Panner).then(|| Box::new(Panner { config: PannerConfig::default(), hrtf: None })),
             effect: match kind {
                 Kind::Biquad => Effect::Biquad(Box::default()),
-                Kind::Delay => Effect::Delay(Box::new(Delay::new(1.0, rate)), true),
+                Kind::Delay => Effect::Delay(None, true),
                 Kind::WaveShaper => Effect::Shaper(Box::default()),
                 Kind::Compressor => Effect::Compressor(Box::new(Compressor::new(rate))),
                 Kind::Convolver => Effect::Convolver(None),
@@ -682,15 +682,13 @@ impl Graph {
                     b.kind = kind;
                 }
             }
-            NodeOp::DelayMax(seconds) => {
-                if let Effect::Delay(d, _) = &mut node.effect
-                    && seconds > 0.0
-                    && seconds != d.max_seconds()
-                {
-                    **d = Delay::new(seconds, self.rate);
+            NodeOp::Delay(delay) => {
+                if let Effect::Delay(d, _) = &mut node.effect {
                     if let Some(p) = node.params.get_mut(0) {
-                        p.max = seconds as f32;
+                        p.max = delay.max_seconds() as f32;
                     }
+                    *d = Some(delay);
+                    node.tail = 0;
                 }
             }
             NodeOp::Curve(curve) => {
@@ -703,9 +701,9 @@ impl Graph {
                     s.set_oversample(oversample);
                 }
             }
-            NodeOp::Impulse(response, normalize) => {
+            NodeOp::Impulse(convolver) => {
                 if let Effect::Convolver(c) = &mut node.effect {
-                    *c = response.filter(|r| r.len() > 0 && !r.channels.is_empty()).map(|r| Box::new(Convolver::new(&r, normalize)));
+                    *c = convolver;
                     node.tail = 0;
                 }
             }
@@ -842,7 +840,7 @@ impl Graph {
         for id in cut {
             let Some(mut node) = self.nodes.remove(&id) else { continue };
             let (bus, mono, empty) = self.mixed(&node.inputs);
-            if let Effect::Delay(d, last_mono) = &mut node.effect {
+            if let Effect::Delay(Some(d), last_mono) = &mut node.effect {
                 d.write(&bus, mono);
                 d.advance();
                 *last_mono = mono;
@@ -871,7 +869,7 @@ impl Graph {
         let rate = self.rate;
         let zero = [[0.0; QUANTUM]; 2];
         let quiet = empty && !node.in_cycle;
-        if matches!(node.effect, Effect::Convolver(None)) || (quiet && node.tail == 0) {
+        if matches!(node.effect, Effect::Convolver(None) | Effect::Delay(None, _)) || (quiet && node.tail == 0) {
             node.silent = true;
             if let Effect::Compressor(c) = &node.effect {
                 node.shared.reduction.store(c.reduction().to_bits(), Ordering::Relaxed);
@@ -888,7 +886,8 @@ impl Graph {
                 b.process(input, mono, &values[..], still, rate, &mut out);
                 (mono, u64::MAX, true)
             }
-            Effect::Delay(d, last_mono) => {
+            Effect::Delay(None, _) | Effect::Convolver(None) => return,
+            Effect::Delay(Some(d), last_mono) => {
                 if node.in_cycle {
                     d.read(&values[0], QUANTUM as f64, rate, &mut out);
                     (*last_mono, node.tail, false)
@@ -908,7 +907,6 @@ impl Graph {
                 node.shared.reduction.store(c.reduction().to_bits(), Ordering::Relaxed);
                 (false, (Compressor::TAIL_SECONDS * rate) as u64, false)
             }
-            Effect::Convolver(None) => return,
             Effect::Convolver(Some(c)) => {
                 let out_mono = c.process(input, mono, &mut out);
                 (out_mono, c.tail_frames(), false)
@@ -1256,6 +1254,7 @@ fn play_buffer(node: &mut Node, from: usize, to: usize, rate: f64, values: &[[f3
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::host::audio::budget::Budget;
     use crate::host::audio::spatial::DistanceModel;
 
     const RATE: f64 = 48000.0;
@@ -1918,7 +1917,7 @@ mod tests {
         let mut g = Graph::new(RATE, 1);
         impulse_source(&mut g, 2);
         g.add(3, Kind::Delay, Arc::new(Shared::new(Kind::Delay)));
-        g.node(3, NodeOp::DelayMax(1.0));
+        g.node(3, NodeOp::Delay(Box::new(Delay::new(1.0, RATE as f64, &Arc::new(Budget::default())).unwrap())));
         g.node(3, NodeOp::Param(0, ParamOp::Value(0.015625)));
         g.connect(2, 3, None);
         g.connect(3, 1, None);
@@ -1936,7 +1935,7 @@ mod tests {
         let mut g = Graph::new(RATE, 1);
         impulse_source(&mut g, 2);
         g.add(3, Kind::Delay, Arc::new(Shared::new(Kind::Delay)));
-        g.node(3, NodeOp::DelayMax(1.0));
+        g.node(3, NodeOp::Delay(Box::new(Delay::new(1.0, RATE as f64, &Arc::new(Budget::default())).unwrap())));
         g.node(3, NodeOp::Param(0, ParamOp::Value(0.0078125)));
         g.add(4, Kind::Gain, Arc::new(Shared::new(Kind::Gain)));
         g.node(4, NodeOp::Param(0, ParamOp::Value(0.5)));

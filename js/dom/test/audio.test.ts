@@ -30,12 +30,12 @@ function fakeAudio() {
     },
     setRunning: record('setRunning'),
     setFilterType: record('setFilterType'),
-    setDelayMax: record('setDelayMax'),
+    setDelayMax: (...a: unknown[]) => (record('setDelayMax')(...a), (a[1] as number) < 170),
     setCurve(node: number, curve: Float32Array | null) {
       calls.push({ name: 'setCurve', args: [node, curve && Array.from(curve)] })
     },
     setOversample: record('setOversample'),
-    setImpulse: record('setImpulse'),
+    setImpulse: (...a: unknown[]) => (record('setImpulse')(...a), true),
     reduction: () => -7.5,
     biquadResponse: (_type: number, _f: number, _d: number, _q: number, _g: number, _rate: number, frequencies: Float32Array) => new Float32Array(frequencies.length * 2).fill(0.5),
     analyse: (_node: number, what: number, fftSize: number) => (what === 1 || what === 3 ? new Uint8Array(what === 1 ? fftSize : fftSize / 2).fill(7) : new Float32Array(what === 0 ? fftSize : fftSize / 2).fill(-3)),
@@ -252,6 +252,7 @@ test('the effect nodes: their kinds, settings and checks reach the audio thread'
     const d = ctx.createDelay(1.2)
     tryIt(() => ctx.createDelay(0))
     tryIt(() => ctx.createDelay(200))
+    tryIt(() => ctx.createDelay(175))
     const ws = ctx.createWaveShaper()
     const curve = new Float32Array([-1, 0, 1])
     ws.curve = curve
@@ -279,12 +280,14 @@ test('the effect nodes: their kinds, settings and checks reach the audio thread'
     }
   })()`)
   assert.deepEqual(result, {
-    type: 'highpass', mag: [0.5, 0.5, 0.5], errors: ['InvalidAccessError', 'NotSupportedError', 'NotSupportedError', 'InvalidStateError', 'NotSupportedError', 'NotSupportedError', 'IndexSizeError', 'IndexSizeError', 'IndexSizeError'],
+    type: 'highpass', mag: [0.5, 0.5, 0.5], errors: ['InvalidAccessError', 'NotSupportedError', 'NotSupportedError', 'RangeError', 'InvalidStateError', 'NotSupportedError', 'NotSupportedError', 'IndexSizeError', 'IndexSizeError', 'IndexSizeError'],
     delayMax: 1.2, curve: [-1, 0, 1], oversample: '2x', reduction: -7.5, threshold: -24, bins: 32, bytes: [7, 7, 0], floats: -3, convolverChannels: 2, nyquist: 24000,
   })
-  assert.deepEqual((audio.named('createNode') as number[][]).map((n) => n[2]), [10, 11, 12, 13, 14, 15])
+  const created = audio.named('createNode') as number[][]
+  assert.deepEqual(created.map((n) => n[2]), [10, 11, 11, 12, 13, 14, 15])
+  assert.deepEqual(audio.named('release').map((c) => c[0]), [created[2]![1]], 'the delay that did not fit is let go at once')
   assert.deepEqual(audio.named('setFilterType').map((c) => c[1]), [1])
-  assert.deepEqual(audio.named('setDelayMax').map((c) => c[1]), [1.2])
+  assert.deepEqual(audio.named('setDelayMax').map((c) => c.slice(1)), [[1.2, 48000], [175, 48000]])
   assert.deepEqual(audio.named('setCurve').map((c) => c[1]), [[-1, 0, 1]])
   assert.deepEqual(audio.named('setOversample').map((c) => c[1]), [2])
   assert.deepEqual(audio.named('setImpulse').map((c) => c[2]), [true])
