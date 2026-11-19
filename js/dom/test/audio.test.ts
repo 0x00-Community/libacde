@@ -256,13 +256,15 @@ test('PeriodicWave: its coefficients as the spec fills them in, and an oscillato
     tryIt(() => new PeriodicWave(ctx, { real: [1] }))
     tryIt(() => new OscillatorNode(ctx, { type: 'custom' }))
     tryIt(() => new OscillatorNode(ctx, { type: 'bogus' }))
+    tryIt(() => ctx.createPeriodicWave([0, Infinity], [0, 1]))
+    tryIt(() => ctx.createDelay(NaN))
     const osc = new OscillatorNode(ctx, { periodicWave: custom })
     const type = osc.type
     tryIt(() => { osc.type = 'custom' })
     osc.type = 'triangle'
     return { type, after: osc.type, errors, same: plain === custom }
   })()`)
-  assert.deepEqual(result, { type: 'custom', after: 'triangle', errors: ['IndexSizeError', 'IndexSizeError', 'InvalidStateError', 'TypeError', 'InvalidStateError'], same: false })
+  assert.deepEqual(result, { type: 'custom', after: 'triangle', errors: ['IndexSizeError', 'IndexSizeError', 'InvalidStateError', 'TypeError', 'TypeError', 'TypeError', 'InvalidStateError'], same: false })
   const waves = audio.named('createPeriodicWave')
   assert.deepEqual(waves.map((c) => c.slice(1)), [
     [[0, 0], [0, 1], true, 48000],
@@ -526,7 +528,7 @@ test('a playing media element taken out of the document pauses; moving it does n
 
 test('OfflineAudioContext: both constructor forms, its own sample rate, and the standard refusals', async () => {
   const { web: w, audio } = web()
-  const result = w.json<{ a: unknown[]; b: unknown[]; errors: string[] }>(`(() => {
+  const result = w.json<{ a: unknown[]; b: unknown[]; errors: string[]; destinations: unknown[] }>(`(() => {
     const a = new OfflineAudioContext(2, 1000, 24000)
     const b = new OfflineAudioContext({ length: 300, sampleRate: 44100 })
     const errors = []
@@ -539,10 +541,12 @@ test('OfflineAudioContext: both constructor forms, its own sample rate, and the 
       () => new OfflineAudioContext(1, 10),
       () => new OfflineAudioContext(2, 2 ** 27 + 1, 48000),
     ]) { try { make(); errors.push('none') } catch (e) { errors.push(e.name) } }
-    return { a: [a.length, a.sampleRate, a.state, a.currentTime, a instanceof BaseAudioContext], b: [b.length, b.sampleRate, b.state], errors }
+    const destination = (d) => [d.channelCount, d.channelCountMode, d.maxChannelCount]
+    return { a: [a.length, a.sampleRate, a.state, a.currentTime, a instanceof BaseAudioContext], b: [b.length, b.sampleRate, b.state], errors, destinations: [destination(a.destination), destination(b.destination)] }
   })()`)
   assert.deepEqual(result.a, [1000, 24000, 'suspended', 1.5, true])
   assert.deepEqual(result.b, [300, 44100, 'suspended'])
+  assert.deepEqual(result.destinations, [[2, 'explicit', 2], [1, 'explicit', 1]], 'the destination has the context\'s channels, explicitly')
   assert.deepEqual(result.errors, ['NotSupportedError', 'NotSupportedError', 'NotSupportedError', 'NotSupportedError', 'TypeError', 'TypeError', 'NotSupportedError'])
   assert.deepEqual(audio.named('createOfflineContext').map((c) => c.slice(2)), [[2, 1000, 24000], [1, 300, 44100]])
   assert.deepEqual(audio.named('createContext'), [])

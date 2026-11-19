@@ -238,8 +238,20 @@ class AudioNode extends EventTarget {
 }
 tag(AudioNode)
 
-class AudioDestinationNode extends AudioNode {}
-getters(AudioDestinationNode.prototype, { maxChannelCount: 2 })
+class AudioDestinationNode extends AudioNode {
+  readonly #max: number
+
+  constructor(token: unknown, context: BaseAudioContext, channels: number, id: number) {
+    super(token, context, 0, 1, 0, id)
+    this.#max = channels
+    this.channelCount = channels
+    this.channelCountMode = 'explicit'
+  }
+
+  get maxChannelCount(): number {
+    return this.#max
+  }
+}
 tag(AudioDestinationNode)
 
 type ParamSpec = [name: string, value: number, min?: number, max?: number]
@@ -350,8 +362,13 @@ class PeriodicWave {
   constructor(context: BaseAudioContext, options?: { real?: ArrayLike<number>; imag?: ArrayLike<number>; disableNormalization?: boolean }) {
     checkContext(context)
     const what = "Failed to construct 'PeriodicWave'"
-    let real = options?.real === undefined ? undefined : Float32Array.from(options.real, Number)
-    let imag = options?.imag === undefined ? undefined : Float32Array.from(options.imag, Number)
+    const floats = (values: ArrayLike<number>): Float32Array => {
+      const array = Float32Array.from(values, Number)
+      if (!array.every(Number.isFinite)) throw new TypeError(`${what}: The provided float value is non-finite.`)
+      return array
+    }
+    let real = options?.real === undefined ? undefined : floats(options.real)
+    let imag = options?.imag === undefined ? undefined : floats(options.imag)
     if (real && imag && real.length !== imag.length) throw new DOMException(`${what}: The length of the real array (${real.length}) and length of the imaginary array (${imag.length}) must match.`, 'IndexSizeError')
     const given = real ?? imag
     if (given && given.length < 2) throw new DOMException(`${what}: The length of the ${real ? 'real' : 'imaginary'} array provided (${given.length}) is less than the minimum bound (2).`, 'IndexSizeError')
@@ -511,6 +528,7 @@ class DelayNode extends AudioNode {
   constructor(context: BaseAudioContext, options?: { maxDelayTime?: number; delayTime?: number }) {
     checkContext(context)
     const max = Number(options?.maxDelayTime ?? 1)
+    if (!Number.isFinite(max)) throw new TypeError("Failed to construct 'DelayNode': The provided double value is non-finite.")
     if (!(max > 0 && max < 180)) throw new DOMException(`Failed to construct 'DelayNode': The max delay time provided (${options?.maxDelayTime}) is outside the range (0, 180).`, 'NotSupportedError')
     super(KEY, context, Kind.Delay)
     if (native && !native.setDelayMax(this[ID], max, context.sampleRate)) {
@@ -1049,7 +1067,7 @@ export class BaseAudioContext extends EventTarget {
     this.#rate = offline ? offline.rate : native.sampleRate
     this.#offline = !!offline
     this.#state = offline ? 'suspended' : 'running'
-    this.#destination = new AudioDestinationNode(KEY, this, 0, 1, 0, destination)
+    this.#destination = new AudioDestinationNode(KEY, this, offline ? offline.channels : 2, destination)
   }
 
   get sampleRate(): number {
