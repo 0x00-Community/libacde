@@ -45,7 +45,10 @@ root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOW
   没批准或撤销时 `FileAccess.guard` 把 `source: 'removable'` 的根去掉, 对 `removable-*` 根的调用按 `fs.removable` 拒绝. 借出的根不能用 `removable-` 开头的名字.
   按路径列表授权的旧形式 (`grants.fs` 是数组) 不认 `removable`, 只看路径.
 - 系统视图里按路径和按 `id` 都能当 root 用 (`Shared::root_in`).
-- 只在 Linux 上有; 别的平台 `roots()` 不列 U 盘.
+- 事件: 声明了的进程 (`fs: true` 或 places 含 `removable`) 起页面时, 启动器调 `sys.watchRemovable(回调)` (`src/host/web.rs`, 一个进程只起一个线程 `acde-mounts`):
+  线程对 `/proc/self/mountinfo` 等 `POLLPRI` (内核在挂载表变化时通知), 醒来后重算 U 盘根的 id, 变了就把新列表交给回调;
+  启动器和上次比较, 给页面发 `{type: 'fsroots', added, removed}`, 页面发出 `acde:fs` 的 `roots` 事件 `{added?, removed}` (`added` 只在有新盘时带).
+  不经管家, 也不订 UDisks2 的 D-Bus 信号. 只在 Linux 上有; 别的平台 `roots()` 不列 U 盘.
 
 **拖放和打开请求的句柄** (#68): 用户交给应用的文件和文件夹是标准的 `FileSystemHandle`, 页面拿不到路径.
 - 系统拖放: `dnddrop` 的 `files` 里每个路径 (acde-host `dnd.ts` `DragDrop`, 链接和别的类型跳过): 不超过 64 MiB 的普通文件进 `dataTransfer.files` (内容在 drop 时读进来),

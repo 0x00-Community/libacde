@@ -148,6 +148,33 @@ fn unescape(text: &str, escaped: impl Fn(&[u8]) -> Option<(u8, usize)>) -> Strin
     String::from_utf8_lossy(&out).into_owned()
 }
 
+#[cfg(target_os = "linux")]
+fn ids() -> Vec<String> {
+    mounted().iter().map(Mount::id).collect()
+}
+
+#[cfg(target_os = "linux")]
+pub fn watch(changed: impl Fn(Vec<String>) + Send + 'static) -> std::io::Result<Vec<String>> {
+    use rustix::event::{PollFd, PollFlags, poll};
+    let file = std::fs::File::open(MOUNTINFO)?;
+    let first = ids();
+    let mut known = first.clone();
+    std::thread::Builder::new().name("acde-mounts".into()).spawn(move || {
+        loop {
+            let mut fds = [PollFd::new(&file, PollFlags::PRI | PollFlags::ERR)];
+            if poll(&mut fds, None).is_err() {
+                return;
+            }
+            let now = ids();
+            if now != known {
+                known = now.clone();
+                changed(now);
+            }
+        }
+    })?;
+    Ok(first)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

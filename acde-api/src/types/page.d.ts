@@ -144,6 +144,7 @@ export interface AcdeFs {
 }
 
 export interface FsRootsEvent {
+  readonly added?: readonly string[]
   readonly removed: readonly string[]
 }
 

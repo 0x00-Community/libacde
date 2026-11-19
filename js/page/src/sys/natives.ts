@@ -72,6 +72,7 @@ interface SysNative {
   openOffice?(): string | null
   restoreBluetooth?(): void
   startDevices?(): void
+  watchRemovable?(changed: (ids: string[]) => void): string[]
   closeOffice?(): void
   contentType?(extension: string): string | null
 }
