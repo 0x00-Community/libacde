@@ -5,6 +5,7 @@ use crate::gpu::GpuImage;
 use crate::webgl::consts::*;
 use crate::webgl::context::Context;
 use crate::webgl::format::{self, Class};
+use crate::webgl::framebuffer::View;
 
 const MAX_IMAGES: usize = 4;
 
@@ -347,23 +348,26 @@ impl Context {
             }
         }
         if mask & (DEPTH_BUFFER_BIT | STENCIL_BUFFER_BIT) != 0 {
+            let whole_texture = |t: wgpu::Texture| DepthPlace { width: t.width(), height: t.height(), samples: t.sample_count(), level: 0, layer: 0, raw: t };
+            let place = |v: View| DepthPlace { width: v.width, height: v.height, samples: v.samples, level: v.level, layer: v.layer, raw: v.raw };
             let source = match read_fb {
-                None => self.drawing.depth.clone().map(|t| (t, self.drawing.samples)),
-                Some(fb) => {
-                    let f = self.framebuffer(fb);
-                    f.and_then(|f| f.depth.or(f.stencil)).and_then(|a| self.view_of(a)).map(|v| (v.raw, v.samples))
-                }
+                None => self.drawing.depth.clone().map(whole_texture),
+                Some(fb) => self.framebuffer(fb).and_then(|f| f.depth.or(f.stencil)).and_then(|a| self.view_of(a)).map(place),
             };
             let dest = match self.state.draw_framebuffer {
-                None => self.drawing.depth.clone(),
-                Some(fb) => self.framebuffer(fb).and_then(|f| f.depth.or(f.stencil)).and_then(|a| self.view_of(a)).map(|v| v.raw),
+                None => self.drawing.depth.clone().map(whole_texture),
+                Some(fb) => self.framebuffer(fb).and_then(|f| f.depth.or(f.stencil)).and_then(|a| self.view_of(a)).map(place),
             };
-            if let (Some((s, samples)), Some(d)) = (source, dest) {
-                let whole = s.size() == d.size() && s.format() == d.format() && src == dst && src == [0, 0, s.width() as i32, s.height() as i32];
-                if whole && samples == d.sample_count() && samples == 1 {
+            if let (Some(s), Some(d)) = (source, dest) {
+                let whole = (s.width, s.height) == (d.width, d.height)
+                    && s.raw.format() == d.raw.format()
+                    && src == dst
+                    && src == [0, 0, s.width as i32, s.height as i32];
+                if whole && s.samples == 1 && d.samples == 1 {
                     self.flush_pass();
-                    self.encoder().copy_texture_to_texture(s.as_image_copy(), d.as_image_copy(), s.size());
-                } else if whole && samples > 1 && d.sample_count() == 1 && mask & DEPTH_BUFFER_BIT != 0 {
+                    let size = wgpu::Extent3d { width: s.width, height: s.height, depth_or_array_layers: 1 };
+                    self.encoder().copy_texture_to_texture(s.copy(), d.copy(), size);
+                } else if whole && s.samples > 1 && d.samples == 1 && mask & DEPTH_BUFFER_BIT != 0 {
                     self.resolve_depth(&s, &d);
                 } else if self.webgl2 && !self.warned_depth_blit {
                     self.warned_depth_blit = true;
@@ -373,8 +377,8 @@ impl Context {
         }
     }
 
-    fn resolve_depth(&mut self, source: &wgpu::Texture, dest: &wgpu::Texture) {
-        let format = dest.format();
+    fn resolve_depth(&mut self, source: &DepthPlace, dest: &DepthPlace) {
+        let format = dest.raw.format();
         let name = format!("depth resolve {format:?}");
         let pipeline = self.helper(&name, |device| {
             let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -406,8 +410,18 @@ impl Context {
             })
         });
         let Some(pipeline) = pipeline else { return };
-        let view = source.create_view(&wgpu::TextureViewDescriptor { aspect: wgpu::TextureAspect::DepthOnly, ..Default::default() });
-        let target = dest.create_view(&wgpu::TextureViewDescriptor::default());
+        let one = |p: &DepthPlace, aspect| wgpu::TextureViewDescriptor {
+            label: Some("acde webgl depth resolve"),
+            dimension: Some(wgpu::TextureViewDimension::D2),
+            aspect,
+            base_mip_level: p.level,
+            mip_level_count: Some(1),
+            base_array_layer: p.layer,
+            array_layer_count: Some(1),
+            ..Default::default()
+        };
+        let view = source.raw.create_view(&one(source, wgpu::TextureAspect::DepthOnly));
+        let target = dest.raw.create_view(&one(dest, wgpu::TextureAspect::All));
         let group = self.scoped(|device| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("acde webgl depth resolve"),
@@ -416,7 +430,7 @@ impl Context {
             })
         });
         let Ok(group) = group else { return };
-        let stencil = dest.format().has_stencil_aspect();
+        let stencil = format.has_stencil_aspect();
         self.flush_pass();
         let encoder = self.encoder();
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -626,5 +640,25 @@ fn write_texel(dst: &mut [u8], rgba: [f64; 4], ty: u32, opaque: bool) {
             }
         }
         _ => {}
+    }
+}
+
+struct DepthPlace {
+    raw: wgpu::Texture,
+    width: u32,
+    height: u32,
+    samples: u32,
+    level: u32,
+    layer: u32,
+}
+
+impl DepthPlace {
+    fn copy(&self) -> wgpu::TexelCopyTextureInfo<'_> {
+        wgpu::TexelCopyTextureInfo {
+            texture: &self.raw,
+            mip_level: self.level,
+            origin: wgpu::Origin3d { x: 0, y: 0, z: self.layer },
+            aspect: wgpu::TextureAspect::All,
+        }
     }
 }
