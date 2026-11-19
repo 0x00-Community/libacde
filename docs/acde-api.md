@@ -79,5 +79,7 @@
   - `failed` (500): 其余. 原错误已经带 `status` / `code` 时 (经管家来的) 照用.
 - **`acde:network` 的 `on('changed', handler)`**: 返回取消函数, 和别的系统模块一样; `watch(callback)` 保留作兼容写法.
 - **`acde:power` 的事件载荷**: `PowerPromptEvent` (`prompt`)、`PowerCriticalEvent` (`critical`, `action` 和 `seconds`) 具名导出.
-- **`acde:system` 的 `on('changed', handler)`**: 载荷 `SystemChange {storage}`, 目前只报存储 (卷与剩余空间). 有订阅者时页面胶水每 30 秒读一次
-  `storage()`, 和上一次不同才发, 最后一个订阅者取消就停; 推送频率不会高过这个 (`StorageWatch`).
+- **`acde:system` 的 `on('changed', handler)`**: 载荷 `SystemChange {storage, hostname, timezone, ntp}`, 每次是完整的一份. 有订阅者时页面胶水
+  (`SystemWatch`) 每 30 秒一起读 `storage()`、`info().hostname`、`time()` 的 `timezone` 与 `ntp` (只比较这几项, 运行时间之类会变的字段不算),
+  任一和上一次不同才发; 本页面 `setHostname` / `setTimezone` / `setNtp` 成功后立刻再查一次, 不等 30 秒. 最后一个订阅者取消就停,
+  推送频率不会高过这个.

@@ -690,6 +690,9 @@ export interface AcdeSystem {
 
 export interface SystemChange {
   readonly storage: SystemVolume[]
+  readonly hostname: string
+  readonly timezone: string
+  readonly ntp: boolean
 }
 
 export interface BluetoothDevice {
