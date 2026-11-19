@@ -104,7 +104,7 @@ pub const PRESENT: &str = r"
 ";
 
 pub const BLIT: &str = r"
-struct Params { rect: vec4f, flip: u32, premultiply: u32, unpremultiply: u32, lod: f32 }
+struct Params { rect: vec4f, flip: u32, premultiply: u32, unpremultiply: u32, lod: f32, decode: u32 }
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var smp: sampler;
 @group(0) @binding(2) var<uniform> p: Params;
@@ -122,6 +122,7 @@ struct Out { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
     var c = textureSampleLevel(source, smp, in.uv, p.lod);
     if p.premultiply != 0u { c = vec4f(c.rgb * c.a, c.a); }
     if p.unpremultiply != 0u && c.a > 0.0 { c = vec4f(c.rgb / c.a, c.a); }
+    if p.decode != 0u { c = vec4f(select(pow((c.rgb + 0.055) / 1.055, vec3f(2.4)), c.rgb / 12.92, c.rgb <= vec3f(0.04045)), c.a); }
     return c;
 }
 ";

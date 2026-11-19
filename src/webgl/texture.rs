@@ -760,7 +760,8 @@ impl Context {
         let flip = self.state.unpack_flip_y;
         let premultiply = self.state.unpack_premultiply;
         let viewport = [origin[0] as f32, origin[1] as f32, w as f32, h as f32];
-        self.blit(&source, [0.0, 0.0, 1.0, 1.0], &view, fmt.wgpu, viewport, flip, premultiply, false, wgpu::FilterMode::Nearest, 0.0);
+        let decode = fmt.wgpu.is_srgb() && !image.texture.format().is_srgb();
+        self.blit(&source, [0.0, 0.0, 1.0, 1.0], &view, fmt.wgpu, viewport, flip, premultiply, false, decode, wgpu::FilterMode::Nearest, 0.0);
         self.mark_used(&[id]);
         if let Some(t) = self.texture_mut(id) {
             t.version += 1;
@@ -778,6 +779,7 @@ impl Context {
         flip: bool,
         premultiply: bool,
         unpremultiply: bool,
+        decode: bool,
         filter: wgpu::FilterMode,
         lod: f32,
     ) {
@@ -814,6 +816,9 @@ impl Context {
             params.extend_from_slice(&v.to_le_bytes());
         }
         params.extend_from_slice(&lod.to_le_bytes());
+        for v in [u32::from(decode), 0, 0, 0] {
+            params.extend_from_slice(&v.to_le_bytes());
+        }
         let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("acde webgl blit"),
             contents: &params,
@@ -916,6 +921,7 @@ impl Context {
                         &dst,
                         format.wgpu,
                         [0.0, 0.0, w as f32, h as f32],
+                        false,
                         false,
                         false,
                         false,

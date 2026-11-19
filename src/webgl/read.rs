@@ -208,6 +208,7 @@ impl Context {
                 false,
                 false,
                 false,
+                false,
                 wgpu::FilterMode::Nearest,
                 0.0,
             );
@@ -343,7 +344,7 @@ impl Context {
                     let source = src_view(slevel, slayer);
                     let f = if filter == LINEAR { wgpu::FilterMode::Linear } else { wgpu::FilterMode::Nearest };
                     let view = color.view.clone();
-                    self.blit(&source, from, &view, color.format, viewport, false, false, false, f, 0.0);
+                    self.blit(&source, from, &view, color.format, viewport, false, false, false, false, f, 0.0);
                 }
             }
         }
