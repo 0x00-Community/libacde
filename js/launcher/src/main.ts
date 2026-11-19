@@ -150,6 +150,7 @@ class Launcher {
   #window = 0
   #closing = false
   #reloading = false
+  readonly #shortcuts = new Map<string, [string, string]>()
   readonly #panels = new Map<number, { rect: [number, number, number, number]; hidden: boolean }>()
   #services: Readonly<Record<string, ServiceShape>> = {}
   readonly #dev: DevChannel
@@ -378,7 +379,19 @@ class Launcher {
     this.#thread?.terminate()
   }
 
+  #releaseShortcuts(): void {
+    for (const [combo, scope] of this.#shortcuts.values()) {
+      try {
+        this.#shell.unshortcut?.(combo, scope, 0)
+      } catch (error) {
+        process.stderr.write(`acdev: releasing the shortcut ${combo} (${scope}): ${(error as Error).message}\n`)
+      }
+    }
+    this.#shortcuts.clear()
+  }
+
   #respawn(): void {
+    this.#releaseShortcuts()
     this.#reloading = false
     const grant = this.#grant()
     this.#spawn({ ...this.#init!, token: grant.token })
@@ -455,7 +468,12 @@ class Launcher {
       case 'unshortcut': {
         const call = method === 'shortcut' ? shell.shortcut : shell.unshortcut
         if (!call) throw unsupported('windows', method)
-        return call.call(shell, String(args[0]), String(args[1] ?? 'desktop'), 0)
+        const combo = String(args[0])
+        const scope = String(args[1] ?? 'desktop')
+        const done = call.call(shell, combo, scope, 0)
+        if (method === 'shortcut') this.#shortcuts.set(`${scope} ${combo}`, [combo, scope])
+        else this.#shortcuts.delete(`${scope} ${combo}`)
+        return done
       }
       case 'place': {
         const [x, y, width, height] = rect(args[1])

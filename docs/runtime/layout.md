@@ -173,3 +173,6 @@
 **会话里的菜单快捷键** (2026-11-20): 宿主上菜单快捷键经 `shell.shortcut(combo, 'menu', window)` 在合成器登记; 会话里应用进程没有桌面协议, 登记不上.
 所以有管家时, 应用的 `window.setMenus` 照旧交给管家, 启动器另外记下菜单的快捷键表 (`AppMenus.remember`), 以 `{type: 'menukeys', keys}` 发给页面线程;
 页面的 Host 在 keydown 时先按 `chordMatches` 比对 (`mod` 在 macOS 是 Meta, 别处是 Ctrl), 命中就不再派发给页面, 改发 `{menukey}` 给启动器, 启动器调页面的 `window.menu(menu, item)`.
+
+**重载时交还快捷键** (2026-11-20): 页面经 `windows.shortcut` 登记的会话级和桌面级快捷键都登记在启动器这个进程的 Shell 上, 页面重载 (`window.reload`、开发重载) 时进程和连接都不变,
+旧的登记会留着, 新页面再登记同一组合就被 winman 以 "another holds it" 拒掉. 启动器记下本页登记过的快捷键, 重起页面前逐个 `unshortcut` 交还.
