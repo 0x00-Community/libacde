@@ -1374,7 +1374,7 @@ function extension(gl: WebGLContextBase, name: string): object {
         },
         // restoring asks the GPU device again, in a later task (as browsers do); a context that is not lost is an error
         restoreContext: () => {
-          if (!gl.isContextLost()) return native.error(gl[CONTEXT], C.INVALID_OPERATION)
+          if (gl[CONTEXT] >= 0) return native.error(gl[CONTEXT], C.INVALID_OPERATION)
           host.setTimer(0, () => contextHooks.restore(gl), true)
         },
       })
