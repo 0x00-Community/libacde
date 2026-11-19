@@ -388,8 +388,9 @@ fn run_task<R>(scope: &mut v8::PinScope, f: impl FnOnce(&mut v8::PinScope) -> R)
         let result = f(tc);
         if let Some(exception) = tc.exception().filter(|_| !tc.has_terminated()) {
             let message = tc.message();
+            let at = located(tc, message);
             let origin = thrown_at(tc, message, exception);
-            report_to(tc, exception, None, origin);
+            report_to(tc, exception, None, origin, at);
         }
         result
     };
@@ -414,7 +415,7 @@ fn report_rejections(scope: &mut v8::PinScope) {
     let rejections: Vec<_> = lp.rejections.borrow_mut().drain(..).collect();
     for (promise, reason, origin) in rejections {
         let (promise, reason) = (v8::Local::new(scope, promise), v8::Local::new(scope, reason));
-        report_to(scope, reason, Some(promise), origin);
+        report_to(scope, reason, Some(promise), origin, None);
     }
 }
 
@@ -431,17 +432,29 @@ fn after_task(scope: &mut v8::PinScope) {
         };
         if let Some((exception, origin)) = thrown {
             let exception = v8::Local::new(scope, exception);
-            report_to(scope, exception, None, origin);
+            report_to(scope, exception, None, origin, None);
         }
         scope.perform_microtask_checkpoint();
     }
 }
 
 pub fn report(scope: &mut v8::PinScope, error: v8::Local<v8::Value>) {
-    report_to(scope, error, None, None);
+    report_to(scope, error, None, None, None);
 }
 
-fn report_to(scope: &mut v8::PinScope, error: v8::Local<v8::Value>, promise: Option<v8::Local<v8::Promise>>, origin: Option<String>) {
+struct Located {
+    file: String,
+    line: i32,
+    column: i32,
+}
+
+fn located(scope: &mut v8::PinScope, message: Option<v8::Local<v8::Message>>) -> Option<Located> {
+    let message = message?;
+    let file = message.get_script_resource_name(scope).map(|r| r.to_rust_string_lossy(scope)).unwrap_or_default();
+    Some(Located { file, line: message.get_line_number(scope)? as i32, column: message.get_start_column() as i32 + 1 })
+}
+
+fn report_to(scope: &mut v8::PinScope, error: v8::Local<v8::Value>, promise: Option<v8::Local<v8::Promise>>, origin: Option<String>, at: Option<Located>) {
     if scope.is_execution_terminating() {
         return;
     }
@@ -453,9 +466,18 @@ fn report_to(scope: &mut v8::PinScope, error: v8::Local<v8::Value>, promise: Opt
         }
         let handled = {
             v8::tc_scope!(let tc, scope);
-            let args: Vec<v8::Local<v8::Value>> = match promise {
-                Some(promise) => vec![error, promise.into()],
-                None => vec![error],
+            let args: Vec<v8::Local<v8::Value>> = match (promise, at) {
+                (Some(promise), _) => vec![error, promise.into()],
+                (None, Some(at)) => {
+                    let fields: [(&str, v8::Local<v8::Value>); 3] = [
+                        ("filename", crate::host::bind::string(tc, &at.file).into()),
+                        ("lineno", v8::Integer::new(tc, at.line).into()),
+                        ("colno", v8::Integer::new(tc, at.column).into()),
+                    ];
+                    let at = crate::host::bind::object(tc, &fields);
+                    vec![error, v8::undefined(tc).into(), at.into()]
+                }
+                (None, None) => vec![error],
             };
             crate::host::bind::call(tc, &reporter, &args).is_some()
         };

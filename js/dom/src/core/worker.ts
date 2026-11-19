@@ -59,15 +59,16 @@ export class Worker extends EventTarget {
   constructor(scriptURL: string | URL, options?: { type?: string; name?: string; credentials?: string }) {
     const what = "Failed to construct 'Worker'"
     if (arguments.length < 1) throw new TypeError(`${what}: 1 argument required, but only 0 present.`)
+    const href = String(scriptURL)
     super()
     const type = options?.type === undefined ? 'classic' : String(options.type)
     if (type !== 'classic' && type !== 'module') throw new TypeError(`${what}: Failed to read the 'type' property from 'WorkerOptions': The provided value '${type}' is not a valid enum value of type WorkerType.`)
     const name = options?.name === undefined ? '' : String(options.name)
     let url: URL
     try {
-      url = new URL(String(scriptURL), net.base())
+      url = new URL(href, (G.document as { baseURI?: string } | undefined)?.baseURI ?? net.base())
     } catch {
-      throw new DOMException(`${what}: The script URL ${String(scriptURL)} is invalid.`, 'SyntaxError')
+      throw new DOMException(`${what}: The script URL ${href} is invalid.`, 'SyntaxError')
     }
     const own = new URL(net.base()).origin
     if (url.protocol !== 'blob:' && url.protocol !== 'data:' && url.origin !== own) {
@@ -128,7 +129,7 @@ export class Worker extends EventTarget {
       fire(this, new MessageEvent('messageerror'))
     } else if (kind === 'error') {
       const { message, filename, lineno, colno } = payload as { message: string; filename: string; lineno: number; colno: number }
-      const event = new ErrorEvent('error', { message, filename, lineno, colno, cancelable: true })
+      const event = new ErrorEvent('error', { message, filename, lineno, colno, error: null, cancelable: true })
       if (fire(this, event)) {
         const error = new Error(message)
         Object.defineProperty(error, 'stack', { value: `Error: ${message}\n    at ${filename || 'worker'}:${lineno}:${colno}` })

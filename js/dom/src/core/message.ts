@@ -12,9 +12,14 @@ export function cloneFailure(error: unknown): unknown {
 
 export function transferList(options: unknown): unknown[] {
   if (options === undefined || options === null) return []
-  if (typeof options === 'object' && Symbol.iterator in options) return Array.from(options as Iterable<unknown>)
-  const list = (options as { transfer?: unknown }).transfer
-  return list === undefined ? [] : Array.from(list as Iterable<unknown>)
+  const list = typeof options === 'object' && Symbol.iterator in options ? options : (options as { transfer?: unknown }).transfer
+  if (list === undefined) return []
+  if (list === null || typeof list !== 'object' || !(Symbol.iterator in list)) throw new TypeError("Failed to execute 'postMessage': The transfer list is not a sequence.")
+  const items = Array.from(list as Iterable<unknown>)
+  if (items.some((item) => item === null || (typeof item !== 'object' && typeof item !== 'function'))) {
+    throw new TypeError("Failed to execute 'postMessage': Failed to convert a transfer list value to 'object'.")
+  }
+  return items
 }
 
 export function structuredClone<T>(value: T, options?: { transfer?: unknown }): T {

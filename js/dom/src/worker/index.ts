@@ -4,6 +4,7 @@ import { installBackendTransport, type BackendTransport } from '../core/backend'
 import { defineHandlers, ErrorEvent, EventTarget, fire, MessageEvent, PromiseRejectionEvent } from '../core/event'
 import { DOMException } from '../core/exception'
 import { globals, host, illegal, KEY, setReport, tag } from '../core/host'
+import { unserializable } from '../core/clone'
 import { cloneFailure, MessagePort, transferList } from '../core/message'
 import { fetch, moduleSource, net, Request, Response, route, unreachable } from '../core/net'
 import { EventSource } from '../core/net/eventsource'
@@ -118,6 +119,9 @@ export class WorkerNavigator {
 }
 tag(WorkerNavigator)
 
+unserializable(WorkerLocation)
+unserializable(WorkerNavigator)
+
 export class WorkerGlobalScope extends EventTarget {
   constructor(token?: unknown) {
     illegal(token)
@@ -208,15 +212,26 @@ export function installWorkerScope(
   })
   hostNative.setModuleSource?.(moduleSource)
 
-  const uncaught = (error: unknown): void => {
+  type Where = { filename: string; lineno: number; colno: number }
+  let reporting = false
+  const nested: [string, Where][] = []
+  const uncaught = (error: unknown, at?: Where): void => {
     const message = error instanceof Error ? `Uncaught ${error.name}: ${error.message}` : `Uncaught ${String(error)}`
-    const where = location((error as { stack?: string } | null)?.stack)
-    const event = new ErrorEvent('error', { message, error, cancelable: true, ...where })
-    if (fire(global as unknown as EventTarget, event)) worker.error(message, where.filename, where.lineno, where.colno)
+    const found = location((error as { stack?: string } | null)?.stack)
+    const where = at ?? (found.filename ? found : { filename: workerLocation?.href ?? '', lineno: 0, colno: 0 })
+    if (reporting) return void nested.push([message, where])
+    reporting = true
+    try {
+      const event = new ErrorEvent('error', { message, error, cancelable: true, ...where })
+      if (fire(global as unknown as EventTarget, event)) worker.error(message, where.filename, where.lineno, where.colno)
+    } finally {
+      reporting = false
+      for (const [text, at] of nested.splice(0)) worker.error(text, at.filename, at.lineno, at.colno)
+    }
   }
-  setReport(uncaught)
-  ;(hostNative as HostNative & { setReporter?(fn: (error: unknown, promise?: Promise<unknown>) => void): void }).setReporter?.((error, promise) => {
-    if (!promise) return uncaught(error)
+  setReport((error) => uncaught(error))
+  ;(hostNative as HostNative & { setReporter?(fn: (error: unknown, promise?: Promise<unknown>, at?: Where) => void): void }).setReporter?.((error, promise, at) => {
+    if (!promise) return uncaught(error, at)
     const event = new PromiseRejectionEvent('unhandledrejection', { promise, reason: error, cancelable: true })
     if (fire(global as unknown as EventTarget, event)) hostNative.reportError(error)
   })
