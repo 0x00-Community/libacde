@@ -149,6 +149,15 @@ export class Location {
   }
 }
 urlParts(Location.prototype, ['origin', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash'], here, (_, u) => navigate(u.href, false))
+Object.defineProperty(Location.prototype, 'hash', {
+  ...Object.getOwnPropertyDescriptor(Location.prototype, 'hash'),
+  set(value: unknown) {
+    const next = new URL(env.url)
+    const input = String(value).replace(/^#/, '')
+    next.hash = input
+    navigate(input === '' ? `${next.href.replace(/#.*$/, '')}#` : next.href, false)
+  },
+})
 getters(Location.prototype, { ancestorOrigins: () => ({ length: 0 }) })
 tag(Location)
 
