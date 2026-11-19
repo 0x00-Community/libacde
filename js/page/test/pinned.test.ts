@@ -65,7 +65,7 @@ test('once the panel opens it is placed with the input box of the element', asyn
   pinned.pin(element as unknown as Element)
   answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50])
+  assert.deepEqual(calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false])
   assert.deepEqual(calls.filter((c) => c[0] === 'placePanel').at(-1), ['placePanel', 7, 10, 20, 100, 50, 0, 0, 100, 50])
 })
 
@@ -87,4 +87,23 @@ test('the end of a fade-in places the panel again, so its input box is not left 
   style.opacity = '1'
   listeners.get('animationend')!()
   assert.deepEqual(calls.filter((c) => c[0] === 'placePanel').at(-1), ['placePanel', 7, 10, 20, 100, 50, 0, 0, 100, 50])
+})
+
+test('keyboard: exclusive opens the panel with the keyboard all to itself; on-demand is the default', async () => {
+  const exclusive = harness()
+  exclusive.pinned.pin(exclusive.element as unknown as Element, { keyboard: 'exclusive' })
+  exclusive.answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  assert.deepEqual(exclusive.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true])
+  const onDemand = harness()
+  onDemand.pinned.pin(onDemand.element as unknown as Element, { keyboard: 'on-demand' })
+  onDemand.answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  assert.deepEqual(onDemand.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false])
+})
+
+test('keyboard: anything else is a TypeError and pins nothing', () => {
+  const { calls, element, pinned } = harness()
+  assert.throws(() => pinned.pin(element as unknown as Element, { keyboard: 'grab' as never }), TypeError)
+  assert.deepEqual(calls, [])
 })

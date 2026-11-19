@@ -12,7 +12,8 @@
   (同样 `ctx` + 回调表 + `release`, 没给的回调取 trait 缺省), 失败时把原因 push 进 strings 并返回 false.
 - 事件: `pump` 里 C 用 `acde_event_init()` 得到「全部缺省」的 `AcdeEvent` (整数 -1、浮点 NaN、指针 NULL 即没有), 填好后 `acde_events_push`.
   `set_waker` 给的 `AcdeWaker*` 归 C (`acde_waker_wake` / `acde_waker_free`, NULL 即清掉).
-- 命令: `send` 收到 `AcdeCommand` (`kind` 决定哪些字段有意义; 指针只在回调期间有效). `READ_CLIPBOARD` 带 `AcdeReply*`, 必须恰好一次
+- 命令: `send` 收到 `AcdeCommand` (`kind` 决定哪些字段有意义; 指针只在回调期间有效). `OPEN_PANEL` 用 `id`、`token`、`rect`, `flag` 为 true
+  时面板独占键盘 (页面 `pin(…, {keyboard: 'exclusive'})`; false 是按需取得键盘). `READ_CLIPBOARD` 带 `AcdeReply*`, 必须恰好一次
   `acde_reply_send` 或 `acde_reply_free`. 还没进 C 的: `FRAME_THEME` 只有 kind, `START_DRAG` 不带拖拽图像, 帧本身 (`RenderHandle::frame`
   是 GPU scene) 拿不到, `Platform::exports` 收 V8 scope 只在 Rust 里. 指针锁定不进 C: `AcdeWindow` 没有 `pointer_lock`, 取 trait 缺省 (false),
   页面因此直接以 `NotSupportedError` 拒绝, 不会发出 `PointerLock` (`Outgoing::of` 遇到也丢掉).

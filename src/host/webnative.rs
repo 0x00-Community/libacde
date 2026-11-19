@@ -306,7 +306,8 @@ fn open_panel(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: 
     };
     let (token, _) = token.u64_value();
     let rect = [2, 3, 4, 5].map(|i| bind::arg_f64(scope, &args, i).round() as i32);
-    with_surface(scope, |surface| surface.open_panel(id, token, rect));
+    let exclusive = args.get(6).is_true();
+    with_surface(scope, |surface| surface.open_panel(id, token, rect, exclusive));
 }
 
 fn place_panel(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {

@@ -26,6 +26,9 @@
   MutationObserver, 700 ms 后补量; 元素上的 `animationend` / `transitionend` 也补量, 淡入时量到的不透明度 0 不会让输入区域一直空着) 重新量, 量不到时 `hide`.
   要令牌之前就 `set_panel`, 元素从此不画在主窗口里: 面板生效前它哪儿都不显示, 不会出现“看得见、点击却落到下面窗口”的一段
   (桌面页的主窗口在 background 层, 应用窗口盖在它上面); 令牌要不到时取消 `set_panel`, 元素回到主窗口. backdrop-filter 转成 `set_backdrop`.
+  `pin(element, {keyboard})`: `'on-demand'` (默认, 点到面板时才给键盘) 或 `'exclusive'` (面板开着时独占键盘, 菜单这类用键盘打开、要立刻接按键的);
+  别的值在页面里抛 TypeError. 它经 surface 的 `openPanel(…, exclusive)` 进 `SurfaceCommand::OpenPanel { exclusive }` (C 接口是 `OPEN_PANEL` 的
+  `flag`), 由前端决定怎么做 (acdes 的 layer 面: Exclusive / OnDemand).
   `pin(element, {reserve: {edge, thickness?}})` 让面板在输出的一条边上占一条 (像 layer-shell 的 exclusive zone; 不给 thickness 时是从那条边到面板远端的距离,
   跟着量的结果变), 经 surface 的 `reservePanel(id, edge, thickness)` 交给运行时. 宿主窗口 (`State::work_area`) 用输出减去显示着的面板占的边得到工作区,
   面板隐藏、挪动、改尺寸、取消钉住或输出变了时重算 (`refill`): `filled` 的窗口跟着改 rect, 全屏不管工作区; 工作区变了给 Broker 发
