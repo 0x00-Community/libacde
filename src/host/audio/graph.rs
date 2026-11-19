@@ -1175,16 +1175,11 @@ fn play_buffer(node: &mut Node, from: usize, to: usize, rate: f64, values: &[[f3
     };
     let mut pos = node.buf.pos.unwrap_or_else(|| (node.buf.offset * data.rate).min(len as f64));
     let limit = node.buf.duration.map(|d| d * data.rate);
-    let sample = |c: usize, i: isize, looping: bool| -> f32 {
-        let ch = &data.channels[c];
-        let i = if looping && loop_end > loop_start {
-            let (s, e) = (loop_start as isize, (loop_end.ceil() as isize).max(loop_start as isize + 1));
-            if i >= e { s + (i - s) % (e - s) } else { i }
-        } else {
-            i
-        };
-        if i < 0 || i as usize >= len { 0.0 } else { ch[i as usize] }
-    };
+    let looping = node.buf.looping;
+    let span = loop_end - loop_start;
+    let detune = values[1][0];
+    let speed = f64::from(values[0][0]) * if detune == 0.0 { 1.0 } else { (f64::from(detune) / 1200.0).exp2() };
+    let step = speed * ratio;
     for i in from..to {
         let past_end = !node.buf.looping && (pos >= len as f64 || pos < 0.0);
         if past_end || limit.is_some_and(|l| node.buf.played >= l) {
@@ -1193,16 +1188,18 @@ fn play_buffer(node: &mut Node, from: usize, to: usize, rate: f64, values: &[[f3
             }
             return true;
         }
-        let base = pos.floor();
-        let t = (pos - base) as f32;
-        let k = base as isize;
-        let looping = node.buf.looping;
+        let first = pos.max(0.0) as usize;
+        let t = (pos - first as f64) as f32;
+        let second = match first + 1 {
+            next if next < len => next,
+            _ if looping => (pos + 1.0 - span).max(0.0) as usize,
+            _ => first,
+        };
         for c in 0..channels {
-            node.out[c][i] = hermite(sample(c, k - 1, looping), sample(c, k, looping), sample(c, k + 1, looping), sample(c, k + 2, looping), t);
+            let ch = &data.channels[c];
+            let (a, b) = (ch.get(first).copied().unwrap_or(0.0), ch.get(second).copied().unwrap_or(0.0));
+            node.out[c][i] = (1.0 - t) * a + t * b;
         }
-        let detune = values[1][i];
-        let speed = values[0][i] as f64 * if detune == 0.0 { 1.0 } else { (detune as f64 / 1200.0).exp2() };
-        let step = speed * ratio;
         pos += step;
         node.buf.played += step.abs();
         if node.buf.looping && loop_end > loop_start {
@@ -1292,6 +1289,19 @@ pub(crate) mod tests {
         g.connect(2, 1, None);
         let out = render(&mut g, 2);
         assert!(out.iter().all(|v| *v == 0.5), "{:?}", &out[..4]);
+    }
+
+    #[test]
+    fn a_slower_buffer_interpolates_linearly_between_frames_as_chrome_does() {
+        let mut g = Graph::new(RATE, 1);
+        g.add(2, Kind::BufferSource, Arc::new(Shared::new(Kind::BufferSource)));
+        g.connect(2, 1, None);
+        let steps: Vec<f32> = (0..64).map(|i| if i % 2 == 0 { 0.0 } else { 1.0 }).collect();
+        g.node(2, NodeOp::Buffer(Some(Arc::new(AudioData { rate: RATE, channels: vec![steps] }))));
+        g.node(2, NodeOp::Param(0, ParamOp::Value(0.5)));
+        g.node(2, NodeOp::Start { when: 0.0, offset: 0.0, duration: None });
+        let out = render(&mut g, 1);
+        assert_eq!(&out[..6], &[0.0, 0.5, 1.0, 0.5, 0.0, 0.5], "no overshoot past the frames' values");
     }
 
     #[test]
