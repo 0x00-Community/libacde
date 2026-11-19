@@ -5,6 +5,7 @@ import type { Element } from './element'
 import { LOCAL, NS } from './element'
 import { SHADOW_ROOT } from './events'
 import { focusedElement } from './focus'
+import { pointerLockElement } from './pointerlock'
 import { DocumentFragment } from './node'
 import { CONNECTED, ID } from './realm'
 import { getSelection, type Selection } from './range'
@@ -38,6 +39,11 @@ export class ShadowRoot extends DocumentFragment {
   get activeElement(): Element | null {
     const focused = focusedElement()
     return focused && focused !== this[HOST] && this[HOST].contains(focused) ? focused : null
+  }
+
+  get pointerLockElement(): Element | null {
+    const locked = pointerLockElement()
+    return locked && locked !== this[HOST] && this[HOST].contains(locked) ? locked : null
   }
 
   get innerHTML(): string {

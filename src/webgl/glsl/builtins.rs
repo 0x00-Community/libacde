@@ -1477,6 +1477,11 @@ impl MacroCall {
                 if let TextureLevelType::None = level_type {
                     level = args.get(num_args).copied().map_or(SampleLevel::Auto, SampleLevel::Bias);
                 }
+                // acde: a vertex shader has no derivatives, so GLSL ES samples the base level there (ES 3.00 8.9);
+                // WGSL and the backends take only an explicit level outside a fragment shader
+                if frontend.meta.stage == naga::ShaderStage::Vertex && matches!(level, SampleLevel::Auto) {
+                    level = SampleLevel::Zero;
+                }
 
                 texture_call(ctx, args[0], level, comps, texture_offset, meta)?
             }

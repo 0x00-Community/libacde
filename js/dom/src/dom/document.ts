@@ -18,11 +18,13 @@ import { CaretPosition, getSelection, Range, type Selection } from './range'
 import { bodyId, classes, CONNECTED, construct, constructing, documentElementOf, documentId, dom, headId, ID, inner, nodeConstructing, rootElementId, wrap } from './realm'
 import { CSSStyleSheet, fontFaceTexts, StyleSheetList } from './style'
 import { NodeIterator, TreeWalker } from './traversal'
+import { exitPointerLock, pointerLockElement } from './pointerlock'
 
 export const documentState = {
   readyState: 'loading' as 'loading' | 'interactive' | 'complete',
   hidden: false,
   currentScript: null as Element | null,
+  kind: ['html', 'text/html'] as string[],
 }
 
 function createElementNamed(namespace: string | null, prefix: string | null, local: string): Element {
@@ -46,7 +48,7 @@ export class Document extends Node {
   }
 
   get #info(): string[] {
-    if (this.#live) return ['html', 'text/html', env.url]
+    if (this.#live) return [documentState.kind[0]!, documentState.kind[1]!, env.url]
     return (this.#kind ??= dom.documentInfo(this[ID]))
   }
 
@@ -451,7 +453,12 @@ export class Document extends Node {
   exitFullscreen(): Promise<void> {
     return Promise.resolve()
   }
-  exitPointerLock(): void {}
+  exitPointerLock(): void {
+    if (this.#live) exitPointerLock()
+  }
+  get pointerLockElement(): Element | null {
+    return this.#live ? pointerLockElement() : null
+  }
 
   startViewTransition(update?: (() => unknown) | { update?: () => unknown }): object {
     const callback = typeof update === 'function' ? update : update?.update
@@ -460,7 +467,7 @@ export class Document extends Node {
     return { updateCallbackDone: finished, ready: finished.then(() => Promise.reject(new DOMException('Transition was skipped', 'AbortError'))).catch(() => undefined), finished, skipTransition: () => {}, types: new Set() }
   }
 }
-getters(Document.prototype, { referrer: '', characterSet: 'UTF-8', charset: 'UTF-8', inputEncoding: 'UTF-8', fullscreenElement: null, fullscreenEnabled: false, fullscreen: false, pointerLockElement: null, pictureInPictureElement: null, pictureInPictureEnabled: false })
+getters(Document.prototype, { referrer: '', characterSet: 'UTF-8', charset: 'UTF-8', inputEncoding: 'UTF-8', fullscreenElement: null, fullscreenEnabled: false, fullscreen: false, pictureInPictureElement: null, pictureInPictureEnabled: false })
 mixin(Document, ParentNodeMixin)
 defineHandlers(Document.prototype, [...HANDLER_TYPES, 'readystatechange', 'visibilitychange', 'fullscreenchange', 'fullscreenerror', 'pointerlockchange', 'pointerlockerror', 'freeze', 'resume'])
 tag(Document)

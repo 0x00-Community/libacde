@@ -1,4 +1,5 @@
 use super::*;
+use blitz_traits::net::Url;
 
 impl Dom {
     pub fn document(&self) -> u32 {
@@ -11,6 +12,15 @@ impl Dom {
 
     pub fn parse_document(&self, html: &str) -> Result<()> {
         self.update(|e| e.parse_document(html))
+    }
+
+    pub fn set_base_url(&self, url: &str) -> Result<()> {
+        let url = Url::parse(url).map_err(|e| Error::new(format!("base url {url}: {e}")))?;
+        self.update(|e| e.doc.set_base_url(url.as_str()))
+    }
+
+    pub fn parse_xml_document(&self, text: &str, content_type: &str) -> Result<()> {
+        self.update(|e| e.parse_xml_document(text, content_type))
     }
 
     pub fn viewport(&self) -> Viewport {
@@ -123,7 +133,8 @@ impl Dom {
     pub fn document_info(&self, id: u32) -> Result<[String; 3]> {
         self.read(|e| {
             let node = e.n(id)?;
-            Ok(match e.ids.documents.get(&node) {
+            let page = (node == e.doc.root_node().id).then_some(e.ids.page.as_ref()).flatten();
+            Ok(match e.ids.documents.get(&node).or(page) {
                 Some(info) => [info.interface.to_owned(), info.content_type.clone(), info.url.clone()],
                 None => ["html".to_owned(), "text/html".to_owned(), String::new()],
             })

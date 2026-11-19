@@ -1,6 +1,7 @@
 declare const ACDEV_RUNTIME_VERSION: string | undefined
 const VERSION = typeof ACDEV_RUNTIME_VERSION === 'string' ? ACDEV_RUNTIME_VERSION : '0.0.0'
 import { defineHandlers, Event, EventTarget, fire, LISTENERS, windowEvent } from '../core/event'
+import { userActivation } from './activation'
 import { DOMException } from '../core/exception'
 import { dialogAnswer } from '../core/observe'
 import { G, getters, globals, host, KEY, tag } from '../core/host'
@@ -516,7 +517,7 @@ export class Navigator {
 getters(Navigator.prototype, {
   appName: 'Netscape', appCodeName: 'Mozilla', product: 'Gecko', productSub: '20030107', vendor: '', vendorSub: '',
   onLine: true, cookieEnabled: true, deviceMemory: 8, maxTouchPoints: 0, pdfViewerEnabled: false, webdriver: false, doNotTrack: null,
-  userActivation: () => ({ hasBeenActive: true, isActive: false }),
+  userActivation: () => userActivation,
   mimeTypes: () => ({ length: 0 }),
   plugins: () => ({ length: 0 }),
 })

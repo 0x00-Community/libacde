@@ -1,12 +1,24 @@
 import type { Blob } from '../core/blob'
 import { host } from '../core/host'
 
+let documentUrl = 'http://acde.local/'
+
+export const documentUrlWatch = { changed: (_href: string): void => {} }
+
 export const env = {
-  url: 'http://acde.local/',
+  get url(): string {
+    return documentUrl
+  },
+  set url(href: string) {
+    if (href === documentUrl) return
+    documentUrl = href
+    documentUrlWatch.changed(href)
+  },
   navigate: (_url: string, _target: string) => {},
   reload: () => {},
   close: () => {},
   clipboard: null as null | ClipboardAccess,
+  pointerLock: null as null | PointerLockAccess,
   alert: null as null | ((message: string) => void),
   download: null as null | ((request: DownloadRequest) => void),
   files: null as null | FileChooser,
@@ -17,6 +29,11 @@ export const env = {
 export interface ClipboardBytes {
   readonly type: string
   readonly data: Uint8Array
+}
+
+export interface PointerLockAccess {
+  lock(): void
+  unlock(): void
 }
 
 export interface ClipboardAccess {

@@ -13,6 +13,10 @@
   `fetch(init.url)` 取 HTML; `page.ts` `PageSource.served`). `backend: {entry, port?}` (默认 3000).
 - **脚本**: classic `<script>` (含 `src`, 先读本地资源, 没有再经后端取; 非 async 的按文档顺序在 DOMContentLoaded 前执行)、`type="module"`、
   `type="importmap"` (`modules.rs` 解析说明符时用: `imports` / `scopes`, 精确或 `/` 结尾前缀匹配, 多个合并先到先得).
+- **相对地址**: 都按文档的地址解析, 和浏览器一样: acde-dom 的 `env.url` 一变 (加载、`pushState` / `replaceState`、前进后退) 就经 DomNative
+  `setBaseUrl` 交给 render (blitz `set_base_url`), 所以 HTML 里写的、JS 设的属性 (`link.href`、`img.src`、`insertAdjacentHTML`)、内联样式和样式表里的
+  `url()` / `@import` 都对 (样式表里的相对文档时按样式表自己的地址). 页面源码原样交给解析器, `getAttribute` 读到的是写的原文 (2026-11-19 以前
+  `PageSource.html` 用正则把静态的 `src` / `href` / `poster` 改成绝对路径, 子目录页面里别的写法都按根目录解析). 还没有: `<base href>`.
 - **样式表和别的子资源** (`<link rel=stylesheet>`、`<img>`、`@font-face`、CSS 背景图): 应用包里的文件 render 直接读盘; 读不到的 http / https /
   `blob:` 地址 render 的 `Loader` 发到页面线程, 经页面的网络栈取 (acde-dom `core/resources.ts` `loadResource`: 和 `fetch` 同一套路由、代理、
   证书、重定向, `acdev network` 里是 `image` / `stylesheet` / `font`). 规则按 destination 照浏览器: 图片和样式表 no-cors (不带 `Origin`, body 照用),
@@ -88,6 +92,13 @@
   147 → 277 / 2369 (`DOMParser-parseFromString-xml-parsererror` 23 / 23、`XMLSerializer-serializeToString` 29 / 33、实体、CDATA、往返全过;
   剩下的大多是 `innerHTML` 的 Trusted Types、`createContextualFragment`、`positional-methods` 那批和 iframe); `dom/nodes` 3066 → 4114 / 6112
   (62 个文件变好, 没有变差的; `createElementNS`、`createDocument`、`*NS` 的属性和集合、处理指令、选择器大小写).
+- **XML 页面** (https://html.spec.whatwg.org/#read-xml, acde-dom `dom/page.ts` `loadPage`, render `Dom::parse_xml_document`): 从服务器取的页面
+  (`PageSource.served`) 带着响应的 `Content-Type` 交给 `loadPage`; 类型的本质 (去掉参数、转小写) 是 XML MIME 类型 (`text/xml`、
+  `application/xml` 或子类型以 `+xml` 结尾: `.xht` / `.xhtml` 的 `application/xhtml+xml`、`image/svg+xml` …) 时用上面的 XML 解析器解析成页面,
+  别的类型和没有类型时照旧按 HTML. 页面这时是 XML 文档 (`Ids.page`, `document.contentType` 是那个类型): 页面里的节点 (之后建的、克隆的、
+  `innerHTML` 解析的也是) 带 `IN_XML_DOCUMENT`, 属性名、`tagName`、选择器的类型名都区分大小写, `innerHTML` 用 XML 片段解析; `<style>` 里的
+  CDATA 段就是样式文字, 照常渲染 (WPT `css/` 两千多个 reftest 的参考页 `ref-filled-green-100px-square.xht` 靠它画出绿方块). 不良构时页面只有
+  一个 `parsererror` 元素. 按 HTML 再解析时页面回到 HTML 文档.
 - **按名字和序号取成员** (WebIDL 的 legacy platform object, acde-dom `dom/legacy.ts` 的 `legacy(shape)` 出 Proxy 的 handler, 照规范的
   [[GetOwnProperty]] / [[DefineOwnProperty]] / [[Delete]] / [[OwnPropertyKeys]]): 序号是可枚举的自有属性, 名字是不可枚举的
   (`Object.keys` 只有序号, `in` 和 `getOwnPropertyNames` 有名字), 没有 setter 的写入失败 (严格模式抛 TypeError), `preventExtensions` 失败.
@@ -218,7 +229,22 @@
     "stream-properties=props,media.class=Video/Source,media.role=Camera"` 做一个 PipeWire 摄像头.
   - 还没有: `devicechange` (不监视插拔)、`getDisplayMedia` (录屏)、`MediaRecorder`、`createMediaStreamDestination`、回声消除等处理、
     `resizeMode: crop-and-scale`、轨道的 `mute` / `unmute` (系统暂停时).
-- **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`) 和 XML 文档的渲染 (只当 DOM 用)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、Web Worker、`crypto.subtle`、OffscreenCanvas、全屏和指针锁定、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
+- **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`)、从文件读的页面 (`PageSource.html`) 只认 `.html` 入口 (`.xhtml` 文件不按 XML 解析)、页面按响应的字符编码解码 (现在总按 UTF-8)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、Web Worker、`crypto.subtle`、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
+- **指针锁定** (https://w3c.github.io/pointerlock/, acde-dom `dom/pointerlock.ts`, 2026-11-19): `Element.requestPointerLock(options?)` 返回 promise,
+  `document.pointerLockElement` / `ShadowRoot.pointerLockElement` (和 `activeElement` 一样不往影子宿主换), `document.exitPointerLock()`,
+  `pointerlockchange` / `pointerlockerror` 发在 document 上 (同一个任务里先发事件再落定 promise). 拒绝: 元素不在文档里或窗口没有焦点
+  `WrongDocumentError`, `unadjustedMovement: true` 和不支持的窗口 `NotSupportedError`, 已有一个请求在等 `InvalidStateError`, 宿主不给
+  `NotAllowedError`, 没有用户激活 (见下条) 也 `NotAllowedError`, 除非上一次锁是页面自己 `exitPointerLock` 放开的; 宿主收回 (Esc 等) 之后要比收回更晚的一次激活, 页面不能在
+  `pointerlockchange` 里拿锁前那次点击马上再锁回去;
+  已经锁着时换元素直接成功, 不问宿主. Esc 由宿主收回, 页面拦不住. 窗口能不能锁看
+  surface 的 `pointerLock` (`platform::Window::pointer_lock`, 缺省 false: 会话和 C 接口没有; 宿主窗口见 acdev `docs/hostwin.md`「输入」),
+  能锁时 acde-host `host.ts` 把 `env.pointerLock` 接到 `surface.lockPointer(on)` (`SurfaceCommand::PointerLock`). 宿主的回答是
+  `pointerlock {code: 1 | 0, title: 'request'}` (每个请求恰好一次), 宿主收回 (Esc、失焦、焦点给了别的窗口) 是 `pointerlock {code: 0, title: 'lost'}`;
+  页面自己 `exitPointerLock` 不等回答. 锁着时 `pointermove` 带 `deltaX` / `deltaY` (按帧合并时相加) 成为 `movementX` / `movementY`, 位置停在锁定时的点,
+  所有指针事件 (含 click、wheel) 都发给锁定的元素, 不发 over / out / enter / leave. 元素离开文档时解锁 (发 `pointerlockchange`).
+- **用户激活** (https://html.spec.whatwg.org/#user-activation, acde-dom `dom/activation.ts`): 真的输入 (acde-dom `Input`) 里按下指针按钮、按下
+  Esc 以外的键时记一次激活, 在派发事件之前, 所以这次的处理函数里就有临时激活 (transient activation, 5 秒内有效, 不消耗). `navigator.userActivation`
+  是同一个 `UserActivation` (`hasBeenActive` / `isActive`). 页面自己 `dispatchEvent` 的事件不算. 现在只有指针锁定看它.
 - **剪贴板** (libacde 单子 11, 形状与 acdev-lead、system-lead 定): 宿主接口按网页 MIME 类型收发字节 (`render/surface.rs`): `SetClipboard(Vec<ClipboardEntry>)`
   写一项的全部表示并整个替换剪贴板, `ClipboardTypes` 列出有哪些类型, `ReadClipboard {mime, reply}` 取一种 (没有时 `None`). 认的类型: `text/plain`
   (UTF-8)、`image/png` (PNG 字节)、`text/uri-list` (UTF-8, CRLF 分行). Wayland 宿主上 `text/plain` 对应 `text/plain;charset=utf-8`、`text/plain`、
