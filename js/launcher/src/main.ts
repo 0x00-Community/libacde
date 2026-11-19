@@ -145,6 +145,7 @@ class Launcher {
   readonly #shell: LauncherShell
   readonly #snapshots = new WindowSnapshots()
   readonly #held: ShellEvent[] = []
+  readonly #replays: boolean
   #wake: (() => void) | null = null
   #ended: number | null = null
   #rpc: Rpc | null = null
@@ -170,6 +171,7 @@ class Launcher {
 
   constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
     this.#shell = Launcher.shell(natives, session.label)
+    this.#replays = !natives.native.Windows
     this.#shell.onEvents(() => this.#wake?.())
     manager?.onEvents(() => this.#wake?.())
     this.#services = session.services
@@ -561,11 +563,15 @@ class Launcher {
 
   #toDesktop(event: ShellEvent): void {
     if (this.#thread && !this.#reloading) return void this.#thread.post(event)
-    if (!WindowSnapshots.FOLDED.has(event.type)) this.#held.push(event)
+    const folded = WindowSnapshots.FOLDED.has(event.type)
+    if (folded && (this.#replays || this.#reloading)) return
+    this.#held.push(event)
   }
 
   #catchUp(thread: WebThreadHandle): void {
-    for (const event of [...this.#snapshots.replay(), ...this.#held.splice(0)]) thread.post(event)
+    const replayed = this.#replays ? this.#snapshots.replay() : []
+    if (!this.#replays) this.#snapshots.clear()
+    for (const event of [...replayed, ...this.#held.splice(0)]) thread.post(event)
   }
 
   #menuKey(chord: string): void {

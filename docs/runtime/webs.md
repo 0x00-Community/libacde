@@ -114,8 +114,10 @@
     (那样应用要求一个不存在的服务, 启动时 `needs "timer" (service not running)`). 别的名字 `unverified` 都是 null. 新的 `acde:packages` (refresh / install / natives / runNative)
     和 `acde:launch` (`start` 要 `launch`, `embed` 要 `slots`, `close` 只关自己起的窗口: 按窗口的 pid 认 `start` 起的, `embed` 走 claim) 桌面也有.
     系统应用拿到 `acde:windows` 时也收全局窗口事件 (`Tiers.listens`). **窗口列表靠快照补齐**: 启动器不填 `WebInit.windows`, 页面的 `WindowList` 开局是空的. 窗口客户端连上 winman 时把现有窗口逐个报成 `first: true`
-    的 `window` 快照 (acdes 每次绑 `winman_desktop_v1` 都会重报); 启动器 (`js/launcher/src/main.ts` 的 `#toDesktop`、`app/events.ts` 的 `WindowSnapshots`) 记着每个窗口的最新快照,
-    桌面页线程还没起来或正在重载时, 窗口事件只记进快照, 其余事件暂存; 页面线程起来后先把所有开着的窗口按 `first: true` 重放 (`replay()`, 关掉的、崩溃的不算), 再交暂存的事件.
+    的 `window` 快照. 启动器 (`js/launcher/src/main.ts` 的 `#toDesktop` / `#catchUp`、`app/events.ts` 的 `WindowSnapshots`) 在桌面页线程没起来或正在重载时不丢事件:
+    - acdes (`native.Windows`): 进程内重载时旧页面的 Surface 放掉、窗口线程结束, 新页面 claim 时重新绑 `winman_desktop_v1`, winman 重报全部窗口, 窗口号是新的 (整个进程往上数, 不复用),
+      `key` 不变, 旧号失效. 所以启动器不重放: 首次起来前的事件按序暂存; 重载期间到的 `window` / `windowclose` / `windowcrash` (旧号) 丢掉, 其余暂存; 线程起来后交暂存的, 再等 acdes 重报.
+    - acdev 宿主窗口 (`native.Shell`, 不重报): 启动器记着每个窗口的最新快照, 线程起来后先把开着的窗口按 `first: true` 重放 (`replay()`, 关掉的、崩溃的不算), 再交暂存的其余事件.
     所以页面重载后 `list()` 和事件里的 `key` 都齐. 每个包都按这里注入 (没有 `apiLevel` 的包根本不加载).
     SDK 类型分层: `@dopame/acde-api/app` 只声明应用层, `@dopame/acde-api/shell` 再加外壳层; 包根声明全部.
 - **原生应用** (`launcher.ts`, 只有桌面和声明了 `packages` 的系统应用能调): `acde.packages.natives()` 列可见的 `.desktop` (`{id, name, comment, icon (绝对路径, 按 hicolor /

@@ -28,6 +28,10 @@ export class WindowSnapshots {
   static readonly FOLDED: ReadonlySet<string> = new Set(['window', 'windowclose', 'windowcrash'])
   readonly #windows = new Map<number, Snapshot>()
 
+  clear(): void {
+    this.#windows.clear()
+  }
+
   replay(): ShellEvent[] {
     return [...this.#windows.values()].map(({ changed: _changed, previous: _previous, ...snapshot }) => ({ ...snapshot, first: true }))
   }
