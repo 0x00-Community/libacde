@@ -851,7 +851,8 @@ impl Graph {
         let rate = self.rate;
         let zero = [[0.0; QUANTUM]; 2];
         let quiet = empty && !node.in_cycle;
-        if matches!(node.effect, Effect::Convolver(None) | Effect::Delay(None, _)) || (quiet && node.tail == 0) {
+        let constant = matches!(&node.effect, Effect::Shaper(s) if s.sounds_when_silent());
+        if matches!(node.effect, Effect::Convolver(None) | Effect::Delay(None, _)) || (quiet && node.tail == 0 && !constant) {
             node.silent = true;
             if let Effect::Compressor(c) = &node.effect {
                 node.shared.reduction.store(c.reduction().to_bits(), Ordering::Relaxed);
@@ -1281,6 +1282,16 @@ pub(crate) mod tests {
             let f = frequency(&out, RATE);
             assert!((f - 441.0).abs() <= 2.0, "{wave:?} {f}");
         }
+    }
+
+    #[test]
+    fn a_shaper_whose_curve_is_not_zero_at_zero_puts_that_out_without_input() {
+        let mut g = Graph::new(RATE, 1);
+        g.add(2, Kind::WaveShaper, Arc::new(Shared::new(Kind::WaveShaper)));
+        g.node(2, NodeOp::Curve(Some(vec![0.5, 0.5, 0.5].into())));
+        g.connect(2, 1, None);
+        let out = render(&mut g, 2);
+        assert!(out.iter().all(|v| *v == 0.5), "{:?}", &out[..4]);
     }
 
     #[test]

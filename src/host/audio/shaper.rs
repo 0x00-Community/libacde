@@ -174,9 +174,13 @@ impl Shaper {
         }
     }
 
+    pub fn sounds_when_silent(&self) -> bool {
+        self.curve.as_ref().is_some_and(|curve| curve_value(0.0, curve) != 0.0)
+    }
+
     pub fn tail_frames(&self) -> u64 {
         match &self.curve {
-            Some(curve) if curve_value(0.0, curve) != 0.0 => u64::MAX,
+            _ if self.sounds_when_silent() => u64::MAX,
             _ => match self.oversample {
                 Oversample::None => 0,
                 Oversample::Twice | Oversample::Four => (UP_KERNEL + DOWN_KERNEL) as u64,
