@@ -54,7 +54,7 @@ pub struct Dom {
 
 impl Dom {
     fn read<T>(&self, f: impl FnOnce(&mut Engine) -> Result<T>) -> Result<T> {
-        self.shared.call(&self.wake, f)
+        self.shared.script_call(&self.wake, f)
     }
 
     fn on<T>(&self, id: u32, f: impl FnOnce(&mut Engine, NodeId) -> T) -> Result<T> {
@@ -97,7 +97,7 @@ impl Dom {
 
     fn write_if<T>(&self, targets: Option<&[u32]>, f: impl FnOnce(&mut Engine) -> Result<T>, changed: fn(&Result<T>) -> bool) -> Result<T> {
         self.touched();
-        self.shared.call(&self.wake, |engine| {
+        self.shared.script_call(&self.wake, |engine| {
             let marks = (engine.uncommitted, engine.stale, engine.dirty);
             let shown = |e: &Engine| targets.is_none_or(|t| t.iter().any(|&id| e.ids.node(id).is_ok_and(|n| e.connected(n))));
             let before = shown(engine);
@@ -119,7 +119,7 @@ impl Dom {
 
     fn write_paint<T>(&self, id: u32, f: impl FnOnce(&mut Engine) -> Result<T>) -> Result<T> {
         self.touched();
-        self.shared.call(&self.wake, |engine| {
+        self.shared.script_call(&self.wake, |engine| {
             engine.uncommitted = true;
             let (stale, dirty) = (engine.stale, engine.dirty);
             let result = f(engine);

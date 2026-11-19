@@ -277,7 +277,7 @@ impl Dom {
 
     pub fn video_image(&self, id: u32, image: Option<peniko::ImageData>) -> Result<()> {
         self.touched();
-        self.shared.call(&self.wake, |engine| {
+        self.shared.script_call(&self.wake, |engine| {
             engine.uncommitted = true;
             let (stale, dirty) = (engine.stale, engine.dirty);
             let resized = engine.n(id).and_then(|_| engine.tree().video_image(id, image).map_err(|err| fail("InvalidStateError", err)));
@@ -342,6 +342,7 @@ impl Dom {
     }
 
     pub fn commit(&self) {
+        self.shared.tasks.fetch_add(1, Ordering::AcqRel);
         if !self.shared.touched.swap(false, Ordering::Relaxed) && self.shared.commits.load(Ordering::Relaxed) != 0 {
             return;
         }

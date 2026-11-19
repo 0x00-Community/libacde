@@ -89,8 +89,10 @@ fn transition_follows_tick_time() {
     page.doc.set_attribute(mover, "class", "mover go").unwrap();
     page.doc.rect(mover).unwrap();
     let handle = page.doc.handle();
+    page.doc.commit();
     handle.tick(250.0);
     assert!((page.doc.rect(mover).unwrap().x - 25.0).abs() < 2.0);
+    page.doc.commit();
     handle.tick(500.0);
     assert!((page.doc.rect(mover).unwrap().x - 50.0).abs() < 2.0);
 }
@@ -280,6 +282,7 @@ fn queries_do_not_resolve_every_time_while_animating() {
     let elapsed = start.elapsed().as_secs_f64();
     let resolves = page.doc.stats().resolves - before;
     assert!(f64::from(resolves) <= elapsed * 60.0 + 2.0, "{resolves} resolves in {elapsed:.3}s");
+    page.doc.commit();
     std::thread::sleep(Duration::from_millis(100));
     assert!(page.doc.rect(spin).unwrap().x > 0.0);
 }

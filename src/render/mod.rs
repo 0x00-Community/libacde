@@ -248,6 +248,7 @@ struct Shared {
     slot: Mutex<Slot>,
     commits: AtomicU64,
     touched: AtomicBool,
+    tasks: AtomicU64,
 }
 
 impl Shared {
@@ -306,12 +307,23 @@ impl Shared {
     }
 
     fn call<T>(&self, wake: &Sender<()>, f: impl FnOnce(&mut Engine) -> Result<T>) -> Result<T> {
+        self.call_in(wake, None, f)
+    }
+
+    fn script_call<T>(&self, wake: &Sender<()>, f: impl FnOnce(&mut Engine) -> Result<T>) -> Result<T> {
+        self.call_in(wake, Some(self.tasks.load(Ordering::Acquire)), f)
+    }
+
+    fn call_in<T>(&self, wake: &Sender<()>, task: Option<u64>, f: impl FnOnce(&mut Engine) -> Result<T>) -> Result<T> {
         let mut engine = self.lock(wake);
-        catch_unwind(AssertUnwindSafe(|| f(&mut engine))).unwrap_or_else(|_| {
+        engine.in_task = task;
+        let result = catch_unwind(AssertUnwindSafe(|| f(&mut engine))).unwrap_or_else(|_| {
             log::error!("panicked on a call");
             engine.recover();
             Err(Error::new("OperationError: render panicked on this call, see stderr"))
-        })
+        });
+        engine.in_task = None;
+        result
     }
 }
 
@@ -343,6 +355,7 @@ impl Document {
                             slot: Default::default(),
                             commits: AtomicU64::new(0),
                             touched: AtomicBool::new(false),
+                            tasks: AtomicU64::new(0),
                         });
                         _ = ready.send(Ok(shared.clone()));
                         run(&shared, &rx);
