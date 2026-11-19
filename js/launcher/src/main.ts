@@ -263,6 +263,7 @@ class Launcher {
       : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request: session.request, services: session.services }, grant.window)
     this.#backend?.start()
     if (session.grants?.office) Launcher.#openOffice()
+    if (this.#desktop && this.manager && session.grants?.devices) sys().startDevices?.()
     this.#spawn({ ...init, name: this.#webName(init.name) })
   }
 
