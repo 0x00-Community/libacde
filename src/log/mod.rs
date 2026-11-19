@@ -3,7 +3,7 @@ use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const DEFAULT: &str =
-    "warn,acde=info,acde_log=info,acde_napi=info,acde_render=info,acde_runtime=info,acde_shell=info,acde_host=info,js=info,usvg=error,tracing::span=off";
+    "warn,acde=info,acde_log=info,acde_napi=info,acde_render=info,acde_runtime=info,acde_host=info,js=info,usvg=error,tracing::span=off";
 const LIMIT: usize = 8 << 20;
 
 static START: OnceLock<Instant> = OnceLock::new();

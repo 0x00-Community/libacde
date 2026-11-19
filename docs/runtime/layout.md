@@ -10,7 +10,7 @@
 | `scene/` | `acde-scene`: 2D 场景 (`Scene` / `PaintScene` / `RenderCommand`)、滤镜 (`Filter` / `FilterEffect`)、合成的部件 (`Part` / `Pass` / `Content` / `Px` / `Backdrop` / `Shadow` / `Effect`, unix 上 `Dmabuf` / `Submitted`). blitz fork、本库和后端共用, 只依赖 kurbo / peniko; 发到 ac |
 | `src/webgl` | `acde-webgl`: wgpu 上的 WebGL 1 / 2 (见 `docs/graphics/webgl.md`「WebGL」). 检查: `cargo test --release -p libacde webgl` |
 | `src/runtime` | 系统接口 (napi 导出 + 注入用的 Rust 对象). 异步执行器 `rt.rs`: `acde-rt` 线程上的 ntex System (不用 tokio, TLS 用 rustls + ring (不用 aws-lc: Windows 要 NASM, 每个平台都多编一个 C 库; 用户定 2026-11-18), 证书校验用 rustls-platform-verifier). 检查: `cargo test -p libacde runtime` (含真 pty / Windows 伪控制台上的终端、unix socket 上的 HTTP / WebSocket)、`ime-check.sh`、`portal-check.sh`、`atspi-check.sh` (经 `tests/run.sh`) |
-| `src/model` | canvas / 窗口表、计划、快捷键、shell 事件 (`Event` / `Inbox`)、`acde_window` / `acde_shell` 协议 |
+| `src/model` | canvas / 窗口表、计划、快捷键、shell 事件 (`Event` / `Inbox`) |
 | `src/log` | `acde-log`: 日志和计时 |
 | `src/media` | `acde-media`: 解码音视频, 读摄像头和麦克风 (Linux GStreamer, macOS AVFoundation; 见 `docs/web/web-apps.md`「视频」「摄像头和麦克风」). 检查: `cargo test --release -p libacde media` (`tests/fixtures` 是 ffmpeg 命令行生成的 1 秒小片段; `tests/capture.rs` 用假设备; `tests/devices.rs` 里 `--ignored` 的列出 / 读真设备、在 macOS 上问权限) |
 | `src/storage` | `acde-storage`: 网页存储的分区和 SQLite (见 `docs/web/storage.md`「网页存储」). 检查: `cargo test --release -p libacde storage` |
