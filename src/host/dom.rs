@@ -43,6 +43,14 @@ thread_local! {
     static ASSETS: RefCell<Assets> = RefCell::default();
 }
 
+pub fn resources() -> Vec<crate::render::Resource> {
+    ASSETS.with(|a| a.borrow().0.clone())
+}
+
+pub fn adopt_resources(resources: Vec<crate::render::Resource>) {
+    ASSETS.with(|a| *a.borrow_mut() = Assets(resources));
+}
+
 fn asset_file(url: &str) -> Option<PathBuf> {
     ASSETS.with(|a| a.borrow().file(url, false))
 }

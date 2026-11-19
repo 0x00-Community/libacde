@@ -19,7 +19,7 @@ export function serializable<T extends object>(cls: { prototype: T }, kind: stri
   revivers.set(kind, revive)
 }
 
-function unserializable(cls: { prototype: object; name: string }): void {
+export function unserializable(cls: { prototype: object; name: string }): void {
   Object.defineProperty(cls.prototype, CLONE, {
     configurable: true,
     value(this: object) {

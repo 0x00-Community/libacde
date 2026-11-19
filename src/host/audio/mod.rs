@@ -1,25 +1,38 @@
+mod analyser;
+mod biquad;
+mod budget;
+mod compressor;
+mod convolver;
 mod decode;
+mod delay;
 mod graph;
 mod live;
 mod mixer;
 mod output;
 #[cfg(not(target_os = "linux"))]
 mod output_cpal;
+mod shaper;
 mod spatial;
 pub mod video;
+mod wave;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock, Weak};
 use std::time::Duration;
 
 use crate::host::bind::{self, arg_bool, arg_f64, arg_u32};
 use crate::host::{offload, rt};
-use graph::{AudioData, Kind, NodeOp, ParamOp, Shared, Wave};
-use mixer::{Clock, Cmd, MediaOp, Note, RATE};
+use budget::{Budget, MAX_SAMPLES, Ticket};
+use convolver::Convolver;
+use delay::Delay;
+use graph::{AudioData, Graph, Kind, NodeOp, ParamOp, QUANTUM, Shared};
+use mixer::{Clock, Cmd, MediaOp, Mixer, Note, RATE};
 use output::Ctl;
+use realfft::num_complex::Complex64;
 use video::{Picture, VideoSound};
+use wave::{PeriodicWave, Wave};
 
 enum Feed {
     File { player: Arc<crate::media::Player>, epoch: u64 },
@@ -40,6 +53,73 @@ struct State {
     buffers: HashMap<u32, Arc<AudioData>>,
     media: HashMap<u32, Arc<AtomicU64>>,
     videos: HashMap<u32, Video>,
+    offline: Mixer,
+    offline_contexts: HashMap<u32, Offline>,
+    offline_nodes: HashMap<u32, u32>,
+    budget: Arc<Budget>,
+    spectra: HashMap<u32, analyser::Spectrum>,
+    basic: HashMap<(Wave, u64), Weak<PeriodicWave>>,
+    waves: HashMap<u32, Arc<PeriodicWave>>,
+}
+
+struct Offline {
+    channels: usize,
+    length: usize,
+}
+
+const RENDERERS: usize = 4;
+
+fn renderers() -> &'static offload::Pool {
+    static POOL: OnceLock<offload::Pool> = OnceLock::new();
+    POOL.get_or_init(|| offload::Pool::new("acde-offline-audio", RENDERERS))
+}
+
+fn offline_cmd(s: &mut State, cmd: Cmd) -> Option<Cmd> {
+    let offline = match &cmd {
+        Cmd::CreateNode { ctx, node, .. } if s.offline_contexts.contains_key(ctx) => {
+            s.offline_nodes.insert(*node, *ctx);
+            true
+        }
+        Cmd::Connect { from, .. } | Cmd::Disconnect { from, .. } => s.offline_nodes.contains_key(from),
+        Cmd::Node { node, .. } => s.offline_nodes.contains_key(node),
+        Cmd::Running { ctx, .. } | Cmd::CloseContext { ctx } => s.offline_contexts.contains_key(ctx),
+        _ => false,
+    };
+    if !offline {
+        return Some(cmd);
+    }
+    s.offline.apply(cmd);
+    None
+}
+
+fn render_offline(mut graph: Graph, offline: Offline, clock: Arc<Clock>, cancelled: &AtomicBool) -> Result<(AudioData, Vec<u32>), String> {
+    let mut channels: Vec<Vec<f32>> = Vec::new();
+    for _ in 0..offline.channels {
+        let mut channel = Vec::new();
+        channel.try_reserve_exact(offline.length).map_err(|_| format!("not enough memory for {} frames of {} channels", offline.length, offline.channels))?;
+        channels.push(channel);
+    }
+    let mut ended = Vec::new();
+    let mut done = 0;
+    while done < offline.length {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err("the page that started the rendering is gone".into());
+        }
+        let mut bus = [[0.0; QUANTUM]; 2];
+        graph.render(&mut bus, &mut ended);
+        let n = (offline.length - done).min(QUANTUM);
+        match &mut channels[..] {
+            [mono] => mono.extend((0..n).map(|i| (bus[0][i] + bus[1][i]) * 0.5)),
+            [left, right] => {
+                left.extend_from_slice(&bus[0][..n]);
+                right.extend_from_slice(&bus[1][..n]);
+            }
+            _ => {}
+        }
+        done += n;
+        clock.frames.store(graph.frame, Ordering::Release);
+    }
+    Ok((AudioData { rate: graph.rate(), channels }, ended))
 }
 
 thread_local! {
@@ -66,6 +146,7 @@ fn web() -> Option<u64> {
 }
 
 fn send(cmd: Cmd) {
+    let Some(cmd) = with_state(|s| offline_cmd(s, cmd)) else { return };
     let web = with_state(|s| s.web);
     if web != 0 {
         output::send(Ctl::Cmd(web, cmd));
@@ -85,6 +166,16 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>) {
     crate::methods!(scope, audio,
         "onEvent" => on_event,
         "createContext" => create_context,
+        "createOfflineContext" => create_offline_context,
+        "setFilterType" => set_filter_type,
+        "setDelayMax" => set_delay_max,
+        "setCurve" => set_curve,
+        "setOversample" => set_oversample,
+        "setImpulse" => set_impulse,
+        "reduction" => reduction,
+        "biquadResponse" => biquad_response,
+        "analyse" => analyse,
+        "startRendering" => start_rendering,
         "setRunning" => set_running,
         "closeContext" => close_context,
         "time" => time,
@@ -95,6 +186,9 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>) {
         "automateCurve" => automate_curve,
         "paramValue" => param_value,
         "setWave" => set_wave,
+        "createPeriodicWave" => create_periodic_wave,
+        "setPeriodicWave" => set_periodic_wave,
+        "releasePeriodicWave" => release_periodic_wave,
         "setLoop" => set_loop,
         "setPanner" => set_panner,
         "setBuffer" => set_buffer,
@@ -122,6 +216,7 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>) {
 
 pub fn clear() {
     let state = with_state(std::mem::take);
+    state.budget.cancelled.store(true, Ordering::Relaxed);
     if state.web != 0 {
         output::send(Ctl::Close(state.web));
     }
@@ -169,7 +264,13 @@ senders! {
     };
     connect(s, a) => Cmd::Connect { from: arg_u32(s, &a, 0), to: arg_u32(s, &a, 1), param: int(s, &a, 2) };
     disconnect(s, a) => Cmd::Disconnect { from: arg_u32(s, &a, 0), to: int(s, &a, 1) as i64, param: int(s, &a, 2) };
-    set_wave(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Wave(Wave::from_code(arg_u32(s, &a, 1))) };
+    set_periodic_wave(s, a) => {
+        let (node, wave) = (arg_u32(s, &a, 0), arg_u32(s, &a, 1));
+        match with_state(|state| state.waves.get(&wave).cloned()) {
+            Some(wave) => Cmd::Node { node, op: NodeOp::Periodic(wave) },
+            None => return,
+        }
+    };
     set_loop(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Loop { looping: arg_bool(s, &a, 1), start: finite(s, &a, 2), end: finite(s, &a, 3) } };
     set_panner(s, a) => Cmd::Node {
         node: arg_u32(s, &a, 0),
@@ -193,9 +294,15 @@ senders! {
         Cmd::Node { node, op: NodeOp::Start { when, offset, duration: (duration >= 0.0).then_some(duration) } }
     };
     stop(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Stop(arg_f64(s, &a, 1)) };
+    set_filter_type(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Filter(biquad::FilterType::from_code(arg_u32(s, &a, 1))) };
+    set_curve(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Curve(floats(a.get(1)).map(Into::into)) };
+    set_oversample(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Oversample(shaper::Oversample::from_code(arg_u32(s, &a, 1))) };
     release(s, a) => {
         let node = arg_u32(s, &a, 0);
-        with_state(|state| state.nodes.remove(&node));
+        with_state(|state| {
+            state.nodes.remove(&node);
+            state.spectra.remove(&node);
+        });
         Cmd::Node { node, op: NodeOp::Release }
     };
     close_media(s, a) => {
@@ -227,7 +334,138 @@ fn create_context(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments,
     }
     let clock = Arc::new(Clock::new());
     with_state(|s| s.clocks.insert(ctx, clock.clone()));
-    send(Cmd::CreateContext { ctx, dest, clock });
+    send(Cmd::CreateContext { ctx, dest, clock, rate: RATE });
+}
+
+fn set_wave(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let (node, wave, rate) = (arg_u32(scope, &args, 0), Wave::from_code(arg_u32(scope, &args, 1)), finite(scope, &args, 2));
+    let key = (wave, rate.to_bits());
+    let cached = with_state(|s| s.basic.get(&key).and_then(Weak::upgrade));
+    let wave = cached.or_else(|| {
+        let budget = with_state(|s| s.budget.clone());
+        let built = Arc::new(PeriodicWave::basic(wave, rate, &budget)?);
+        with_state(|s| {
+            s.basic.retain(|_, w| w.strong_count() > 0);
+            s.basic.insert(key, Arc::downgrade(&built));
+        });
+        Some(built)
+    });
+    rv.set_bool(wave.is_some());
+    if let Some(wave) = wave {
+        send(Cmd::Node { node, op: NodeOp::Periodic(wave) });
+    }
+}
+
+fn create_periodic_wave(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let id = arg_u32(scope, &args, 0);
+    let (Some(real), Some(imag)) = (floats(args.get(1)), floats(args.get(2))) else {
+        return bind::throw_type_error(scope, "audio.createPeriodicWave: real and imag must be Float32Arrays");
+    };
+    let (normalize, rate) = (arg_bool(scope, &args, 3), finite(scope, &args, 4));
+    let budget = with_state(|s| s.budget.clone());
+    let wave = (rate > 0.0).then(|| PeriodicWave::new(&real, &imag, normalize, rate, &budget)).flatten();
+    rv.set_bool(wave.is_some());
+    if let Some(wave) = wave {
+        with_state(|s| s.waves.insert(id, Arc::new(wave)));
+    }
+}
+
+fn release_periodic_wave(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
+    let id = arg_u32(scope, &args, 0);
+    with_state(|s| s.waves.remove(&id));
+}
+
+fn set_delay_max(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let (node, seconds, rate) = (arg_u32(scope, &args, 0), finite(scope, &args, 1), finite(scope, &args, 2));
+    let budget = with_state(|s| s.budget.clone());
+    let delay = (seconds <= 180.0).then(|| Delay::new(seconds, rate, &budget)).flatten();
+    rv.set_bool(delay.is_some());
+    if let Some(delay) = delay {
+        send(Cmd::Node { node, op: NodeOp::Delay(Box::new(delay)) });
+    }
+}
+
+fn set_impulse(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let (node, buffer, normalize) = (arg_u32(scope, &args, 0), arg_u32(scope, &args, 1), arg_bool(scope, &args, 2));
+    let Some(response) = with_state(|s| s.buffers.get(&buffer).cloned()) else {
+        rv.set_bool(true);
+        return send(Cmd::Node { node, op: NodeOp::Impulse(None) });
+    };
+    let budget = with_state(|s| s.budget.clone());
+    let convolver = Convolver::new(&response, normalize, &budget);
+    let fits = convolver.is_some() || response.len() == 0;
+    rv.set_bool(fits);
+    if fits {
+        send(Cmd::Node { node, op: NodeOp::Impulse(convolver.map(Box::new)) });
+    }
+}
+
+fn create_offline_context(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
+    let (ctx, dest) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1));
+    let channels = bind::arg_u32(scope, &args, 2) as usize;
+    let length = bind::arg_f64(scope, &args, 3);
+    let rate = bind::arg_f64(scope, &args, 4);
+    if !(1..=2).contains(&channels) || !(length >= 1.0 && length * channels as f64 <= MAX_SAMPLES as f64) || !(3000.0..=768_000.0).contains(&rate) {
+        return bind::throw_type_error(scope, "audio.createOfflineContext: bad channels, length or sample rate");
+    }
+    let clock = Arc::new(Clock::offline(rate));
+    with_state(|s| {
+        s.clocks.insert(ctx, clock.clone());
+        s.offline_contexts.insert(ctx, Offline { channels, length: length as usize });
+        s.offline_nodes.insert(dest, ctx);
+        s.offline.apply(Cmd::CreateContext { ctx, dest, clock, rate });
+    });
+}
+
+fn start_rendering(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let (ctx, buffer) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1));
+    let taken = with_state(|s| {
+        let offline = s.offline_contexts.remove(&ctx)?;
+        let graph = s.offline.take_graph(ctx)?;
+        s.offline_nodes.retain(|_, c| *c != ctx);
+        Some((offline, graph, s.clocks.get(&ctx)?.clone()))
+    });
+    let Some((offline, graph, clock)) = taken else {
+        return bind::throw_error(scope, "audio.startRendering: not an offline context that has yet to render");
+    };
+    let budget = with_state(|s| s.budget.clone());
+    let Some(ticket) = Ticket::take(&budget, offline.length * offline.channels) else {
+        let message = bind::string(scope, "this page already holds too much audio (offline renders, delay lines, convolvers)");
+        let error = v8::Exception::range_error(scope, message);
+        let resolver = v8::PromiseResolver::new(scope).expect("a promise resolver");
+        resolver.reject(scope, error);
+        return rv.set(resolver.get_promise(scope).into());
+    };
+    renderers().run(
+        scope,
+        &mut rv,
+        move || {
+            let rendered = render_offline(graph, offline, clock, &ticket.budget().cancelled);
+            (buffer, rendered, ticket)
+        },
+        |scope, resolver, (buffer, rendered, _ticket)| {
+            let (data, ended) = match rendered {
+                Ok(rendered) => rendered,
+                Err(message) => {
+                    let message = bind::string(scope, &message);
+                    let error = v8::Exception::range_error(scope, message);
+                    resolver.reject(scope, error);
+                    return;
+                }
+            };
+            let fields = [("length", data.len() as f64), ("sampleRate", data.rate), ("numberOfChannels", data.channels.len() as f64)];
+            with_state(|s| s.buffers.insert(buffer, Arc::new(data)));
+            let ended_list = v8::Array::new(scope, ended.len() as i32);
+            for (i, id) in ended.iter().enumerate() {
+                let id = v8::Integer::new_from_unsigned(scope, *id);
+                ended_list.set_index(scope, i as u32, id.into());
+            }
+            let mut values: Vec<(&str, v8::Local<v8::Value>)> = fields.iter().map(|(name, value)| (*name, v8::Number::new(scope, *value).into())).collect();
+            values.push(("ended", ended_list.into()));
+            let obj = bind::object(scope, &values);
+            resolver.resolve(scope, obj.into());
+        },
+    );
 }
 
 fn time(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
@@ -279,6 +517,60 @@ fn param_value(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mu
     rv.set_double(f64::from(value));
 }
 
+fn reduction(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let node = bind::arg_u32(scope, &args, 0);
+    let value = with_state(|s| s.nodes.get(&node).map_or(0.0, |n| n.reduction()));
+    rv.set_double(f64::from(value));
+}
+
+fn biquad_response(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let kind = biquad::FilterType::from_code(bind::arg_u32(scope, &args, 0));
+    let [frequency, detune, q, gain] = [1, 2, 3, 4].map(|i| bind::arg_f64(scope, &args, i) as f32);
+    let rate = bind::arg_f64(scope, &args, 5);
+    let Some(frequencies) = floats(args.get(6)) else {
+        return bind::throw_type_error(scope, "audio.biquadResponse: frequencies must be a Float32Array");
+    };
+    let c = biquad::Coefficients::of(kind, frequency, detune, q, gain, rate);
+    let n = frequencies.len();
+    let mut out = vec![f32::NAN; 2 * n];
+    for (i, f) in frequencies.iter().enumerate() {
+        let f = f64::from(*f);
+        if !(0.0..=rate / 2.0).contains(&f) {
+            continue;
+        }
+        let omega = -std::f64::consts::PI * f64::from((f / (rate / 2.0)) as f32);
+        let z = Complex64::new(omega.cos(), omega.sin());
+        let numerator = c.b0 + (c.b1 + c.b2 * z) * z;
+        let denominator = 1.0 + (c.a1 + c.a2 * z) * z;
+        let response = numerator / denominator;
+        out[i] = response.norm() as f32;
+        out[n + i] = response.im.atan2(response.re) as f32;
+    }
+    let array = bind::float32_array(scope, &out);
+    rv.set(array.into());
+}
+
+fn analyse(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let (node, what) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1));
+    let fft_size = (bind::arg_u32(scope, &args, 2) as usize).clamp(32, analyser::MAX_FFT);
+    let smoothing = bind::arg_f64(scope, &args, 3).clamp(0.0, 1.0) as f32;
+    let (min, max) = (bind::arg_f64(scope, &args, 4) as f32, bind::arg_f64(scope, &args, 5) as f32);
+    let Some(shared) = with_state(|s| s.nodes.get(&node).cloned()) else { return };
+    let mut samples = vec![0.0; fft_size];
+    let written = {
+        let Some(tap) = shared.tap.as_ref().and_then(|t| t.lock().ok()) else { return };
+        tap.latest(fft_size, &mut samples);
+        tap.written
+    };
+    let values = if what < 2 { samples } else { with_state(|s| s.spectra.entry(node).or_default().decibels(samples, written, smoothing).to_vec()) };
+    let array: v8::Local<v8::Value> = match what {
+        0 | 2 => bind::float32_array(scope, &values).into(),
+        1 => bind::uint8_array(scope, values.iter().map(|v| analyser::byte_time(*v)).collect()).into(),
+        _ => bind::uint8_array(scope, values.iter().map(|v| analyser::byte_frequency(*v, min, max)).collect()).into(),
+    };
+    rv.set(array);
+}
+
 type Fields = [(&'static str, f64); 3];
 
 fn settle(scope: &mut v8::PinScope, resolver: v8::Local<v8::PromiseResolver>, result: Result<Fields, String>) {
@@ -302,11 +594,13 @@ fn decode(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
         return bind::throw_type_error(scope, "audio.decode: not bytes");
     };
     let bytes: Arc<[u8]> = bytes.into();
+    let rate = bind::arg_f64(scope, &args, 2);
+    let rate = if (3000.0..=768_000.0).contains(&rate) { rate } else { RATE };
     offload::run(
         scope,
         &mut rv,
         "acde-decode",
-        move || (buffer, decode::decode_all(bytes, RATE)),
+        move || (buffer, decode::decode_all(bytes, rate)),
         |scope, resolver, (buffer, result)| {
             let result = result.map(|data| {
                 let fields: Fields = [("length", data.len() as f64), ("sampleRate", data.rate), ("numberOfChannels", data.channels.len() as f64)];
@@ -571,4 +865,51 @@ fn stream_node(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _:
     let (node, source) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1));
     let tap = crate::host::capture::source(source).map(|capture| Box::new(live::LiveTap::new(capture)));
     send(Cmd::Node { node, op: NodeOp::Stream(tap) });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn graph(rate: f64, stop: Option<f64>) -> Graph {
+        let mut graph = Graph::new(rate, 1);
+        graph::tests::oscillator(&mut graph, 2, Wave::Sine);
+        graph.node(2, NodeOp::Param(0, ParamOp::Value(1000.0)));
+        graph.connect(2, 1, None);
+        graph.node(2, NodeOp::Start { when: 0.0, offset: 0.0, duration: None });
+        if let Some(at) = stop {
+            graph.node(2, NodeOp::Stop(at));
+        }
+        graph
+    }
+
+    #[test]
+    fn an_offline_render_has_the_length_rate_and_channels_asked_for() {
+        let clock = Arc::new(Clock::offline(24000.0));
+        let (data, ended) = render_offline(graph(24000.0, None), Offline { channels: 2, length: 1000 }, clock.clone(), &AtomicBool::new(false)).unwrap();
+        assert_eq!((data.rate, data.channels.len(), data.len()), (24000.0, 2, 1000));
+        assert_eq!(data.channels[0], data.channels[1], "a mono oscillator reaches both channels");
+        let crossings = data.channels[0].windows(2).filter(|w| w[0] <= 0.0 && w[1] > 0.0).count();
+        assert!((40..=42).contains(&crossings), "1000 Hz for 1000 frames at 24 kHz is about 41 periods, got {crossings}");
+        assert_eq!(clock.seconds(), 1024.0 / 24000.0, "the clock stops at the last rendered quantum");
+        assert!(ended.is_empty());
+    }
+
+    #[test]
+    fn a_mono_render_mixes_down_and_a_stopped_source_ends() {
+        let (data, ended) =
+            render_offline(graph(48000.0, Some(0.001)), Offline { channels: 1, length: 300 }, Arc::new(Clock::offline(48000.0)), &AtomicBool::new(false))
+                .unwrap();
+        assert_eq!((data.channels.len(), data.len()), (1, 300));
+        assert!(data.channels[0][..48].iter().any(|v| v.abs() > 0.5), "the oscillator sounds before it stops");
+        assert!(data.channels[0][48..].iter().all(|v| *v == 0.0), "and is silent from its stop time on");
+        assert_eq!(ended, [2]);
+    }
+
+    #[test]
+    fn a_cancelled_render_stops() {
+        let cancelled = AtomicBool::new(true);
+        let stopped = render_offline(graph(48000.0, None), Offline { channels: 1, length: 1000 }, Arc::new(Clock::offline(48000.0)), &cancelled);
+        assert!(stopped.is_err_and(|e| e.contains("gone")));
+    }
 }

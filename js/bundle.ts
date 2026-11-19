@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-const ENTRIES = [['page/src/worker.ts', 'page.js'], ['launcher/src/main.ts', 'launcher.js']] as const
+const ENTRIES = [['page/src/worker.ts', 'page.js'], ['page/src/webworker.ts', 'webworker.js'], ['launcher/src/main.ts', 'launcher.js']] as const
 
 const [out = join(import.meta.dir, 'dist'), version = '0.0.0-dev'] = process.argv.slice(2)
 const level = readFileSync(join(import.meta.dir, '../acde-api/api-level'), 'utf8').trim()
