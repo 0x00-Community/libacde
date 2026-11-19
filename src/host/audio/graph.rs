@@ -1185,10 +1185,11 @@ fn play_buffer(node: &mut Node, from: usize, to: usize, rate: f64, values: &[[f3
         if i < 0 || i as usize >= len { 0.0 } else { ch[i as usize] }
     };
     for i in from..to {
-        if !node.buf.looping && (pos >= len as f64 || pos < 0.0) {
-            return true;
-        }
-        if limit.is_some_and(|l| node.buf.played >= l) {
+        let past_end = !node.buf.looping && (pos >= len as f64 || pos < 0.0);
+        if past_end || limit.is_some_and(|l| node.buf.played >= l) {
+            for c in &mut node.out {
+                c[i..to].fill(0.0);
+            }
             return true;
         }
         let base = pos.floor();
@@ -1280,6 +1281,24 @@ pub(crate) mod tests {
             let f = frequency(&out, RATE);
             assert!((f - 441.0).abs() <= 2.0, "{wave:?} {f}");
         }
+    }
+
+    #[test]
+    fn a_buffer_that_ends_inside_a_quantum_is_silent_after_its_last_frame() {
+        let mut g = Graph::new(RATE, 1);
+        g.add(2, Kind::BufferSource, Arc::new(Shared::new(Kind::BufferSource)));
+        g.connect(2, 1, None);
+        let ones = |n: usize| Some(Arc::new(AudioData { rate: RATE, channels: vec![vec![1.0; n]] }));
+        g.node(2, NodeOp::Buffer(ones(300)));
+        g.node(2, NodeOp::Start { when: 0.0, offset: 0.0, duration: None });
+        let out = render(&mut g, 4);
+        assert!(out[..300].iter().all(|v| *v == 1.0) && out[300..].iter().all(|v| *v == 0.0), "{:?}", &out[296..304]);
+        g.add(3, Kind::BufferSource, Arc::new(Shared::new(Kind::BufferSource)));
+        g.connect(3, 1, None);
+        g.node(3, NodeOp::Buffer(ones(1000)));
+        g.node(3, NodeOp::Start { when: g.frame as f64 / RATE, offset: 0.0, duration: Some(200.0 / RATE) });
+        let out = render(&mut g, 4);
+        assert!(out[..200].iter().all(|v| *v == 1.0) && out[200..].iter().all(|v| *v == 0.0), "a grain stops at its duration");
     }
 
     #[test]
