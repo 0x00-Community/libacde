@@ -10,6 +10,66 @@ use crate::host::rt::{self, Msg};
 
 pub const MAX_LIVE: usize = 64;
 pub const MAX_IN_FLIGHT: usize = 1 << 30;
+const FIRST_HEAP: usize = 64 << 20;
+const SMALLEST_HEAP: usize = 16 << 20;
+
+fn take(budget: &AtomicUsize, want: usize, least: usize) -> Option<usize> {
+    let mut got = 0;
+    budget
+        .try_update(Ordering::AcqRel, Ordering::Acquire, |left| {
+            got = want.min(left);
+            (got >= least).then(|| left - got)
+        })
+        .ok()?;
+    Some(got)
+}
+
+struct Grant {
+    budget: Arc<AtomicUsize>,
+    granted: AtomicUsize,
+    isolate: std::sync::OnceLock<v8::IsolateHandle>,
+    reason: Arc<Mutex<Option<String>>>,
+    stopping: Arc<AtomicBool>,
+}
+
+impl Grant {
+    fn reserve(budget: &Arc<AtomicUsize>, reason: Arc<Mutex<Option<String>>>, stopping: Arc<AtomicBool>) -> Option<Box<Grant>> {
+        let first = take(budget, FIRST_HEAP, SMALLEST_HEAP)?;
+        Some(Box::new(Grant { budget: budget.clone(), granted: AtomicUsize::new(first), isolate: std::sync::OnceLock::new(), reason, stopping }))
+    }
+
+    fn mb(&self) -> usize {
+        self.granted.load(Ordering::Acquire) >> 20
+    }
+
+    fn attach(self: &Box<Self>, runtime: &mut rt::Runtime, isolate: v8::IsolateHandle) {
+        _ = self.isolate.set(isolate);
+        let data = &**self as *const Self as *mut std::ffi::c_void;
+        runtime.isolate.add_near_heap_limit_callback(Self::near_limit, data);
+    }
+
+    extern "C" fn near_limit(data: *mut std::ffi::c_void, current: usize, _initial: usize) -> usize {
+        let grant = unsafe { &*(data as *const Self) };
+        if let Some(more) = take(&grant.budget, current / 2, (current / 4).max(1)) {
+            grant.granted.fetch_add(more, Ordering::AcqRel);
+            return current + more;
+        }
+        if let Ok(mut reason) = grant.reason.lock() {
+            reason.get_or_insert_with(|| "memory".to_owned());
+        }
+        grant.stopping.store(true, Ordering::SeqCst);
+        if let Some(isolate) = grant.isolate.get() {
+            isolate.terminate_execution();
+        }
+        current + current / 2
+    }
+}
+
+impl Drop for Grant {
+    fn drop(&mut self) {
+        self.budget.fetch_add(self.granted.load(Ordering::Acquire), Ordering::AcqRel);
+    }
+}
 const STACK: usize = 8 << 20;
 
 struct InFlight {
@@ -91,6 +151,7 @@ struct Page {
     live: usize,
     on_event: Option<v8::Global<v8::Function>>,
     in_flight: Arc<AtomicUsize>,
+    heap: Option<Option<Arc<AtomicUsize>>>,
 }
 
 thread_local! {
@@ -136,6 +197,10 @@ fn spawn(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::R
     start_waiting();
 }
 
+fn heap_budget() -> Option<Arc<AtomicUsize>> {
+    PAGE.with(|p| p.borrow_mut().heap.get_or_insert_with(|| crate::host::web::heap_mb().map(|mb| Arc::new(AtomicUsize::new(mb << 20)))).clone())
+}
+
 fn next_waiting() -> Option<(u32, Waiting, Sender<Msg>, Arc<Stop>, Arc<AtomicUsize>)> {
     PAGE.with(|p| {
         let mut p = p.borrow_mut();
@@ -165,7 +230,8 @@ fn start_waiting() {
             rx: waiting.rx,
             stop,
             in_flight,
-            heap_mb: crate::host::web::heap_mb(),
+            heap: heap_budget(),
+            threads: crate::host::web::worker_threads(),
             resources: crate::host::dom::resources(),
             backend: crate::host::backend::config(),
             platform: rt::current().platform(),
@@ -267,7 +333,8 @@ struct Start {
     rx: Receiver<Msg>,
     stop: Arc<Stop>,
     in_flight: Arc<AtomicUsize>,
-    heap_mb: Option<usize>,
+    heap: Option<Arc<AtomicUsize>>,
+    threads: Option<Arc<crate::host::web::Threads>>,
     resources: Vec<crate::render::Resource>,
     backend: crate::host::backend::Config,
     platform: crate::host::platform::Shared,
@@ -290,6 +357,8 @@ struct Inside {
 impl Start {
     fn run(self) {
         let (id, page) = (self.id, self.page.clone());
+        let threads = self.threads.clone();
+        let tid = threads.as_ref().map(|t| t.enter());
         let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.work()));
         if let Err(panic) = ran {
             let message = panic.downcast_ref::<&str>().map(|s| (*s).to_owned()).or_else(|| panic.downcast_ref::<String>().cloned()).unwrap_or_default();
@@ -297,15 +366,31 @@ impl Start {
             let report = Report::Error { message: format!("the worker stopped: {message}"), filename: String::new(), line: 0, column: 0 };
             _ = page.send(Msg::Task(Box::new(move |scope| outside(scope, id, report))));
         }
+        if let (Some(threads), Some(tid)) = (threads, tid) {
+            threads.leave(tid);
+        }
         _ = page.send(Msg::Task(Box::new(move |scope| outside(scope, id, Report::Exit))));
     }
 
     fn work(self) {
-        let Start { id, name, page, tx, rx, stop, in_flight, heap_mb, resources, backend, platform } = self;
+        let Start { id, name, page, tx, rx, stop, in_flight, heap, threads: _, resources, backend, platform } = self;
         if stop.stopping.load(Ordering::SeqCst) {
             return;
         }
-        let mut runtime = rt::Runtime::with_channel(heap_mb, &name, platform, (tx, rx), false);
+        let reason = Arc::new(Mutex::new(None::<String>));
+        let grant = match &heap {
+            Some(budget) => match Grant::reserve(budget, reason.clone(), stop.stopping.clone()) {
+                Some(grant) => Some(grant),
+                None => {
+                    let report =
+                        Report::Error { message: "the page's workers already use all of its memory".into(), filename: String::new(), line: 0, column: 0 };
+                    _ = page.send(Msg::Task(Box::new(move |scope| outside(scope, id, report))));
+                    return;
+                }
+            },
+            None => None,
+        };
+        let mut runtime = rt::Runtime::with_channel(grant.as_ref().map(|g| g.mb()), &name, platform, (tx, rx), false);
         let handle = runtime.isolate.thread_safe_handle();
         if let Ok(mut isolate) = stop.isolate.lock() {
             *isolate = Some(handle.clone());
@@ -313,8 +398,13 @@ impl Start {
         if stop.stopping.load(Ordering::SeqCst) {
             return;
         }
-        let reason = Arc::new(Mutex::new(None::<String>));
-        let guard = crate::host::web::HeapGuard::install(&mut runtime, handle, reason.clone(), stop.stopping.clone());
+        let guard = match &grant {
+            Some(grant) => {
+                grant.attach(&mut runtime, handle);
+                None
+            }
+            None => Some(crate::host::web::HeapGuard::install(&mut runtime, handle, reason.clone(), stop.stopping.clone())),
+        };
         crate::host::modules::set_loader(std::rc::Rc::new(crate::host::dom::WebLoader));
         crate::host::dom::adopt_resources(resources);
         SELF.with(|s| *s.borrow_mut() = Some(Inside { id, page: page.clone(), stopping: stop.stopping.clone(), in_flight, on_event: None, early: Vec::new() }));
@@ -347,7 +437,7 @@ impl Start {
         crate::host::host::clear();
         bind::clear_promises();
         drop(runtime);
-        drop(guard);
+        drop((guard, grant));
     }
 }
 
@@ -436,6 +526,23 @@ fn close(_: &mut v8::PinScope, _: v8::FunctionCallbackArguments, _: v8::ReturnVa
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workers_share_the_page_heap_budget() {
+        let budget = Arc::new(AtomicUsize::new(100 << 20));
+        let stop = || Arc::new(AtomicBool::new(false));
+        let reason = || Arc::new(Mutex::new(None));
+        let a = Grant::reserve(&budget, reason(), stop()).unwrap();
+        assert_eq!(a.mb(), 64);
+        let b = Grant::reserve(&budget, reason(), stop()).unwrap();
+        assert_eq!(b.mb(), 36, "the second gets what is left");
+        assert!(Grant::reserve(&budget, reason(), stop()).is_none(), "nothing left for a third");
+        assert_eq!(take(&budget, 1, 1), None);
+        drop(a);
+        assert_eq!(budget.load(Ordering::Acquire), 64 << 20, "a worker's heap comes back when it ends");
+        drop(b);
+        assert_eq!(budget.load(Ordering::Acquire), 100 << 20);
+    }
 
     #[test]
     fn messages_in_flight_share_one_cap_and_give_back_when_delivered_or_dropped() {

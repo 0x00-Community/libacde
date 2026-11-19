@@ -258,7 +258,7 @@
     `resizeMode: crop-and-scale`、轨道的 `mute` / `unmute` (系统暂停时).
 - **Web Worker** (2026-11-19, 专用 worker; src/host `worker.rs`、`envelope.rs`, acde-dom `core/worker.ts` (页面一侧的 `Worker`) 和 `worker/` (worker 的全局),
   页面胶水 `page/src/webworker.ts` 打成 `acde-runtime:/webworker.js`):
-  - 每个 worker 一条线程 (`acde-worker`, 8 MiB 栈) 一个 isolate, 堆上限和页面一样; 名字 `<web>/worker-<n>[:<name>]` 进日志和 `perf::task`. 线程不阻塞页面地
+  - 每个 worker 一条线程 (`acde-worker`, 8 MiB 栈) 一个 isolate; 名字 `<web>/worker-<n>[:<name>]` 进日志和 `perf::task`. 线程不阻塞页面地
     起: 消息通道先建好 (`rt::Runtime::with_channel`), 脚本还没到时发的消息在 worker 里排着, 脚本跑完 (模块是开始求值后) 再按顺序派发.
   - 顶层脚本由页面取 (`scriptSource`: 应用的文件、`blob:`、`data:`、后端), 只许同源、`blob:`、`data:` (别的 `SecurityError`); 取不到时 `Worker` 上发
     普通的 `error` 事件, worker 结束. `type: 'module'` 的静态 `import` 在 worker 里经 `WebLoader` 读应用文件 (worker 带着页面的资源目录);
@@ -275,7 +275,10 @@
     任务和定时器都不再跑 (`rt` 的循环在 `exit` 后不再取任务). 页面没了时它的 worker 都停. `Worker` 对象在 worker 结束前由页面一侧持有, 不会因为
     没人引用被回收.
   - 限制: 一个页面同时跑的 worker 最多 64 个, 多出来的排队, 前面的结束了才起 (Firefox 也是排队); 页面和它的 worker 之间在路上 (发出还没送达)
-    的消息合计最多 1 GiB, 超了 `postMessage` 抛 `DataCloneError` (和 Chrome 序列化内存不够时一样).
+    的消息合计最多 1 GiB, 超了 `postMessage` 抛 `DataCloneError` (和 Chrome 序列化内存不够时一样). 页面有堆上限 (`heapMb`) 时, 它的 worker
+    合起来另有一份同样大的堆预算: 每个 worker 起时先领 64 MB (剩的不到 16 MB 就不起, `Worker` 上发 `error`), 堆快满时 (V8 的 near-heap-limit
+    回调) 再从预算里领当前的一半, 领不到就只停这个 worker (报 `memory`), 结束时还回去; 所以一个 web 连同 worker 最多用两份 `heapMb`. worker
+    线程的 CPU (包括已经结束的) 算进这个 web 的 `cpuMs`.
   - 对 Chrome: 同一页测试 (早到的消息、`name` / `location` / `navigator`、worker 里 `fetch` 和 `importScripts`、Float32Array 转移 300 次来回、错误
     事件、`close`、模块 worker、`blob:` worker 里跑 wasm、`terminate` 打断死循环、各种拒绝) 结果一致; 256 KB 转移来回一次 0.016 ms (Chrome 0.017).
   - 还没有: 把 `MessagePort` 转给 worker (抛 `DataCloneError`)、`SharedArrayBuffer`、克隆 `WebAssembly.Module`、worker 里的

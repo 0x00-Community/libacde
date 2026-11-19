@@ -14,12 +14,52 @@ struct Handle {
     killed: Arc<AtomicBool>,
     busy: Arc<AtomicU64>,
     tid: i32,
+    threads: Arc<Threads>,
+}
+
+fn thread_cpu_ns(tid: i32) -> u64 {
+    let stat = std::fs::read_to_string(format!("/proc/self/task/{tid}/schedstat")).unwrap_or_default();
+    stat.split_whitespace().next().and_then(|ns| ns.parse::<u64>().ok()).unwrap_or(0)
+}
+
+fn current_tid() -> i32 {
+    cfg_select! {
+        target_os = "linux" => rustix::thread::gettid().as_raw_nonzero().get(),
+        _ => 0,
+    }
 }
 
 impl Handle {
     fn cpu_ms(&self) -> f64 {
-        let stat = std::fs::read_to_string(format!("/proc/self/task/{}/schedstat", self.tid)).unwrap_or_default();
-        stat.split_whitespace().next().and_then(|ns| ns.parse::<u64>().ok()).map_or(0.0, |ns| ns as f64 / 1e6)
+        (thread_cpu_ns(self.tid) + self.threads.cpu_ns()) as f64 / 1e6
+    }
+}
+
+#[derive(Default)]
+pub struct Threads {
+    live: Mutex<Vec<i32>>,
+    ended_ns: AtomicU64,
+}
+
+impl Threads {
+    pub fn enter(&self) -> i32 {
+        let tid = current_tid();
+        if let Ok(mut live) = self.live.lock() {
+            live.push(tid);
+        }
+        tid
+    }
+
+    pub fn leave(&self, tid: i32) {
+        self.ended_ns.fetch_add(thread_cpu_ns(tid), Ordering::Relaxed);
+        if let Ok(mut live) = self.live.lock() {
+            live.retain(|t| *t != tid);
+        }
+    }
+
+    fn cpu_ns(&self) -> u64 {
+        let live: u64 = self.live.lock().map(|live| live.iter().map(|tid| thread_cpu_ns(*tid)).sum()).unwrap_or(0);
+        live + self.ended_ns.load(Ordering::Relaxed)
     }
 }
 
@@ -335,11 +375,10 @@ impl Spec {
         let stopping = Arc::new(AtomicBool::new(false));
         crate::host::inspector::stop_when(stopping.clone());
         let guard = HeapGuard::install(&mut runtime, isolate.clone(), reason.clone(), stopping.clone());
-        let tid = cfg_select! {
-            target_os = "linux" => rustix::thread::gettid().as_raw_nonzero().get(),
-            _ => 0,
-        };
-        _ = ready.send(Handle { tx: runtime.lp.sender(), isolate, stopping: stopping.clone(), killed, busy: runtime.lp.busy(), tid });
+        let tid = current_tid();
+        let threads = Arc::new(Threads::default());
+        THREADS.with(|t| *t.borrow_mut() = Some(threads.clone()));
+        _ = ready.send(Handle { tx: runtime.lp.sender(), isolate, stopping: stopping.clone(), killed, busy: runtime.lp.busy(), tid, threads });
         let code = run_web(&mut runtime, self.init, &self.env, self.grants, &stopping);
         ON_MESSAGE.with(|m| *m.borrow_mut() = None);
         crate::host::worker::clear();
@@ -484,10 +523,15 @@ fn cpu_ms(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
 
 thread_local! {
     static HEAP_MB: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    static THREADS: std::cell::RefCell<Option<Arc<Threads>>> = const { std::cell::RefCell::new(None) };
 }
 
 pub fn heap_mb() -> Option<usize> {
     HEAP_MB.with(|h| h.get())
+}
+
+pub fn worker_threads() -> Option<Arc<Threads>> {
+    THREADS.with(|t| t.borrow().clone())
 }
 
 pub(crate) struct HeapGuard {
