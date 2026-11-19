@@ -527,7 +527,8 @@ export class CSSStyleSheet implements RuleOwner {
       }
       const sheet = rule.parentStyleSheet
       const at = sheet ? sheet.#cache.objects.indexOf(rule) : -1
-      if (!sheet || at < 0) return void (rule[TEXT] = text)
+      const current = sheet && at >= 0 ? (sheet.#native() >= 0 ? dom.sheetRule(sheet.#owner![ID], at) : sheet.#text()[at]) : undefined
+      if (!sheet || current !== rule[TEXT]) return void (rule[TEXT] = text)
       if (sheet.#native() >= 0) {
         const owner = sheet.#owner![ID]
         guard(() => {

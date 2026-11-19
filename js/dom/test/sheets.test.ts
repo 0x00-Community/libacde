@@ -151,17 +151,24 @@ test('rules keep their identity across inserts, and @media / @supports are group
     try { group.insertRule('.c {}', 5) } catch (e) { index = e.name }
     o.insertRule('@supports (display: grid) { .g { display: grid } }', 0)
     const supports = o.cssRules[0]
+    const style = document.createElement('style'); style.textContent = '@media { .x { color: red } } p {}'; document.head.append(style)
+    const held = style.sheet.cssRules[0]
+    style.textContent = 'a { color: blue } b {}'
+    held.insertRule('.y {}', 0)
+    const untouched = style.textContent
+    style.remove()
     o.replaceSync('')
     return {
       kept, name: group.constructor.name, type: group.type, inner, sameFirst: group.cssRules[0] === first, parentRule: first.parentRule === group,
       count: group.cssRules.length, text: group.cssText, index, supports: [supports.constructor.name, supports.conditionText, supports.cssRules.length],
       media: group.media.mediaText, conditionText: group.conditionText, detached: group.parentStyleSheet,
-      classes: [typeof CSSMediaRule, typeof CSSGroupingRule, typeof CSSConditionRule, typeof CSSSupportsRule],
+      classes: [typeof CSSMediaRule, typeof CSSGroupingRule, typeof CSSConditionRule, typeof CSSSupportsRule], untouched,
     }
   })()`)
   assert.deepEqual(result, {
     kept: true, name: 'CSSMediaRule', type: 4, inner: ['.b { color: blue }', '.a { color: red }'], sameFirst: true, parentRule: true,
     count: 1, text: '@media {\n  .b { color: blue }\n}', index: 'IndexSizeError', supports: ['CSSSupportsRule', '(display: grid)', 1],
     media: '', conditionText: '', detached: null, classes: ['function', 'function', 'function', 'function'],
-  })
+    untouched: 'a { color: blue } b {}',
+  }, 'a group held across a rewrite of its sheet changes only itself')
 })
