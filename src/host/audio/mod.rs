@@ -14,11 +14,12 @@ mod output_cpal;
 mod shaper;
 mod spatial;
 pub mod video;
+mod wave;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, Weak};
 use std::time::Duration;
 
 use crate::host::bind::{self, arg_bool, arg_f64, arg_u32};
@@ -26,11 +27,12 @@ use crate::host::{offload, rt};
 use budget::{Budget, MAX_SAMPLES, Ticket};
 use convolver::Convolver;
 use delay::Delay;
-use graph::{AudioData, Graph, Kind, NodeOp, ParamOp, QUANTUM, Shared, Wave};
+use graph::{AudioData, Graph, Kind, NodeOp, ParamOp, QUANTUM, Shared};
 use mixer::{Clock, Cmd, MediaOp, Mixer, Note, RATE};
 use output::Ctl;
 use realfft::num_complex::Complex64;
 use video::{Picture, VideoSound};
+use wave::{PeriodicWave, Wave};
 
 enum Feed {
     File { player: Arc<crate::media::Player>, epoch: u64 },
@@ -56,6 +58,8 @@ struct State {
     offline_nodes: HashMap<u32, u32>,
     budget: Arc<Budget>,
     spectra: HashMap<u32, analyser::Spectrum>,
+    basic: HashMap<(Wave, u64), Weak<PeriodicWave>>,
+    waves: HashMap<u32, Arc<PeriodicWave>>,
 }
 
 struct Offline {
@@ -182,6 +186,9 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>) {
         "automateCurve" => automate_curve,
         "paramValue" => param_value,
         "setWave" => set_wave,
+        "createPeriodicWave" => create_periodic_wave,
+        "setPeriodicWave" => set_periodic_wave,
+        "releasePeriodicWave" => release_periodic_wave,
         "setLoop" => set_loop,
         "setPanner" => set_panner,
         "setBuffer" => set_buffer,
@@ -257,7 +264,13 @@ senders! {
     };
     connect(s, a) => Cmd::Connect { from: arg_u32(s, &a, 0), to: arg_u32(s, &a, 1), param: int(s, &a, 2) };
     disconnect(s, a) => Cmd::Disconnect { from: arg_u32(s, &a, 0), to: int(s, &a, 1) as i64, param: int(s, &a, 2) };
-    set_wave(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Wave(Wave::from_code(arg_u32(s, &a, 1))) };
+    set_periodic_wave(s, a) => {
+        let (node, wave) = (arg_u32(s, &a, 0), arg_u32(s, &a, 1));
+        match with_state(|state| state.waves.get(&wave).cloned()) {
+            Some(wave) => Cmd::Node { node, op: NodeOp::Periodic(wave) },
+            None => return,
+        }
+    };
     set_loop(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Loop { looping: arg_bool(s, &a, 1), start: finite(s, &a, 2), end: finite(s, &a, 3) } };
     set_panner(s, a) => Cmd::Node {
         node: arg_u32(s, &a, 0),
@@ -322,6 +335,44 @@ fn create_context(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments,
     let clock = Arc::new(Clock::new());
     with_state(|s| s.clocks.insert(ctx, clock.clone()));
     send(Cmd::CreateContext { ctx, dest, clock, rate: RATE });
+}
+
+fn set_wave(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let (node, wave, rate) = (arg_u32(scope, &args, 0), Wave::from_code(arg_u32(scope, &args, 1)), finite(scope, &args, 2));
+    let key = (wave, rate.to_bits());
+    let cached = with_state(|s| s.basic.get(&key).and_then(Weak::upgrade));
+    let wave = cached.or_else(|| {
+        let budget = with_state(|s| s.budget.clone());
+        let built = Arc::new(PeriodicWave::basic(wave, rate, &budget)?);
+        with_state(|s| {
+            s.basic.retain(|_, w| w.strong_count() > 0);
+            s.basic.insert(key, Arc::downgrade(&built));
+        });
+        Some(built)
+    });
+    rv.set_bool(wave.is_some());
+    if let Some(wave) = wave {
+        send(Cmd::Node { node, op: NodeOp::Periodic(wave) });
+    }
+}
+
+fn create_periodic_wave(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let id = arg_u32(scope, &args, 0);
+    let (Some(real), Some(imag)) = (floats(args.get(1)), floats(args.get(2))) else {
+        return bind::throw_type_error(scope, "audio.createPeriodicWave: real and imag must be Float32Arrays");
+    };
+    let (normalize, rate) = (arg_bool(scope, &args, 3), finite(scope, &args, 4));
+    let budget = with_state(|s| s.budget.clone());
+    let wave = (rate > 0.0).then(|| PeriodicWave::new(&real, &imag, normalize, rate, &budget)).flatten();
+    rv.set_bool(wave.is_some());
+    if let Some(wave) = wave {
+        with_state(|s| s.waves.insert(id, Arc::new(wave)));
+    }
+}
+
+fn release_periodic_wave(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
+    let id = arg_u32(scope, &args, 0);
+    with_state(|s| s.waves.remove(&id));
 }
 
 fn set_delay_max(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
@@ -821,7 +872,7 @@ mod tests {
 
     fn graph(rate: f64, stop: Option<f64>) -> Graph {
         let mut graph = Graph::new(rate, 1);
-        graph.add(2, Kind::Oscillator, Arc::new(Shared::new(Kind::Oscillator)));
+        graph::tests::oscillator(&mut graph, 2, Wave::Sine);
         graph.node(2, NodeOp::Param(0, ParamOp::Value(1000.0)));
         graph.connect(2, 1, None);
         graph.node(2, NodeOp::Start { when: 0.0, offset: 0.0, duration: None });

@@ -551,7 +551,10 @@ export interface AudioNative {
   automate(node: number, param: number, op: number, value: number, time: number, extra: number): void
   automateCurve(node: number, param: number, values: Float32Array, time: number, duration: number): void
   paramValue(node: number, param: number): number
-  setWave(node: number, type: number): void
+  setWave(node: number, type: number, sampleRate: number): boolean
+  createPeriodicWave(wave: number, real: Float32Array, imag: Float32Array, normalize: boolean, sampleRate: number): boolean
+  setPeriodicWave(node: number, wave: number): void
+  releasePeriodicWave(wave: number): void
   setLoop(node: number, loop: boolean, loopStart: number, loopEnd: number): void
   setPanner(node: number, hrtf: boolean, distanceModel: number, refDistance: number, maxDistance: number, rolloffFactor: number, coneInnerAngle: number, coneOuterAngle: number, coneOuterGain: number): void
   setBuffer(node: number, buffer: number): void

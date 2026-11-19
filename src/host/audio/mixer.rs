@@ -305,15 +305,19 @@ impl Mixer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::host::audio::budget::Budget;
     use crate::host::audio::decode::MediaStream;
     use crate::host::audio::decode::tests::wav;
     use crate::host::audio::graph::ParamOp;
+    use crate::host::audio::wave::{PeriodicWave, Wave};
 
     fn mixer_with_beep() -> (Mixer, Arc<Clock>) {
         let mut m = Mixer::default();
         let clock = Arc::new(Clock::new());
         m.apply(Cmd::CreateContext { ctx: 1, dest: 2, clock: clock.clone(), rate: RATE });
         m.apply(Cmd::CreateNode { ctx: 1, node: 3, kind: Kind::Oscillator, shared: Arc::new(Shared::new(Kind::Oscillator)) });
+        let sine = PeriodicWave::basic(Wave::Sine, RATE, &Arc::new(Budget::default())).unwrap();
+        m.apply(Cmd::Node { node: 3, op: NodeOp::Periodic(Arc::new(sine)) });
         m.apply(Cmd::CreateNode { ctx: 1, node: 4, kind: Kind::Gain, shared: Arc::new(Shared::new(Kind::Gain)) });
         m.apply(Cmd::Connect { from: 3, to: 4, param: -1 });
         m.apply(Cmd::Connect { from: 4, to: 2, param: -1 });

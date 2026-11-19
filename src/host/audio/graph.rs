@@ -11,6 +11,7 @@ use super::convolver::Convolver;
 use super::delay::Delay;
 use super::shaper::{Oversample, Shaper};
 use super::spatial::{self, Hrtf, HrtfModel, Listener, PannerConfig, V3};
+use super::wave::PeriodicWave;
 
 pub const QUANTUM: usize = 128;
 
@@ -136,25 +137,6 @@ impl Kind {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Wave {
-    Sine,
-    Square,
-    Sawtooth,
-    Triangle,
-}
-
-impl Wave {
-    pub fn from_code(code: u32) -> Wave {
-        match code {
-            1 => Wave::Square,
-            2 => Wave::Sawtooth,
-            3 => Wave::Triangle,
-            _ => Wave::Sine,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub enum ParamOp {
     Value(f32),
@@ -169,7 +151,7 @@ pub enum ParamOp {
 
 pub enum NodeOp {
     Param(usize, ParamOp),
-    Wave(Wave),
+    Periodic(Arc<PeriodicWave>),
     Buffer(Option<Arc<AudioData>>),
     Loop { looping: bool, start: f64, end: f64 },
     Start { when: f64, offset: f64, duration: Option<f64> },
@@ -448,7 +430,7 @@ struct Node {
     shared: Arc<Shared>,
     released: bool,
     src: Source,
-    wave: Wave,
+    periodic: Option<Arc<PeriodicWave>>,
     phase: f64,
     buf: Buffer,
     stream: Option<Box<super::live::LiveTap>>,
@@ -492,7 +474,7 @@ impl Node {
             shared,
             released: false,
             src: Source { start: None, stop: None, ended: false },
-            wave: Wave::Sine,
+            periodic: None,
             phase: 0.0,
             buf: Buffer { data: None, pos: None, offset: 0.0, duration: None, played: 0.0, looping: false, loop_start: 0.0, loop_end: 0.0 },
             stream: None,
@@ -651,7 +633,7 @@ impl Graph {
                     param.apply(op, now);
                 }
             }
-            NodeOp::Wave(wave) => node.wave = wave,
+            NodeOp::Periodic(wave) => node.periodic = Some(wave),
             NodeOp::Buffer(data) => node.buf.data = data,
             NodeOp::Loop { looping, start, end } => (node.buf.looping, node.buf.loop_start, node.buf.loop_end) = (looping, start, end),
             NodeOp::Start { offset, duration, .. } => {
@@ -1076,15 +1058,24 @@ impl Graph {
                 node.out[0][to..].fill(0.0);
                 if node.kind == Kind::ConstantSource {
                     node.out[0][from..to].copy_from_slice(&values[0][from..to]);
-                } else {
+                } else if let Some(wave) = node.periodic.clone() {
+                    let (size, scale, nyquist) = (wave.size() as f64, wave.rate_scale(), (rate / 2.0) as f32);
+                    let mut last = f32::NAN;
+                    let mut tables = wave.tables(0.0);
                     for i in from..to {
                         let detune = values[1][i];
-                        let f = if detune == 0.0 { values[0][i] as f64 } else { values[0][i] as f64 * (detune as f64 / 1200.0).exp2() };
-                        let dt = f / rate;
-                        node.out[0][i] = oscillator(node.wave, node.phase, dt.abs()) as f32;
-                        node.phase += dt;
-                        node.phase -= node.phase.floor();
+                        let f = if detune == 0.0 { values[0][i] } else { values[0][i] * (detune / 1200.0).exp2() };
+                        let f = f.clamp(-nyquist, nyquist);
+                        if f != last {
+                            tables = wave.tables(f);
+                            last = f;
+                        }
+                        node.out[0][i] = wave.sample(&tables, node.phase);
+                        node.phase += f64::from(f * scale);
+                        node.phase -= (node.phase / size).floor() * size;
                     }
+                } else {
+                    node.out[0][from..to].fill(0.0);
                 }
             }
             Kind::BufferSource => {
@@ -1145,35 +1136,6 @@ fn pan(
         };
         out[0][i] = l * g;
         out[1][i] = r * g;
-    }
-}
-
-fn oscillator(wave: Wave, phase: f64, dt: f64) -> f64 {
-    match wave {
-        Wave::Sine => (std::f64::consts::TAU * phase).sin(),
-        Wave::Square => {
-            let naive = if phase < 0.5 { 1.0 } else { -1.0 };
-            naive + poly_blep(phase, dt) - poly_blep((phase + 0.5).fract(), dt)
-        }
-        Wave::Sawtooth => {
-            let p = (phase + 0.5).fract();
-            2.0 * p - 1.0 - poly_blep(p, dt)
-        }
-        Wave::Triangle => 1.0 - 4.0 * ((phase + 0.25).fract() - 0.5).abs(),
-    }
-}
-
-fn poly_blep(t: f64, dt: f64) -> f64 {
-    if dt <= 0.0 {
-        0.0
-    } else if t < dt {
-        let x = t / dt;
-        x + x - x * x - 1.0
-    } else if t > 1.0 - dt {
-        let x = (t - 1.0) / dt;
-        x * x + x + x + 1.0
-    } else {
-        0.0
     }
 }
 
@@ -1252,10 +1214,16 @@ fn play_buffer(node: &mut Node, from: usize, to: usize, rate: f64, values: &[[f3
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::host::audio::budget::Budget;
     use crate::host::audio::spatial::DistanceModel;
+    use crate::host::audio::wave::Wave;
+
+    pub(crate) fn oscillator(g: &mut Graph, id: u32, wave: Wave) {
+        g.add(id, Kind::Oscillator, Arc::new(Shared::new(Kind::Oscillator)));
+        g.node(id, NodeOp::Periodic(Arc::new(PeriodicWave::basic(wave, g.rate, &Arc::new(Budget::default())).unwrap())));
+    }
 
     const RATE: f64 = 48000.0;
 
@@ -1283,7 +1251,7 @@ mod tests {
     #[test]
     fn oscillator_through_gain_has_its_frequency_and_level() {
         let mut g = Graph::new(RATE, 1);
-        g.add(2, Kind::Oscillator, Arc::new(Shared::new(Kind::Oscillator)));
+        oscillator(&mut g, 2, Wave::Sine);
         g.add(3, Kind::Gain, Arc::new(Shared::new(Kind::Gain)));
         g.connect(2, 3, None);
         g.connect(3, 1, None);
@@ -1298,24 +1266,10 @@ mod tests {
     }
 
     #[test]
-    fn waveforms_start_as_web_audio_does() {
-        assert!(oscillator(Wave::Sine, 0.0, 0.0).abs() < 1e-9);
-        assert!((oscillator(Wave::Sine, 0.25, 0.0) - 1.0).abs() < 1e-9);
-        assert_eq!(oscillator(Wave::Square, 0.25, 0.0), 1.0);
-        assert_eq!(oscillator(Wave::Square, 0.75, 0.0), -1.0);
-        assert!(oscillator(Wave::Sawtooth, 0.0, 0.0).abs() < 1e-9);
-        assert!((oscillator(Wave::Sawtooth, 0.25, 0.0) - 0.5).abs() < 1e-9);
-        assert!(oscillator(Wave::Triangle, 0.0, 0.0).abs() < 1e-9);
-        assert!((oscillator(Wave::Triangle, 0.25, 0.0) - 1.0).abs() < 1e-9);
-        assert!((oscillator(Wave::Triangle, 0.75, 0.0) + 1.0).abs() < 1e-9);
-    }
-
-    #[test]
     fn square_and_sawtooth_keep_their_frequency() {
         for wave in [Wave::Square, Wave::Sawtooth, Wave::Triangle] {
             let mut g = Graph::new(RATE, 1);
-            g.add(2, Kind::Oscillator, Arc::new(Shared::new(Kind::Oscillator)));
-            g.node(2, NodeOp::Wave(wave));
+            oscillator(&mut g, 2, wave);
             g.node(2, NodeOp::Param(0, ParamOp::Value(441.0)));
             g.connect(2, 1, None);
             g.node(2, NodeOp::Start { when: 0.0, offset: 0.0, duration: None });
@@ -1436,7 +1390,7 @@ mod tests {
     #[test]
     fn gain_envelope_shapes_the_output() {
         let mut g = Graph::new(RATE, 1);
-        g.add(2, Kind::Oscillator, Arc::new(Shared::new(Kind::Oscillator)));
+        oscillator(&mut g, 2, Wave::Sine);
         g.add(3, Kind::Gain, Arc::new(Shared::new(Kind::Gain)));
         g.node(2, NodeOp::Param(0, ParamOp::Value(880.0)));
         g.node(3, NodeOp::Param(0, ParamOp::SetAt(0.0, 0.0)));
@@ -1535,7 +1489,7 @@ mod tests {
     #[test]
     fn released_nodes_go_once_nothing_feeds_them() {
         let mut g = Graph::new(RATE, 1);
-        g.add(2, Kind::Oscillator, Arc::new(Shared::new(Kind::Oscillator)));
+        oscillator(&mut g, 2, Wave::Sine);
         g.add(3, Kind::Gain, Arc::new(Shared::new(Kind::Gain)));
         g.connect(2, 3, None);
         g.connect(3, 1, None);
@@ -1951,7 +1905,7 @@ mod tests {
     #[test]
     fn a_loop_without_a_delay_is_silent() {
         let mut g = Graph::new(RATE, 1);
-        g.add(2, Kind::Oscillator, Arc::new(Shared::new(Kind::Oscillator)));
+        oscillator(&mut g, 2, Wave::Sine);
         g.node(2, NodeOp::Start { when: 0.0, offset: 0.0, duration: None });
         g.add(3, Kind::Gain, Arc::new(Shared::new(Kind::Gain)));
         g.add(4, Kind::Gain, Arc::new(Shared::new(Kind::Gain)));

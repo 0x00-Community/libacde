@@ -138,7 +138,7 @@
     声道 1 或 2 (3–32 以 `NotSupportedError` 拒绝, 还没有), 状态从 `suspended` 开始. 它的图不进混音器: 建节点、连线、参数都落在页面线程上一个只给
     离线 context 的 `Mixer` 里 (src/host `audio/mod.rs` `offline_cmd`), 不开声音设备; `startRendering()` 把整张图交给 `acde-offline-audio` 线程池 (4 条)
     一次算完 `length` 帧 (最后一个 quantum 截断, 不钳到 ±1). 一次最多 2^28 个样本 (帧数乘声道, 1 GB; 构造时超了是 `NotSupportedError`), 一个页面的声音内存 (src/host `audio/budget.rs`:
-    在算的离线渲染、延迟线、卷积核) 加起来也最多这么多 (离线渲染超了 promise 以 `RangeError` 拒绝), 页面没了时它还在算的渲染停下, 结果存成 AudioBuffer: 先发结束的音源的 `ended`, 状态变 `closed`, 兑现 promise, 下一个任务
+    在算的离线渲染、延迟线、卷积核、振荡器波表) 加起来也最多这么多 (离线渲染超了 promise 以 `RangeError` 拒绝), 页面没了时它还在算的渲染停下, 结果存成 AudioBuffer: 先发结束的音源的 `ended`, 状态变 `closed`, 兑现 promise, 下一个任务
     发 `complete` (`OfflineAudioCompletionEvent.renderedBuffer`). 第二次 `startRendering` 是 `InvalidStateError`; `suspend(time)` 还没有
     (`NotSupportedError`), `resume()` 是 `InvalidStateError`. `currentTime` 是已经渲染到的帧 (按 quantum). 渲染开始后再对这张图做的改动不生效.
   - **空间化** (`PannerNode` / `AudioListener`, src/host `audio/spatial.rs`): 方位角、仰角、三种距离模型、声锥和 `equalpower` 照规范
@@ -150,6 +150,11 @@
     (IRCAM 数据) 的白噪声测量标定 (`EAR_LEVELS` / `REAR_LEVELS`, 测试里 ±0.05、±3 个样本). 没有耳廓的仰角线索. 照规范 HRTF 下参数按 k-rate,
     每 quantum 算一次, 增益、延迟和滤波系数在 quantum 内线性过渡 (不出拉链声); 立体声输入左进左耳、右进右耳 (和 Chrome 一样不交叉).
     输入变静时清掉延迟线和滤波器状态.
+  - **振荡器** (`OscillatorNode` / `PeriodicWave`, src/host `audio/wave.rs`): 四种基本波形和自定义 `PeriodicWave` 一样是规范的傅里叶级数,
+    照 Chromium 的 `PeriodicWave` 做成限带波表: 表长按采样率 (≤ 24 kHz 2048, ≤ 88.2 kHz 4096, 以上 16384), 每八度 3 档, 每档砍掉会混叠的
+    分量, 归一化 (峰值 1) 按第一档算; 播放时表内和相邻两档之间各线性插值. 波表在页面线程建好再交给混音线程: 基本波形按 (形状, 采样率)
+    缓存 (弱引用, 没有振荡器用了就释放), 自定义波形在构造 `PeriodicWave` 时建; 都记进页面的声音内存, 放不下时抛 `RangeError`.
+    对 Chrome: 四种波形各三个频率和指数扫频、负频率、detune、22.05 / 96 kHz、自定义 (归一化与否) 每样本差 5e-5 内.
   - **效果节点** (2026-11-19, src/host `audio/` 下各一个文件, 在 `graph.rs` 的 `Effect` 里): 都在混音线程按 quantum 算, 页面只发设置 (`NodeOp`).
     - `BiquadFilterNode` (`biquad.rs`): 系数照 Chromium `Biquad` (f64, 含频率 0 / 奈奎斯特和 Q ≤ 0 的边界), 参数在 quantum 里变时逐样本重算;
       `getFrequencyResponse` 在页面线程用当前参数算 (超出 0–奈奎斯特的频率给 NaN).

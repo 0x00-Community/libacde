@@ -28,6 +28,7 @@ interface ParamOwner {
 const playing = new Map<number, AudioScheduledSourceNode>()
 const releasedNodes = new FinalizationRegistry<number>((id) => native?.release(id))
 const releasedBuffers = new FinalizationRegistry<number>((id) => native?.releaseBuffer(id))
+const releasedWaves = new FinalizationRegistry<number>((id) => native?.releasePeriodicWave(id))
 const warned = new Set<string>()
 
 function finite(what: string, value: unknown): number {
@@ -311,8 +312,14 @@ class OscillatorNode extends AudioScheduledSourceNode {
     super(KEY, context, Kind.Oscillator)
     const nyquist = context.sampleRate / 2
     ;[this.frequency, this.detune] = params(this, options, [['frequency', 440, -nyquist, nyquist], ['detune', 0, -153600, 153600]]) as [AudioParam, AudioParam]
-    if (options?.periodicWave) this.setPeriodicWave(options.periodicWave)
-    else if (options?.type !== undefined) this.type = options.type
+    if (options?.periodicWave) {
+      this.setPeriodicWave(options.periodicWave)
+      return
+    }
+    const type = options?.type === undefined ? 'sine' : String(options.type)
+    if (type === 'custom') throw new DOMException("Failed to construct 'OscillatorNode': A PeriodicWave must be specified if the type is set to \"custom\"", 'InvalidStateError')
+    if (!WAVES.includes(type)) throw new TypeError(`Failed to construct 'OscillatorNode': Failed to read the 'type' property from 'OscillatorOptions': The provided value '${type}' is not a valid enum value of type OscillatorType.`)
+    this.#use(type)
   }
 
   get type(): string {
@@ -321,24 +328,42 @@ class OscillatorNode extends AudioScheduledSourceNode {
   set type(value: string) {
     const type = String(value)
     if (type === 'custom') throw new DOMException("Failed to set the 'type' property on 'OscillatorNode': 'type' cannot be set directly to 'custom'. Use setPeriodicWave() to create a custom Oscillator type.", 'InvalidStateError')
-    const code = WAVES.indexOf(type)
-    if (code < 0) return
+    if (WAVES.includes(type)) this.#use(type)
+  }
+
+  #use(type: string): void {
+    if (native && !native.setWave(this[ID], WAVES.indexOf(type), this.context.sampleRate)) throw new RangeError("Failed to set the 'type' property on 'OscillatorNode': there is not enough audio memory for its wave.")
     this.#type = type
-    native?.setWave(this[ID], code)
   }
 
   setPeriodicWave(wave: PeriodicWave): void {
     if (!(wave instanceof PeriodicWave)) throw new TypeError("Failed to execute 'setPeriodicWave' on 'OscillatorNode': parameter 1 is not of type 'PeriodicWave'.")
-    warnOnce('PeriodicWave', 'custom oscillator waves are not rendered yet: a sine plays instead')
+    native?.setPeriodicWave(this[ID], wave[ID])
     this.#type = 'custom'
-    native?.setWave(this[ID], 0)
   }
 }
 tag(OscillatorNode)
 
 class PeriodicWave {
-  constructor(context: BaseAudioContext, _options?: { real?: ArrayLike<number>; imag?: ArrayLike<number>; disableNormalization?: boolean }) {
+  readonly [ID]: number
+
+  constructor(context: BaseAudioContext, options?: { real?: ArrayLike<number>; imag?: ArrayLike<number>; disableNormalization?: boolean }) {
     checkContext(context)
+    const what = "Failed to construct 'PeriodicWave'"
+    let real = options?.real === undefined ? undefined : Float32Array.from(options.real, Number)
+    let imag = options?.imag === undefined ? undefined : Float32Array.from(options.imag, Number)
+    if (real && imag && real.length !== imag.length) throw new DOMException(`${what}: The length of the real array (${real.length}) and length of the imaginary array (${imag.length}) must match.`, 'IndexSizeError')
+    const given = real ?? imag
+    if (given && given.length < 2) throw new DOMException(`${what}: The length of the ${real ? 'real' : 'imaginary'} array provided (${given.length}) is less than the minimum bound (2).`, 'IndexSizeError')
+    real ??= given ? new Float32Array(given.length) : new Float32Array(2)
+    imag ??= given ? new Float32Array(given.length) : new Float32Array([0, 1])
+    real[0] = 0
+    imag[0] = 0
+    this[ID] = newId()
+    if (native) {
+      if (!native.createPeriodicWave(this[ID], real, imag, !options?.disableNormalization, context.sampleRate)) throw new RangeError(`${what}: there is not enough audio memory for its tables.`)
+      releasedWaves.register(this, this[ID])
+    }
   }
 }
 tag(PeriodicWave)

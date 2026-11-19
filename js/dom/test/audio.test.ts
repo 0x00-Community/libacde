@@ -47,7 +47,13 @@ function fakeAudio() {
     automate: record('automate'),
     automateCurve: record('automateCurve'),
     paramValue: () => 0.25,
-    setWave: record('setWave'),
+    setWave: (...a: unknown[]) => (record('setWave')(...a), true),
+    createPeriodicWave(wave: number, real: Float32Array, imag: Float32Array, normalize: boolean, rate: number) {
+      calls.push({ name: 'createPeriodicWave', args: [wave, Array.from(real), Array.from(imag), normalize, rate] })
+      return true
+    },
+    setPeriodicWave: record('setPeriodicWave'),
+    releasePeriodicWave: record('releasePeriodicWave'),
     setLoop: record('setLoop'),
     setPanner: record('setPanner'),
     setBuffer: record('setBuffer'),
@@ -126,7 +132,7 @@ test('a beep: the graph, its automation, start and stop go to the audio thread',
   const nodes = audio.named('createNode') as [number, number, number][]
   assert.deepEqual(nodes.map((n) => [n[0], n[2]]), [[ctx, 2], [ctx, 1]])
   const [osc, gain] = nodes.map((n) => n[1])
-  assert.deepEqual(audio.named('setWave'), [[osc, 1]])
+  assert.deepEqual(audio.named('setWave'), [[osc, 0, 48000], [osc, 1, 48000]], 'a sine until the type is set')
   assert.deepEqual(audio.named('automate'), [
     [osc, 0, 0, 880, 0, 0],
     [gain, 0, 1, 0, 1.5, 0],
@@ -234,6 +240,38 @@ test('decodeAudioData and buffer sources: decoded natively, the page\'s own samp
   assert.deepEqual((audio.named('setLoop') as unknown[][])[0]!.slice(1), [true, 0, 0])
   const starts = audio.named('start') as number[][]
   assert.deepEqual(starts[0]!.slice(1), [0, 0.5, -1])
+  w.close()
+})
+
+test('PeriodicWave: its coefficients as the spec fills them in, and an oscillator that plays it', () => {
+  const { web: w, audio } = web()
+  const result = w.json<Record<string, unknown>>(`(() => {
+    const ctx = new AudioContext()
+    const errors = []
+    const tryIt = (f) => { try { f(); errors.push('none') } catch (e) { errors.push(e.name) } }
+    const plain = new PeriodicWave(ctx)
+    const custom = ctx.createPeriodicWave([5, 0.5, 0.25], [9, 1, 0], { disableNormalization: true })
+    new PeriodicWave(ctx, { imag: [0, 0, 1] })
+    tryIt(() => ctx.createPeriodicWave([0, 1], [0, 1, 2]))
+    tryIt(() => new PeriodicWave(ctx, { real: [1] }))
+    tryIt(() => new OscillatorNode(ctx, { type: 'custom' }))
+    tryIt(() => new OscillatorNode(ctx, { type: 'bogus' }))
+    const osc = new OscillatorNode(ctx, { periodicWave: custom })
+    const type = osc.type
+    tryIt(() => { osc.type = 'custom' })
+    osc.type = 'triangle'
+    return { type, after: osc.type, errors, same: plain === custom }
+  })()`)
+  assert.deepEqual(result, { type: 'custom', after: 'triangle', errors: ['IndexSizeError', 'IndexSizeError', 'InvalidStateError', 'TypeError', 'InvalidStateError'], same: false })
+  const waves = audio.named('createPeriodicWave')
+  assert.deepEqual(waves.map((c) => c.slice(1)), [
+    [[0, 0], [0, 1], true, 48000],
+    [[0, 0.5, 0.25], [0, 1, 0], false, 48000],
+    [[0, 0, 0], [0, 0, 1], true, 48000],
+  ])
+  const osc = (audio.named('createNode') as number[][]).at(-1)![1]
+  assert.deepEqual(audio.named('setPeriodicWave'), [[osc, waves[1]![0]]])
+  assert.deepEqual(audio.named('setWave').filter((c) => c[0] === osc), [[osc, 3, 48000]])
   w.close()
 })
 
