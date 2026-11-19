@@ -530,14 +530,7 @@ impl Decoration {
         let layout = self.styled(text, Self::MENU_WEIGHT, scale);
         let Some(line) = layout.lines().next() else { return };
         let top = (height * scale - f64::from(line.metrics().line_height)) / 2.0;
-        let transform = Affine::translate((x * scale, y * scale + top));
-        for item in line.items() {
-            let PositionedLayoutItem::GlyphRun(run) = item else { continue };
-            let glyphs = run.positioned_glyphs().map(|g| Glyph { id: g.id as _, x: g.x, y: g.y });
-            let r = run.run();
-            let coords: &[i16] = bytemuck::cast_slice(r.normalized_coords());
-            scene.draw_glyphs(r.font(), r.font_size(), false, coords, Vec2::ZERO, Fill::NonZero, color, 1.0, transform, None, glyphs);
-        }
+        draw_line(scene, &line, Affine::translate((x * scale, y * scale + top)), color);
     }
 
     fn title(&mut self, scene: &mut Scene, bar: &Bar, color: Color, lead: Option<f64>) {
@@ -577,14 +570,7 @@ impl Decoration {
             (TitleAlign::Start, _) => left * bar.scale,
         };
         let y = (bar.height * bar.scale - f64::from(line.metrics().line_height)) / 2.0;
-        let transform = Affine::translate((x, y));
-        for item in line.items() {
-            let PositionedLayoutItem::GlyphRun(run) = item else { continue };
-            let glyphs = run.positioned_glyphs().map(|g| Glyph { id: g.id as _, x: g.x, y: g.y });
-            let r = run.run();
-            let coords: &[i16] = bytemuck::cast_slice(r.normalized_coords());
-            scene.draw_glyphs(r.font(), r.font_size(), false, coords, Vec2::ZERO, Fill::NonZero, color, 1.0, transform, None, glyphs);
-        }
+        draw_line(scene, &line, Affine::translate((x, y)), color);
     }
 
     fn cut(title: &str, at: usize) -> String {
@@ -605,5 +591,15 @@ impl Decoration {
         let mut layout = builder.build(text);
         layout.break_all_lines(None);
         layout
+    }
+}
+
+pub(crate) fn draw_line(scene: &mut Scene, line: &parley::Line<'_, ()>, transform: Affine, color: Color) {
+    for item in line.items() {
+        let PositionedLayoutItem::GlyphRun(run) = item else { continue };
+        let glyphs = run.positioned_glyphs().map(|g| Glyph { id: g.id as _, x: g.x, y: g.y });
+        let r = run.run();
+        let coords: &[i16] = bytemuck::cast_slice(r.normalized_coords());
+        scene.draw_glyphs(r.font(), r.font_size(), false, coords, Vec2::ZERO, Fill::NonZero, color, 1.0, transform, None, glyphs);
     }
 }
