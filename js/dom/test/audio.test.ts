@@ -29,6 +29,16 @@ function fakeAudio() {
       return Promise.resolve({ length: shape[3], sampleRate: shape[4], numberOfChannels: shape[2], ended: starts })
     },
     setRunning: record('setRunning'),
+    setFilterType: record('setFilterType'),
+    setDelayMax: record('setDelayMax'),
+    setCurve(node: number, curve: Float32Array | null) {
+      calls.push({ name: 'setCurve', args: [node, curve && Array.from(curve)] })
+    },
+    setOversample: record('setOversample'),
+    setImpulse: record('setImpulse'),
+    reduction: () => -7.5,
+    biquadResponse: (_type: number, _f: number, _d: number, _q: number, _g: number, _rate: number, frequencies: Float32Array) => new Float32Array(frequencies.length * 2).fill(0.5),
+    analyse: (_node: number, what: number, fftSize: number) => (what === 1 || what === 3 ? new Uint8Array(what === 1 ? fftSize : fftSize / 2).fill(7) : new Float32Array(what === 0 ? fftSize : fftSize / 2).fill(-3)),
     closeContext: record('closeContext'),
     time: () => 1.5,
     createNode: record('createNode'),
@@ -227,21 +237,57 @@ test('decodeAudioData and buffer sources: decoded natively, the page\'s own samp
   w.close()
 })
 
-test('pass-through nodes keep pages that use them playing', () => {
+test('the effect nodes: their kinds, settings and checks reach the audio thread', () => {
   const { web: w, audio } = web()
-  w.run(`
+  const result = w.json<Record<string, unknown>>(`(() => {
     const ctx = new AudioContext()
+    const errors = []
+    const tryIt = (f) => { try { f(); errors.push('none') } catch (e) { errors.push(e.name) } }
     const f = ctx.createBiquadFilter()
     f.type = 'highpass'
-    f.frequency.value = 1000
+    f.type = 'bogus'
+    const mag = new Float32Array(3), phase = new Float32Array(3)
+    f.getFrequencyResponse(new Float32Array([100, 1000, 10000]), mag, phase)
+    tryIt(() => f.getFrequencyResponse(new Float32Array(3), new Float32Array(2), new Float32Array(3)))
+    const d = ctx.createDelay(1.2)
+    tryIt(() => ctx.createDelay(0))
+    tryIt(() => ctx.createDelay(200))
+    const ws = ctx.createWaveShaper()
+    const curve = new Float32Array([-1, 0, 1])
+    ws.curve = curve
+    curve[0] = 5
+    tryIt(() => { ws.curve = new Float32Array(1) })
+    ws.oversample = '2x'
+    ws.oversample = '8x'
+    const c = ctx.createDynamicsCompressor()
+    const conv = ctx.createConvolver()
+    tryIt(() => { conv.buffer = new AudioBuffer({ length: 10, sampleRate: 44100 }) })
+    tryIt(() => { conv.buffer = new AudioBuffer({ length: 10, sampleRate: 48000, numberOfChannels: 4 }) })
+    conv.buffer = new AudioBuffer({ length: 10, sampleRate: 48000, numberOfChannels: 2 })
     const a = ctx.createAnalyser()
-    const data = new Uint8Array(a.frequencyBinCount)
-    a.getByteFrequencyData(data)
-    f.connect(a).connect(ctx.destination)
-    globalThis.result = { type: f.type, bins: data.length }
-  `)
-  assert.deepEqual(w.json('result'), { type: 'highpass', bins: 1024 })
-  assert.deepEqual((audio.named('createNode') as number[][]).map((n) => n[2]), [6, 6])
+    tryIt(() => { a.fftSize = 1000 })
+    tryIt(() => { a.minDecibels = -20 })
+    tryIt(() => { a.smoothingTimeConstant = 2 })
+    a.fftSize = 64
+    const bytes = new Uint8Array(100), floats = new Float32Array(10)
+    a.getByteTimeDomainData(bytes)
+    a.getFloatFrequencyData(floats)
+    return {
+      type: f.type, mag: Array.from(mag), errors, delayMax: d.delayTime.maxValue, curve: Array.from(ws.curve), oversample: ws.oversample,
+      reduction: c.reduction, threshold: c.threshold.value, bins: a.frequencyBinCount, bytes: [bytes[0], bytes[63], bytes[64]], floats: floats[9],
+      convolverChannels: conv.buffer.numberOfChannels, nyquist: f.frequency.maxValue,
+    }
+  })()`)
+  assert.deepEqual(result, {
+    type: 'highpass', mag: [0.5, 0.5, 0.5], errors: ['InvalidAccessError', 'NotSupportedError', 'NotSupportedError', 'InvalidStateError', 'NotSupportedError', 'NotSupportedError', 'IndexSizeError', 'IndexSizeError', 'IndexSizeError'],
+    delayMax: 1.2, curve: [-1, 0, 1], oversample: '2x', reduction: -7.5, threshold: -24, bins: 32, bytes: [7, 7, 0], floats: -3, convolverChannels: 2, nyquist: 24000,
+  })
+  assert.deepEqual((audio.named('createNode') as number[][]).map((n) => n[2]), [10, 11, 12, 13, 14, 15])
+  assert.deepEqual(audio.named('setFilterType').map((c) => c[1]), [1])
+  assert.deepEqual(audio.named('setDelayMax').map((c) => c[1]), [1.2])
+  assert.deepEqual(audio.named('setCurve').map((c) => c[1]), [[-1, 0, 1]])
+  assert.deepEqual(audio.named('setOversample').map((c) => c[1]), [2])
+  assert.deepEqual(audio.named('setImpulse').map((c) => c[2]), [true])
   w.close()
 })
 

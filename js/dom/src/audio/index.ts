@@ -164,6 +164,12 @@ const enum Kind {
   Stream = 7,
   Panner = 8,
   Listener = 9,
+  Biquad = 10,
+  Delay = 11,
+  WaveShaper = 12,
+  Compressor = 13,
+  Convolver = 14,
+  Analyser = 15,
 }
 
 class AudioNode extends EventTarget {
@@ -430,31 +436,238 @@ const same = (value: unknown) => value
 const GainNode = nodeClass('GainNode', Kind.Gain, [['gain', 1]])
 const StereoPannerNode = nodeClass('StereoPannerNode', Kind.StereoPanner, [['pan', 0, -1, 1]])
 const ConstantSourceNode = nodeClass('ConstantSourceNode', Kind.ConstantSource, [['offset', 1]], undefined, AudioScheduledSourceNode as typeof AudioNode)
-const BiquadFilterNode = nodeClass('BiquadFilterNode', Kind.Through, [['frequency', 350, 0, 24000], ['detune', 0], ['Q', 1], ['gain', 0]], (node) => {
-  field(node, 'type', 'lowpass', String)
-  Object.defineProperty(node, 'getFrequencyResponse', { value: (_f: Float32Array, mag: Float32Array, phase: Float32Array) => { mag.fill(1); phase.fill(0) } })
-})
-const DynamicsCompressorNode = nodeClass('DynamicsCompressorNode', Kind.Through, [['threshold', -24, -100, 0], ['knee', 30, 0, 40], ['ratio', 12, 1, 20], ['attack', 0.003, 0, 1], ['release', 0.25, 0, 1]], (node) => field(node, 'reduction', 0))
-const DelayNode = nodeClass('DelayNode', Kind.Through, [['delayTime', 0, 0, 180]])
-const WaveShaperNode = nodeClass('WaveShaperNode', Kind.Through, [], (node) => {
-  field(node, 'curve', null, same)
-  field(node, 'oversample', 'none', String)
-})
-const ConvolverNode = nodeClass('ConvolverNode', Kind.Through, [], (node) => {
-  field(node, 'buffer', null, same)
-  field(node, 'normalize', true, Boolean)
-})
-const AnalyserNode = nodeClass('AnalyserNode', Kind.Through, [], (node) => {
-  field(node, 'fftSize', 2048, Number)
-  Object.defineProperty(node, 'frequencyBinCount', { get: () => (node as unknown as { fftSize: number }).fftSize / 2, enumerable: true })
-  for (const [key, value] of [['minDecibels', -100], ['maxDecibels', -30], ['smoothingTimeConstant', 0.8]] as const) field(node, key, value, Number)
-  Object.defineProperties(node, {
-    getFloatFrequencyData: { value: (a: Float32Array) => a.fill(-Infinity) },
-    getByteFrequencyData: { value: (a: Uint8Array) => a.fill(0) },
-    getFloatTimeDomainData: { value: (a: Float32Array) => a.fill(0) },
-    getByteTimeDomainData: { value: (a: Uint8Array) => a.fill(128) },
-  })
-})
+const FILTER_TYPES = ['lowpass', 'highpass', 'bandpass', 'lowshelf', 'highshelf', 'peaking', 'notch', 'allpass']
+const DETUNE_RANGE = 1200 * Math.log2(3.4028234663852886e38)
+
+class BiquadFilterNode extends AudioNode {
+  #type = 'lowpass'
+  declare readonly frequency: AudioParam
+  declare readonly detune: AudioParam
+  declare readonly Q: AudioParam
+  declare readonly gain: AudioParam
+
+  constructor(context: BaseAudioContext, options?: { type?: string; frequency?: number; detune?: number; Q?: number; gain?: number }) {
+    checkContext(context)
+    super(KEY, context, Kind.Biquad)
+    const specs: ParamSpec[] = [['frequency', 350, 0, context.sampleRate / 2], ['detune', 0, -DETUNE_RANGE, DETUNE_RANGE], ['Q', 1], ['gain', 0, -3.4028234663852886e38, 40 * Math.log10(3.4028234663852886e38)]]
+    params(this, options, specs).forEach((p, i) => Object.defineProperty(this, specs[i]![0], { value: p, enumerable: true }))
+    if (options?.type !== undefined) this.type = options.type
+  }
+
+  get type(): string {
+    return this.#type
+  }
+  set type(value: string) {
+    const code = FILTER_TYPES.indexOf(String(value))
+    if (code < 0) return
+    this.#type = FILTER_TYPES[code]!
+    native?.setFilterType(this[ID], code)
+  }
+
+  getFrequencyResponse(frequencyHz: Float32Array, magResponse: Float32Array, phaseResponse: Float32Array): void {
+    for (const [name, array] of [['frequencyHz', frequencyHz], ['magResponse', magResponse], ['phaseResponse', phaseResponse]] as const) {
+      if (!(array instanceof Float32Array)) throw new TypeError(`Failed to execute 'getFrequencyResponse' on 'BiquadFilterNode': parameter ${name} is not of type 'Float32Array'.`)
+    }
+    if (magResponse.length !== frequencyHz.length || phaseResponse.length !== frequencyHz.length) {
+      throw new DOMException("Failed to execute 'getFrequencyResponse' on 'BiquadFilterNode': the three arrays are not the same length.", 'InvalidAccessError')
+    }
+    if (!native) return
+    const n = frequencyHz.length
+    const response = native.biquadResponse(FILTER_TYPES.indexOf(this.#type), this.frequency.value, this.detune.value, this.Q.value, this.gain.value, this.context.sampleRate, frequencyHz)
+    magResponse.set(response.subarray(0, n))
+    phaseResponse.set(response.subarray(n, 2 * n))
+  }
+}
+tag(BiquadFilterNode)
+
+class DelayNode extends AudioNode {
+  declare readonly delayTime: AudioParam
+
+  constructor(context: BaseAudioContext, options?: { maxDelayTime?: number; delayTime?: number }) {
+    checkContext(context)
+    const max = Number(options?.maxDelayTime ?? 1)
+    if (!(max > 0 && max < 180)) throw new DOMException(`Failed to construct 'DelayNode': The max delay time provided (${options?.maxDelayTime}) is outside the range (0, 180).`, 'NotSupportedError')
+    super(KEY, context, Kind.Delay)
+    native?.setDelayMax(this[ID], max)
+    const [delayTime] = params(this, options, [['delayTime', 0, 0, max]])
+    Object.defineProperty(this, 'delayTime', { value: delayTime, enumerable: true })
+  }
+}
+tag(DelayNode)
+
+const OVERSAMPLE: Record<string, number> = { none: 0, '2x': 2, '4x': 4 }
+
+class WaveShaperNode extends AudioNode {
+  #curve: Float32Array | null = null
+  #oversample = 'none'
+
+  constructor(context: BaseAudioContext, options?: { curve?: ArrayLike<number> | null; oversample?: string }) {
+    checkContext(context)
+    super(KEY, context, Kind.WaveShaper)
+    if (options?.curve != null) this.curve = Float32Array.from(options.curve)
+    if (options?.oversample !== undefined) this.oversample = options.oversample
+  }
+
+  get curve(): Float32Array | null {
+    return this.#curve
+  }
+  set curve(value: Float32Array | null) {
+    if (value === null) {
+      this.#curve = null
+      native?.setCurve(this[ID], null)
+      return
+    }
+    if (!(value instanceof Float32Array)) throw new TypeError("Failed to set the 'curve' property on 'WaveShaperNode': The provided value is not of type 'Float32Array'.")
+    if (value.length < 2) throw new DOMException(`Failed to set the 'curve' property on 'WaveShaperNode': The curve length provided (${value.length}) is less than the minimum bound (2).`, 'InvalidStateError')
+    this.#curve = value.slice()
+    native?.setCurve(this[ID], this.#curve)
+  }
+
+  get oversample(): string {
+    return this.#oversample
+  }
+  set oversample(value: string) {
+    const code = OVERSAMPLE[String(value)]
+    if (code === undefined) return
+    this.#oversample = String(value)
+    native?.setOversample(this[ID], code)
+  }
+}
+tag(WaveShaperNode)
+
+class DynamicsCompressorNode extends AudioNode {
+  declare readonly threshold: AudioParam
+  declare readonly knee: AudioParam
+  declare readonly ratio: AudioParam
+  declare readonly attack: AudioParam
+  declare readonly release: AudioParam
+
+  constructor(context: BaseAudioContext, options?: object) {
+    checkContext(context)
+    super(KEY, context, Kind.Compressor)
+    const specs: ParamSpec[] = [['threshold', -24, -100, 0], ['knee', 30, 0, 40], ['ratio', 12, 1, 20], ['attack', 0.003, 0, 1], ['release', 0.25, 0, 1]]
+    params(this, options, specs).forEach((p, i) => Object.defineProperty(this, specs[i]![0], { value: p, enumerable: true }))
+    this.channelCountMode = 'clamped-max'
+  }
+
+  get reduction(): number {
+    return native ? native.reduction(this[ID]) : 0
+  }
+}
+tag(DynamicsCompressorNode)
+
+class ConvolverNode extends AudioNode {
+  #buffer: AudioBuffer | null = null
+  #normalize = true
+
+  constructor(context: BaseAudioContext, options?: { buffer?: AudioBuffer | null; disableNormalization?: boolean }) {
+    checkContext(context)
+    super(KEY, context, Kind.Convolver)
+    this.channelCountMode = 'clamped-max'
+    this.#normalize = !options?.disableNormalization
+    if (options?.buffer != null) this.buffer = options.buffer
+  }
+
+  get normalize(): boolean {
+    return this.#normalize
+  }
+  set normalize(value: boolean) {
+    this.#normalize = Boolean(value)
+  }
+
+  get buffer(): AudioBuffer | null {
+    return this.#buffer
+  }
+  set buffer(value: AudioBuffer | null) {
+    const what = "Failed to set the 'buffer' property on 'ConvolverNode'"
+    if (value === null) {
+      this.#buffer = null
+      native?.setImpulse(this[ID], 0, this.#normalize)
+      return
+    }
+    if (!(value instanceof AudioBuffer)) throw new TypeError(`${what}: The provided value is not of type 'AudioBuffer'.`)
+    if (value.sampleRate !== this.context.sampleRate) throw new DOMException(`${what}: The buffer sample rate (${value.sampleRate}) does not match the context rate (${this.context.sampleRate}).`, 'NotSupportedError')
+    const channels = value.numberOfChannels
+    if (channels !== 1 && channels !== 2 && channels !== 4) throw new DOMException(`${what}: The buffer must have 1, 2, or 4 channels, not ${channels}.`, 'NotSupportedError')
+    if (channels === 4) throw new DOMException(`${what}: true stereo (4-channel) impulse responses are not supported yet.`, 'NotSupportedError')
+    this.#buffer = value
+    native?.setImpulse(this[ID], value[UPLOAD](), this.#normalize)
+  }
+}
+tag(ConvolverNode)
+
+class AnalyserNode extends AudioNode {
+  #fftSize = 2048
+  #minDecibels = -100
+  #maxDecibels = -30
+  #smoothing = 0.8
+
+  constructor(context: BaseAudioContext, options?: { fftSize?: number; minDecibels?: number; maxDecibels?: number; smoothingTimeConstant?: number }) {
+    checkContext(context)
+    super(KEY, context, Kind.Analyser)
+    if (options?.fftSize !== undefined) this.fftSize = options.fftSize
+    if (options?.minDecibels !== undefined || options?.maxDecibels !== undefined) this.#decibels(Number(options.minDecibels ?? this.#minDecibels), Number(options.maxDecibels ?? this.#maxDecibels))
+    if (options?.smoothingTimeConstant !== undefined) this.smoothingTimeConstant = options.smoothingTimeConstant
+  }
+
+  #decibels(min: number, max: number): void {
+    if (!(min < max)) throw new DOMException(`Failed to set the decibel range on 'AnalyserNode': minDecibels (${min}) must be less than maxDecibels (${max}).`, 'IndexSizeError')
+    this.#minDecibels = min
+    this.#maxDecibels = max
+  }
+
+  get fftSize(): number {
+    return this.#fftSize
+  }
+  set fftSize(value: number) {
+    const n = Math.trunc(Number(value))
+    if (!(n >= 32 && n <= 32768 && (n & (n - 1)) === 0)) throw new DOMException(`Failed to set the 'fftSize' property on 'AnalyserNode': The value provided (${value}) is not a power of two in [32, 32768].`, 'IndexSizeError')
+    this.#fftSize = n
+  }
+  get frequencyBinCount(): number {
+    return this.#fftSize / 2
+  }
+  get minDecibels(): number {
+    return this.#minDecibels
+  }
+  set minDecibels(value: number) {
+    this.#decibels(Number(value), this.#maxDecibels)
+  }
+  get maxDecibels(): number {
+    return this.#maxDecibels
+  }
+  set maxDecibels(value: number) {
+    this.#decibels(this.#minDecibels, Number(value))
+  }
+  get smoothingTimeConstant(): number {
+    return this.#smoothing
+  }
+  set smoothingTimeConstant(value: number) {
+    const v = Number(value)
+    if (!(v >= 0 && v <= 1)) throw new DOMException(`Failed to set the 'smoothingTimeConstant' property on 'AnalyserNode': The value provided (${value}) is outside the range [0, 1].`, 'IndexSizeError')
+    this.#smoothing = v
+  }
+
+  #read(what: number, target: Float32Array | Uint8Array, Kind: typeof Float32Array | typeof Uint8Array, method: string): void {
+    if (!(target instanceof Kind)) throw new TypeError(`Failed to execute '${method}' on 'AnalyserNode': parameter 1 is not of type '${Kind.name}'.`)
+    if (!native) return
+    const data = native.analyse(this[ID], what, this.#fftSize, this.#smoothing, this.#minDecibels, this.#maxDecibels)
+    if (data) target.set(data.subarray(0, Math.min(target.length, data.length)) as never)
+  }
+  getFloatTimeDomainData(array: Float32Array): void {
+    this.#read(0, array, Float32Array, 'getFloatTimeDomainData')
+  }
+  getByteTimeDomainData(array: Uint8Array): void {
+    this.#read(1, array, Uint8Array, 'getByteTimeDomainData')
+  }
+  getFloatFrequencyData(array: Float32Array): void {
+    this.#read(2, array, Float32Array, 'getFloatFrequencyData')
+  }
+  getByteFrequencyData(array: Uint8Array): void {
+    this.#read(3, array, Uint8Array, 'getByteFrequencyData')
+  }
+}
+tag(AnalyserNode)
 
 function float(what: string, value: unknown): number {
   const n = Number(value)
@@ -857,8 +1070,8 @@ export class BaseAudioContext extends EventTarget {
   createDynamicsCompressor(): AudioNode {
     return new DynamicsCompressorNode(this)
   }
-  createDelay(_maxDelayTime?: number): AudioNode {
-    return new DelayNode(this)
+  createDelay(maxDelayTime = 1): AudioNode {
+    return new DelayNode(this, { maxDelayTime })
   }
   createWaveShaper(): AudioNode {
     return new WaveShaperNode(this)

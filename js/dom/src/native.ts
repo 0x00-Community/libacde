@@ -533,6 +533,14 @@ export interface AudioNative {
   onEvent(callback: (kind: number, id: number) => void): void
   createContext(context: number, destination: number): void
   createOfflineContext(context: number, destination: number, channels: number, length: number, sampleRate: number): void
+  setFilterType(node: number, type: number): void
+  setDelayMax(node: number, seconds: number): void
+  setCurve(node: number, curve: Float32Array | null): void
+  setOversample(node: number, oversample: number): void
+  setImpulse(node: number, buffer: number, normalize: boolean): void
+  reduction(node: number): number
+  biquadResponse(type: number, frequency: number, detune: number, q: number, gain: number, sampleRate: number, frequencies: Float32Array): Float32Array
+  analyse(node: number, what: number, fftSize: number, smoothing: number, minDecibels: number, maxDecibels: number): Float32Array | Uint8Array | undefined
   startRendering(context: number, buffer: number): Promise<{ length: number; sampleRate: number; numberOfChannels: number; ended: number[] }>
   setRunning(context: number, running: boolean): void
   closeContext(context: number): void

@@ -1,9 +1,15 @@
 #![allow(clippy::needless_range_loop)]
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 
+use super::analyser::Tap;
+use super::biquad::{Biquad, FilterType};
+use super::compressor::Compressor;
+use super::convolver::Convolver;
+use super::delay::Delay;
+use super::shaper::{Oversample, Shaper};
 use super::spatial::{self, Hrtf, HrtfModel, Listener, PannerConfig, V3};
 
 pub const QUANTUM: usize = 128;
@@ -25,11 +31,21 @@ impl AudioData {
 
 pub struct Shared {
     params: Box<[AtomicU32]>,
+    reduction: AtomicU32,
+    pub tap: Option<Mutex<Tap>>,
 }
 
 impl Shared {
     pub fn new(kind: Kind) -> Shared {
-        Shared { params: (0..kind.param_count()).map(|_| AtomicU32::new(0)).collect() }
+        Shared {
+            params: (0..kind.param_count()).map(|_| AtomicU32::new(0)).collect(),
+            reduction: AtomicU32::new(0),
+            tap: (kind == Kind::Analyser).then(|| Mutex::new(Tap::default())),
+        }
+    }
+
+    pub fn reduction(&self) -> f32 {
+        f32::from_bits(self.reduction.load(Ordering::Relaxed))
     }
 
     pub fn param(&self, i: usize) -> f32 {
@@ -49,6 +65,12 @@ pub enum Kind {
     Stream,
     Panner,
     Listener,
+    Biquad,
+    Delay,
+    WaveShaper,
+    Compressor,
+    Convolver,
+    Analyser,
 }
 
 const LISTENER_DEFAULTS: [f32; 9] = [0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0];
@@ -65,6 +87,12 @@ impl Kind {
             7 => Kind::Stream,
             8 => Kind::Panner,
             9 => Kind::Listener,
+            10 => Kind::Biquad,
+            11 => Kind::Delay,
+            12 => Kind::WaveShaper,
+            13 => Kind::Compressor,
+            14 => Kind::Convolver,
+            15 => Kind::Analyser,
             _ => return None,
         })
     }
@@ -79,7 +107,10 @@ impl Kind {
             Kind::Gain | Kind::StereoPanner | Kind::ConstantSource => 1,
             Kind::Panner => 6,
             Kind::Listener => 9,
-            Kind::Destination | Kind::Through | Kind::Stream => 0,
+            Kind::Biquad => 4,
+            Kind::Delay => 1,
+            Kind::Compressor => 5,
+            Kind::Destination | Kind::Through | Kind::Stream | Kind::WaveShaper | Kind::Convolver | Kind::Analyser => 0,
         }
     }
 
@@ -95,7 +126,10 @@ impl Kind {
             Kind::ConstantSource => vec![any(1.0)],
             Kind::Panner => [0.0, 0.0, 0.0, 1.0, 0.0, 0.0].map(any).to_vec(),
             Kind::Listener => LISTENER_DEFAULTS.map(any).to_vec(),
-            Kind::Destination | Kind::Through | Kind::Stream => vec![],
+            Kind::Biquad => vec![(350.0, 0.0, nyquist), (0.0, -detune, detune), any(1.0), (0.0, f32::MIN, 40.0 * f32::MAX.log10())],
+            Kind::Delay => vec![(0.0, 0.0, 180.0)],
+            Kind::Compressor => vec![(-24.0, -100.0, 0.0), (30.0, 0.0, 40.0), (12.0, 1.0, 20.0), (0.003, 0.0, 1.0), (0.25, 0.0, 1.0)],
+            Kind::Destination | Kind::Through | Kind::Stream | Kind::WaveShaper | Kind::Convolver | Kind::Analyser => vec![],
         };
         debug_assert_eq!(params.len(), self.param_count());
         params
@@ -143,6 +177,11 @@ pub enum NodeOp {
     Release,
     Stream(Option<Box<super::live::LiveTap>>),
     Panner(PannerConfig),
+    Filter(FilterType),
+    DelayMax(f64),
+    Curve(Option<Arc<[f32]>>),
+    Oversample(Oversample),
+    Impulse(Option<Arc<AudioData>>, bool),
 }
 
 #[derive(Clone, Debug)]
@@ -414,7 +453,22 @@ struct Node {
     buf: Buffer,
     stream: Option<Box<super::live::LiveTap>>,
     panner: Option<Box<Panner>>,
+    effect: Effect,
+    tail: u64,
+    in_cycle: bool,
+    muted: bool,
 }
+
+enum Effect {
+    None,
+    Biquad(Box<Biquad>),
+    Delay(Box<Delay>, bool),
+    Shaper(Box<Shaper>),
+    Compressor(Box<Compressor>),
+    Convolver(Option<Box<Convolver>>),
+}
+
+const QUIET: f32 = 1e-7;
 
 struct Panner {
     config: PannerConfig,
@@ -443,6 +497,17 @@ impl Node {
             buf: Buffer { data: None, pos: None, offset: 0.0, duration: None, played: 0.0, looping: false, loop_start: 0.0, loop_end: 0.0 },
             stream: None,
             panner: (kind == Kind::Panner).then(|| Box::new(Panner { config: PannerConfig::default(), hrtf: None })),
+            effect: match kind {
+                Kind::Biquad => Effect::Biquad(Box::default()),
+                Kind::Delay => Effect::Delay(Box::new(Delay::new(1.0, rate)), true),
+                Kind::WaveShaper => Effect::Shaper(Box::default()),
+                Kind::Compressor => Effect::Compressor(Box::new(Compressor::new(rate))),
+                Kind::Convolver => Effect::Convolver(None),
+                _ => Effect::None,
+            },
+            tail: 0,
+            in_cycle: false,
+            muted: false,
         }
     }
 
@@ -612,6 +677,38 @@ impl Graph {
                     p.config = config;
                 }
             }
+            NodeOp::Filter(kind) => {
+                if let Effect::Biquad(b) = &mut node.effect {
+                    b.kind = kind;
+                }
+            }
+            NodeOp::DelayMax(seconds) => {
+                if let Effect::Delay(d, _) = &mut node.effect
+                    && seconds > 0.0
+                    && seconds != d.max_seconds()
+                {
+                    **d = Delay::new(seconds, self.rate);
+                    if let Some(p) = node.params.get_mut(0) {
+                        p.max = seconds as f32;
+                    }
+                }
+            }
+            NodeOp::Curve(curve) => {
+                if let Effect::Shaper(s) = &mut node.effect {
+                    s.set_curve(curve);
+                }
+            }
+            NodeOp::Oversample(oversample) => {
+                if let Effect::Shaper(s) = &mut node.effect {
+                    s.set_oversample(oversample);
+                }
+            }
+            NodeOp::Impulse(response, normalize) => {
+                if let Effect::Convolver(c) = &mut node.effect {
+                    *c = response.filter(|r| r.len() > 0 && !r.channels.is_empty()).map(|r| Box::new(Convolver::new(&r, normalize)));
+                    node.tail = 0;
+                }
+            }
         }
         if node.panner.as_ref().is_some_and(|p| p.config.hrtf) && self.hrtf.is_none() {
             self.hrtf = Some(Arc::new(HrtfModel::new(self.rate)));
@@ -628,7 +725,9 @@ impl Graph {
     }
 
     pub fn active(&self) -> bool {
-        self.nodes.values().any(|n| (n.kind.is_source() && n.src.start.is_some() && !n.src.ended) || (n.kind == Kind::Stream && n.stream.is_some()))
+        self.nodes
+            .values()
+            .any(|n| (n.kind.is_source() && n.src.start.is_some() && !n.src.ended) || (n.kind == Kind::Stream && n.stream.is_some()) || n.tail > 0)
     }
 
     #[cfg(test)]
@@ -637,10 +736,50 @@ impl Graph {
     }
 
     fn sort(&mut self) {
+        for node in self.nodes.values_mut() {
+            node.in_cycle = false;
+            node.muted = false;
+        }
+        let cycles = self.order_by_inputs();
+        let mut cut = false;
+        for cycle in cycles {
+            let delays: Vec<u32> = cycle.iter().copied().filter(|id| self.nodes[id].kind == Kind::Delay).collect();
+            if delays.is_empty() {
+                for id in &cycle {
+                    if let Some(node) = self.nodes.get_mut(id) {
+                        node.muted = true;
+                    }
+                }
+            } else {
+                for id in delays {
+                    if let Some(node) = self.nodes.get_mut(&id) {
+                        cut |= !node.in_cycle;
+                        node.in_cycle = true;
+                    }
+                }
+            }
+        }
+        if cut {
+            for node in self.nodes.values_mut() {
+                node.muted = false;
+            }
+            for cycle in self.order_by_inputs() {
+                for id in &cycle {
+                    if let Some(node) = self.nodes.get_mut(id) {
+                        node.muted = true;
+                    }
+                }
+            }
+        }
+        self.order_dirty = false;
+    }
+
+    fn order_by_inputs(&mut self) -> Vec<Vec<u32>> {
         let mut ids: Vec<u32> = self.nodes.keys().copied().collect();
         ids.sort_unstable();
         let mut state: HashMap<u32, u8> = HashMap::with_capacity(ids.len());
         let mut order = Vec::with_capacity(ids.len());
+        let mut cycles = Vec::new();
         for root in ids {
             if state.contains_key(&root) {
                 continue;
@@ -650,12 +789,23 @@ impl Graph {
             while let Some(&mut (id, ref mut next)) = stack.last_mut() {
                 let node = &self.nodes[&id];
                 let listener = self.listener.filter(|_| node.kind == Kind::Panner);
-                let feeds = node.inputs.iter().chain(node.param_inputs.iter().flatten()).chain(listener.iter());
+                let inputs: &[u32] = if node.in_cycle { &[] } else { &node.inputs };
+                let feeds = inputs.iter().chain(node.param_inputs.iter().flatten()).chain(listener.iter());
                 if let Some(&input) = feeds.clone().nth(*next) {
                     *next += 1;
-                    if self.nodes.contains_key(&input) && !state.contains_key(&input) {
-                        state.insert(input, 1);
-                        stack.push((input, 0));
+                    if !self.nodes.contains_key(&input) {
+                        continue;
+                    }
+                    match state.get(&input) {
+                        None => {
+                            state.insert(input, 1);
+                            stack.push((input, 0));
+                        }
+                        Some(1) => {
+                            let from = stack.iter().position(|(n, _)| *n == input).unwrap_or(0);
+                            cycles.push(stack[from..].iter().map(|(n, _)| *n).collect());
+                        }
+                        Some(_) => {}
                     }
                 } else {
                     stack.pop();
@@ -665,7 +815,7 @@ impl Graph {
             }
         }
         self.order = order;
-        self.order_dirty = false;
+        cycles
     }
 
     pub fn render(&mut self, out: &mut Bus, ended: &mut Vec<u32>) {
@@ -688,8 +838,91 @@ impl Graph {
                 out[1][i] += dest.out[right][i];
             }
         }
+        let cut: Vec<u32> = self.order.iter().copied().filter(|id| self.nodes.get(id).is_some_and(|n| n.in_cycle && !n.muted)).collect();
+        for id in cut {
+            let Some(mut node) = self.nodes.remove(&id) else { continue };
+            let (bus, mono, empty) = self.mixed(&node.inputs);
+            if let Effect::Delay(d, last_mono) = &mut node.effect {
+                d.write(&bus, mono);
+                d.advance();
+                *last_mono = mono;
+                node.tail = if empty { node.tail.saturating_sub(QUANTUM as u64) } else { d.tail_frames(self.rate) };
+            }
+            self.nodes.insert(id, node);
+        }
         self.frame += QUANTUM as u64;
         self.collect(ended);
+    }
+
+    fn mixed(&self, inputs: &[u32]) -> (Bus, bool, bool) {
+        let mut bus = [[0.0; QUANTUM]; 2];
+        let (mut mono, mut empty) = (true, true);
+        for input in inputs {
+            if let Some(from) = self.nodes.get(input)
+                && !from.silent
+            {
+                up_mix(&mut bus, &mut mono, &mut empty, &from.out, from.mono);
+            }
+        }
+        (bus, mono, empty)
+    }
+
+    fn effect(&mut self, node: &mut Node, empty: bool, mono: bool) {
+        let rate = self.rate;
+        let zero = [[0.0; QUANTUM]; 2];
+        let quiet = empty && !node.in_cycle;
+        if matches!(node.effect, Effect::Convolver(None)) || (quiet && node.tail == 0) {
+            node.silent = true;
+            if let Effect::Compressor(c) = &node.effect {
+                node.shared.reduction.store(c.reduction().to_bits(), Ordering::Relaxed);
+            }
+            return;
+        }
+        let (input, mono) = if quiet { (&zero, true) } else { (&self.input, mono) };
+        let values = &self.values;
+        let still = self.still[..node.params.len()].iter().all(|s| *s);
+        let mut out = [[0.0; QUANTUM]; 2];
+        let (out_mono, tail, decays) = match &mut node.effect {
+            Effect::None => return,
+            Effect::Biquad(b) => {
+                b.process(input, mono, &values[..], still, rate, &mut out);
+                (mono, u64::MAX, true)
+            }
+            Effect::Delay(d, last_mono) => {
+                if node.in_cycle {
+                    d.read(&values[0], QUANTUM as f64, rate, &mut out);
+                    (*last_mono, node.tail, false)
+                } else {
+                    d.write(input, mono);
+                    d.read(&values[0], 0.0, rate, &mut out);
+                    d.advance();
+                    (mono, d.tail_frames(rate), false)
+                }
+            }
+            Effect::Shaper(s) => {
+                s.process(input, mono, &mut out);
+                (mono, s.tail_frames(), false)
+            }
+            Effect::Compressor(c) => {
+                c.process(input, mono, [0, 1, 2, 3, 4].map(|p| values[p][0]), rate, &mut out);
+                node.shared.reduction.store(c.reduction().to_bits(), Ordering::Relaxed);
+                (false, (Compressor::TAIL_SECONDS * rate) as u64, false)
+            }
+            Effect::Convolver(None) => return,
+            Effect::Convolver(Some(c)) => {
+                let out_mono = c.process(input, mono, &mut out);
+                (out_mono, c.tail_frames(), false)
+            }
+        };
+        if !node.in_cycle {
+            node.tail = if quiet { node.tail.saturating_sub(QUANTUM as u64) } else { tail };
+        }
+        if quiet && decays && out.iter().flatten().all(|v| v.abs() < QUIET) {
+            node.tail = 0;
+        }
+        node.out = out;
+        node.mono = out_mono;
+        node.silent = false;
     }
 
     pub fn skip(&mut self, frames: u64) {
@@ -703,7 +936,8 @@ impl Graph {
                 continue;
             }
             let fed = !node.inputs.is_empty() || node.param_inputs.iter().any(|l| !l.is_empty());
-            let done = if node.kind.is_source() { node.src.ended || (node.released && node.src.start.is_none()) } else { node.released && !fed };
+            let done =
+                if node.kind.is_source() { node.src.ended || (node.released && node.src.start.is_none()) } else { node.released && !fed && node.tail == 0 };
             if done {
                 gone.push(id);
                 if node.kind.is_source() && node.src.ended {
@@ -760,6 +994,19 @@ impl Graph {
             self.listening.copy_from_slice(&self.values[..9]);
             self.listener_still = self.still[..9].iter().all(|s| *s);
         }
+        if !matches!(node.effect, Effect::None) {
+            if node.muted {
+                node.silent = true;
+            } else {
+                self.effect(node, empty, mono);
+            }
+            return;
+        }
+        if node.kind == Kind::Analyser
+            && let Some(tap) = &node.shared.tap
+        {
+            Tap::record(tap, &self.input, mono, empty || node.muted);
+        }
         let rate = self.rate;
         let input = &self.input;
         let values = &self.values;
@@ -768,7 +1015,7 @@ impl Graph {
             Kind::Stream => node.stream.is_none(),
             kind if kind.is_source() => range.is_none(),
             _ => empty,
-        };
+        } || node.muted;
         let (from, to) = range.unwrap_or_default();
         if node.silent
             && let Some(Panner { hrtf: Some(h), .. }) = node.panner.as_deref_mut()
@@ -785,10 +1032,11 @@ impl Graph {
                 }
             }
             Kind::Listener => {}
-            Kind::Destination | Kind::Through => {
+            Kind::Destination | Kind::Through | Kind::Analyser => {
                 node.out = *input;
                 node.mono = mono;
             }
+            Kind::Biquad | Kind::Delay | Kind::WaveShaper | Kind::Compressor | Kind::Convolver => {}
             Kind::Stream => {
                 node.mono = false;
                 node.out = [[0.0; QUANTUM]; 2];
@@ -1655,5 +1903,81 @@ mod tests {
         g.node(3, NodeOp::Param(0, ParamOp::Value(0.5)));
         g.node(4, NodeOp::Start { when: 0.0, offset: 0.0, duration: None });
         render(&mut g, 10);
+    }
+
+    fn impulse_source(g: &mut Graph, id: u32) {
+        g.add(id, Kind::BufferSource, Arc::new(Shared::new(Kind::BufferSource)));
+        let mut one = vec![0.0f32; 1];
+        one[0] = 1.0;
+        g.node(id, NodeOp::Buffer(Some(Arc::new(AudioData { rate: RATE, channels: vec![one] }))));
+        g.node(id, NodeOp::Start { when: 0.0, offset: 0.0, duration: None });
+    }
+
+    #[test]
+    fn a_delay_rings_on_after_its_source_ended() {
+        let mut g = Graph::new(RATE, 1);
+        impulse_source(&mut g, 2);
+        g.add(3, Kind::Delay, Arc::new(Shared::new(Kind::Delay)));
+        g.node(3, NodeOp::DelayMax(1.0));
+        g.node(3, NodeOp::Param(0, ParamOp::Value(0.015625)));
+        g.connect(2, 3, None);
+        g.connect(3, 1, None);
+        g.node(3, NodeOp::Release);
+        let out = render(&mut g, 16);
+        assert_eq!(out[750], 1.0, "the impulse comes out 2^-6 s = 750 frames later");
+        assert_eq!(out.iter().filter(|v| **v != 0.0).count(), 1);
+        assert!(g.has(3), "a released delay stays while its tail rings");
+        render(&mut g, 400);
+        assert!(!g.has(3), "and goes once the tail has passed");
+    }
+
+    #[test]
+    fn a_feedback_loop_through_a_delay_echoes_every_delay_time() {
+        let mut g = Graph::new(RATE, 1);
+        impulse_source(&mut g, 2);
+        g.add(3, Kind::Delay, Arc::new(Shared::new(Kind::Delay)));
+        g.node(3, NodeOp::DelayMax(1.0));
+        g.node(3, NodeOp::Param(0, ParamOp::Value(0.0078125)));
+        g.add(4, Kind::Gain, Arc::new(Shared::new(Kind::Gain)));
+        g.node(4, NodeOp::Param(0, ParamOp::Value(0.5)));
+        g.connect(2, 4, None);
+        g.connect(4, 3, None);
+        g.connect(3, 4, None);
+        g.connect(4, 1, None);
+        let out = render(&mut g, 16);
+        let echoes: Vec<(usize, f32)> = out.iter().enumerate().filter(|(_, v)| v.abs() > 1e-6).map(|(i, v)| (i, *v)).take(4).collect();
+        assert_eq!(echoes, [(0, 0.5), (375, 0.25), (750, 0.125), (1125, 0.0625)], "2^-7 s is 375 frames, not 375 + 128");
+    }
+
+    #[test]
+    fn a_loop_without_a_delay_is_silent() {
+        let mut g = Graph::new(RATE, 1);
+        g.add(2, Kind::Oscillator, Arc::new(Shared::new(Kind::Oscillator)));
+        g.node(2, NodeOp::Start { when: 0.0, offset: 0.0, duration: None });
+        g.add(3, Kind::Gain, Arc::new(Shared::new(Kind::Gain)));
+        g.add(4, Kind::Gain, Arc::new(Shared::new(Kind::Gain)));
+        g.connect(2, 3, None);
+        g.connect(3, 4, None);
+        g.connect(4, 3, None);
+        g.connect(4, 1, None);
+        assert!(render(&mut g, 4).iter().all(|v| *v == 0.0));
+        g.disconnect(4, Some(3), None);
+        assert!(peak(&render(&mut g, 4)) > 0.9, "breaking the loop lets the tone through");
+    }
+
+    #[test]
+    fn a_filter_decays_after_its_input_stops_and_then_rests() {
+        let mut g = Graph::new(RATE, 1);
+        impulse_source(&mut g, 2);
+        g.add(3, Kind::Biquad, Arc::new(Shared::new(Kind::Biquad)));
+        g.node(3, NodeOp::Param(0, ParamOp::Value(200.0)));
+        g.node(3, NodeOp::Param(2, ParamOp::Value(20.0)));
+        g.connect(2, 3, None);
+        g.connect(3, 1, None);
+        let out = render(&mut g, 64);
+        assert!(out[QUANTUM * 20..].iter().any(|v| v.abs() > 1e-4), "a resonant low-pass rings well past the impulse");
+        assert!(g.active(), "the ringing keeps the graph active");
+        render(&mut g, 2000);
+        assert!(!g.active(), "until it has decayed");
     }
 }

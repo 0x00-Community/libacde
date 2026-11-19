@@ -1,10 +1,16 @@
+mod analyser;
+mod biquad;
+mod compressor;
+mod convolver;
 mod decode;
+mod delay;
 mod graph;
 mod live;
 mod mixer;
 mod output;
 #[cfg(not(target_os = "linux"))]
 mod output_cpal;
+mod shaper;
 mod spatial;
 pub mod video;
 
@@ -19,6 +25,7 @@ use crate::host::{offload, rt};
 use graph::{AudioData, Graph, Kind, NodeOp, ParamOp, QUANTUM, Shared, Wave};
 use mixer::{Clock, Cmd, MediaOp, Mixer, Note, RATE};
 use output::Ctl;
+use realfft::num_complex::Complex64;
 use video::{Picture, VideoSound};
 
 enum Feed {
@@ -44,6 +51,7 @@ struct State {
     offline_contexts: HashMap<u32, Offline>,
     offline_nodes: HashMap<u32, u32>,
     rendering: Arc<Rendering>,
+    spectra: HashMap<u32, analyser::Spectrum>,
 }
 
 struct Offline {
@@ -68,7 +76,7 @@ impl Ticket {
     fn take(rendering: &Arc<Rendering>, samples: usize) -> Option<Ticket> {
         rendering
             .samples
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| used.checked_add(samples).filter(|total| *total <= MAX_OFFLINE_SAMPLES))
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |used| used.checked_add(samples).filter(|total| *total <= MAX_OFFLINE_SAMPLES))
             .ok()?;
         Some(Ticket { rendering: rendering.clone(), samples })
     }
@@ -180,6 +188,14 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>) {
         "onEvent" => on_event,
         "createContext" => create_context,
         "createOfflineContext" => create_offline_context,
+        "setFilterType" => set_filter_type,
+        "setDelayMax" => set_delay_max,
+        "setCurve" => set_curve,
+        "setOversample" => set_oversample,
+        "setImpulse" => set_impulse,
+        "reduction" => reduction,
+        "biquadResponse" => biquad_response,
+        "analyse" => analyse,
         "startRendering" => start_rendering,
         "setRunning" => set_running,
         "closeContext" => close_context,
@@ -290,9 +306,20 @@ senders! {
         Cmd::Node { node, op: NodeOp::Start { when, offset, duration: (duration >= 0.0).then_some(duration) } }
     };
     stop(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Stop(arg_f64(s, &a, 1)) };
+    set_filter_type(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Filter(biquad::FilterType::from_code(arg_u32(s, &a, 1))) };
+    set_delay_max(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::DelayMax(finite(s, &a, 1).clamp(0.0, 180.0)) };
+    set_curve(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Curve(floats(a.get(1)).map(Into::into)) };
+    set_oversample(s, a) => Cmd::Node { node: arg_u32(s, &a, 0), op: NodeOp::Oversample(shaper::Oversample::from_code(arg_u32(s, &a, 1))) };
+    set_impulse(s, a) => {
+        let (node, buffer, normalize) = (arg_u32(s, &a, 0), arg_u32(s, &a, 1), arg_bool(s, &a, 2));
+        Cmd::Node { node, op: NodeOp::Impulse(with_state(|state| state.buffers.get(&buffer).cloned()), normalize) }
+    };
     release(s, a) => {
         let node = arg_u32(s, &a, 0);
-        with_state(|state| state.nodes.remove(&node));
+        with_state(|state| {
+            state.nodes.remove(&node);
+            state.spectra.remove(&node);
+        });
         Cmd::Node { node, op: NodeOp::Release }
     };
     close_media(s, a) => {
@@ -442,6 +469,62 @@ fn param_value(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mu
     let (node, param) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1) as usize);
     let value = with_state(|s| s.nodes.get(&node).map_or(0.0, |n| n.param(param)));
     rv.set_double(f64::from(value));
+}
+
+fn reduction(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let node = bind::arg_u32(scope, &args, 0);
+    let value = with_state(|s| s.nodes.get(&node).map_or(0.0, |n| n.reduction()));
+    rv.set_double(f64::from(value));
+}
+
+fn biquad_response(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let kind = biquad::FilterType::from_code(bind::arg_u32(scope, &args, 0));
+    let [frequency, detune, q, gain] = [1, 2, 3, 4].map(|i| bind::arg_f64(scope, &args, i) as f32);
+    let rate = bind::arg_f64(scope, &args, 5);
+    let Some(frequencies) = floats(args.get(6)) else {
+        return bind::throw_type_error(scope, "audio.biquadResponse: frequencies must be a Float32Array");
+    };
+    let c = biquad::Coefficients::of(kind, frequency, detune, q, gain, rate);
+    let n = frequencies.len();
+    let mut out = vec![f32::NAN; 2 * n];
+    for (i, f) in frequencies.iter().enumerate() {
+        let f = f64::from(*f);
+        if !(0.0..=rate / 2.0).contains(&f) {
+            continue;
+        }
+        let omega = -std::f64::consts::PI * f64::from((f / (rate / 2.0)) as f32);
+        let z = Complex64::new(omega.cos(), omega.sin());
+        let numerator = c.b0 + (c.b1 + c.b2 * z) * z;
+        let denominator = 1.0 + (c.a1 + c.a2 * z) * z;
+        let response = numerator / denominator;
+        out[i] = response.norm() as f32;
+        out[n + i] = response.im.atan2(response.re) as f32;
+    }
+    let array = bind::float32_array(scope, &out);
+    rv.set(array.into());
+}
+
+fn analyse(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let (node, what) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1));
+    let fft_size = (bind::arg_u32(scope, &args, 2) as usize).clamp(32, analyser::MAX_FFT);
+    let smoothing = bind::arg_f64(scope, &args, 3).clamp(0.0, 1.0) as f32;
+    let (min, max) = (bind::arg_f64(scope, &args, 4) as f32, bind::arg_f64(scope, &args, 5) as f32);
+    let Some(shared) = with_state(|s| s.nodes.get(&node).cloned()) else { return };
+    let Some(tap) = shared.tap.as_ref().and_then(|t| t.lock().ok()) else { return };
+    let values = if what < 2 {
+        let mut samples = vec![0.0; fft_size];
+        tap.latest(fft_size, &mut samples);
+        samples
+    } else {
+        with_state(|s| s.spectra.entry(node).or_default().decibels(&tap, fft_size, smoothing).to_vec())
+    };
+    drop(tap);
+    let array: v8::Local<v8::Value> = match what {
+        0 | 2 => bind::float32_array(scope, &values).into(),
+        1 => bind::uint8_array(scope, values.iter().map(|v| analyser::byte_time(*v)).collect()).into(),
+        _ => bind::uint8_array(scope, values.iter().map(|v| analyser::byte_frequency(*v, min, max)).collect()).into(),
+    };
+    rv.set(array);
 }
 
 type Fields = [(&'static str, f64); 3];

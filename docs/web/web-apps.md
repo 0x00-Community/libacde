@@ -149,8 +149,21 @@
     0.10 m; 8 抽头加窗 sinc, 多 4 个样本的固定延迟) 和一个头影滤波器 (一极一零), 外加一个后方衰减; 各方向的宽带电平和耳间时差按 Chrome
     (IRCAM 数据) 的白噪声测量标定 (`EAR_LEVELS` / `REAR_LEVELS`, 测试里 ±0.05、±3 个样本). 没有耳廓的仰角线索. 照规范 HRTF 下参数按 k-rate,
     每 quantum 算一次, 增益、延迟和滤波系数在 quantum 内线性过渡 (不出拉链声); 立体声输入左进左耳、右进右耳 (和 Chrome 一样不交叉).
-    输入变静时清掉延迟线和滤波器状态. `BiquadFilterNode`、`ConvolverNode`、`DynamicsCompressorNode`、`WaveShaperNode`、`DelayNode` 还没渲染
-    (输入原样通过, 第一次用时 warn 一次).
+    输入变静时清掉延迟线和滤波器状态.
+  - **效果节点** (2026-11-19, src/host `audio/` 下各一个文件, 在 `graph.rs` 的 `Effect` 里): 都在混音线程按 quantum 算, 页面只发设置 (`NodeOp`).
+    - `BiquadFilterNode` (`biquad.rs`): 系数照 Chromium `Biquad` (f64, 含频率 0 / 奈奎斯特和 Q ≤ 0 的边界), 参数在 quantum 里变时逐样本重算;
+      `getFrequencyResponse` 在页面线程用当前参数算 (超出 0–奈奎斯特的频率给 NaN).
+    - `DelayNode` (`delay.rs`): 每声道一条环形延迟线, 线性插值; `maxDelayTime` 0–180 s (以外 `NotSupportedError`). 在环路里的延迟节点
+      先读后写, 最少 128 帧 (规范的要求); 环路里没有延迟节点时整个环静音 (`muted`).
+    - `WaveShaperNode` (`shaper.rs`): 曲线映射和 2x / 4x 过采样的上下采样滤波器照 Chromium (128 / 256 抽头核, 4x 是两级 2x).
+    - `DynamicsCompressorNode` (`compressor.rs`): 移植 Chromium 的 `DynamicsCompressorKernel` (BSD), `reduction` 每 quantum 回填.
+    - `ConvolverNode` (`convolver.rs`, realfft): 三级非均匀分块的重叠保留 (128 / 1024 / 8192 帧一块), 没有额外延迟;
+      `normalize` 照规范的算法. 冲激响应 1、2 声道 (4 声道是 `NotSupportedError`, 还没有), 采样率要和 context 相同.
+    - `AnalyserNode` (`analyser.rs`): 混音线程把输入的单声道下混记进 32768 帧的环 (`Shared.tap`); `get*Data` 在页面线程取最后 `fftSize`
+      帧, Blackman 窗、FFT、平滑和分贝照规范 (同一批样本只算一次).
+    - 尾巴 (`Node::tail`): 输入静了以后节点还会出声的帧数 (延迟 = `maxDelayTime`, 压缩器 1.625 s, 卷积 = 冲激响应长度, 滤波器到输出低于 1e-7),
+      尾巴没完的节点不回收、算作还活着.
+    - 对 Chrome: 同一段脚本 (`OfflineAudioContext`, 每种节点) 在 Chrome 和 acdev 里各跑一遍, 结果对比见 libacde 提交信息.
 - **视频** (src/media `acde-media`): 用系统的框架解码, 不随包带编解码器 (用户定, 2026-11-09; libacde 闭源, 不链接 GPL 的 ffmpeg).
   - `Player::open(bytes)` 探出 `Info {duration, width, height, audio, video}`, 每个轨一条读线程 (`acde-video` / `acde-video-audio`) 各自往
     有界队列里解: 视频 RGBA 帧 (领先 4 帧), 音频 48 kHz 立体声 f32 交错 (领先半秒). 两个轨分开读, 不会一个轨满了卡住解封装器让另一个轨饿死.
