@@ -310,14 +310,29 @@ struct Outgoing {
     command: AcdeCommand,
 }
 
-impl From<SurfaceCommand> for Outgoing {
-    fn from(command: SurfaceCommand) -> Self {
+impl Outgoing {
+    fn of(command: SurfaceCommand) -> Option<Self> {
+        use crate::render::ClipboardEntry;
         use AcdeCommandKind as Kind;
         let mut held = Held::default();
         let command = match command {
             SurfaceCommand::RequestFrame => Kind::RequestFrame.into(),
-            SurfaceCommand::SetClipboard(text) => AcdeCommand { text: held.text(&text), ..Kind::SetClipboard.into() },
-            SurfaceCommand::ReadClipboard(reply) => AcdeCommand { reply: Box::into_raw(Box::new(AcdeReply(reply))), ..Kind::ReadClipboard.into() },
+            SurfaceCommand::SetClipboard(entries) => {
+                let text = ClipboardEntry::find(&entries, ClipboardEntry::TEXT).map(|entry| String::from_utf8_lossy(&entry.data).into_owned());
+                AcdeCommand { text: held.text(&text.unwrap_or_default()), ..Kind::SetClipboard.into() }
+            }
+            SurfaceCommand::ClipboardTypes(reply) => {
+                reply(vec![ClipboardEntry::TEXT.to_owned()]);
+                return None;
+            }
+            SurfaceCommand::ReadClipboard { mime, reply } if mime != ClipboardEntry::TEXT => {
+                reply(None);
+                return None;
+            }
+            SurfaceCommand::ReadClipboard { reply, .. } => {
+                let reply = Box::new(move |text: String| reply((!text.is_empty()).then(|| text.into_bytes())));
+                AcdeCommand { reply: Box::into_raw(Box::new(AcdeReply(reply))), ..Kind::ReadClipboard.into() }
+            }
             SurfaceCommand::StartDrag(data, _) => {
                 let (data_keys, data_len) = held.list(data.keys());
                 let (data_values, _) = held.list(data.values());
@@ -339,7 +354,7 @@ impl From<SurfaceCommand> for Outgoing {
             SurfaceCommand::Title(text) => AcdeCommand { text: held.text(&text), ..Kind::Title.into() },
             SurfaceCommand::ImeArea(values) => AcdeCommand { values, ..Kind::ImeArea.into() },
         };
-        Self { _held: held, command }
+        Some(Self { _held: held, command })
     }
 }
 
@@ -420,8 +435,9 @@ impl Window for CWindow {
 
     fn send(&self, command: SurfaceCommand) {
         if let Some(call) = self.0.send {
-            let outgoing = Outgoing::from(command);
-            unsafe { call(self.0.ctx, &outgoing.command) };
+            if let Some(outgoing) = Outgoing::of(command) {
+                unsafe { call(self.0.ctx, &outgoing.command) };
+            }
         }
     }
 

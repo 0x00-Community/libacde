@@ -12,7 +12,7 @@ import { Blob } from '../core/blob'
 import { NONE, NodeType } from '../native'
 import type { Element } from './element'
 import { scrollArgs, scrollElement, type ScrollToOptions } from './element'
-import { env, frames, resolveUrl } from './env'
+import { env, frames, resolveUrl, type ClipboardBytes } from './env'
 import type { Storage } from '../storage/webstorage'
 import { HashChangeEvent, MediaQueryListEvent, PopStateEvent } from './events'
 import { HANDLER_TYPES } from './element'
@@ -319,14 +319,61 @@ export class Clipboard extends EventTarget {
   writeText(text: string): Promise<void> {
     return env.clipboard ? env.clipboard.writeText(String(text)) : Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'))
   }
-  read(): Promise<unknown[]> {
-    return Promise.reject(new DOMException('Clipboard items are not supported', 'NotAllowedError'))
+  async read(): Promise<ClipboardItem[]> {
+    const access = env.clipboard
+    if (!access) throw new DOMException('Read permission denied.', 'NotAllowedError')
+    const parts: Record<string, Blob> = {}
+    for (const type of await access.types()) {
+      const data = await access.read(type)
+      if (data) parts[type] = new Blob([Uint8Array.from(data)], { type })
+    }
+    return Object.keys(parts).length ? [new ClipboardItem(parts)] : []
   }
-  write(): Promise<void> {
-    return Promise.reject(new DOMException('Clipboard items are not supported', 'NotAllowedError'))
+  async write(items: readonly ClipboardItem[]): Promise<void> {
+    const access = env.clipboard
+    if (!access) throw new DOMException('Write permission denied.', 'NotAllowedError')
+    const item = items[0]
+    if (!item) return access.write([])
+    const entries: ClipboardBytes[] = []
+    for (const type of item.types) {
+      if (!ClipboardItem.supports(type)) throw new DOMException(`Type ${type} not supported on write.`, 'NotAllowedError')
+      entries.push({ type, data: await (await item.getType(type)).bytes() })
+    }
+    return access.write(entries)
   }
 }
 tag(Clipboard)
+
+type ClipboardItemValue = string | Blob
+type PresentationStyle = 'unspecified' | 'inline' | 'attachment'
+
+export class ClipboardItem {
+  static readonly #SUPPORTED = new Set(['text/plain', 'image/png', 'text/uri-list'])
+  readonly #parts: Map<string, ClipboardItemValue | PromiseLike<ClipboardItemValue>>
+  readonly presentationStyle: PresentationStyle
+
+  constructor(items: Record<string, ClipboardItemValue | PromiseLike<ClipboardItemValue>>, options?: { presentationStyle?: PresentationStyle }) {
+    const entries = Object.entries(items ?? {})
+    if (!entries.length) throw new TypeError("Failed to construct 'ClipboardItem': Empty dictionary argument")
+    this.#parts = new Map(entries)
+    this.presentationStyle = options?.presentationStyle ?? 'unspecified'
+  }
+
+  get types(): readonly string[] {
+    return Object.freeze([...this.#parts.keys()])
+  }
+
+  async getType(type: string): Promise<Blob> {
+    if (!this.#parts.has(type)) throw new DOMException(`The type '${type}' was not found`, 'NotFoundError')
+    const value = await this.#parts.get(type)!
+    return typeof value === 'string' ? new Blob([value], { type }) : value
+  }
+
+  static supports(type: string): boolean {
+    return ClipboardItem.#SUPPORTED.has(String(type))
+  }
+}
+tag(ClipboardItem)
 
 export class Notification extends EventTarget {
   static get permission(): string {

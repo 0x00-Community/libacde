@@ -8,6 +8,9 @@ use crate::host::surface::{DragImage, Event, Surface};
 
 use crate::host::bind;
 use crate::host::rt::{self, Msg};
+use crate::render::ClipboardEntry;
+
+const CLIPBOARD_WAIT: Duration = Duration::from_secs(2);
 
 #[derive(Default)]
 struct State {
@@ -105,6 +108,7 @@ fn claim_surface(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, 
         "setFrameTheme" => set_frame_theme,
         "setPageDark" => set_page_dark,
         "setClipboard" => set_clipboard,
+        "clipboardTypes" => clipboard_types,
         "readClipboard" => read_clipboard,
         "startDrag" => start_drag,
         "setTitle" => set_title,
@@ -392,25 +396,63 @@ fn set_ime_area(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _
 }
 
 fn set_clipboard(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
-    let text = bind::arg_string(scope, &args, 0);
-    with_surface(scope, |surface| surface.set_clipboard(text));
+    let entries = clipboard_entries(scope, args.get(0));
+    with_surface(scope, |surface| surface.set_clipboard(entries));
 }
 
-fn read_clipboard(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+fn clipboard_entries(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Vec<ClipboardEntry> {
+    let Ok(list) = v8::Local::<v8::Array>::try_from(value) else { return Vec::new() };
+    let mut entries = Vec::new();
+    for i in 0..list.length() {
+        let Some(entry) = list.get_index(scope, i).and_then(|v| v8::Local::<v8::Object>::try_from(v).ok()) else { continue };
+        let Some(mime) = bind::get_string(scope, entry, "type") else { continue };
+        let Some(data) = bind::get(scope, entry, "data") else { continue };
+        let data = if data.is_string() { Some(data.to_rust_string_lossy(scope).into_bytes()) } else { bind::bytes(data) };
+        if let Some(data) = data {
+            entries.push(ClipboardEntry::new(mime, data));
+        }
+    }
+    entries
+}
+
+fn clipboard_types(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     let Some((token, promise)) = bind::promise(scope) else { return };
     let tx = rt::current().sender();
-    let reply = move |text: String| _ = tx.send(Msg::Task(Box::new(move |scope| clipboard_read(scope, token, &text))));
-    if with_surface(scope, |surface| surface.read_clipboard(Box::new(reply))).is_none() {
+    let reply = move |types: Vec<String>| _ = tx.send(Msg::Task(Box::new(move |scope| clipboard_types_answer(scope, token, &types))));
+    if with_surface(scope, |surface| surface.clipboard_types(Box::new(reply))).is_none() {
         return bind::forget_promise(token);
     }
-    rt::current().delay(Duration::from_secs(2), move |scope| clipboard_read(scope, token, ""));
+    rt::current().delay(CLIPBOARD_WAIT, move |scope| clipboard_types_answer(scope, token, &[]));
     rv.set(promise.into());
 }
 
-fn clipboard_read(scope: &mut v8::PinScope, token: u32, text: &str) {
+fn clipboard_types_answer(scope: &mut v8::PinScope, token: u32, types: &[String]) {
     if let Some(resolver) = bind::resolver(scope, token) {
-        let text = bind::string(scope, text);
-        resolver.resolve(scope, text.into());
+        let names: Vec<v8::Local<v8::Value>> = types.iter().map(|t| bind::string(scope, t).into()).collect();
+        let list = v8::Array::new_with_elements(scope, &names);
+        resolver.resolve(scope, list.into());
+    }
+}
+
+fn read_clipboard(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let mime = bind::arg_string(scope, &args, 0);
+    let Some((token, promise)) = bind::promise(scope) else { return };
+    let tx = rt::current().sender();
+    let reply = move |data: Option<Vec<u8>>| _ = tx.send(Msg::Task(Box::new(move |scope| clipboard_read(scope, token, data))));
+    if with_surface(scope, |surface| surface.read_clipboard(mime, Box::new(reply))).is_none() {
+        return bind::forget_promise(token);
+    }
+    rt::current().delay(CLIPBOARD_WAIT, move |scope| clipboard_read(scope, token, None));
+    rv.set(promise.into());
+}
+
+fn clipboard_read(scope: &mut v8::PinScope, token: u32, data: Option<Vec<u8>>) {
+    if let Some(resolver) = bind::resolver(scope, token) {
+        let value: v8::Local<v8::Value> = match data {
+            Some(data) => bind::uint8_array(scope, data).into(),
+            None => v8::null(scope).into(),
+        };
+        resolver.resolve(scope, value);
     }
 }
 

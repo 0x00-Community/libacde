@@ -30,7 +30,7 @@ pub use error::{Error, Result};
 pub use geometry::Metrics;
 pub use layers::{Backdrop, Drawing, Layer, LayerFilter};
 pub use net::{Load, Loader};
-pub use surface::{DragImage, SurfaceCommand};
+pub use surface::{ClipboardEntry, ClipboardReadReply, ClipboardTypesReply, DragImage, SurfaceCommand};
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

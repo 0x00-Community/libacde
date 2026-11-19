@@ -6,12 +6,25 @@ export const env = {
   navigate: (_url: string, _target: string) => {},
   reload: () => {},
   close: () => {},
-  clipboard: null as null | { readText(): Promise<string>; writeText(text: string): Promise<void> },
+  clipboard: null as null | ClipboardAccess,
   alert: null as null | ((message: string) => void),
   download: null as null | ((request: DownloadRequest) => void),
   files: null as null | FileChooser,
   notify: null as null | ((notification: { title: string; body: string; icon: string; tag: string }) => void),
   fileType: (_name: string): string => '',
+}
+
+export interface ClipboardBytes {
+  readonly type: string
+  readonly data: Uint8Array
+}
+
+export interface ClipboardAccess {
+  readText(): Promise<string>
+  writeText(text: string): Promise<void>
+  types(): Promise<string[]>
+  read(type: string): Promise<Uint8Array | null>
+  write(entries: readonly ClipboardBytes[]): Promise<void>
 }
 
 interface DownloadRequest {
