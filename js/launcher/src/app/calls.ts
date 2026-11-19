@@ -16,6 +16,7 @@ export type Route =
 
 const ACKNOWLEDGED = new Set(['window.ready', 'page.shown'])
 const PAGE = new Set(['open', 'save', 'notify'])
+const PICKERS = new Set(['open', 'save'])
 const LOCAL: Readonly<Record<string, Route>> = {
   'window.close': 'close',
   'window.minimize': 'minimize',
@@ -38,6 +39,7 @@ export function route(service: string, method: string, args: readonly unknown[],
   if (call === 'windows.close' && args[0] === caller.window && !caller.desktop) return 'close'
   if (caller.desktop && service === 'panel') return 'panel'
   if (caller.desktop && service === 'windows') return 'windows'
+  if (service === 'page' && PICKERS.has(method)) return 'page'
   if (caller.managed) return 'manager'
   if (service === 'session' || service === 'desktops') return 'session'
   if (service === 'lock') return 'lock'
