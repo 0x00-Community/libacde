@@ -13,6 +13,8 @@ mod conpty;
 mod devices;
 pub mod devtools;
 mod failure;
+#[cfg(target_os = "linux")]
+mod fcitx;
 mod fetch;
 pub(crate) mod fs;
 #[cfg(target_os = "linux")]
@@ -57,6 +59,8 @@ pub use bluetooth::{Bluetooths, BtCall};
 pub use bus::DesktopBus;
 #[cfg(target_os = "linux")]
 pub use devices::{DevCall, Devices, Topic};
+#[cfg(target_os = "linux")]
+pub use fcitx::{Fcitx, ImeController, ImeEntry, ImeGroup, ime_apply, ime_catalog, ime_state};
 pub use fetch::{Deliver, Dial, Event as FetchEvent, FetchClient};
 pub use fs::{EntryKind, Files, Finder, FsCall, FsError, FsReply, LentRoot, MAX_CHUNK, Opened, PickedFolders, Range, Workspace};
 #[cfg(target_os = "linux")]
