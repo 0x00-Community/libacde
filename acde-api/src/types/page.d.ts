@@ -1086,6 +1086,8 @@ export interface DisplayInfo {
   readonly scales: readonly number[]
   readonly brightness: number | null
   readonly rotation: 0 | 90 | 180 | 270
+  readonly bounds?: WindowRect | null
+  readonly workArea?: WindowRect | null
 }
 
 export interface NightLight {
