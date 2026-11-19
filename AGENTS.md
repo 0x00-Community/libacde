@@ -34,7 +34,9 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
   `libacde` 只发到内网 cargo 源 ac (`publish = ["ac"]`, 见 `docs/dev/release.md`「cargo 源 ac」); 仓库和 release 不公开.
   `vendor/` 和 `src/napi` 保留上游的许可证文件和版权行.
 - Rust 和 TypeScript 代码不写注释 (`//`、`/* */`、`///`、JSDoc 都不写), 要说明的写进 `docs/` 里对应的文件. 例外: 版权和许可证行 (`src/napi` 的
-  Deno 版权)、工具指令 (`/// <reference>`, `@ts-expect-error`)、`vendor/` 改动处的 `acrender:` (blitz fork 里) / `acde:` 标记. derive 要读的文字写成属性.
+  Deno 版权)、工具指令 (`/// <reference>`, `@ts-expect-error`)、`vendor/` 改动处的 `acrender:` (blitz fork 里) / `acde:` 标记、
+  SDK 声明文件 (`acde-api/` 的 `.d.ts`) 里过时接口上方单行的 `/** @deprecated 改用 … */` (写明替代者, 让编辑器划线;
+  用户 2026-11-20 定, 见 `docs/acde-api.md`「版本与兼容」). derive 要读的文字写成属性.
 - 改了包清单、`acde:` 模块或别的对外可见的行为, 同时告知 acdev (它的命令行和 skill `npm/skills/acdev/` 要跟着改).
 - 系统调用走 rustix, 不直接依赖 libc; rustix 没有的用专门的 crate (signal-hook、jiff). 按平台的代码用 `#[cfg]` / `cfg_select!`, 先用 std.
 - 依赖版本 1.0 及以上只写主版本号 (`wgpu = "30"`), 0.x 写到次版本 (`log = "0.4"`), 用最新的; 例外是换成 `vendor/` 的 crate 和配套的 (blitz-*、stylo*、
