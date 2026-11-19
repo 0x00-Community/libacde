@@ -54,13 +54,13 @@ interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState
   grant(options: GrantOptions): Grant
   place(window: number, x: number, y: number, width: number, height: number): void
   hide(window: number, hidden: boolean): void
-  release(window: number): void
+  release?(window: number): void
   focus(window: number): void
   close(window: number): void
   kill?(window: number): void
   setState?(window: number, state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
   windows(): ReturnType<InspectShell['windows']>
-  inject(event: Parameters<InspectShell['inject']>[0]): void
+  inject?(event: Parameters<InspectShell['inject']>[0]): void
   screenshot(path: string): Promise<{ width: number; height: number }>
   animate?(window: number, options: object): void
   shortcut?(combo: string, scope: string, owner: number): void
@@ -74,7 +74,8 @@ interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState
 
 interface LauncherNatives extends Natives {
   readonly native: {
-    readonly Shell: { broker(options?: { title?: string }): LauncherShell }
+    readonly Windows?: { connect(): LauncherShell }
+    readonly Shell?: { broker(options?: { title?: string }): LauncherShell }
     readonly Manager?: { connect(): ManagerLink }
     readonly DevTools?: NativeDevTools
     readonly FileChooser?: { open(): Promise<NativeFileChooser> }
@@ -166,7 +167,7 @@ class Launcher {
   readonly #backend: AppBackend | null
 
   constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
-    this.#shell = natives.native.Shell.broker({ title: session.label })
+    this.#shell = Launcher.shell(natives, session.label)
     this.#shell.onEvents(() => this.#wake?.())
     manager?.onEvents(() => this.#wake?.())
     this.#services = session.services
@@ -200,10 +201,31 @@ class Launcher {
     this.#backend = session.kind === 'app' && session.found?.app.backend ? new AppBackend(session.found) : null
   }
 
+  static shell(natives: LauncherNatives, title: string): LauncherShell {
+    const { Windows, Shell } = natives.native
+    if (Windows) return Windows.connect()
+    if (Shell) return Shell.broker({ title })
+    throw new Error('the runtime offers no windows: neither native.Windows (acdes) nor native.Shell (acdev)')
+  }
+
+  #inspectShell(): InspectShell {
+    const shell = this.#shell
+    return {
+      focus: (window) => shell.focus(window),
+      ...(shell.setState && { setState: (window, state) => shell.setState!(window, state) }),
+      windows: () => shell.windows(),
+      ...(shell.menus && { menus: (window) => shell.menus!(window) }),
+      inject: (event) => {
+        if (!shell.inject) throw new Error('input: this runtime injects no input here (in a guest it goes through the manager)')
+        shell.inject(event)
+      },
+    }
+  }
+
   #inspector(): Inspect {
     if (this.#inspect) return this.#inspect
     const host: InspectHost = {
-      shell: this.#shell,
+      shell: this.#inspectShell(),
       web: (window) => (window === this.#window ? this.#rpc : null),
       record: (window) => (window === this.#window ? { kind: 'web', app: this.session.found?.app.id ?? null, title: this.#title } : null),
       panel: (window) => this.#panels.has(window),
@@ -433,7 +455,7 @@ class Launcher {
         return this.#shell.hide(id, false)
       }
       case 'close':
-        if (this.#panels.delete(id)) this.#shell.release(id)
+        if (this.#panels.delete(id)) this.#shell.release?.(id)
         return undefined
     }
     throw unsupported('panel', method)
