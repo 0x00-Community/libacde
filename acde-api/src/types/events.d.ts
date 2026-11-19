@@ -11,6 +11,7 @@ export interface WindowOpenEvent extends WindowsEventOf<'windowopen'> {
   readonly web?: true
   readonly icon?: string
   readonly instance?: number
+  readonly key?: string
 }
 
 export interface WindowGeometryEvent extends WindowsEventOf<'windowgeometry'> {
@@ -81,6 +82,7 @@ export interface WindowEvent extends WindowsEventOf<'window'> {
   readonly changed?: readonly WindowChange[]
   readonly web?: true
   readonly icon?: string
+  readonly key?: string
 }
 
 export interface WindowsEventMap {

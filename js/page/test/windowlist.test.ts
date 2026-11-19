@@ -65,3 +65,25 @@ test('a winman snapshot updates the row, is said as window, and still says the o
   assert.equal(windows.api.list()[0]!.state, 'filled')
   assert.deepEqual(said.slice(1), [{ type: 'windowstate', window: 4, state: 'filled', previous: 'normal' }, { type: 'windowdesk', window: 4, desk: 2 }])
 })
+
+test('a window key from open stays on its row through later events', () => {
+  const windows = list()
+  windows.deliver(event('windowopen', 7, { appId: 'notes', title: 'Notes', key: 'w-3f2a' }))
+  windows.deliver(event('windowtitle', 7, { appId: 'notes', title: 'Draft' }))
+  windows.deliver(event('windowstate', 7, { state: 'filled', previous: 'normal' }))
+  assert.equal(windows.api.list()[0]!.key, 'w-3f2a')
+  windows.deliver(event('windowopen', 8, { appId: 'files', title: 'Files' }))
+  assert.equal('key' in windows.api.list()[1]!, false, 'no key when the compositor gives none')
+})
+
+test('a window key from a winman snapshot is on the row and on the derived open', () => {
+  const windows = list()
+  const opened: unknown[] = []
+  windows.api.on('open', (change) => void opened.push(change))
+  const rect = { x: 0, y: 0, width: 100, height: 100 }
+  const first = { appId: 'files', title: 'Files', state: 'normal', hidden: false, rect, active: false, desk: 0, first: true, key: 'w-91' }
+  windows.deliver(event('window', 5, first))
+  windows.deliver(event('window', 5, { ...first, title: 'Docs', first: false, changed: ['title'], key: undefined }))
+  assert.equal(windows.api.list()[0]!.key, 'w-91')
+  assert.equal((opened[0] as { key?: string }).key, 'w-91')
+})

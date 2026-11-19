@@ -42,7 +42,10 @@ export class WindowList {
     const web = event['web'] === true || was?.web === true
     const instance = number(event['instance'])
     const desk = number(event['desk'])
-    const placed = { ...(rect ? { rect } : {}), ...(instance !== undefined ? { instance } : {}), ...(desk !== undefined ? { desk } : {}) }
+    const key = text(event['key']) ?? was?.key ?? null
+    const placed = {
+      ...(rect ? { rect } : {}), ...(instance !== undefined ? { instance } : {}), ...(desk !== undefined ? { desk } : {}), ...(key ? { key } : {}),
+    }
     this.#windows.set(event.window, { id: event.window, appId: text(event['appId']), title: text(event['title']), ...(web ? { web } : {}), state, ...placed })
     this.notices.emit('windows:window', event)
     for (const old of WindowList.older(event)) this.notices.emit(`windows:${windowsEventName(old.type)}`, old)
@@ -67,7 +70,8 @@ export class WindowList {
   static #opened(event: WindowEvent, of: (type: WindowEvent['type'], fields?: Record<string, unknown>) => WindowEvent, naming: object): WindowEvent[] {
     const web = event['web'] === true ? { web: true } : {}
     const icon = typeof event['icon'] === 'string' ? { icon: event['icon'] } : {}
-    const out = [of('windowopen', { ...naming, instance: event['instance'], desk: event['desk'], ...web, ...icon })]
+    const key = typeof event['key'] === 'string' && event['key'] ? { key: event['key'] } : {}
+    const out = [of('windowopen', { ...naming, instance: event['instance'], desk: event['desk'], ...web, ...icon, ...key })]
     if (event['state'] !== undefined && event['state'] !== 'normal') out.push(of('windowstate', { state: event['state'], previous: 'normal' }))
     if (event['active'] === true) out.push(of('windowactivate'))
     if (typeof event['parent'] === 'number') out.push(of('windowparent', { parent: event['parent'] }))
@@ -101,7 +105,10 @@ export class WindowList {
     const rect = WindowList.#bounds(event['rect']) ?? was?.rect
     const instance = typeof event['instance'] === 'number' ? event['instance'] : was?.instance
     const desk = typeof event['desk'] === 'number' ? event['desk'] : was?.desk
-    const placed = { ...(rect ? { rect } : {}), ...(instance !== undefined ? { instance } : {}), ...(desk !== undefined ? { desk } : {}) }
+    const key = text(event['key'], was?.key ?? null)
+    const placed = {
+      ...(rect ? { rect } : {}), ...(instance !== undefined ? { instance } : {}), ...(desk !== undefined ? { desk } : {}), ...(key ? { key } : {}),
+    }
     this.#windows.set(event.window, { id: event.window, appId, title, ...(web ? { web } : {}), state: was?.state ?? 'normal', ...placed })
   }
 
