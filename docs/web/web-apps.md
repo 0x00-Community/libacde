@@ -13,6 +13,10 @@
   `fetch(init.url)` 取 HTML; `page.ts` `PageSource.served`). `backend: {entry, port?}` (默认 3000).
 - **脚本**: classic `<script>` (含 `src`, 先读本地资源, 没有再经后端取; 非 async 的按文档顺序在 DOMContentLoaded 前执行)、`type="module"`、
   `type="importmap"` (`modules.rs` 解析说明符时用: `imports` / `scopes`, 精确或 `/` 结尾前缀匹配, 多个合并先到先得).
+- **相对地址**: 都按文档的地址解析, 和浏览器一样: acde-dom 的 `env.url` 一变 (加载、`pushState` / `replaceState`、前进后退) 就经 DomNative
+  `setBaseUrl` 交给 render (blitz `set_base_url`), 所以 HTML 里写的、JS 设的属性 (`link.href`、`img.src`、`insertAdjacentHTML`)、内联样式和样式表里的
+  `url()` / `@import` 都对 (样式表里的相对文档时按样式表自己的地址). 页面源码原样交给解析器, `getAttribute` 读到的是写的原文 (2026-11-19 以前
+  `PageSource.html` 用正则把静态的 `src` / `href` / `poster` 改成绝对路径, 子目录页面里别的写法都按根目录解析). 还没有: `<base href>`.
 - **样式表和别的子资源** (`<link rel=stylesheet>`、`<img>`、`@font-face`、CSS 背景图): 应用包里的文件 render 直接读盘; 读不到的 http / https /
   `blob:` 地址 render 的 `Loader` 发到页面线程, 经页面的网络栈取 (acde-dom `core/resources.ts` `loadResource`: 和 `fetch` 同一套路由、代理、
   证书、重定向, `acdev network` 里是 `image` / `stylesheet` / `font`). 规则按 destination 照浏览器: 图片和样式表 no-cors (不带 `Origin`, body 照用),

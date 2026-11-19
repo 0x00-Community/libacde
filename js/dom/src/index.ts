@@ -41,7 +41,7 @@ import { CustomElementRegistry } from './dom/custom'
 import * as editing from './dom/editing'
 import { Document, DOMImplementation, DOMParser, documentState, FontFace, FontFaceSet, HTMLDocument, XMLDocument, XMLSerializer } from './dom/document'
 import { Attr, DOMStringMap, DOMTokenList, Element, flags, LOCAL, NamedNodeMap } from './dom/element'
-import { env, frames, loads } from './dom/env'
+import { documentUrlWatch, env, frames, loads } from './dom/env'
 import * as events from './dom/events'
 import { focus } from './dom/focus'
 import * as forms from './dom/forms'
@@ -187,6 +187,8 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
       if (destination === 'style') loads.expect()
     })
   })
+  documentUrlWatch.changed = (href) => domNative.setBaseUrl(href)
+  domNative.setBaseUrl(env.url)
   env.url = hostNative.parseUrl(options.url, null)?.href ?? options.url
   objectUrlOrigin.value = new URL(env.url).origin
   net.base = () => env.url

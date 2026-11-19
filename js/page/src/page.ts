@@ -52,13 +52,7 @@ body { font-family: var(--f-sans, sans-serif); color: var(--ink, #1d1d1f); backg
   static html(entry: string, resources: readonly { prefix: string; dirs: readonly string[] }[]): string {
     const file = PageSource.file(entry, resources)
     if (!file) throw new Error(`${entry}: not a file of the installed packages' assets`)
-    const base = dirname(normalize(entry.split(/[?#]/)[0]!))
-    return readFileSync(file, 'utf8').replace(/(<[a-z][\w-]*\b[^>]*?\s(?:src|href|poster)\s*=\s*)(["'])([^"']*)\2/gi, (whole, head: string, quote: string, value: string) => {
-      if (!value || /^(?:[a-z][\w+.-]*:|\/|#|\?|\{|%)/i.test(value)) return whole
-      const at = value.search(/[?#]/)
-      const path = at < 0 ? value : value.slice(0, at)
-      return `${head}${quote}${join(base, path)}${at < 0 ? '' : value.slice(at)}${quote}`
-    })
+    return readFileSync(file, 'utf8')
   }
 
   static rooted(entry: string, resources: readonly { prefix: string; dirs: string[] }[]): { prefix: string; dirs: string[] }[] {

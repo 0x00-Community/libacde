@@ -412,6 +412,7 @@ fn ns(code: f64) -> crate::render::Ns {
 natives! {
     "document" => fn document(scope, args, dom) { Ok(Id(dom.document())) }
     "parseDocument" => fn parse_document(scope, args, dom) { text!(html = scope, args, 0); dom.parse_document(&html) }
+    "setBaseUrl" => fn set_base_url(scope, args, dom) { text!(url = scope, args, 0); dom.set_base_url(&url) }
     "parseXmlDocument" => fn parse_xml_document(scope, args, dom) {
         text!(text = scope, args, 0); text!(content_type = scope, args, 1);
         dom.parse_xml_document(&text, &content_type)

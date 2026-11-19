@@ -133,6 +133,12 @@ export class MockDom implements DomNative {
     return this._id(this.doc)
   }
 
+  baseUrl = ''
+
+  setBaseUrl(url: string): void {
+    this.baseUrl = url
+  }
+
   parseDocument(html: string): void {
     const old = [...this.doc.childNodes]
     this.#docs.delete(this.document())

@@ -1,4 +1,5 @@
 use super::*;
+use blitz_traits::net::Url;
 
 impl Dom {
     pub fn document(&self) -> u32 {
@@ -11,6 +12,11 @@ impl Dom {
 
     pub fn parse_document(&self, html: &str) -> Result<()> {
         self.update(|e| e.parse_document(html))
+    }
+
+    pub fn set_base_url(&self, url: &str) -> Result<()> {
+        let url = Url::parse(url).map_err(|e| Error::new(format!("base url {url}: {e}")))?;
+        self.update(|e| e.doc.set_base_url(url.as_str()))
     }
 
     pub fn parse_xml_document(&self, text: &str, content_type: &str) -> Result<()> {

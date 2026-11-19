@@ -1,8 +1,19 @@
 import type { Blob } from '../core/blob'
 import { host } from '../core/host'
 
+let documentUrl = 'http://acde.local/'
+
+export const documentUrlWatch = { changed: (_href: string): void => {} }
+
 export const env = {
-  url: 'http://acde.local/',
+  get url(): string {
+    return documentUrl
+  },
+  set url(href: string) {
+    if (href === documentUrl) return
+    documentUrl = href
+    documentUrlWatch.changed(href)
+  },
   navigate: (_url: string, _target: string) => {},
   reload: () => {},
   close: () => {},
