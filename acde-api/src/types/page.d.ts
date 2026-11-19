@@ -600,9 +600,12 @@ export interface PanelReserve {
   readonly thickness?: number
 }
 
+export type PanelKeyboard = 'exclusive' | 'on-demand'
+
 export interface PinOptions {
   readonly margin?: number
   readonly reserve?: PanelReserve
+  readonly keyboard?: PanelKeyboard
 }
 
 export interface PinnedPanel {
