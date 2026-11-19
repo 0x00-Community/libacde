@@ -182,6 +182,7 @@ pub fn object<'s>(scope: &mut v8::PinScope<'s, '_>, argv: &[String]) -> v8::Loca
         "openOffice" => crate::host::web::open_office,
         "restoreBluetooth" => crate::host::web::restore_bluetooth,
         "startDevices" => crate::host::web::start_devices,
+        "watchRemovable" => crate::host::web::watch_removable,
         "closeOffice" => crate::host::web::close_office,
     );
     #[cfg(unix)]

@@ -1,4 +1,4 @@
-import type { FileBytes } from '@dopame/acde-api'
+import type { FileBytes, FsRootsEvent } from '@dopame/acde-api'
 import { FileTypes } from './mimedb'
 
 type NativeDownload = (root: string, path: string) => Promise<Omit<FileBytes, 'contentType'>>
@@ -17,5 +17,11 @@ export class FsModule {
       return { name: file.name, contentType: FsModule.contentType(file.name, types()), data: file.data }
     }
     return { ...fs, download }
+  }
+
+  static rootsEvent(message: { added?: unknown; removed?: unknown }): FsRootsEvent {
+    const ids = (value: unknown) => (Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [])
+    const added = ids(message.added)
+    return { removed: ids(message.removed), ...(added.length > 0 && { added }) }
   }
 }

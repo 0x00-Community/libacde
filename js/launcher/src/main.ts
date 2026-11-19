@@ -266,6 +266,24 @@ class Launcher {
     if (session.grants?.office) Launcher.#openOffice()
     if (this.#desktop && this.manager && session.grants?.devices) sys().startDevices?.()
     this.#spawn({ ...init, name: this.#webName(init.name) })
+    this.#watchRemovable()
+  }
+
+  #watchRemovable(): void {
+    const fs = this.session.grants?.fs
+    if (fs !== true && !(fs && !Array.isArray(fs) && fs.places.includes('removable'))) return
+    let known: readonly string[] = []
+    const changed = (ids: string[]) => {
+      const added = ids.filter((id) => !known.includes(id))
+      const removed = known.filter((id) => !ids.includes(id))
+      known = ids
+      if (added.length || removed.length) this.#thread?.post({ type: 'fsroots', added, removed })
+    }
+    try {
+      known = sys().watchRemovable?.(changed) ?? []
+    } catch (error) {
+      process.stderr.write(`acdev: removable drives: ${(error as Error).message}\n`)
+    }
   }
 
   #webName(given: string): string {

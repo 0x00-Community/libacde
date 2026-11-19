@@ -1,11 +1,11 @@
 import type { AppBackend, AppManifest as AppEntry, Capabilities, PackageManifest } from '../acde-api/src/index'
 import { API_LEVEL } from './level.ts'
-import { SHARED_PLACES } from './places.ts'
+import { FS_ROOTS, SHARED_PLACES } from './places.ts'
 
 export type { Capabilities, PackageManifest } from '../acde-api/src/index'
 export type { CapabilityState, CapabilityStatus, PlatformSupport, RunningMode, WindowFeatures } from '../acde-api/src/index'
-export { API_LEVEL, SHARED_PLACES }
-export type { PlaceCapability, SharedPlace } from '../acde-api/src/index'
+export { API_LEVEL, FS_ROOTS, SHARED_PLACES }
+export type { FsRootName, PlaceCapability, SharedPlace } from '../acde-api/src/index'
 export { PLATFORM_SUPPORT, RUNNING_MODES, platformSupport } from './platforms.ts'
 
 export const ICON_NAMES = [
@@ -94,26 +94,27 @@ export class Manifest {
   static readonly CAPABILITIES: ReadonlySet<string> = new Set([...SYSTEM_CAPABILITIES, ...SHELL_MODULES])
   static readonly #SHELL: ReadonlySet<string> = new Set(SHELL_MODULES)
   static readonly #PLACES: ReadonlySet<string> = new Set(SHARED_PLACES)
+  static readonly #ROOTS: ReadonlySet<string> = new Set(FS_ROOTS)
   static readonly #MIME = /^[\w.+-]+\/([\w.+-]+|\*)$/
   static readonly #ICON_NAMES: ReadonlySet<string> = new Set(ICON_NAMES)
   static readonly #ICON_IMAGE = /^\/(?!\/)[^\s\0?#]*\.(svg|png)$/i
 
   static places(caps: Capabilities): string[] {
     const fs = caps.fs
-    return typeof fs === 'object' && fs && Array.isArray(fs.roots) ? fs.roots.filter((root) => Manifest.#PLACES.has(root)) : []
+    return typeof fs === 'object' && fs && Array.isArray(fs.roots) ? fs.roots.filter((root) => Manifest.#ROOTS.has(root)) : []
   }
 
   static place(capability: string): string | null {
     const name = capability.startsWith('fs.') ? capability.slice(3) : ''
-    return Manifest.#PLACES.has(name) ? name : null
+    return Manifest.#ROOTS.has(name) ? name : null
   }
 
   static #roots(fs: unknown): string[] {
     if (typeof fs !== 'object' || !fs) return []
-    const shared = SHARED_PLACES.join(', ')
+    const shared = FS_ROOTS.join(', ')
     const roots = (fs as { roots?: unknown }).roots
     if (!Array.isArray(roots)) return [`fs.roots lists shared places (${shared})`]
-    return roots.filter((root) => !Manifest.#PLACES.has(root)).map((root) => {
+    return roots.filter((root) => !Manifest.#ROOTS.has(root)).map((root) => {
       const named = Manifest.#placeIn(root)
       const fix = named
         ? `: write "${named}", the runtime finds that folder through the system (also when it was moved)`

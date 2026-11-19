@@ -1,5 +1,6 @@
 use super::grants::Granted;
 use crate::runtime::failure::{Failure, Outcome};
+use crate::runtime::fs::removable;
 use crate::runtime::fs::workspace::{FinderRoot, RootMode, RootSource, WorkspaceFs};
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -25,8 +26,10 @@ pub struct LentRoot {
 impl LentRoot {
     pub(crate) fn checked(self) -> Outcome<Self> {
         let taken = self.name == "private" || PLACES.iter().any(|(place, _)| *place == self.name);
-        if self.name.is_empty() || taken || self.name.starts_with("folder-") {
-            return Err(Failure::invalid(format!("{:?} cannot name a lent folder (private, the shared places and folder- are taken)", self.name)));
+        let prefixed = self.name.starts_with("folder-") || self.name.starts_with(removable::PREFIX);
+        if self.name.is_empty() || taken || prefixed {
+            let taken = "private, the shared places, folder- and removable- are taken";
+            return Err(Failure::invalid(format!("{:?} cannot name a lent folder ({taken})", self.name)));
         }
         if !Path::new(&self.dir).is_absolute() {
             return Err(Failure::invalid(format!("{}: a lent folder is an absolute path", self.dir)));
@@ -39,12 +42,14 @@ impl LentRoot {
 pub struct Files {
     places: Vec<&'static str>,
     paths: bool,
+    removable: bool,
 }
 
 impl Files {
     pub fn new(places: &[String], paths: bool) -> Self {
-        let places = PLACES.iter().map(|(name, _)| *name).filter(|name| places.iter().any(|place| place == name)).collect();
-        Self { places, paths }
+        let named = PLACES.iter().map(|(name, _)| *name).filter(|name| places.iter().any(|place| place == name)).collect();
+        let removable = places.iter().any(|place| place == removable::CAPABILITY);
+        Self { places: named, paths, removable }
     }
 
     pub fn paths(&self) -> bool {
@@ -75,6 +80,9 @@ impl Files {
             let label = Self::label(&path);
             let root = self.root(Self::token(&path), path, &label, RootSource::Granted);
             roots.push(Self::checked(root, "the folder no longer exists").access(writable));
+        }
+        if self.removable {
+            roots.extend(removable::mounted().iter().map(|mount| mount.root(self.paths)));
         }
         Ok(roots)
     }
@@ -178,6 +186,7 @@ mod tests {
         assert_eq!(all.lend("agent", lent).unwrap(), "work");
         assert!(all.lend("agent", LentRoot { name: "documents".into(), dir: dir.clone(), label: None }).is_err());
         assert!(all.lend("agent", LentRoot { name: "rel".into(), dir: "project".into(), label: None }).is_err());
+        assert!(all.lend("agent", LentRoot { name: "removable-1234".into(), dir: dir.clone(), label: None }).is_err());
         let app = all.files(Files::new(&[], false), "agent");
         let roots = json(app.call(FsCall::Roots));
         let ids: Vec<&str> = roots.as_array().unwrap().iter().map(|root| root["id"].as_str().unwrap()).collect();
@@ -208,6 +217,18 @@ mod tests {
         let ids: Vec<&str> = roots.as_array().unwrap().iter().map(|root| root["id"].as_str().unwrap()).collect();
         assert_eq!(ids, ["private"]);
         assert_eq!(read(&app, "work", "plan.md")["code"], "EACCES");
+    }
+
+    #[test]
+    fn removable_is_named_like_a_place_and_brings_no_place_root() {
+        let home = Home::new("removable");
+        let all = Workspace::at(&home.text());
+        let files = Files::new(&["removable".into()], false);
+        assert!(files.removable && files.places.is_empty());
+        assert!(!Files::new(&["documents".into()], false).removable);
+        let roots = json(all.files(files, "viewer").call(FsCall::Roots));
+        let sources: Vec<&str> = roots.as_array().unwrap().iter().map(|root| root["source"].as_str().unwrap()).collect();
+        assert!(sources.iter().all(|source| matches!(*source, "private" | "removable")), "{roots}");
     }
 
     #[test]

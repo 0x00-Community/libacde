@@ -395,6 +395,37 @@ pub fn start_devices(_: &mut v8::PinScope, _: v8::FunctionCallbackArguments, _: 
 }
 
 #[cfg(target_os = "linux")]
+pub fn watch_removable(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    static WATCHING: AtomicBool = AtomicBool::new(false);
+    let Ok(callback) = v8::Local::<v8::Function>::try_from(args.get(0)) else {
+        return bind::throw_type_error(scope, "watchRemovable(callback)");
+    };
+    if WATCHING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let callback = Arc::new(bind::SendFunction(v8::Global::new(scope, callback)));
+    let tx = rt::current().sender();
+    let changed = move |ids: Vec<String>| {
+        let callback = Arc::clone(&callback);
+        _ = tx.send(Msg::Task(Box::new(move |scope| {
+            use bind::IntoJs;
+            let ids = ids.js(scope);
+            bind::call(scope, &callback.0, &[ids]);
+        })));
+    };
+    match crate::runtime::fs::removable::watch(changed) {
+        Ok(ids) => {
+            use bind::IntoJs;
+            rv.set(ids.js(scope));
+        }
+        Err(error) => {
+            WATCHING.store(false, Ordering::Release);
+            bind::throw_error(scope, &format!("watchRemovable: {error}"));
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
 pub fn open_office(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     let opened = WEBS.with(|w| {
         let mut w = w.borrow_mut();

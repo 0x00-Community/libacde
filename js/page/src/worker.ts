@@ -241,7 +241,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
       case 'services':
         return bridge.replaceServices(m.services ?? {})
       case 'fsroots':
-        return fsRoots.emit('roots', { removed: (m as { removed?: unknown }).removed ?? [] })
+        return fsRoots.emit('roots', FsModule.rootsEvent(m as { added?: unknown; removed?: unknown }))
       case 'power':
         return managerPower.push((m as { event?: unknown }).event)
       case 'permit':

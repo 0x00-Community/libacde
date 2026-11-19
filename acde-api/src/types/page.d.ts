@@ -11,8 +11,9 @@ export interface FinderRoot {
   id: string
   path?: string
   label: string
-  source: 'desktop' | 'downloads' | 'default' | 'granted' | 'private' | 'place' | 'lent'
+  source: 'desktop' | 'downloads' | 'default' | 'granted' | 'private' | 'place' | 'lent' | 'removable'
   place?: SharedPlace
+  drive?: string
   mode: RootMode
   reason: string | null
   exists: boolean
@@ -143,6 +144,7 @@ export interface AcdeFs {
 }
 
 export interface FsRootsEvent {
+  readonly added?: readonly string[]
   readonly removed: readonly string[]
 }
 
