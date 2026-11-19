@@ -146,6 +146,9 @@ impl Context {
             Some(Ok(t)) => Some(t),
             None => None,
         };
+        if let Some(texture) = &texture {
+            self.clear_to_defaults(texture, 1, 1);
+        }
         let serial = self.next_serial();
         if let Some(rb) = self.renderbuffer_mut(id) {
             rb.format = Some(fmt);

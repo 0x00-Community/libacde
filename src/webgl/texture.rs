@@ -187,6 +187,9 @@ impl Context {
                 return false;
             }
         };
+        if usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT) {
+            self.clear_to_defaults(&texture, mips, if dimension == wgpu::TextureDimension::D3 { 1 } else { layers });
+        }
         let old = self.texture_mut(id).and_then(|t| t.alloc.take());
         if let Some(old) = old.filter(|o| o.format == format && o.layers == layers) {
             self.flush_pass();
@@ -222,6 +225,40 @@ impl Context {
             t.used = generation;
         }
         true
+    }
+
+    pub(crate) fn clear_to_defaults(&mut self, texture: &wgpu::Texture, mips: u32, layers: u32) {
+        let format = texture.format();
+        if !format.is_depth_stencil_format() {
+            return;
+        }
+        self.flush_pass();
+        let encoder = self.encoder();
+        for level in 0..mips {
+            for layer in 0..layers {
+                let view = texture.create_view(&wgpu::TextureViewDescriptor {
+                    label: Some("acde webgl depth defaults"),
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_mip_level: level,
+                    mip_level_count: Some(1),
+                    base_array_layer: layer,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                });
+                drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("acde webgl depth defaults"),
+                    color_attachments: &[],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &view,
+                        depth_ops: format.has_depth_aspect().then_some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                        stencil_ops: format.has_stencil_aspect().then_some(wgpu::Operations { load: wgpu::LoadOp::Clear(0), store: wgpu::StoreOp::Store }),
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                }));
+            }
+        }
     }
 
     fn ensure_level(&mut self, id: Id, face: u32, level: u32, [width, height, depth]: [u32; 3], format: Format) -> bool {
