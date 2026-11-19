@@ -28,7 +28,8 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
   (`broker/dev.ts` `DevRequests.request`), 做完调 `Shell.devRespond`, 按号找回连接、换回原 id 写出 `{"type":"response","id","ok":true,"result"}` 或
   `{…,"ok":false,"error":"<文字>"}`, 每个请求恰好一次 (超时在工具一侧); 连接断了, 它还没回答的请求作废. `web` 参数是 web 名
   (`ledger#1048576`)、应用 id (window 号最小的那个 web) 或 `desktop`:
-  - `webs` → `{webs: [{name, app, kind, window, title}]}`.
+  - `webs` → `{webs: [{name, app, kind, window, title, stalled?}]}`. `stalled: true` 标出在限时 (客户机里 1.5 秒) 内没回答的页面 (进程被 `kill -STOP`、
+    卡在长任务里): 它照样列出, `title` 为 null, 其余页面照常返回; 不回答的页面不在时不带这个字段.
   - `devtools` → `{port}`: 这个会话的 DevTools 端点 (下面 **DevTools 端点**); 没有端点 (不是 dev 模式、端口没开成) 时回错.
   - `eval {web, code, node?, arg?}` → `{value}`: 和 `ACDE_DEBUG_DIR` 一样求值 (promise 等落定), 结构化克隆回来再 JSON (undefined 是 null, JSON 不了的回错).
     给了 `node` (render 节点 id, 即 ref 里点后面的数) 时 `code` 是一个函数的源码, 以 `(元素, arg)` 调用 (rpc `debug.evalOn`).
@@ -123,7 +124,9 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
   `{type:'devreload', hot?}` 走 `devReload` (管家按 `app` 只发给那个应用的进程, 没有 app 时发给桌面).
 - 启动器 → 管家: `{devresponse:{id, ok, payload}}` 代替 `Shell.devRespond` (管家按号找回连接、换回原 id); `{devevent:'<json>'}` 代替
   `Shell.devEvent` (F12 等事件, 管家转给发过 hello role=dev 的连接); DevTools 端点开成时主动报一次 `{devtools:{port}}`, 管家按进程记下,
-  客户机里 `devtools` 请求由管家回 `{ports:[{web, app, port}]}`. `webs` 由管家向各进程逐个发再合并, 不另加消息.
+  客户机里 `devtools` 请求由管家回 `{ports:[{web, app, port}]}`. `webs` 由管家向各进程逐个发再合并, 不另加消息; 每个进程单独限时 1.5 秒, 到时还没回答的进程按它上次报过的页面名 (没报过时
+  `<app>#<pid>`, 桌面 `desktop`) 列一行 `{name, app, kind, window, title: null, stalled: true}`, 之后迟到的回答丢掉 (acdes 管家 `server/dev.rs` 的 `Waiting::Webs`).
+  其余请求只发给一个页面, 那个页面不回答就由工具一侧的超时报错.
 - 锁屏页 (welcome 顶层 `lock: true`): 页面名固定为 `lock`, `webs` 里带 `lock: true` (kind 仍是 desktop), `web: "lock"` 找到它, `desktop` 不再指它.
   宿主上 `acdev dev --lock` 的预览没有管家, 页面名仍是 `desktop`, 也带 `lock: true`.
 - 页面和运行时的开发能力 (`debug.eval`/`evalOn`、`dev.clock`、devInit、devroute、DevTools 端点与页面域、V8 live-edit) 只看 `ACDE_DEV` 在不在.
