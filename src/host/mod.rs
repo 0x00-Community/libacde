@@ -17,6 +17,7 @@ mod display;
 mod dom;
 mod encoding;
 mod engine;
+mod envelope;
 mod fs;
 mod gpuwatch;
 mod host;
@@ -50,6 +51,7 @@ mod webgl;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod webgpu;
 mod webnative;
+mod worker;
 
 pub use bind::*;
 pub use offload::{failure, run as offload};

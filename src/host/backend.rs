@@ -39,6 +39,23 @@ pub fn install<'s>(scope: &mut v8::PinScope<'s, '_>, natives: v8::Local<'s, v8::
     let sockets = init.and_then(|init| bind::get_string(scope, init, "sockets"));
     let sockets = sockets.map(PathBuf::from).filter(|dir| dir.is_absolute());
     let app = init.and_then(|init| by_app(scope, init, sockets.is_some()));
+    install_config(scope, natives, Config { sockets, app });
+}
+
+#[derive(Clone, Default)]
+pub struct Config {
+    sockets: Option<PathBuf>,
+    app: Option<String>,
+}
+
+pub fn config() -> Config {
+    STATE.with(|s| {
+        let s = s.borrow();
+        Config { sockets: s.sockets.clone(), app: s.app.clone() }
+    })
+}
+
+pub fn install_config<'s>(scope: &mut v8::PinScope<'s, '_>, natives: v8::Local<'s, v8::Object>, Config { sockets, app }: Config) {
     STATE.with(|s| {
         let mut s = s.borrow_mut();
         s.sockets = sockets;

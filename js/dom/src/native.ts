@@ -532,6 +532,16 @@ export interface AudioNative {
   readonly sampleRate: number
   onEvent(callback: (kind: number, id: number) => void): void
   createContext(context: number, destination: number): void
+  createOfflineContext(context: number, destination: number, channels: number, length: number, sampleRate: number): void
+  setFilterType(node: number, type: number): void
+  setDelayMax(node: number, seconds: number, sampleRate: number): boolean
+  setCurve(node: number, curve: Float32Array | null): void
+  setOversample(node: number, oversample: number): void
+  setImpulse(node: number, buffer: number, normalize: boolean): boolean
+  reduction(node: number): number
+  biquadResponse(type: number, frequency: number, detune: number, q: number, gain: number, sampleRate: number, frequencies: Float32Array): Float32Array
+  analyse(node: number, what: number, fftSize: number, smoothing: number, minDecibels: number, maxDecibels: number): Float32Array | Uint8Array | undefined
+  startRendering(context: number, buffer: number): Promise<{ length: number; sampleRate: number; numberOfChannels: number; ended: number[] }>
   setRunning(context: number, running: boolean): void
   closeContext(context: number): void
   time(context: number): number
@@ -541,14 +551,17 @@ export interface AudioNative {
   automate(node: number, param: number, op: number, value: number, time: number, extra: number): void
   automateCurve(node: number, param: number, values: Float32Array, time: number, duration: number): void
   paramValue(node: number, param: number): number
-  setWave(node: number, type: number): void
+  setWave(node: number, type: number, sampleRate: number): boolean
+  createPeriodicWave(wave: number, real: Float32Array, imag: Float32Array, normalize: boolean, sampleRate: number): boolean
+  setPeriodicWave(node: number, wave: number): void
+  releasePeriodicWave(wave: number): void
   setLoop(node: number, loop: boolean, loopStart: number, loopEnd: number): void
   setPanner(node: number, hrtf: boolean, distanceModel: number, refDistance: number, maxDistance: number, rolloffFactor: number, coneInnerAngle: number, coneOuterAngle: number, coneOuterGain: number): void
   setBuffer(node: number, buffer: number): void
   start(node: number, when: number, offset: number, duration: number): void
   stop(node: number, when: number): void
   release(node: number): void
-  decode(buffer: number, bytes: Uint8Array): Promise<{ length: number; sampleRate: number; numberOfChannels: number }>
+  decode(buffer: number, bytes: Uint8Array, sampleRate: number): Promise<{ length: number; sampleRate: number; numberOfChannels: number }>
   createBuffer(buffer: number, sampleRate: number, channels: Float32Array[]): void
   channelData(buffer: number): Float32Array[]
   releaseBuffer(buffer: number): void

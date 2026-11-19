@@ -17,6 +17,7 @@
     "paths": {
       "@dopame/acde-dom": ["./dom/src/index.ts"],
       "@dopame/acde-dom/core": ["./dom/src/core/index.ts"],
+      "@dopame/acde-dom/worker": ["./dom/src/worker/index.ts"],
       "@dopame/acde-api": ["../acde-api/src/index.d.ts"],
       "@dopame/acde-api/manifest": ["../manifest/index.ts"]
     }

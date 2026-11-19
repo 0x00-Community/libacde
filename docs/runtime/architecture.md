@@ -53,7 +53,8 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
 
 宿主窗口:
 运行时 (一个进程)   主线程: 平台事件循环 (Windows win32, 别处 winit); `acdev` 线程 (栈 64 MiB): Broker;
-                    每个 web 一条 JS 线程 + 一条出帧线程 `acde-host-<id>`; `acde-compose` 合成到宿主窗口的 surface
+                    每个 web 一条 JS 线程 + 一条出帧线程 `acde-host-<id>`, 它的每个 Web Worker 再一条 `acde-worker`;
+                    `acde-compose` 合成到宿主窗口的 surface
 ```
 
 - **主进程** (会话): 在 acdebin-system 的 `src/supervise.rs`, 起停和重起运行时子进程的规则见它的 `docs/architecture.md`.
@@ -62,6 +63,11 @@ crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境�
   线程 panic 只结束这个 web (134, `panic: …`). 句柄带 `busyMs` (当前任务跑了多久, 判卡死) 和 `cpuMs` (`/proc/self/task/<tid>/schedstat`).
   段错误、abort 带掉整个 runtime (主进程重起它), 所以共享的 Rust 状态里不写 `unsafe`, 绑定层不 `unwrap`, 每个绑定在边界上
   `catch_unwind`.
+- **Web Worker** (src/host `worker.rs`, 见 `docs/web/web-apps.md`「Web Worker」): web 线程起的 `acde-worker` 线程 (栈 8 MiB), 自己的 isolate
+  (它的 web 的所有 worker 合用一份 `heapMb` 大的堆预算, CPU 算进 web 的 `cpuMs`) 和事件循环; 和页面之间交换 `Envelope` (序列化的字节加转移的 backing store, 不复制), 投进对方事件循环.
+  唯一的 `unsafe` 是 `envelope.rs` 的 `Moved` 实现 `Send`: v8 的 `SharedRef<BackingStore>` 不是 `Send` (`BackingStore` 不是 `Sync`), 但转移后
+  发送方已把 ArrayBuffer 分离、不再碰这块内存, 引用计数是 `std::shared_ptr` 的原子计数, 内存由 isolate 共享持有的分配器释放 (rusty_v8 总是
+  设 `array_buffer_allocator_shared`), 所以交给别的线程安全; `envelope.rs` 的测试覆盖发送方 isolate 先没了的情况.
 - **一个 V8, 每个窗口一个 isolate**: 内存 (各自的堆上限)、生死 (一个死了只掉它的窗口)、CPU (每个 isolate 一个线程, 同一优先级) 各管各的.
 - **注入的系统能力** (`spawnWeb` 第 7 个参数 `{app, fs, terminal, network, system, office}`, Broker `#grants`: 桌面全给, 应用按清单): fs、terminal、
   network、office 和选文件夹在各 web 里绑定同一份 Rust 对象 (src/host `fs.rs` / `terminal.rs` / `network.rs` / `office.rs` /
