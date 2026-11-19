@@ -146,6 +146,8 @@ describe('window system events on their way to the desktop page', () => {
     })
     const moved = snapshots.toDesktop({ type: 'windowgeometry', window: 3, x: 10, y: 20, width: 300, height: 200 })
     assert.deepEqual([moved['rect'], moved['changed'], moved['first']], [{ x: 10, y: 20, width: 300, height: 200 }, ['rect'], false])
+    const again = snapshots.toDesktop({ type: 'windowgeometry', window: 3, x: 10, y: 20, width: 300, height: 200 })
+    assert.deepEqual(again['changed'], [], 'the same rect again is no change')
     const filled = snapshots.toDesktop({ type: 'windowstate', window: 3, state: 'filled', previous: 'normal' })
     assert.deepEqual([filled['state'], filled['previous'], filled['changed']], ['filled', 'normal', ['state']])
     const unknown = { type: 'windowtitle', window: 9, title: 'x' }

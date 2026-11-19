@@ -45,7 +45,7 @@ export class WindowSnapshots {
     const next: Record<string, unknown> = { ...base }
     const changed: string[] = []
     const set = (field: string, value: unknown) => {
-      if (value === undefined || next[field] === value) return
+      if (value === undefined || JSON.stringify(next[field]) === JSON.stringify(value)) return
       next[field] = value
       changed.push(field)
     }
