@@ -3,7 +3,7 @@ import type { WebInit } from '../../page/src/contract'
 import type { WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
 import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
 import { readDirOr, readTextOr } from '../../page/src/sys/fs'
-import { xdgHome } from '../../page/src/sys/os'
+import { screenshotFile, xdgHome } from '../../page/src/sys/os'
 import { join } from '../../page/src/sys/path'
 import { onceSignal, process } from '../../page/src/sys/process'
 import { Rpc } from '../../page/src/rpc'
@@ -506,7 +506,9 @@ class Launcher {
         if (!shell.setState) throw unsupported('windows', method)
         return shell.setState(id, String(args[1]) as WindowState)
       case 'screenshot':
-        return shell.screenshot(String(args[0]))
+        if (typeof args[0] === 'string') return shell.screenshot(args[0])
+        if (this.manager) return this.manager.call('windows', 'screenshot', args)
+        return this.#screenshot(args[0])
       case 'animate':
         return shell.animate?.(id, (args[1] ?? {}) as object)
       case 'stats':
@@ -543,6 +545,16 @@ class Launcher {
         if (this.manager) return this.manager.call('windows', 'invokeMenu', args)
     }
     throw unsupported('windows', method)
+  }
+
+  async #screenshot(given: unknown): Promise<{ path: string; width: number; height: number }> {
+    const { screen, window, path } = (given ?? {}) as { screen?: unknown; window?: unknown; path?: unknown }
+    if (window !== undefined && window !== null) throw unsupported('windows', 'screenshot of one window')
+    if (screen !== undefined && screen !== null && screen !== 0) throw unsupported('windows', `screenshot of screen ${String(screen)}`)
+    if (path !== undefined && path !== null && (typeof path !== 'string' || !path.startsWith('/'))) throw refused('windows.screenshot: path is an absolute path')
+    const file = typeof path === 'string' ? path : screenshotFile()
+    const { width, height } = await this.#shell.screenshot(file)
+    return { path: file, width, height }
   }
 
   #setWallpaper(given: unknown): unknown {

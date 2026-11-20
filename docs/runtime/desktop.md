@@ -164,7 +164,13 @@
 
 - 桌面页拿着键盘时按 PrintScreen, 运行时截主屏 (不含光标) 存成 `$XDG_PICTURES_DIR/截图 <时间>.png`, 再给桌面发 `acde:desktop` 的 `on('screenshot')`:
   `{path, width, height}` 或 `{path, error}`. 截图之后的提示、预览、打开由桌面做.
-- 桌面还不能主动截图、截单个窗口或别的屏 (没有接口; 见「还没有的」).
+- 主动截图: `acde:windows.screenshot?({screen?, window?, cursor?, path?})` (SDK `ScreenshotOptions`), 回 `{path, width, height}` (`Screenshot`), 存成 PNG.
+  不给 `screen`、`window` 时截主屏 (`screen` 是屏的序号, 0 是主屏), `window` 是 `list()` 里的窗口号 (只截这个窗口自己的画面), 两个不能同给;
+  `cursor: true` 把指针也画进去 (默认不画); `path` 是绝对路径, 不给时存成 `$XDG_PICTURES_DIR/截图 <时间>.png`. 屏或窗口不存在 404, 锁屏时截单个窗口 403 `locked`
+  (整屏照截, 截到的是锁屏), 写不进 `path` 400. 桌面页、声明了 `windows` 的系统应用和 `modules` 列了 `windows` 的服务能调; 单个窗口只有桌面页能截
+  (只有它的 `list()` 有窗口号). 不发 `on('screenshot')` 事件 (那个只属于 PrintScreen), 提示由调用方自己做.
+- acdes 里截图在会话主进程里做 (经管家交给合成器线程, 不经桌面的 Wayland 连接); acdev 宿主窗口只截整个宿主窗口: 给 `window` 或非 0 的 `screen` 回 501.
+- 会话外 (如 ssh 进来) 用 acdes 的命令 `acdes screenshot`, 不归桌面管 (见 acdes `docs/architecture.md`「截图」).
 
 ## 通知、下载和权限询问
 
@@ -214,6 +220,7 @@ acdes 一列按 acdes 的代码核对过; 宿主窗口一列取自 `docs/runtime
 | 快捷键的键名 | 字母、数字、F1–F12、方向键、Home / End / PageUp / PageDown / Insert / Delete、Esc、Tab、Enter、Space、Backspace、Print 和几个符号; 媒体键 (`xf86*`) 还不认 | xkb keysym 名 |
 | 应用自己的 `acde:window.shortcut` | 回 501 | 有 |
 | `windows.stats()` | `{}` | 有 |
+| `windows.screenshot()` | 整屏、某块屏、单个窗口, 可带指针 | 只有整个宿主窗口 |
 | `acde:permissions`、`capabilities.request` | 回 501 (还没有询问可答) | — |
 
 acdes 里系统应用声明的外壳模块现在只有 `session`、`desktops`、`setDefault`、`packages.refresh` 能用, `windows`、`permissions`、`inspect` 回 501;
@@ -221,7 +228,6 @@ acdes 里系统应用声明的外壳模块现在只有 `session`、`desktops`、
 
 ## 还没有的
 
-- 桌面主动截图 (整屏、单个窗口、某块屏) 的接口; 现在只有 PrintScreen 落到桌面页时那一条路.
 - 应用的 `requestAttention` 转给桌面 (acdes 应答了但不转, `attention` 事件不发).
 - 副屏壁纸的图片 (`setWallpaper` 的 `image`, acdes 只记日志).
 - 跨进程把别的程序嵌进桌面 (`slots` / `launch.embed`, 回 501).

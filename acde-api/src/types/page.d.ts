@@ -194,6 +194,20 @@ export interface AcdeWindows extends WindowsEvents {
   showDesk?(desk: number): Promise<void>
   moveToDesk?(window: number, desk: number): Promise<void>
   setWallpaper?(wallpaper: DisplayWallpaper): Promise<void>
+  screenshot?(options?: ScreenshotOptions): Promise<Screenshot>
+}
+
+export interface ScreenshotOptions {
+  readonly screen?: number
+  readonly window?: number
+  readonly cursor?: boolean
+  readonly path?: string
+}
+
+export interface Screenshot {
+  readonly path: string
+  readonly width: number
+  readonly height: number
 }
 
 export interface DisplayWallpaper {
