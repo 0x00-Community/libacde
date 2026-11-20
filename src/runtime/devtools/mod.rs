@@ -1,5 +1,6 @@
 mod client;
 mod http;
+mod mode;
 mod ws;
 
 use std::collections::HashMap;
@@ -11,6 +12,7 @@ use std::time::{Duration, Instant};
 use napi_derive::napi;
 
 pub use client::Client;
+pub use mode::{GUEST_KEY, dev_mode, managed};
 
 use crate::runtime::sync::Locked;
 
@@ -108,7 +110,9 @@ fn endpoint() -> Option<&'static Endpoint> {
 
 impl Endpoint {
     fn open() -> Option<Self> {
-        std::env::var_os("ACDE_DEV")?;
+        if !dev_mode() {
+            return None;
+        }
         let listener = match TcpListener::bind(("127.0.0.1", 0)) {
             Ok(listener) => listener,
             Err(e) => {

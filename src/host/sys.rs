@@ -216,10 +216,24 @@ fn env(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::R
     let obj = v8::Object::new(scope);
     for (key, value) in std::env::vars_os() {
         let (Some(key), Some(value)) = (key.to_str(), value.to_str()) else { continue };
+        if key == DEV || (key == DEBUG_DIR && crate::runtime::managed() && !crate::runtime::dev_mode()) {
+            continue;
+        }
         let value = bind::string(scope, value);
         bind::set(scope, obj, key, value.into());
     }
+    if let Some(dev) = dev_value(crate::runtime::dev_mode(), std::env::var(DEV).ok()) {
+        let dev = bind::string(scope, &dev);
+        bind::set(scope, obj, DEV, dev.into());
+    }
     rv.set(obj.into());
+}
+
+const DEV: &str = "ACDE_DEV";
+const DEBUG_DIR: &str = "ACDE_DEBUG_DIR";
+
+fn dev_value(dev: bool, given: Option<String>) -> Option<String> {
+    dev.then(|| given.filter(|v| !v.is_empty()).unwrap_or_else(|| "guest".into()))
 }
 
 fn proxy_env(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
@@ -643,5 +657,18 @@ fn boot_entry<'s>(scope: &mut v8::PinScope<'s, '_>, args: v8::FunctionCallbackAr
     };
     if let Some(result) = bind::call(scope, entry, &[args.data()]) {
         rv.set(result);
+    }
+}
+
+#[cfg(test)]
+mod dev_tests {
+    use super::dev_value;
+
+    #[test]
+    fn pages_see_acde_dev_only_in_dev_mode() {
+        assert_eq!(dev_value(false, Some("1".into())), None);
+        assert_eq!(dev_value(true, Some("1".into())), Some("1".into()));
+        assert_eq!(dev_value(true, None), Some("guest".into()));
+        assert_eq!(dev_value(true, Some(String::new())), Some("guest".into()));
     }
 }

@@ -55,7 +55,7 @@ pub fn init() {
     INIT.call_once(|| {
         v8::icu::set_default_locale("zh-Hans");
         v8::V8::set_flags_from_string("--js-float16array --js-explicit-resource-management");
-        if std::env::var_os("ACDE_DEV").is_some() {
+        if crate::runtime::dev_mode() {
             v8::V8::set_flags_from_string("--inspector-live-edit");
         }
         let threads = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4).min(4);

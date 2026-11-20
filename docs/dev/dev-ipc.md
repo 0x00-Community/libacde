@@ -129,9 +129,16 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
   其余请求只发给一个页面, 那个页面不回答就由工具一侧的超时报错.
 - 锁屏页 (welcome 顶层 `lock: true`): 页面名固定为 `lock`, `webs` 里带 `lock: true` (kind 仍是 desktop), `web: "lock"` 找到它, `desktop` 不再指它.
   宿主上 `acdev dev --lock` 的预览没有管家, 页面名仍是 `desktop`, 也带 `lock: true`.
-- 页面和运行时的开发能力 (`debug.eval`/`evalOn`、`dev.clock`、devInit、devroute、DevTools 端点与页面域、V8 live-edit) 只看 `ACDE_DEV` 在不在.
-  客户机里由会话总管在开发客户机 (fw_cfg 文件存在) 时设 `ACDE_DEV=guest`, 启动器把 `ACDE_*` 传给页面线程; 正式系统里没有它, 即使有, 没有管家转发请求也到不了页面.
-- 正式会话 (启动器所在进程没有 `ACDE_DEV`; 用户 2026-11-20 定, pending-decisions 第 7、8 项): 总管经 assistant 服务的 `acde:inspect` 也能看别的应用窗口、
+- 开发模式 (`runtime::dev_mode()`, `src/runtime/devtools/mode.rs`, 进程里定一次): 有管家的进程 (环境里有 `ACDE_MANAGER_FD`: 会话里的桌面、应用、
+  服务进程) 只看 acdev 客户机的固件配置项 `/sys/firmware/qemu_fw_cfg/by_name/opt/acdev/key/raw` 在不在 (和 acdes 管家的 `Developer` 判断
+  同一个, 用户 2026-11-20 定 C), 不看环境里的 `ACDE_DEV`: 正式会话的环境经 greetd 读用户的 `~/.profile`, Agent 能往里写 `ACDE_DEV=1`, 以前这就让
+  页面和启动器以为是开发会话 (DevTools 端点、`debug.eval`、调试请求的白名单全都打开). 没有管家的进程 (宿主上的 `acdev dev`, 开发者自己起的)
+  照旧看 `ACDE_DEV`. JS 看到的环境 (`sys.env()`, 启动器再传给页面线程) 按这个结果改写: 不是开发模式就去掉 `ACDE_DEV`, 是开发模式而环境里没有
+  就补 `ACDE_DEV=guest`; 有管家又不是开发模式时也去掉 `ACDE_DEBUG_DIR` (它会打开 `debug.eval`). 由它打开的开发能力: DevTools 端点
+  (runtime `devtools`)、V8 inspector 与 live-edit (`host/engine.rs`、`host/inspector`)、`highlight` 和资源加载上报 (`host/dom.rs`)、页面的 DevTools 域、
+  `debug.eval` / `evalOn`、`dev.state`、`dev.clock`、devroute (假回应)、devInit、热替换的重读 (`js/page/src/worker.ts`)、启动器调试请求的白名单 (下面).
+  `ACDE_PROFILE_DIR` (只写 CPU profile 文件, 不开端点) 和 `ACDE_DEV_PLACES` (只在没有管家的单应用里) 不归它管.
+- 正式会话 (启动器所在进程不是开发模式, 见上, 用户环境里写了 `ACDE_DEV` 也算正式会话; 用户 2026-11-20 定, pending-decisions 第 7、8 项): 总管经 assistant 服务的 `acde:inspect` 也能看别的应用窗口、
   按元素点击, 请求照旧由管家经 `devrequest` 转给各启动器. 启动器只回答 `webs`、`snapshot`、`query`、`act`、`run` (`DevChannel.PRODUCTION`),
   别的 (`input` 按坐标发原始事件没法按元素核对, 以及 `eval`、`route`、`clock`、`console`、`network` 等) 回
   `<op>: not available in a production session (webs, snapshot, query, act, run)`. 谁能调、目标元素能不能点 (独占键盘的面板: 权限询问、确认卡片,
