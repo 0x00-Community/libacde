@@ -156,6 +156,10 @@ export class Host {
       }
       case 'pointerdown': {
         const button = event.button ?? 0
+        if (this.#drag.active) {
+          this.#drag.end(false)
+          this.#buttons = 0
+        }
         this.#buttons |= 1 << button
         input.pointer('pointerdown', event.x, event.y, { target: event.target, button, modifiers: event.modifiers })
         if (button === 0) this.#drag.press(input.elementAt(event.target, event.x, event.y, true) as unknown as Element, event.x, event.y)

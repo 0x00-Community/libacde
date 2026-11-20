@@ -160,6 +160,8 @@
   和只读的 `FileSystemHandle` (`items[i].getAsFileSystemHandle()`), **拿不到路径**: 本地文件的 `text/uri-list`、`text/plain` 被去掉. 要在 `drop` 里同步取
   `items`. 桌面要把拖来的东西放到哪里, 读内容后自己写 (见 `docs/web/fs.md`「拖放和打开请求的句柄」「拖放不再授权」).
 - 从桌面页拖出去: `draggable="true"` 的元素照标准开始拖动, `dataTransfer` 里的字符串类型交给系统拖放, 别的窗口照常收.
+  上一次拖动的 `dragend` (窗口系统的拖放结束) 还没到时又按下鼠标, 页面先把上一次拖动当作没放成结束掉 (源上照发 `dragend`, `dropEffect` 为 `none`),
+  再照常开始新的; 之后才到的那条结束在新拖动开始前到达时不起作用, 开始后才到会提前结束页面里的新拖动, 系统拖放不受影响 (js/page `host.ts`; 第二十一轮 11-work-folder 第二次拖动没开始, 就是旧拖动挡住了新的).
 
 ## 截图
 
