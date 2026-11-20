@@ -108,7 +108,7 @@ signal-hook = "0.4"
 symphonia = { version = "0.6", default-features = false, features = ["wav", "pcm", "mp3", "ogg", "vorbis", "flac", "aac", "isomp4"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-wgpu = { version = "30", default-features = false, features = ["vulkan"] }
+wgpu = { version = "30", default-features = false, features = ["vulkan", "gles"] }
 ash = "0.38"
 pipewire = { version = "0.10", features = ["v0_3_49"] }
 zbus = "5"
@@ -188,3 +188,6 @@ opt-level = "s"
 debug = 0
 strip = true
 lto = "thin"
+
+[patch.crates-io]
+wgpu-hal = { path = "vendor/wgpu-hal" }

@@ -1,4 +1,5 @@
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, IntoRawFd, OwnedFd};
+use std::path::Path;
 
 use crate::gpu::DeviceRequest;
 use crate::gpu::Dmabuf;
@@ -14,65 +15,192 @@ const EXTENSIONS: [&std::ffi::CStr; 4] = [
 ];
 
 const SEMAPHORES: usize = 8;
+const VELLO_STORAGE_BUFFERS: u32 = 8;
+const VELLO_INVOCATIONS: u32 = 256;
 
 #[derive(Clone, Copy)]
 pub struct Fence(vk::Semaphore);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Backend {
+    Vulkan,
+    Gles,
+}
+
+impl Backend {
+    fn wgpu(self) -> wgpu::Backends {
+        match self {
+            Backend::Vulkan => wgpu::Backends::VULKAN,
+            Backend::Gles => wgpu::Backends::GL,
+        }
+    }
+}
+
+type Opened = (wgpu::Device, wgpu::Queue, &'static str);
 
 pub struct Device {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub info: wgpu::AdapterInfo,
+    pub backend: Backend,
+    pub tier: &'static str,
+    downlevel: wgpu::DownlevelCapabilities,
+    vello: Result<(), String>,
     semaphores: Vec<vk::Semaphore>,
     next: usize,
 }
 
 impl Device {
-    pub fn open() -> Result<Self, String> {
-        Self::open_where(true)
+    pub fn open(backend: Backend, node: &Path) -> Result<Self, String> {
+        let (adapter, (device, queue, tier)) = Self::on_node(backend, node)?;
+        let vello = match backend {
+            Backend::Vulkan => Ok(()),
+            Backend::Gles => Self::try_vello(&device, &queue, &adapter.get_downlevel_capabilities()),
+        };
+        Ok(Self::assemble(&adapter, (device, queue, tier), backend, vello))
+    }
+
+    pub fn probe(backend: Backend, node: &Path) -> Result<String, String> {
+        let (adapter, opened) = Self::on_node(backend, node)?;
+        Ok(Self::assemble(&adapter, opened, backend, Err("not tried by the probe".into())).describe())
     }
 
     pub fn open_hardware() -> Result<Self, String> {
-        Self::open_where(false)
-    }
-
-    fn open_where(cpu: bool) -> Result<Self, String> {
         let mut errors = Vec::new();
-        let instance =
-            wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::VULKAN, ..wgpu::InstanceDescriptor::new_without_display_handle() });
-        let mut adapters: Vec<_> = pollster::block_on(instance.enumerate_adapters(wgpu::Backends::VULKAN))
-            .into_iter()
-            .filter(|a| cpu || a.get_info().device_type != wgpu::DeviceType::Cpu)
-            .collect();
+        let mut adapters: Vec<_> = Self::adapters(Backend::Vulkan).into_iter().filter(|a| a.get_info().device_type != wgpu::DeviceType::Cpu).collect();
         adapters.sort_by_key(|a| match a.get_info().device_type {
             wgpu::DeviceType::DiscreteGpu | wgpu::DeviceType::IntegratedGpu => 0,
-            wgpu::DeviceType::Cpu => 2,
             _ => 1,
         });
-        let (adapter, device, queue) = adapters
+        let (adapter, opened) = adapters
             .into_iter()
-            .find_map(|adapter| match Self::open_adapter(&adapter) {
-                Ok((device, queue)) => Some((adapter, device, queue)),
+            .find_map(|adapter| match Self::open_adapter(Backend::Vulkan, &adapter) {
+                Ok(opened) => Some((adapter, opened)),
                 Err(e) => {
                     errors.push(format!("{}: {e}", adapter.get_info().name));
                     None
                 }
             })
             .ok_or_else(|| if errors.is_empty() { "no GPU (Vulkan)".to_string() } else { errors.join("; ") })?;
-        let mut device = Self { device, queue, info: adapter.get_info(), semaphores: Vec::new(), next: 0 };
-        device.semaphores = device.create_semaphores();
-        Ok(device)
+        Ok(Self::assemble(&adapter, opened, Backend::Vulkan, Ok(())))
     }
 
-    fn open_adapter(adapter: &wgpu::Adapter) -> Result<(wgpu::Device, wgpu::Queue), String> {
-        let hal_adapter = unsafe { adapter.as_hal::<Vk>() }.ok_or("not a Vulkan adapter")?;
-        let caps = hal_adapter.physical_device_capabilities();
-        let missing: Vec<_> = EXTENSIONS.iter().filter(|e| !caps.supports_extension(e)).map(|e| e.to_string_lossy()).collect();
-        if !missing.is_empty() {
-            return Err(format!("missing Vulkan extensions {}", missing.join(", ")));
+    pub fn fits_vello(&self) -> bool {
+        self.vello.is_ok()
+    }
+
+    pub fn describe(&self) -> String {
+        let (info, limits, flags) = (&self.info, self.device.limits(), self.downlevel.flags);
+        let flag = |name: &str, f: wgpu::DownlevelFlags| format!("{name}={}", flags.contains(f));
+        let vello = match &self.vello {
+            Ok(()) => "vello=runs".to_owned(),
+            Err(e) => format!("vello=no ({e})"),
+        };
+        let workgroup = (limits.max_compute_workgroup_size_x, limits.max_compute_workgroup_size_y, limits.max_compute_workgroup_size_z);
+        [
+            format!("{} ({:?}, {:?}, driver {} {})", info.name, self.backend, info.device_type, info.driver, info.driver_info),
+            format!("device tier {}", self.tier),
+            format!("max_storage_buffers_per_shader_stage={}", limits.max_storage_buffers_per_shader_stage),
+            format!("max_compute_workgroup_size={}x{}x{}", workgroup.0, workgroup.1, workgroup.2),
+            format!("max_compute_invocations_per_workgroup={}", limits.max_compute_invocations_per_workgroup),
+            format!("max_compute_workgroup_storage_size={}", limits.max_compute_workgroup_storage_size),
+            format!("max_storage_buffer_binding_size={}", limits.max_storage_buffer_binding_size),
+            flag("COMPUTE_SHADERS", wgpu::DownlevelFlags::COMPUTE_SHADERS),
+            flag("FRAGMENT_WRITABLE_STORAGE", wgpu::DownlevelFlags::FRAGMENT_WRITABLE_STORAGE),
+            flag("VERTEX_STORAGE", wgpu::DownlevelFlags::VERTEX_STORAGE),
+            flag("INDIRECT_EXECUTION", wgpu::DownlevelFlags::INDIRECT_EXECUTION),
+            vello,
+        ]
+        .join(", ")
+    }
+
+    fn assemble(adapter: &wgpu::Adapter, (device, queue, tier): Opened, backend: Backend, vello: Result<(), String>) -> Self {
+        let downlevel = adapter.get_downlevel_capabilities();
+        let mut opened = Self { device, queue, info: adapter.get_info(), backend, tier, downlevel, vello, semaphores: Vec::new(), next: 0 };
+        if backend == Backend::Vulkan {
+            opened.semaphores = opened.create_semaphores();
         }
-        drop(hal_adapter);
+        opened
+    }
+
+    fn adapters(backend: Backend) -> Vec<wgpu::Adapter> {
+        let backends = backend.wgpu();
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends, ..wgpu::InstanceDescriptor::new_without_display_handle() });
+        pollster::block_on(instance.enumerate_adapters(backends))
+    }
+
+    fn on_node(backend: Backend, node: &Path) -> Result<(wgpu::Adapter, Opened), String> {
+        let adapter = Self::pick(Self::adapters(backend), Self::pci_ids(node), backend, node)?;
+        let opened = Self::open_adapter(backend, &adapter).map_err(|e| format!("{}: {e}", adapter.get_info().name))?;
+        Ok((adapter, opened))
+    }
+
+    fn pci_ids(node: &Path) -> Option<(u32, u32)> {
+        let name = node.file_name()?.to_str()?;
+        let read = |what: &str| {
+            let text = std::fs::read_to_string(format!("/sys/class/drm/{name}/device/{what}")).ok()?;
+            u32::from_str_radix(text.trim().trim_start_matches("0x"), 16).ok()
+        };
+        Some((read("vendor")?, read("device")?))
+    }
+
+    fn pick(adapters: Vec<wgpu::Adapter>, ids: Option<(u32, u32)>, backend: Backend, node: &Path) -> Result<wgpu::Adapter, String> {
+        let names: Vec<String> = adapters.iter().map(|a| format!("{} ({:?})", a.get_info().name, a.get_info().device_type)).collect();
+        let mut hardware: Vec<_> = adapters.into_iter().filter(|a| a.get_info().device_type != wgpu::DeviceType::Cpu).collect();
+        if let Some((vendor, device)) = ids
+            && let Some(at) = hardware.iter().position(|a| (a.get_info().vendor, a.get_info().device) == (vendor, device))
+        {
+            return Ok(hardware.swap_remove(at));
+        }
+        match hardware.len() {
+            1 => Ok(hardware.remove(0)),
+            0 if names.is_empty() => Err(format!("no {backend:?} adapter")),
+            0 => Err(format!("only software {backend:?} adapters: {}", names.join(", "))),
+            _ => Err(format!("{} matches none of the {backend:?} adapters, and there is more than one: {}", node.display(), names.join(", "))),
+        }
+    }
+
+    fn open_adapter(backend: Backend, adapter: &wgpu::Adapter) -> Result<Opened, String> {
+        if backend == Backend::Vulkan {
+            let hal_adapter = unsafe { adapter.as_hal::<Vk>() }.ok_or("not a Vulkan adapter")?;
+            let caps = hal_adapter.physical_device_capabilities();
+            let missing: Vec<_> = EXTENSIONS.iter().filter(|e| !caps.supports_extension(e)).map(|e| e.to_string_lossy()).collect();
+            if !missing.is_empty() {
+                return Err(format!("missing Vulkan extensions {}", missing.join(", ")));
+            }
+        }
         let tiers = DeviceRequest::tiers(adapter.features() & wgpu::Features::all_webgpu_mask(), adapter.limits());
-        DeviceRequest::open("acde", &tiers, |request| Self::open_tier(adapter, request)).map(|(device, _)| device)
+        let ((device, queue), tier) = DeviceRequest::open("acde", &tiers, |request| match backend {
+            Backend::Vulkan => Self::open_tier(adapter, request),
+            Backend::Gles => pollster::block_on(adapter.request_device(&request.descriptor("acde"))).map_err(|e| e.to_string()),
+        })?;
+        Ok((device, queue, tier))
+    }
+
+    fn try_vello(device: &wgpu::Device, queue: &wgpu::Queue, downlevel: &wgpu::DownlevelCapabilities) -> Result<(), String> {
+        let limits = device.limits();
+        if !downlevel.flags.contains(wgpu::DownlevelFlags::COMPUTE_SHADERS) {
+            return Err("no compute shaders".into());
+        }
+        if limits.max_storage_buffers_per_shader_stage < VELLO_STORAGE_BUFFERS {
+            return Err(format!("{} storage buffers per stage, vello needs {VELLO_STORAGE_BUFFERS}", limits.max_storage_buffers_per_shader_stage));
+        }
+        if limits.max_compute_invocations_per_workgroup < VELLO_INVOCATIONS || limits.max_compute_workgroup_size_x < VELLO_INVOCATIONS {
+            return Err(format!("workgroups of {} invocations, vello needs {VELLO_INVOCATIONS}", limits.max_compute_invocations_per_workgroup));
+        }
+        let started = std::time::Instant::now();
+        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+        let build = || crate::vello::Vello::on_this_thread(device, queue).map(drop);
+        let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(build)).unwrap_or_else(|_| Err("building vello's pipelines panicked".into()));
+        let internal = pollster::block_on(internal.pop());
+        let validation = pollster::block_on(validation.pop());
+        let errors: Vec<String> = [built.err(), internal.map(|e| e.to_string()), validation.map(|e| e.to_string())].into_iter().flatten().collect();
+        if !errors.is_empty() {
+            return Err(format!("vello's pipelines do not build: {}", errors.join("; ")));
+        }
+        log::info!("acde: vello's pipelines built on the GLES device in {:.1}ms", started.elapsed().as_secs_f64() * 1000.0);
+        Ok(())
     }
 
     fn open_tier(adapter: &wgpu::Adapter, request: &DeviceRequest) -> Result<(wgpu::Device, wgpu::Queue), String> {

@@ -91,7 +91,20 @@
   合成器自己 (GLES) 不在此列. acdebin-system 的会话不走这条: 没有 GPU 时它在 CPU 上画页面, 不用 lavapipe (见它的 `docs/window-paint.md`).
 - **两种后端, 按 feature 选** (用户定 2026-11-19): wgpu (src/vello) 和 detour (还没有, 以后在 `src/detour`). acdev 只开 wgpu: 三个平台一致, 给开发者用;
   acdes 开 detour 加 wgpu: Xe3 上走 detour, 别的 GPU 走 wgpu, 没有 GPU 时在 CPU 上画, WebGPU 总是 wgpu. wgpu 每个 OS 只编一个后端: Windows DX12、Linux Vulkan、
-  macOS Metal (`acde::gpu::BACKEND`). 2D 场景 (`PaintScene` / `Scene` / `RenderCommand` / `Filter`, blitz-paint 和 render 直接画进它) 是 `acde-scene` 的;
+  macOS Metal (`acde::gpu::BACKEND`). Linux 另编进 wgpu 的 GL 后端 (`gles` 特性), 不进 `BACKEND`, 只经 `acde::vello::Device` 用
+  (用户定 2026-11-20, GL 取证见总仓 `.scratch/render/wgpu-gl-probe.md`, 接口决定见 `.scratch/render/decisions.md`): 会话由 acdes 开始时探测一次
+  (`ACDE_RENDER`: `detour:<节点>`、`wgpu:vulkan:<节点>`、`wgpu:gles:<节点>`、`cpu`, acdes 解析), 页面进程照它调
+  `Device::open(Backend::Vulkan | Backend::Gles, 节点)`; 探测用 `Device::probe(backend, 节点)` (只开设备、不建 vello 管线, 成功时回 `describe()` 那一行).
+  OpenGL ES 默认关: 开关 `ACDE_GL_ES=1` 由 acdes 的探测读, libacde 不读环境变量, 调了 `open(Backend::Gles, …)` 就开 (取证: 液态玻璃静止时还在出帧,
+  开了之后静止时桌面进程 CPU 是 CPU 画页面时的十几倍; dopame 让它静止不出帧后再改默认).
+  选适配器: 读 `/sys/class/drm/<节点名>/device/{vendor,device}`, 和 wgpu `AdapterInfo` 的 `vendor` / `device` 对上的用它; 对不上 (GL 后端常报 0) 时,
+  非软件适配器恰好一个就用它, 否则报错并列出全部适配器. EGL 无表面平台由 Mesa 自己挑设备, 不能按节点指定, 所以 GLES 下这个比对只是核对.
+  `open(Backend::Gles, …)` 开好设备后在当前线程上、在 Validation 和 Internal 错误作用域里、包着 `catch_unwind` 建一次 vello 的全部管线
+  (`Vello::on_this_thread`, vello 的 `num_init_threads = 1`: 错误作用域只管本线程, 多线程建管线时错误漏到未捕获的处理里会被 wgpu 当致命错误 panic),
+  结果在 `fits_vello()`; 为假时调用方不给它装 vello 合成器, 画布留在 CPU 上. Vulkan 设备 `fits_vello()` 恒为真. GLES 设备没有 dma-buf 导入和
+  sync_file (`import` 报错, `arm` / `sync_file` 回 None), 只给画布、WebGL、WebGPU 用. `describe()`: 适配器、后端、驱动串、档位, 以及 vello 依赖的限额
+  (每阶段存储缓冲数、计算工作组尺寸和调用数、工作组共享内存、存储缓冲大小) 和 downlevel 标志. `open_hardware()` (Vulkan, 不看节点) 留给还没改成按
+  `ACDE_RENDER` 选设备的调用方. 只建 OpenGL ES 上下文靠 `vendor/wgpu-hal` 的补丁 (见 `vendor.md`). 2D 场景 (`PaintScene` / `Scene` / `RenderCommand` / `Filter`, blitz-paint 和 render 直接画进它) 是 `acde-scene` 的;
   渲染器 (`Vello` / `Raster` / `Composer` / `Device` / `Offscreen` / `GpuImage`, Linux 上 dma-buf 画布导入和 sync_file) 在 src/vello; src/gpu 的 `Gpu`
   (设备登记, 唯一一份) 包着 src/vello 的 `Shared`. acgpu 和 detour-gpu 0.1 都不再用. acdes 的 crates/paint 只剩线程、GBM 画布、损伤和区域、把帧拆成 `Part`
   (`plane.rs`), 以及 CPU 画页面.

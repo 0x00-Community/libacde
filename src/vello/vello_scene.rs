@@ -16,8 +16,16 @@ pub struct Vello {
 
 impl Vello {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<Self, String> {
+        Self::with_threads(device, queue, None)
+    }
+
+    pub fn on_this_thread(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<Self, String> {
+        Self::with_threads(device, queue, std::num::NonZeroUsize::new(1))
+    }
+
+    fn with_threads(device: &wgpu::Device, queue: &wgpu::Queue, threads: Option<std::num::NonZeroUsize>) -> Result<Self, String> {
         let options =
-            vello::RendererOptions { use_cpu: false, antialiasing_support: vello::AaSupport::area_only(), num_init_threads: None, pipeline_cache: None };
+            vello::RendererOptions { use_cpu: false, antialiasing_support: vello::AaSupport::area_only(), num_init_threads: threads, pipeline_cache: None };
         let renderer = vello::Renderer::new(device, options).map_err(|e| format!("vello: {e}"))?;
         Ok(Self { device: device.clone(), queue: queue.clone(), renderer, scene: vello::Scene::new() })
     }

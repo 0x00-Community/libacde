@@ -7,6 +7,7 @@
 
 | 目录 | 上游 |
 | --- | --- |
+| `wgpu-hal` | crates.io `wgpu-hal` 30.0.2 原样拷入, 只改 EGL 建上下文那几行, 见下 |
 | `blitz` (子模块) | DioxusLabs/blitz main `fb297a38` 上接我们的提交: 只留 blitz-dom / blitz-paint / blitz-traits / stylo_taffy / debug_timer (`MIT OR Apache-2.0`) |
 
 blitz fork 和上游结构的不同: HTML 解析用 src/render 自己的 html5ever TreeSink; `build_inline_layout_into` 在 `layout/inline/build.rs`; `paint_scene`
@@ -113,3 +114,18 @@ blitz fork 和上游结构的不同: HTML 解析用 src/render 自己的 html5ev
 (naga 私有的几样在 `glsl/compat.rs` 重写); 改动处加 `acde:` 注释. 加的是 WebGL 方言 (`Frontend::parse_webgl`、`WebGlOptions`: `front/glsl` 的 `Frontend::parse_webgl`、`WebGlOptions`: ES 1.00 / 3.00、attribute / varying、组合采样器拆开 (数组按常量下标、采样器参数带隐藏的采样器参数)、散 uniform 成块、`gl_FragColor` / `gl_FragData` / int `gl_VertexID`、矩阵 attribute 按列、出口翻 y 改 z、宽点、丢掉的接口变量), 另外 `const in` 参数、`modf`、精度语句接受采样器、嵌套深度上限 128 (表达式和语句; 深的源码报错而不是栈溢出)、数组层数 / 采样器数组长度的上界.
 std140 下比步长窄的 scalar / vec2 数组元素包进 16 字节的结构体 `acde_padded { value }` (`offset::PADDED`), 取元素时自动接上 `.value`,
 webgl 枚举 uniform 时 (`shader.rs` `unpadded`) 解开这层; 这样各后端 (MSL 没有自己的数组步长) 都保持 std140 布局, 不用改 naga 后端.
+
+**wgpu-hal (`vendor/wgpu-hal`, 只建 OpenGL ES 上下文)**
+
+- 上游: crates.io `wgpu-hal` 30.0.2 (gfx-rs/wgpu 的 v30.0.2), 整个包原样拷入 (含 LICENSE.MIT / LICENSE.APACHE), 根 `Cargo.toml` 的
+  `[patch.crates-io] wgpu-hal = { path = "vendor/wgpu-hal" }` 换上. cargo 的 patch 只认根工作区: acdes、acdev 编 libacde 时也要在它们的根
+  `Cargo.toml` 写同样的 patch (路径 `../libacde/vendor/wgpu-hal`), 否则用的是 crates.io 原版.
+- 改了什么: `src/gles/egl.rs` 的 `Inner::create` 里 `supports_opengl` 恒为 false (原来是 EGL 1.4 以上且 `EGL_CLIENT_APIS` 含 `OpenGL` 时为真),
+  于是只走 `create_context(OPENGL_ES_API, …)`, 并打一行 debug 日志. 其余一字未改.
+- 为什么: 原版只要 EGL 给桌面 OpenGL 就先建桌面上下文, 没有选项可以关掉 (`GlBackendOptions` / `WGPU_GLES_MINOR_VERSION` 只管 ES 的小版本,
+  用了桌面 GL 时还会被忽略). virgl (acdev 客户机, 宿主 D3D12) 同时给桌面 OpenGL 4.2 core 和 OpenGL ES 3.1: 选了桌面 4.2 时 naga 出
+  `#version 420 core`, vello 的 binning / coarse / fine_area 计算着色器要 `ARB_arrays_of_arrays` 而 virgl 在计算着色器里不支持, 管线建不出,
+  并且 vello 多线程建管线时这个错误被 wgpu 当致命错误 panic, 桌面全黑; 走 OpenGL ES 3.1 时 naga 出 `#version 310 es` (ES 3.10 本身有数组的数组),
+  vello 管线 0 报错 (2026-11-20 GL 取证第三轮). 桌面 OpenGL 路径因此删掉, 不留开关.
+- 升 wgpu 时: 拷新版 wgpu-hal 进来, 重做同一处改动, 改这里写的版本号; 上游接受补丁 (草稿在总仓 `.scratch/render/wgpu-upstream-draft.md`,
+  发之前给用户看) 后改用上游的选项, 删掉 `vendor/wgpu-hal` 和 patch.

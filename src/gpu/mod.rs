@@ -2,7 +2,7 @@ mod compositor;
 mod gpu;
 
 #[cfg(target_os = "linux")]
-pub use crate::vello::{Device, Fence};
+pub use crate::vello::{Backend, Device, Fence};
 pub use crate::vello::{GpuImage, ImageSet};
 pub use acde_scene::*;
 pub use compositor::{Compositor, Offscreen};
