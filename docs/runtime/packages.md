@@ -20,6 +20,8 @@
   `[<服务名>]`, 服务关闭后 SIGTERM, 3 秒后 SIGKILL).
   桌面清单的 `services` 项可以写成 `{name, modules}`, 列出这个服务能用的外壳模块; 服务经 `ctx.import('acde:<模块>')` 拿到 `{<模块>, default}`
   (Broker 侧 `broker/access/modules.ts` `ServiceModules.module(名字, 服务名)`), 没列的拒绝并说缺哪条声明. 服务还另有 `ctx.inspect`.
+  `{name, modules, backend}` 的 `backend` 是这个服务连桌面后台时的角色名 (非空字符串, 否则校验错误); 写了角色而桌面没有 `backend` 时是警告.
+  桌面的 `backend` 是 `{unit}` (systemd 系统单元模板名, 以 `@` 结尾、不含 `/`, 否则校验错误; `Manifest.desktopBackend`).
   **配置里怎么写这条授权** (`acde.config.jsonc`, SDK `DesktopConfig.services`: `Record<string, string | ServiceConfig>`, `config.schema.json` 同):
   每项是模块文件, 或 `{ "module": 文件, "modules": [外壳模块] }`. 读法只有一份: `Manifest.configServices(raw)` 给出 `{name, module, modules}[]`
   或一句错误; `modules` 交给清单那条规则 `Manifest.desktopServices` 判 (文字相同: `service "clock": modules lists shell modules (…)`), 没有 `module`

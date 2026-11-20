@@ -25,3 +25,34 @@ describe('the lock entry of a desktop', () => {
     }
   })
 })
+
+describe('the backend of a desktop', () => {
+  const entry = { entry: 'desktop/index.html' }
+
+  test('is a systemd unit template ending in @, without a slash', () => {
+    assert.deepEqual(errors({ ...entry, backend: { unit: 'acdes-session-agent@' } }), [])
+    for (const backend of [{ unit: 'acdes-session-agent' }, { unit: 'a/b@' }, { unit: '@' }, { unit: 3 }, 'acdes-session-agent@', []]) {
+      const found = errors({ ...entry, backend })
+      assert.equal(found.length, 1, JSON.stringify(backend))
+      assert.match(found[0]!, /desktop "dopame": backend is \{unit\}/)
+    }
+  })
+
+  test('a service role is a name, and a role without a desktop backend is a warning', () => {
+    const manifest = (desktop: Record<string, unknown>) => {
+      const desktops = [{ id: 'dopame', name: 'Dopame', ...entry, ...desktop }]
+      return { apiLevel: API_LEVEL, services: [{ name: 'assistant' }], desktops } as unknown as PackageManifest
+    }
+    const check = (desktop: Record<string, unknown>) =>
+      Manifest.check(manifest(desktop), () => true, () => true, (path) => files.has(path))
+    assert.deepEqual(check({ backend: { unit: 'acdes-session-agent@' }, services: [{ name: 'assistant', backend: 'agent' }] }), { errors: [], warnings: [] })
+    assert.deepEqual(check({ services: [{ name: 'assistant', backend: 'agent' }] }).warnings, [
+      'desktop "dopame": service "assistant" has a backend role, but the desktop has no backend',
+    ])
+    assert.match(check({ services: [{ name: 'assistant', backend: '' }] }).errors[0]!, /service "assistant": backend is the name of its role/)
+    assert.deepEqual(Manifest.desktopServices([{ name: 'assistant', backend: 'agent' }, 'files']), [
+      { name: 'assistant', modules: [], backend: 'agent' },
+      { name: 'files', modules: [] },
+    ])
+  })
+})

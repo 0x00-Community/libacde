@@ -22,7 +22,8 @@
 | `id`、`name`、`description` | `id`、`name` | 登录页、`acde:desktops.list()` 里显示的身份 |
 | `entry` | 是 | 桌面页: 包里的 HTML (相对路径, 不以 `/` 起头, 不含 `..`) |
 | `lock` | 否 | 锁屏页, 写法同 `entry`; 不写时运行时用自带的锁屏页 (见「锁屏页」) |
-| `services` | 否 | 随桌面起停的后台服务名; 写成 `{name, modules}` 时另给这个服务列出它能 `ctx.import` 的外壳模块 |
+| `services` | 否 | 随桌面起停的后台服务名; 写成 `{name, modules, backend}` 时另给这个服务列出它能 `ctx.import` 的外壳模块, `backend` 是它连桌面后台时的角色名 (有了才有 `ctx.backend`) |
+| `backend` | 否 | 桌面后台: `{unit}`, 后台进程的 systemd 系统单元模板名, 以 `@` 结尾、不含 `/` (如 `"acdes-session-agent@"`); 管家按 `<unit><UID>.service` 的主进程认它, 只认系统包 |
 | `heapMb` | 否 | 桌面页的 JS 堆, 默认 1024, 最小 32 |
 
 同一个包里还要有 `apiLevel` (和运行时的契约级别相同, 否则整个包不加载), 可以有 `apps` (和桌面同包的应用是**系统应用**, 可以声明外壳模块)、

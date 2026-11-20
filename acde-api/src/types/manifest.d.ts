@@ -19,11 +19,17 @@ export interface DesktopManifest {
   readonly lock?: string
   readonly services?: readonly (string | DesktopService)[]
   readonly heapMb?: number
+  readonly backend?: DesktopBackend
+}
+
+export interface DesktopBackend {
+  readonly unit: string
 }
 
 export interface DesktopService {
   readonly name: string
   readonly modules?: readonly ShellModule[]
+  readonly backend?: string
 }
 
 export interface AppManifest {

@@ -71,6 +71,7 @@ export const RESERVED_NAMES: ReadonlySet<string> = new Set([...SYSTEM_CAPABILITI
 export interface DesktopServiceGrant {
   readonly name: string
   readonly modules: ShellModule[]
+  readonly backend?: string
 }
 
 export interface ConfiguredService extends DesktopServiceGrant {
@@ -155,13 +156,25 @@ export class Manifest {
         grants.push({ name: entry, modules: [] })
         continue
       }
-      const { name, modules = [] } = (typeof entry === 'object' && entry !== null ? entry : {}) as { name?: unknown; modules?: unknown }
+      const fields = (typeof entry === 'object' && entry !== null ? entry : {}) as { name?: unknown; modules?: unknown; backend?: unknown }
+      const { name, modules = [], backend } = fields
       if (typeof name !== 'string' || !name) return 'services lists service names or {name, modules}'
       if (!Array.isArray(modules) || modules.some((m) => !Manifest.#SHELL.has(m)))
         return `service ${JSON.stringify(name)}: modules lists shell modules (${SHELL_MODULES.join(', ')})`
-      grants.push({ name, modules: [...(modules as ShellModule[])] })
+      if (backend !== undefined && (typeof backend !== 'string' || !backend))
+        return `service ${JSON.stringify(name)}: backend is the name of its role toward the desktop backend`
+      const grant = { name, modules: [...(modules as ShellModule[])] }
+      grants.push(backend === undefined ? grant : { ...grant, backend: backend as string })
     }
     return grants
+  }
+
+  static desktopBackend(raw: unknown): { unit: string } | null | string {
+    if (raw === undefined) return null
+    const unit = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as { unit?: unknown }).unit : undefined
+    if (typeof unit !== 'string' || unit.length < 2 || !unit.endsWith('@') || unit.includes('/'))
+      return 'backend is {unit}, the systemd unit template the backend runs as, ending in @ (such as "acdes-session-agent@")'
+    return { unit }
   }
 
   static configServices(raw: unknown): ConfiguredService[] | string {
@@ -318,10 +331,14 @@ export class Manifest {
         if (!Manifest.packagePath(path)) errors.push(`${at}: ${field} must be a path inside the package, such as ${example}`)
         else if (isFile && !isFile(path)) errors.push(`${at}: no ${field} ${path}`)
       }
+      const backend = Manifest.desktopBackend(desktop?.backend)
+      if (typeof backend === 'string') errors.push(`${at}: ${backend}`)
       const grants = Manifest.desktopServices(desktop?.services)
       if (typeof grants === 'string') errors.push(`${at}: ${grants}`)
       for (const grant of Array.isArray(grants) ? grants : []) {
         if (!services.has(grant.name)) warnings.push(`${at}: no service ${JSON.stringify(grant.name)} in acde.services`)
+        if (grant.backend !== undefined && desktop?.backend === undefined)
+          warnings.push(`${at}: service ${JSON.stringify(grant.name)} has a backend role, but the desktop has no backend`)
       }
     }
     const system = (manifest.desktops ?? []).length > 0
