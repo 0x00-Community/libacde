@@ -208,8 +208,8 @@ acdes 一列按 acdes 的代码核对过; 宿主窗口一列取自 `docs/runtime
 | `place` | 有 (只挪 `normal` 的窗口) | 有 |
 | `kill` | 结束窗口的进程 | 同 `close` |
 | `animate` | 立即完成, 不动 | 合成器逐帧插值 |
-| `setFrameTheme` | 只到桌面进程自己的窗口, 还到不了应用窗口 (应用各在自己的进程) | 有 |
-| `setDoubleClick` | 还没有 (只记日志) | 有 |
+| `setFrameTheme` | 有: 经管家到每个应用进程 (含之后才起的); 只认桌面页, 系统应用设的只到它自己的窗口 | 有 |
+| `setDoubleClick` | 有: 同上; 双击判定用 `ClickSettings` 的默认值 | 有 |
 | `on('edge')` (指针到屏幕边) | 不发 | 发 |
 | 快捷键的键名 | 字母、数字、F1–F12、方向键、Home / End / PageUp / PageDown / Insert / Delete、Esc、Tab、Enter、Space、Backspace、Print 和几个符号; 媒体键 (`xf86*`) 还不认 | xkb keysym 名 |
 | 应用自己的 `acde:window.shortcut` | 回 501 | 有 |

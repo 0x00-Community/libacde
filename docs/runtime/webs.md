@@ -38,14 +38,14 @@
   变了经 `winman_desktop_v1.work_area` 报给桌面进程, 铺满的窗口由 winman 跟着改 rect (acdes 的 `docs/workspace.md`). 元素要是 stacking context, 不带祖先的裁剪和透明度.
   `acde.desktop.setDoubleClick('fill' | 'minimize' | 'none')` (SDK `DoubleClickAction`) 声明双击标题栏做什么, 随时可以再设, 下一次双击就按新的;
   不认识的值抛 TypeError. 桌面页面和声明了 `acde:desktop` 的系统应用窗口都有 (经自己的 surface 的 `setDoubleClick`, 整个宿主一份), 服务没有;
-  会话里还没有 (只记 debug 日志).
+  会话里 (acdes) 桌面页设的经管家传到每个应用进程, 系统应用设的只管它自己的进程 (acdes `docs/manager.md`「窗框设置」).
   `acde.desktop.setFrameTheme(theme | null)` (SDK `FrameTheme`: `active` / `inactive` 各 `{background?, title?, line?, buttons?}`, 颜色是
   `#rgb` / `#rgba` / `#rrggbb` / `#rrggbbaa` / `rgb()` / `rgba()`; `buttonStyle: 'dots' | 'glyphs'`, `buttonSide: 'left' | 'right'`,
   `titleAlign: 'center' | 'start'`, `light: {active?, inactive?}`; 每次给的是整个主题, 不和上次的合并) 声明运行时画的标题栏的样子, 运行时照旧画、命中、拖动和双击.
   检查在 SDK `FrameThemes.parse` (`@acde/api/manifest`; 坏颜色和别的取值抛 TypeError; 不认识的键 (各层) 不再报错, 忽略并记一行 warn, #114:
   以后加的可选键在旧运行时上不出错, 但这次修改 (#114) 之前的 acdert 仍会抛, 桌面要先探测), 转成 19 个数交给 surface 的 `setFrameTheme` (整个宿主一份,
   `State.theme`). 设了就重画所有开着的有窗框的窗口 (`Msg::Theme`), 焦点变化时窗口换 `active` / `inactive` (`Msg::Active`); `null` 回到
-  今天的样子. 只管合成里的窗口; 会话里还没有 (只记 debug 日志). 谁有它同 `setDoubleClick`.
+  今天的样子. 谁有它、会话里怎么传同 `setDoubleClick`.
   **页面不支持深色时用 `light`** (#114): 主题带了 `light` 的配色时, 页面没声明支持深色的窗口改画 `light` 那套 (缺的项用运行时默认, 不借深色主题的);
   声明了的照旧用 `active` / `inactive`. 规则同浏览器: 根元素计算后的 `color-scheme` 含 `dark`, 或根元素没写 (`normal`) 而 `<meta name="color-scheme">` 的内容含 `dark`;
   页面同时声明了 `light` 时, 还要 `prefers-color-scheme: dark` 成立 (系统是深色, 或 `emulate` 成深色) 才算深色, 也就是页面此刻画成深色时.
