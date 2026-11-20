@@ -83,6 +83,7 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 | 改 C 接口 (`src/ffi.rs`、`include/acde.h`)、`Platform` 回调或 so 的导出表 | `docs/runtime/ffi.md` |
 | 改窗口表、窗口模式与状态、焦点 / 模态 / grab、全局快捷键, 或窗口协议的去向 (已全归 winman) | `docs/runtime/window-model.md` |
 | 改包清单的 `acde` 字段、桌面服务、契约级别 `apiLevel`、选哪个桌面、交出会话或登录页 | `docs/runtime/packages.md` |
+| 写一个桌面或换桌面: 桌面包声明什么、能用哪些 `acde:` 模块、窗口 / 虚拟桌面 / 面板 / 窗框 / 快捷键 / 锁屏页 / 拖放 / 截图 / 服务的规则 | `docs/runtime/desktop.md` |
 | 改 SDK `@acde/api` (`acde-api/`, 只有类型声明) 或清单规则 (`manifest/`), 或在别的工程里引用它们 | `docs/acde-api.md` |
 | 改 web 的出帧、窗框、钉住的面板、`acde:` 模块的注入 (层级、能力、批准)、沙箱或 web 的生命周期 | `docs/runtime/webs.md` |
 | 改应用入口和脚本加载, 或某个浏览器接口 (表单控件、XML、通知、声音、视频、设备、摄像头和麦克风) | `docs/web/web-apps.md` |

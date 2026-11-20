@@ -1,6 +1,6 @@
 # 桌面包
 
-桌面包是一个目录, `package.json` 的 `acde` 字段 (类型 acde-api `manifest.d.ts`):
+桌面包是一个目录, `package.json` 的 `acde` 字段 (类型 acde-api `manifest.d.ts`). 桌面要遵守的行为规则 (窗口、面板、锁屏页 …) 见 `docs/runtime/desktop.md`.
 
 ```json
 "acdev": {
