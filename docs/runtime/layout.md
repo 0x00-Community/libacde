@@ -89,11 +89,12 @@
   进程随之退出); `window.minimize`、`window.requestState('minimized')` 让页面自己最小化 (其余状态回 501); `window.reload([url])` 结束页面线程、
   对同一个窗口重新授予后再起 (url 须在 `http://acde.local/` 下); `capabilities.get/list` 按清单声明回 `available` / `not-declared`
   (临时, 不看平台与逐次同意). 桌面另答 `panel.open/place/close` (钉住的面板, 同旧管理中枢) 和 `windows.*` (`close`、`kill`、`focus`、`hide`、
-  `show`、`requestState`、`screenshot`、`animate`、`stats`、`shortcut`、`unshortcut`、`place`、虚拟桌面的 `addDesk`、`removeDesk`、
+  `show`、`requestState`、`screenshot(path)` (PrintScreen 那条, 参数是路径)、`animate`、`stats`、`shortcut`、`unshortcut`、`place`、虚拟桌面的 `addDesk`、`removeDesk`、
   `showDesk`、`moveToDesk` 交给窗口系统对象的同名方法 (acdes 里是 `native.Windows.connect()`, acdev 宿主窗口里是 `native.Shell.broker()`; `animate`、`stats` 在 acdes 里不做事); `launch` 有管家时转给 `launch.start`;
   多屏方案 A 的副屏壁纸 `setWallpaper({color, image?})` 只给桌面页, 先查 `color` 是 `#rrggbb` / `#rrggbbaa` (否则 400 `bad_color`)、`image` 是绝对路径或 null
   (否则 400 `bad_request`), 再交给窗口系统对象的 `setWallpaper(color, image?)` (acdes 里是 `native.Windows`, 值由桌面进程记住, 重载后保持; 宿主窗口没有这个方法);
-  不是桌面或窗口系统对象没有这个方法时 501 `unsupported`).
+  不是桌面或窗口系统对象没有这个方法时 501 `unsupported`); 带选项的 `windows.screenshot(options)` (SDK 的那个) 有管家时原样转给管家
+  (acdes 在会话主进程里截), 没有管家时只截整个宿主窗口 (`shell.screenshot(path)`, 路径缺省同 PrintScreen: `sys/os.ts` 的 `screenshotFile()`).
 - 窗口: 应用向窗口系统要一个占满宿主窗口的窗口; 桌面 `grant({desktop: true})` (窗口号 0). 窗口系统的关窗请求 (`windowcloserequest`, 如 xdg
   的 close) 先问页面 `window.beforeclose` (最多等 3 秒, 页面答 `false` 就不关), 再同样关掉. 桌面进程把窗口系统的其余事件
   交给桌面页 (`js/launcher/src/app/events.ts` 的 `WindowSnapshots`): acdes 给的是 winman 形状的快照 `window` (每个窗口一批变化后一条, `first` 表示新窗口,

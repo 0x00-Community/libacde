@@ -6,9 +6,7 @@ import { InputMethod, type ImeEvent } from './ime'
 import { ShellInput, chordMatches } from './keys'
 import { WINDOW_EVENTS, type Modifiers, type Native, type NativeSurface, type RawShellEvent, type ShellEvent, type WindowEvent } from './native'
 import type { WindowList } from './remote'
-import { mkdirSync } from './sys/fs'
-import { userDir } from './sys/os'
-import { join } from './sys/path'
+import { screenshotFile } from './sys/os'
 import { TextEntry } from './text'
 import { StartupTimeline } from './timeline'
 import { Level, Log } from './log'
@@ -194,12 +192,10 @@ export class Host {
   }
 
   async #screenshot(): Promise<void> {
-    const dir = userDir('PICTURES', 'Pictures')
-    const stamp = new Date().toLocaleString('sv-SE').replace(/:/g, '.')
-    const path = join(dir, `截图 ${stamp}.png`)
+    let path = ''
     let detail: ScreenshotEvent
     try {
-      mkdirSync(dir, { recursive: true })
+      path = screenshotFile()
       const { width, height } = await this.#windows.screenshot(path)
       detail = { type: 'screenshot', path, width, height }
     } catch (error) {
