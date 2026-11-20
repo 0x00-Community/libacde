@@ -64,6 +64,105 @@ pub fn adapters() -> (wgpu::Instance, Vec<wgpu::Adapter>) {
     (instance, adapters)
 }
 
+#[cfg(target_os = "linux")]
+pub struct GlDevice {
+    pub gpu: Arc<Gpu>,
+    pub tier: &'static str,
+    pub limits: wgpu::Limits,
+    pub downlevel: wgpu::DownlevelCapabilities,
+    pub vello: Result<(), String>,
+}
+
+#[cfg(target_os = "linux")]
+impl GlDevice {
+    pub const SWITCH: &'static str = "ACDE_GL_ES";
+    pub const VELLO_STORAGE_BUFFERS: u32 = 8;
+    const VELLO_INVOCATIONS: u32 = 256;
+
+    pub fn enabled() -> bool {
+        std::env::var(Self::SWITCH).is_ok_and(|value| value == "1")
+    }
+
+    pub fn open(label: &str) -> Result<Self, String> {
+        if !Self::enabled() {
+            return Err(format!("{}=1 is not set: the OpenGL ES device is off", Self::SWITCH));
+        }
+        let gl = wgpu::Backends::GL;
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends: gl, ..wgpu::InstanceDescriptor::new_without_display_handle_from_env() });
+        let adapters = pollster::block_on(instance.enumerate_adapters(gl));
+        let names: Vec<String> = adapters.iter().map(|a| format!("{} ({:?})", a.get_info().name, a.get_info().device_type)).collect();
+        let adapter = adapters
+            .into_iter()
+            .find(|a| a.get_info().device_type != wgpu::DeviceType::Cpu)
+            .ok_or_else(|| if names.is_empty() { "no GL adapter (EGL)".to_owned() } else { format!("only software GL adapters: {}", names.join(", ")) })?;
+        let info = adapter.get_info();
+        let downlevel = adapter.get_downlevel_capabilities();
+        let tiers = DeviceRequest::tiers(webgpu_features(&adapter), adapter.limits());
+        let open = |request: &DeviceRequest| pollster::block_on(adapter.request_device(&request.descriptor(label))).map_err(|e| e.to_string());
+        let ((device, queue), tier) = DeviceRequest::open(label, &tiers, open).map_err(|e| format!("opening {}: {e}", info.name))?;
+        let limits = device.limits();
+        let vello = Self::try_vello(&device, &queue, &limits, &downlevel);
+        Ok(Self { gpu: Gpu::new(device, queue, info), tier, limits, downlevel, vello })
+    }
+
+    pub fn fits_vello(&self) -> bool {
+        self.vello.is_ok()
+    }
+
+    fn try_vello(device: &wgpu::Device, queue: &wgpu::Queue, limits: &wgpu::Limits, downlevel: &wgpu::DownlevelCapabilities) -> Result<(), String> {
+        if !downlevel.flags.contains(wgpu::DownlevelFlags::COMPUTE_SHADERS) {
+            return Err("no compute shaders".into());
+        }
+        if limits.max_storage_buffers_per_shader_stage < Self::VELLO_STORAGE_BUFFERS {
+            return Err(format!("{} storage buffers per stage, vello needs {}", limits.max_storage_buffers_per_shader_stage, Self::VELLO_STORAGE_BUFFERS));
+        }
+        if limits.max_compute_invocations_per_workgroup < Self::VELLO_INVOCATIONS || limits.max_compute_workgroup_size_x < Self::VELLO_INVOCATIONS {
+            return Err(format!("workgroups of {} invocations, vello needs {}", limits.max_compute_invocations_per_workgroup, Self::VELLO_INVOCATIONS));
+        }
+        let started = std::time::Instant::now();
+        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+        let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::vello::Vello::on_this_thread(device, queue).map(drop)))
+            .unwrap_or_else(|_| Err("building vello's pipelines panicked".into()));
+        let internal = pollster::block_on(internal.pop());
+        let validation = pollster::block_on(validation.pop());
+        let errors: Vec<String> = [built.err(), internal.map(|e| e.to_string()), validation.map(|e| e.to_string())].into_iter().flatten().collect();
+        if !errors.is_empty() {
+            return Err(format!("vello's pipelines do not build: {}", errors.join("; ")));
+        }
+        log::info!("acde gl: vello's pipelines built in {:.1}ms", started.elapsed().as_secs_f64() * 1000.0);
+        Ok(())
+    }
+
+    pub fn describe(&self) -> String {
+        let (info, limits, flags) = (&self.gpu.info, &self.limits, self.downlevel.flags);
+        let flag = |name: &str, f: wgpu::DownlevelFlags| format!("{name}={}", flags.contains(f));
+        [
+            format!("{} ({:?}, {:?}, driver {} {})", info.name, info.backend, info.device_type, info.driver, info.driver_info),
+            format!("device tier {}", self.tier),
+            format!("max_storage_buffers_per_shader_stage={}", limits.max_storage_buffers_per_shader_stage),
+            format!(
+                "max_compute_workgroup_size={}x{}x{}",
+                limits.max_compute_workgroup_size_x, limits.max_compute_workgroup_size_y, limits.max_compute_workgroup_size_z
+            ),
+            format!("max_compute_invocations_per_workgroup={}", limits.max_compute_invocations_per_workgroup),
+            format!("max_compute_workgroup_storage_size={}", limits.max_compute_workgroup_storage_size),
+            format!("max_storage_buffer_binding_size={}", limits.max_storage_buffer_binding_size),
+            format!("max_storage_textures_per_shader_stage={}", limits.max_storage_textures_per_shader_stage),
+            flag("COMPUTE_SHADERS", wgpu::DownlevelFlags::COMPUTE_SHADERS),
+            flag("FRAGMENT_WRITABLE_STORAGE", wgpu::DownlevelFlags::FRAGMENT_WRITABLE_STORAGE),
+            flag("VERTEX_STORAGE", wgpu::DownlevelFlags::VERTEX_STORAGE),
+            flag("INDIRECT_EXECUTION", wgpu::DownlevelFlags::INDIRECT_EXECUTION),
+            format!("shader model {:?}", self.downlevel.shader_model),
+            match &self.vello {
+                Ok(()) => "vello=runs".to_owned(),
+                Err(e) => format!("vello=no ({e})"),
+            },
+        ]
+        .join(", ")
+    }
+}
+
 pub fn webgpu_features(adapter: &wgpu::Adapter) -> wgpu::Features {
     adapter.features() & wgpu::Features::all_webgpu_mask()
 }

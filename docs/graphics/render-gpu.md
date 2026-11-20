@@ -91,7 +91,16 @@
   合成器自己 (GLES) 不在此列. acdebin-system 的会话不走这条: 没有 GPU 时它在 CPU 上画页面, 不用 lavapipe (见它的 `docs/window-paint.md`).
 - **两种后端, 按 feature 选** (用户定 2026-11-19): wgpu (src/vello) 和 detour (还没有, 以后在 `src/detour`). acdev 只开 wgpu: 三个平台一致, 给开发者用;
   acdes 开 detour 加 wgpu: Xe3 上走 detour, 别的 GPU 走 wgpu, 没有 GPU 时在 CPU 上画, WebGPU 总是 wgpu. wgpu 每个 OS 只编一个后端: Windows DX12、Linux Vulkan、
-  macOS Metal (`acde::gpu::BACKEND`). 2D 场景 (`PaintScene` / `Scene` / `RenderCommand` / `Filter`, blitz-paint 和 render 直接画进它) 是 `acde-scene` 的;
+  macOS Metal (`acde::gpu::BACKEND`). Linux 另编进 wgpu 的 GL 后端 (`gles` 特性), 只给 `acde::gpu::GlDevice` 用, 不进 `BACKEND`:
+  虚拟显卡转发 (acdev 客户机的 virgl, 只给 OpenGL, 没有 Vulkan) 时由 acdes 在页面走 CPU 的情况下开一个 OpenGL ES 设备, 经 `Gpu::publish` 给
+  画布、WebGL、WebGPU 用 (用户定 2026-11-20, GL 取证见总仓 `.scratch/render/wgpu-gl-probe.md`). **默认关**: 要 `ACDE_GL_ES=1` 才开
+  (`GlDevice::SWITCH`), 没设时 `GlDevice::open` 直接回错误, 等 dopame 让液态玻璃静止时不出帧后再改默认 (取证: 不然静止时桌面进程 CPU
+  是 CPU 画页面时的十几倍). `GlDevice::open`: 只用 GL 后端 (EGL, 无表面) 枚举, 跳过软件适配器, 按 `DeviceRequest` 的三档开设备;
+  再在 Validation 和 Internal 错误作用域里、在当前线程上 (`Vello::on_this_thread`, vello 的 `num_init_threads = 1`: 错误作用域只管本线程,
+  多线程建管线时错误漏到未捕获的处理里会被 wgpu 当致命错误 panic) 建一次 vello 的全部管线, 失败或 panic 都记进 `vello` (`fits_vello()`
+  为假), 调用方就不给它装 vello 合成器, 画布留在 CPU 上. `describe()` 给出适配器、后端、驱动串、档位, 以及 vello 依赖的限额
+  (每阶段存储缓冲数、计算工作组尺寸和调用数、工作组共享内存、存储缓冲大小) 和 downlevel 标志. 只建 OpenGL ES 上下文靠
+  `vendor/wgpu-hal` 的补丁 (见 `vendor.md`). 2D 场景 (`PaintScene` / `Scene` / `RenderCommand` / `Filter`, blitz-paint 和 render 直接画进它) 是 `acde-scene` 的;
   渲染器 (`Vello` / `Raster` / `Composer` / `Device` / `Offscreen` / `GpuImage`, Linux 上 dma-buf 画布导入和 sync_file) 在 src/vello; src/gpu 的 `Gpu`
   (设备登记, 唯一一份) 包着 src/vello 的 `Shared`. acgpu 和 detour-gpu 0.1 都不再用. acdes 的 crates/paint 只剩线程、GBM 画布、损伤和区域、把帧拆成 `Part`
   (`plane.rs`), 以及 CPU 画页面.
