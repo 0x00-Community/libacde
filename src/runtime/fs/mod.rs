@@ -382,7 +382,7 @@ impl Workspace {
         roots.iter().any(|r| r == root) || self.owner.as_deref().is_some_and(|owner| self.shared.grants.of(owner).iter().any(|r| r == root))
     }
 
-    pub fn admit(&self, path: &str) -> Outcome<String> {
+    pub(crate) fn admit(&self, path: &str) -> Outcome<String> {
         self.admit_with(path, &[])
     }
 

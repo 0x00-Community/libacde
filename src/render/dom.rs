@@ -48,7 +48,7 @@ fn fail(name: &str, message: impl std::fmt::Display) -> Error {
 
 #[derive(Clone)]
 pub struct Dom {
-    pub(crate) shared: Arc<Shared>,
+    pub(super) shared: Arc<Shared>,
     pub(crate) wake: Sender<()>,
 }
 

@@ -112,10 +112,6 @@ pub(super) fn write(writer: &mut impl Write, opcode: u8, payload: &[u8]) -> io::
     writer.flush()
 }
 
-pub(super) fn pong(writer: &mut impl Write, payload: &[u8]) -> io::Result<()> {
-    write(writer, PONG, payload)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
