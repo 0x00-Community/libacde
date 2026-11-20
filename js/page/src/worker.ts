@@ -277,7 +277,11 @@ export default async function boot(natives: WebNatives): Promise<void> {
     web.onFirstFrame = () => void rpc.call('page', 'shown').catch(() => undefined)
     const pinned = new Pinned(rpc, surface, dom, page as never)
     web.onPanelMove = (id, extent) => pinned.extend(id, extent)
-    bridge.value['desktop'] = { ...(bridge.value['desktop'] as object), pin: (element: Element, options?: { margin?: number }) => pinned.pin(element, options) }
+    bridge.value['desktop'] = {
+      ...(bridge.value['desktop'] as object),
+      pin: (element: Element, options?: { margin?: number }) => pinned.pin(element, options),
+      ...Frame.grabs(surface),
+    }
   }
   if (bridge.value['desktop']) bridge.value['desktop'] = { ...(bridge.value['desktop'] as object), ...Frame.desktop(surface) }
   if (natives.fs) {

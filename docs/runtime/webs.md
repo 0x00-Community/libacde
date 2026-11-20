@@ -36,6 +36,8 @@
   (`acde:window.output.workArea`). 不写 reserve 的面板什么都不占. 钉住后用句柄的 `reserve({edge, thickness?} | null)` 就地换占的边或厚度 (不用 unpin 再钉,
   工作区只变一次, 中间没有整个输出的一步; `null` 不再占, 不认识的边或负的厚度抛 TypeError). 一个宿主窗口就是一个输出. 会话里 acdes 的 `crates/window` 把面板做成 wlr-layer-shell 的面, `reservePanel` 设它的独占区, 工作区由 winman 算 (输出减去各面的独占区),
   变了经 `winman_desktop_v1.work_area` 报给桌面进程, 铺满的窗口由 winman 跟着改 rect (acdes 的 `docs/workspace.md`). 元素要是 stacking context, 不带祖先的裁剪和透明度.
+  `acde.desktop.requestGrab(kind)` / `releaseGrab(kind)` (`'pointer'` | `'keyboard'`, 别的值抛 TypeError; 只有桌面页面有, 用户 2026-11-20 定) 和应用窗口的
+  `acde.window.requestGrab` / `releaseGrab` 同一条路: 经桌面页面自己的 surface 的 `request_grab`, 由会话 (acdes 转给 winman) 决定给不给; Dopame 的确认卡片用它抢键盘.
   `acde.desktop.setDoubleClick('fill' | 'minimize' | 'none')` (SDK `DoubleClickAction`) 声明双击标题栏做什么, 随时可以再设, 下一次双击就按新的;
   不认识的值抛 TypeError. 桌面页面和声明了 `acde:desktop` 的系统应用窗口都有 (经自己的 surface 的 `setDoubleClick`, 整个宿主一份), 服务没有;
   会话里还没有 (只记 debug 日志).

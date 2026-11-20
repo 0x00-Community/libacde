@@ -173,3 +173,14 @@ describe('Frame.darkPage', () => {
     assert.equal(Frame.darkFrame(page('', 'light dark'), true), true)
   })
 })
+
+describe('Frame.grabs', () => {
+  test('the desktop asks the surface for a pointer or keyboard grab and gives it back', () => {
+    const calls: string[] = []
+    const grabs = Frame.grabs({ requestGrab: (kind) => void calls.push(`on ${kind}`), releaseGrab: (kind) => void calls.push(`off ${kind}`) })
+    grabs.requestGrab('keyboard')
+    grabs.releaseGrab('keyboard')
+    assert.deepEqual(calls, ['on keyboard', 'off keyboard'])
+    assert.throws(() => grabs.requestGrab('mouse' as never), /kind is 'pointer' or 'keyboard'/)
+  })
+})
