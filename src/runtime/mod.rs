@@ -59,6 +59,7 @@ pub use bluetooth::{Bluetooths, BtCall};
 pub use bus::DesktopBus;
 #[cfg(target_os = "linux")]
 pub use devices::{DevCall, Devices, Topic};
+pub use devtools::{GUEST_KEY, dev_mode, managed};
 #[cfg(target_os = "linux")]
 pub use fcitx::{Fcitx, ImeController, ImeEntry, ImeGroup, ime_apply, ime_catalog, ime_state};
 pub use fetch::{Deliver, Dial, Event as FetchEvent, FetchClient};

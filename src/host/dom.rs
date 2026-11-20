@@ -135,7 +135,7 @@ pub fn create_document<'s>(scope: &mut v8::PinScope<'s, '_>, args: v8::FunctionC
     ASSETS.with(|a| *a.borrow_mut() = Assets(resources.clone()));
     let name = Some(crate::host::rt::web_name());
     let tasks = crate::host::rt::current().sender();
-    let reported = std::env::var_os("ACDE_DEV").is_some();
+    let reported = crate::runtime::dev_mode();
     let loader = crate::render::Loader::new(move |load| {
         if reported || !load.served {
             _ = tasks.send(crate::host::rt::Msg::Task(Box::new(move |scope| start_load(scope, load))));
@@ -751,7 +751,7 @@ natives! {
     }
     "highlight" => fn highlight(scope, args, dom) {
         let id = id(scope, &args, 0);
-        if std::env::var_os("ACDE_DEV").is_some() { dom.highlight(id) } else { Ok(()) }
+        if crate::runtime::dev_mode() { dom.highlight(id) } else { Ok(()) }
     }
     "unpin" => fn unpin(scope, args, dom) { let id = id(scope, &args, 0); dom.unpin(id) }
     "pinnedIn" => fn pinned_in(scope, args, dom) { let id = id(scope, &args, 0); dom.pinned_in(id).map(Ids) }

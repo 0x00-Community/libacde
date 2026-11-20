@@ -128,3 +128,47 @@ describe('window changes in the guest', () => {
     assert.deepEqual(focused, [0])
   })
 })
+
+describe('a guard on act and run (what only the user may act on)', () => {
+  function guarded(answer: string | null) {
+    const sent: object[] = []
+    const asked: unknown[][] = []
+    const plain = base(1, [])
+    const rpc = {
+      call: async (_service: string, method: string, args: unknown[]) => {
+        if (method === 'guarded') asked.push(args)
+        return method === 'guarded' ? answer : method === 'tree' ? { nodes: [] } : { x: 10, y: 20 }
+      },
+    } as never
+    const guest = new GuestWindows(42, 'app')
+    const host = guest.host({ ...plain, web: (w) => (w === 1 ? rpc : null) }, () => 1, { inject: (e) => void sent.push(e) })
+    guest.place([{ ...row(7, 42), x: 100, y: 50 }, row(9, 50)])
+    return { inspect: new Inspect(host), sent, asked }
+  }
+
+  test('a step on a guarded element is refused and injects nothing', async () => {
+    const { inspect, sent, asked } = guarded('this element')
+    const result = await inspect.act('w7.3', 'click', null, '[data-user-only]')
+    assert.equal(result.ok, false)
+    assert.match(result.text, /click on w7\.3: only the user may act on this element/)
+    assert.deepEqual(sent, [])
+    assert.deepEqual(asked, [['[data-user-only]', 3, 'pointer']])
+  })
+
+  test('the page is asked how the step reaches it: pointer, keyboard, or not at all', async () => {
+    const { inspect, asked } = guarded(null)
+    const steps = [
+      { ref: 'w7.3', action: 'type', text: 'x' }, { ref: 'w7', action: 'key', text: 'Enter' }, { ref: 'w7', action: 'minimize', text: null },
+    ] as const
+    await inspect.run(steps, '[x]')
+    assert.deepEqual(asked, [['[x]', 3, 'keyboard'], ['[x]', -1, 'keyboard'], ['[x]', -1, 'none']])
+  })
+
+  test('without a guard nothing is asked', async () => {
+    const { inspect, sent, asked } = guarded('this element')
+    const result = await inspect.act('w7.3', 'click', null)
+    assert.equal(result.ok, true)
+    assert.deepEqual(asked, [])
+    assert.ok(sent.length > 0)
+  })
+})

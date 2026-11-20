@@ -229,7 +229,7 @@ pub fn wanted() -> bool {
 }
 
 fn dev() -> bool {
-    std::env::var_os("ACDE_DEV").is_some()
+    crate::runtime::dev_mode()
 }
 
 const TAIL: &str = "\n;";

@@ -2,7 +2,7 @@
 
 acdev dev 的 IPC 和调试请求见 `docs/dev/dev-ipc.md`.
 
-- **DevTools 端点** (只在有 `ACDE_DEV` 时, Chrome DevTools Protocol, #172): runtime 模块 `devtools/` (napi `DevTools.open()` /
+- **DevTools 端点** (只在开发模式下: 没有管家的进程看 `ACDE_DEV`, 有管家的进程只看 acdev 客户机的固件配置项, 见 `dev-ipc.md` 的“开发模式”; Chrome DevTools Protocol, #172): runtime 模块 `devtools/` (napi `DevTools.open()` /
   `DevTools.targets(list)`), 宿主窗口和 Linux 会话一样. Broker 建 `DevRequests` 时 `open()`: 在 `127.0.0.1` 上听系统挑的端口,
   线程 `acde-devtools`, 每条连接一条 `acde-devtools-conn`; 没有 `ACDE_DEV` 时 `open()` 回 null, 不开任何端口. 没有令牌 (#199, 同 Chrome 自己的
   调试端口): 防护见下面的 `Host` 和 `Origin`. `GET /json/version` (`Browser`、`Protocol-Version`、

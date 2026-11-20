@@ -67,6 +67,8 @@ export class PageInspect {
         return [this.offset[0], this.offset[1]]
       case 'text':
         return this.host.insertText(String(args[0] ?? ''))
+      case 'guarded':
+        return this.guarded(String(args[0] ?? ''), Number(args[1] ?? -1), String(args[2] ?? 'none'))
       default:
         throw new Error(`inspect has no ${method}`)
     }
@@ -160,6 +162,30 @@ export class PageInspect {
     }
     if (covered < 0) return this.#windowPoint(points[0]![0], points[0]![1])
     return { error: `covered by another element: ${this.#describe(covered)}` }
+  }
+
+  guarded(selector: string, id: number, how: string): string | null {
+    const matches = (element: Element | null | undefined) => {
+      if (!element) return false
+      try {
+        return element.closest(selector) !== null
+      } catch {
+        return true
+      }
+    }
+    if (id >= 0 && matches(this.#element(id))) return 'this element'
+    if (how === 'pointer' && matches(this.#under(id))) return 'the element under the pointer'
+    const focused = (this.page.document as unknown as Document).activeElement
+    if (how === 'keyboard' && id < 0 && matches(focused)) return 'the focused element'
+    return null
+  }
+
+  #under(id: number): HTMLElement | null {
+    const window = this.page.window as unknown as Window
+    const at = id >= 0 ? this.point(id) : this.#windowPoint(window.innerWidth / 2, window.innerHeight / 2)
+    if ('error' in at) return null
+    const hit = this.dom.hitTest(at.x - this.offset[0], at.y - this.offset[1])
+    return hit < 0 ? null : this.#element(hit)
   }
 
   #windowPoint(x: number, y: number): PagePoint {
