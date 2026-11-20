@@ -99,4 +99,4 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 | 改 dev 的 IPC、调试请求 (eval / shot / route / clock / input …)、dev 日志或热重载 (运行时一侧) | `docs/dev/dev-ipc.md` |
 | 改 DevTools 端点、页面一侧的 CDP 域 (DOM / CSS / Network / Overlay)、断点或重载不断开 | `docs/dev/devtools.md` |
 | 写运行时的回归测试、跑或更新 WPT 期望 (`scripts/wpt/`; CI 在 acdev 的 `.github/workflows/test.yml`) | `docs/dev/testing.md` |
-| 把 `libacde` 发到 cargo 源 ac, 了解运行时怎么随 acdev 发版, 或改依赖后重新生成第三方许可声明 (`scripts/notices.ts`) | `docs/dev/release.md` |
+| 把 `libacde` 发到 cargo 源 ac, 或了解运行时怎么随 acdev 发版 | `docs/dev/release.md` |
