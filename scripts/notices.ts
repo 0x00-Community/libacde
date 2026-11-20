@@ -10,6 +10,7 @@ const LICENSE_FILE = /^(licen[cs]e|copying|copyright|notice|unlicense|authors)([
 const LICENSE_DIR = /^licen[cs]es?$/i
 const PREFERRED = ['MIT', 'Apache-2.0', 'BSD-3-Clause', 'BSD-2-Clause', 'ISC', 'Zlib', 'BSL-1.0', 'Unicode-3.0', '0BSD', 'Unlicense', 'MPL-2.0']
 const OWN_IMPORTS = /^(node:|bun:|acde:|@dopame\/)/
+const TYPE_ONLY = /^\s*(?:import|export)\s+(?:type\s[^;]*?|\{(?:\s*type\s+[\w$]+(?:\s+as\s+[\w$]+)?\s*,?)+\s*\})\s*from\s*'[^']*'/gm
 const BARE_IMPORT = /(?:from\s+|import\s*\(\s*)'((?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*)(?:\/[^']*)?'/g
 
 export interface Options {
@@ -297,14 +298,23 @@ export class NpmPackages {
   }
 
   #checkSources(shipped: Set<string>): void {
+    const own = new Set([...this.options.own, ...this.options.npm.map((dir) => NpmPackages.name(dir))])
     for (const dir of this.options.sources) {
       for (const file of NpmPackages.files(dir)) {
-        for (const [, spec] of readFileSync(file, 'utf8').matchAll(BARE_IMPORT)) {
-          if (OWN_IMPORTS.test(spec!) || shipped.has(spec!)) continue
+        for (const [, spec] of NpmPackages.runtimeCode(readFileSync(file, 'utf8')).matchAll(BARE_IMPORT)) {
+          if (OWN_IMPORTS.test(spec!) || shipped.has(spec!) || own.has(spec!)) continue
           this.problems.add(`${relative(ROOT, file)} imports ${spec}, which is not among the shipped npm dependencies`)
         }
       }
     }
+  }
+
+  static name(dir: string): string {
+    return (JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { name?: string }).name ?? ''
+  }
+
+  static runtimeCode(source: string): string {
+    return source.replace(TYPE_ONLY, '')
   }
 
   static files(dir: string): string[] {

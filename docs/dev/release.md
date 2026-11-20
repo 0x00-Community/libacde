@@ -43,5 +43,7 @@ Rust 包发到 cargo 源 ac 是手动的, 见下面「cargo 源 ac」那条的�
   blitz 分叉和本仓库都不公开, 指向仓库提交收到产物的人拿不到, 随声明附上全文才满足 MPL 3.2 的「提供源码形式」. 以后改别的 MPL 文件,
   在改动处照样标 `acrender:`.
 - **给别的仓库用**: `bun scripts/notices.ts --cargo <Cargo.lock>... [--vendor <目录>...] [--own <包名,...>] [--npm <目录>...]
-  [--sources <目录>...] [--extra <清单>...] [--title <名称>] --out <文件> [--check]`; `--own` 同时用于 crate 名和 npm 包名.
+  [--sources <目录>...] [--extra <清单>...] [--title <名称>] --out <文件> [--check]`; 每个旗标只接一个值, 多个锁文件或目录就重复写旗标 (`--cargo a/Cargo.lock --cargo b/Cargo.lock`), 只有 `--own` 收逗号分隔的列表;
+  `--own` 同时用于 crate 名和 npm 包名. `--sources` 查的是会进产物的 import: `import type` / `export type` 和只引类型的 `import { type A }` 不算,
+  `--own` 里的名字和各 `--npm` 目录 `package.json` 的 `name` (包引自己) 也不算.
   不带参数 (或 `--libacde`) 是本仓库的设定.
