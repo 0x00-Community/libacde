@@ -37,11 +37,19 @@ fn with<T>(f: impl FnOnce(&mut dyn Offscreen) -> Result<T, String>) -> Option<T>
     }
     if slot.is_none() {
         let gpu = Gpu::shared()?;
-        let offscreen = gpu.offscreen().inspect_err(|e| log::warn!("render: {e}")).ok()?;
+        let offscreen = gpu.offscreen().inspect_err(|e| unready(&gpu, e)).ok()?;
         *slot = Some((gpu, offscreen));
     }
     let (_, offscreen) = slot.as_mut()?;
     f(offscreen.as_mut()).inspect_err(|e| log::warn!("render: {e}")).ok()
+}
+
+fn unready(gpu: &Arc<Gpu>, error: &str) {
+    if Gpu::get().flatten().is_some_and(|published| Arc::ptr_eq(&published, gpu)) {
+        log::warn!("render: {error}");
+    } else {
+        log::debug!("render: no offscreen yet ({error}): the session's GPU is not published");
+    }
 }
 
 pub fn warm() {
