@@ -1,5 +1,5 @@
-import { hostTime } from '@dopame/acde-dom'
-import type { PanelReserve, PinnedPanel, PinOptions, WindowEdge } from '@dopame/acde-api'
+import { hostTime } from '@acde/dom'
+import type { PanelReserve, PinnedPanel, PinOptions, WindowEdge } from '@acde/api'
 import type { NativeSurface } from './native'
 import type { Rpc } from './rpc'
 

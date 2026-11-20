@@ -5,7 +5,7 @@ import { SourceMaps } from '../src/devlog.ts'
 import { DevToolsPage } from '../src/devtools/index.ts'
 import { CssDomain } from '../src/devtools/css.ts'
 import { DomDomain, type DomNode, type DomRecord } from '../src/devtools/dom.ts'
-import { NO_NETWORK } from '@dopame/acde-dom'
+import { NO_NETWORK } from '@acde/dom'
 import { NetworkDomain } from '../src/devtools/network.ts'
 import { PageDomain } from '../src/devtools/page.ts'
 

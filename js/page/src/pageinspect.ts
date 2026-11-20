@@ -1,5 +1,5 @@
-import { hostTime } from '@dopame/acde-dom'
-import type { DomNative, WebInternals } from '@dopame/acde-dom'
+import { hostTime } from '@acde/dom'
+import type { DomNative, WebInternals } from '@acde/dom'
 import type { Host } from './host'
 
 export interface PageNode {

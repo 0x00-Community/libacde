@@ -1,20 +1,20 @@
-# SDK `@dopame/acde-api` (`acde-api/`)
+# SDK `@acde/api` (`acde-api/`)
 
 > 路径相对仓库根。
 
-`@dopame/acde-api` 是运行时删掉的 `web/` 的替代品 (群里结论, 2026-11-17): 学 workerd, npm 包是薄壳, **只有 `.d.ts` 声明, 没有 JS 逻辑**.
+`@acde/api` 是运行时删掉的 `web/` 的替代品 (群里结论, 2026-11-17): 学 workerd, npm 包是薄壳, **只有 `.d.ts` 声明, 没有 JS 逻辑**.
 它描述运行时给应用的东西: `acde:*` 模块 (运行时注入页面, 包里只是 `declare module`)、包清单、`acde.config.jsonc`、服务、能力、页面对象和事件的类型.
 来源是删除前的 `web/packages/acde-api` (acdert `91e7dd1e` 的父提交, 本仓库的历史), 只取纯类型声明. 它和清单规则 `manifest/` 原在 acdev 的
 `npm/` 里, 2026-11-18 随运行时库一起拆进本仓库: 运行时编译时要读它们, acdes 不该为此检出 acdev.
 
 ## 怎么引用
 
-- 仓内: `js/tsconfig.json` 的 paths 把 `@dopame/acde-api` 指到 `acde-api/src/index.d.ts`; `manifest/` 用相对路径 `import type`.
-- acdev 的命令行 (并排检出): `"@dopame/acde-api": "file:../../libacde/acde-api"` (acdev 的 `npm/package.json`), 用 `import type { … } from '@dopame/acde-api'`.
-- 别的仓库或工程在本机: `"@dopame/acde-api": "file:<libacde 检出>/acde-api"`.
+- 仓内: `js/tsconfig.json` 的 paths 把 `@acde/api` 指到 `acde-api/src/index.d.ts`; `manifest/` 用相对路径 `import type`.
+- acdev 的命令行 (并排检出): `"@acde/api": "file:../../libacde/acde-api"` (acdev 的 `npm/package.json`), 用 `import type { … } from '@acde/api'`.
+- 别的仓库或工程在本机: `"@acde/api": "file:<libacde 检出>/acde-api"`.
 - 入口 (`package.json` 的 `exports`, 只有 `types` 条件, 没有 `default`): `.` (全部类型和全部 `acde:*` 模块)、`./app` (应用能导入的模块)、
-  `./shell` (桌面和它自己的应用另外能导入的外壳模块). 页面里用 `/// <reference types="@dopame/acde-api/app" />` 拿到 `acde:*` 模块的类型.
-  只能 `import type`: 包里没有 JS, 运行时 `import '@dopame/acde-api'` 找不到入口.
+  `./shell` (桌面和它自己的应用另外能导入的外壳模块). 页面里用 `/// <reference types="@acde/api/app" />` 拿到 `acde:*` 模块的类型.
+  只能 `import type`: 包里没有 JS, 运行时 `import '@acde/api'` 找不到入口.
 - 一个工程只用一个入口: 应用的类型从 `./app` 取, 桌面从 `./shell` 取; 和 `.` 混用时 `acde:*` 模块的声明重复, 类型检查报冲突 (原包就是这样).
 - 还没发到 npm (发版要用户同意); 包现在 `"private": true`.
 
@@ -56,8 +56,8 @@
 | `src/runtime/level.js` (`API_LEVEL`) | 契约级别 (值 1); 运行时编译时读它, Broker 和 `acdev check/build/dev/doctor` 也用 | 值移到本包的 `api-level` (只写一个数字的纯数据, 随包发布); `src/host/mod.rs` 编译时 `include_str!` 读, `manifest/level.ts` 读同一文件 |
 | `src/runtime/places.js` (`SHARED_PLACES`) | 共享位置的列表 (类型留下了) | `manifest/places.ts` |
 | `src/runtime/platforms.js` (`PLATFORM_SUPPORT`、`RUNNING_MODES`、`platformSupport()`) | 各平台、各跑法下有哪些模块 | `manifest/platforms.ts` |
-| `src/vite.js` (`@dopame/acde-api/vite`) | Vite 插件: 构建时把 `acde:*` 留作外部模块, dev 时换成会 reject 的替身 | acdev 的 `npm/src/vite-plugin.ts` (`acdev build` 用) |
-| `src/validate.ts` (`@dopame/acde-api/manifest`) | 清单校验 (`Manifest`、`ICON_NAMES`、`SHELL_MODULES`、`APP_MODULES`、能力列表、导入规则), Broker 和 `acdev check/build` 共用 | `manifest/index.ts` |
+| `src/vite.js` (`@acde/api/vite`) | Vite 插件: 构建时把 `acde:*` 留作外部模块, dev 时换成会 reject 的替身 | acdev 的 `npm/src/vite-plugin.ts` (`acdev build` 用) |
+| `src/validate.ts` (`@acde/api/manifest`) | 清单校验 (`Manifest`、`ICON_NAMES`、`SHELL_MODULES`、`APP_MODULES`、能力列表、导入规则), Broker 和 `acdev check/build` 共用 | `manifest/index.ts` |
 | `src/frame.ts` (`FrameThemes`) | 窗框主题的颜色、样式解析成传给原生的格式 | 没有 (运行时一侧的逻辑) |
 | `src/index.js` | 上面那些值的再导出 | 没有 |
 | `scripts/build.mjs` | esbuild 打 `dist/` 并检查产物 | 没有 |

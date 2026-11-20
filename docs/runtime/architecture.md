@@ -25,7 +25,7 @@ C 接口见 `docs/runtime/ffi.md`; 发布到 cargo 源 ac 见 `docs/dev/release.
 
 运行时和开发者 CLI `acdev` (acdev runtime ([acdev](http://gitea.dopamine/AC/acdev) 根上的 `src/`、`crates/hostwin`) 的 `npm/`)
 的关系像 workerd 和 wrangler: 运行时跑桌面和应用, acdev (bun) 建工程、构建、装包, `acdev dev` 拉起 acdebin-dbg. 改名成 acdert 的只有程序、Arch 包和
-crate; `acde:` 模块、`@dopame/acde-api`、`acde_*` 协议、`ACDE_*` 环境变量、`$XDG_*/acde/` 这些都不改. 桌面是一张网页: JS 在内嵌的 V8 里
+crate; `acde:` 模块、`@acde/api`、`acde_*` 协议、`ACDE_*` 环境变量、`$XDG_*/acde/` 这些都不改. 桌面是一张网页: JS 在内嵌的 V8 里
 (不用 Node), Blitz (`vendor/blitz`) 排版, vello 在 GPU 上画; 不监听端口 (RDP 后端除外). 具体的桌面由桌面包提供 (例如
 [acde-dopame](https://github.com/dopame-org/acde-dopame), 发行时带上, 运行时不认识它).
 

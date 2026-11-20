@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { API_LEVEL, Manifest, type PackageManifest } from '@dopame/acde-api/manifest'
+import { API_LEVEL, Manifest, type PackageManifest } from '@acde/api/manifest'
 
 const files = new Set(['desktop/index.html', 'desktop/lock.html'])
 

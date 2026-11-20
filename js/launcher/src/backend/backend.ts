@@ -1,4 +1,4 @@
-import type { AppManifest } from '@dopame/acde-api/manifest'
+import type { AppManifest } from '@acde/api/manifest'
 import { Level, Log } from '../../../page/src/log'
 import { PageSource } from '../../../page/src/page'
 import { mkdirSync, readDirOr, rmSync, stat } from '../../../page/src/sys/fs'

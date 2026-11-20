@@ -87,7 +87,7 @@ export interface Findings {
   readonly warnings: string[]
 }
 
-// biome-ignore lint/complexity/noStaticOnlyClass: moved unchanged from @dopame/acde-api's validate.ts
+// biome-ignore lint/complexity/noStaticOnlyClass: moved unchanged from @acde/api's validate.ts
 export class Manifest {
   static readonly HEAP_MB = 256
   static readonly MIN_HEAP_MB = 32
@@ -251,7 +251,7 @@ export class Manifest {
     }
   }
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: moved unchanged from @dopame/acde-api's validate.ts
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: moved unchanged from @acde/api's validate.ts
   static importRule(name: string, app: AppManifest | null, origin: { readonly system: boolean }): ImportRule {
     const allowed: ImportRule = { allowed: true, missing: null, reason: null, unverified: null }
     if (!app) return allowed
@@ -282,7 +282,7 @@ export class Manifest {
     return RESERVED_NAMES.has(name) ? `service ${JSON.stringify(name)} has the name of a system module (acde:${name}); system module names are reserved` : null
   }
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: moved unchanged from @dopame/acde-api's validate.ts
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: moved unchanged from @acde/api's validate.ts
   static check(
     manifest: PackageManifest,
     isDir: (path: string) => boolean,
