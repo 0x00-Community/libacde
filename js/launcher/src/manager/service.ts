@@ -35,6 +35,12 @@ export function released(event: ManagerEvent): number | null {
   return typeof fn === 'number' ? fn : null
 }
 
+export function backendToken(event: ManagerEvent): string | null | undefined {
+  if (event.type !== 'backendtoken') return undefined
+  const token = event['token']
+  return typeof token === 'string' && token !== '' ? token : null
+}
+
 function members(target: unknown): { methods: Set<string>; values: Record<string, unknown> } {
   const methods = new Set<string>()
   const values: Record<string, unknown> = {}
@@ -90,6 +96,8 @@ function failure(error: unknown): { status: number; code: string; message: strin
 export class ServiceHost {
   readonly #processes = new Set<number>()
   readonly #released = new Set<number>()
+  readonly #tokenWatchers = new Set<(token: string | null) => void>()
+  #token: string | null = null
   #instance: ServiceInstance | null = null
   #wake: (() => void) | null = null
   #ended: number | null = null
@@ -101,6 +109,7 @@ export class ServiceHost {
     readonly hold: Hold = holdTheLoop,
   ) {
     if (!manager.send) throw new Error('this native.Manager cannot answer as a service (no send)')
+    this.#token = welcome.backendToken || null
     manager.onEvents(() => this.#wake?.())
   }
 
@@ -130,6 +139,27 @@ export class ServiceHost {
     return { pid, write: (text) => native.write!(pid, text), end: () => native.endInput!(pid), kill: (signal = 'SIGTERM') => native.kill(-pid, signal) }
   }
 
+  get backendToken(): string | null {
+    return this.#token
+  }
+
+  onBackendToken(watcher: (token: string | null) => void): () => boolean {
+    this.#tokenWatchers.add(watcher)
+    return () => this.#tokenWatchers.delete(watcher)
+  }
+
+  #takeToken(token: string | null): void {
+    if (token === this.#token) return
+    this.#token = token
+    for (const watcher of [...this.#tokenWatchers]) {
+      try {
+        watcher(token)
+      } catch (error) {
+        this.#log(`onBackendToken: ${(error as Error).message}`)
+      }
+    }
+  }
+
   #import(specifier: string): Promise<object> {
     const name = String(specifier).replace(/^acde:/, '')
     if (!(this.welcome.modules ?? []).includes(name)) {
@@ -153,6 +183,8 @@ export class ServiceHost {
       log: (line: string) => this.#log(line),
       spawn: (argv: readonly string[], options?: SpawnOptions) => this.#spawn(argv, options),
       import: ((specifier: string) => this.#import(specifier)) as never,
+      backendToken: () => this.backendToken,
+      onBackendToken: (watcher: (token: string | null) => void) => this.onBackendToken(watcher),
     }
     this.#instance = await loaded.default(context as never)
     this.ready()
@@ -214,6 +246,8 @@ export class ServiceHost {
         if (call) void this.#answer(call)
         const fn = released(event)
         if (fn !== null) this.#released.add(fn)
+        const token = backendToken(event)
+        if (token !== undefined) this.#takeToken(token)
       }
       if (this.#ended !== null) break
       await new Promise<void>((wake) => {

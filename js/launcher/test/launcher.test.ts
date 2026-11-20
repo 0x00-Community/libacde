@@ -6,7 +6,7 @@ import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/app/calls.ts'
 import { sessionOf, type Welcome } from '../src/manager/manager.ts'
 import { WindowSnapshots } from '../src/app/events.ts'
-import { incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
+import { backendToken, incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
 
 bindNatives({ host: {}, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
 
@@ -214,6 +214,45 @@ describe('a service process stays up while its manager channel is open', () => {
     wake!()
     assert.equal(await running, 0)
     assert.deepEqual(held, ['held', 'released'])
+  })
+})
+
+describe('the backend token reaches the service', () => {
+  test('the welcome gives the first token and backendtoken frames replace it', async () => {
+    const events: { type: string; token?: unknown }[][] = [[]]
+    let wake: (() => void) | null = null
+    const manager = {
+      welcome: { kind: 'service', name: 'assistant', backendToken: 'first' },
+      call: async () => undefined,
+      onEvents: (callback: () => void) => {
+        wake = callback
+      },
+      pump: () => events.shift() ?? [],
+      send: () => undefined,
+    }
+    const host = new ServiceHost(manager as never, manager.welcome as never, {}, () => () => undefined)
+    const seen: (string | null)[] = []
+    const stop = host.onBackendToken((token) => void seen.push(token))
+    assert.equal(host.backendToken, 'first')
+    const running = host.run()
+    events.push([{ type: 'backendtoken', token: 'second' }, { type: 'backendtoken', token: 'second' }, { type: 'backendtoken', token: null }])
+    wake!()
+    await new Promise((later) => setTimeout(later, 10))
+    assert.deepEqual(seen, ['second', null])
+    assert.equal(host.backendToken, null)
+    stop()
+    events.push([{ type: 'backendtoken', token: 'third' }, { type: 'managerclosed' }])
+    wake!()
+    assert.equal(await running, 0)
+    assert.deepEqual(seen, ['second', null])
+    assert.equal(host.backendToken, 'third')
+  })
+
+  test('only backendtoken frames carry a token', () => {
+    assert.equal(backendToken({ type: 'backendtoken', token: 'abc' } as never), 'abc')
+    assert.equal(backendToken({ type: 'backendtoken', token: '' } as never), null)
+    assert.equal(backendToken({ type: 'backendtoken' } as never), null)
+    assert.equal(backendToken({ type: 'release', token: 'abc' } as never), undefined)
   })
 })
 
