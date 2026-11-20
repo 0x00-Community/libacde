@@ -1,4 +1,4 @@
-import type { FrameTheme } from '@dopame/acde-api'
+import type { FrameTheme } from '@acde/api'
 
 export interface FrameThemeWire {
   readonly colors: readonly number[]

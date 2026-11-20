@@ -1,5 +1,5 @@
-import { hostTime } from '@dopame/acde-dom'
-import type { WebInternals } from '@dopame/acde-dom'
+import { hostTime } from '@acde/dom'
+import type { WebInternals } from '@acde/dom'
 import type { Rpc } from './rpc'
 import { existsSync, readFileSync, stat, writeFileSync } from './sys/fs'
 import { basename } from './sys/path'

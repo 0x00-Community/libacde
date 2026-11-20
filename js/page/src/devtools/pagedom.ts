@@ -1,4 +1,4 @@
-import type { DomNative, WebInternals } from '@dopame/acde-dom'
+import type { DomNative, WebInternals } from '@acde/dom'
 import type { DomNode, DomRecord, DomSource } from './dom'
 import type { OverlaySource } from './overlay'
 

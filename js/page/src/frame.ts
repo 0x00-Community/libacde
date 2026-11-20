@@ -1,5 +1,5 @@
-import type { DoubleClickAction, FrameTheme } from '@dopame/acde-api'
-import type { AppManifest } from '@dopame/acde-api/manifest'
+import type { DoubleClickAction, FrameTheme } from '@acde/api'
+import type { AppManifest } from '@acde/api/manifest'
 import { FrameThemes } from './frametheme.ts'
 import type { NativeSurface } from './native'
 import { Level, Log } from './log'

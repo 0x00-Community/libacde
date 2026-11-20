@@ -1,4 +1,4 @@
-import { NO_NETWORK, type NetworkHeaders, type NetworkObserver, type RequestKind } from '@dopame/acde-dom'
+import { NO_NETWORK, type NetworkHeaders, type NetworkObserver, type RequestKind } from '@acde/dom'
 import { DevToolsError, type DevToolsDomain, type DevToolsPage } from './index'
 
 const TYPES: Record<RequestKind, string> = {

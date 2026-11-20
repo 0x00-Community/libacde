@@ -1,5 +1,5 @@
-import { installWorkerScope, type WorkerSideNative } from '@dopame/acde-dom/worker'
-import type { BackendTransport, HostNative } from '@dopame/acde-dom'
+import { installWorkerScope, type WorkerSideNative } from '@acde/dom/worker'
+import type { BackendTransport, HostNative } from '@acde/dom'
 
 interface WorkerNatives {
   readonly host: HostNative

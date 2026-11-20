@@ -1,5 +1,5 @@
-import type { HostNative } from '@dopame/acde-dom'
-import type { LentRoot } from '@dopame/acde-api'
+import type { HostNative } from '@acde/dom'
+import type { LentRoot } from '@acde/api'
 import type { StoragePlace } from '../contract'
 
 export interface FileStat {

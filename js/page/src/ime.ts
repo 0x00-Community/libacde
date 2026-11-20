@@ -1,4 +1,4 @@
-import { hostTime } from '@dopame/acde-dom'
+import { hostTime } from '@acde/dom'
 import type { Modifiers } from './native'
 import type { TextInputState } from './text'
 import { Level, Log } from './log'

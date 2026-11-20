@@ -1,5 +1,5 @@
-import type { DesktopManifest } from '@dopame/acde-api'
-import type { AppManifest } from '@dopame/acde-api/manifest'
+import type { DesktopManifest } from '@acde/api'
+import type { AppManifest } from '@acde/api/manifest'
 import type { WebTier } from '../../../page/src/contract'
 import type { WebGrants } from '../../../page/src/sys/natives'
 import { join } from '../../../page/src/sys/path'

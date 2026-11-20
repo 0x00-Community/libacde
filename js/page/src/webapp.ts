@@ -1,4 +1,4 @@
-import { hostTime, type WebInternals } from '@dopame/acde-dom'
+import { hostTime, type WebInternals } from '@acde/dom'
 import { PageSource } from './page'
 import { WindowSelf } from './remote'
 import type { Rpc } from './rpc'

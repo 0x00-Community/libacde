@@ -1,4 +1,4 @@
-import type { InspectNode } from '@dopame/acde-api'
+import type { InspectNode } from '@acde/api'
 
 export type Line = readonly [string, string]
 

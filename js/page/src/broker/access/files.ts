@@ -1,4 +1,4 @@
-import { Manifest } from '@dopame/acde-api/manifest'
+import { Manifest } from '@acde/api/manifest'
 import type { Capabilities } from '../../contract'
 import { Permissions, type Approval } from './approval/permissions'
 

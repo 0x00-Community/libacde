@@ -1,5 +1,5 @@
 {
-  "name": "@dopame/acde-api",
+  "name": "@acde/api",
   "version": "0.1.0",
   "private": true,
   "description": "acde SDK: type declarations only (no JavaScript). Types of acde.config.jsonc, the package manifest, the services, the capabilities and the acde:* modules the runtime injects into a page.",

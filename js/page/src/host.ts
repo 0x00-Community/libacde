@@ -1,5 +1,5 @@
-import type { ScreenshotEvent, WindowGrabEvent, WindowGrabLostEvent } from '@dopame/acde-api'
-import type { DomNative, WebInternals } from '@dopame/acde-dom'
+import type { ScreenshotEvent, WindowGrabEvent, WindowGrabLostEvent } from '@acde/api'
+import type { DomNative, WebInternals } from '@acde/dom'
 import { DragDrop, DragSource } from './dnd'
 import type { HandOver } from './pagecalls'
 import { InputMethod, type ImeEvent } from './ime'

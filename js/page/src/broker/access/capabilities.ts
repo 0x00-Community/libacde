@@ -9,7 +9,7 @@ import {
   type CapabilityStatus,
   type RunningMode,
   type WindowFeatures,
-} from '@dopame/acde-api/manifest'
+} from '@acde/api/manifest'
 import type { AppManifest, AppOrigin } from '../../contract'
 import type { Approval } from './approval/permissions'
 

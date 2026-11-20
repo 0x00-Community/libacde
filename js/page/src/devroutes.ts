@@ -1,4 +1,4 @@
-import type { MockReply } from '@dopame/acde-dom'
+import type { MockReply } from '@acde/dom'
 
 export type RouteUrl = string | { readonly regex: string; readonly flags?: string }
 
