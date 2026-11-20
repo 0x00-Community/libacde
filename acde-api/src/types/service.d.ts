@@ -7,6 +7,8 @@ export interface ServiceContext {
   readonly inspect?: import('./page').AcdeInspect
   log(line: string): void
   spawn(argv: readonly string[], options?: SpawnOptions): ServiceProcess
+  backendToken?(): string | null
+  onBackendToken?(handler: (token: string | null) => void): () => boolean
   import<K extends keyof import('./page').ServiceModuleTypes>(
     specifier: `acde:${K}`,
   ): Promise<{ readonly default: import('./page').ServiceModuleTypes[K] } & { readonly [N in K]: import('./page').ServiceModuleTypes[K] }>

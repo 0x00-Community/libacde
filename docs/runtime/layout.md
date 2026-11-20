@@ -77,6 +77,10 @@
   `managerclosed` 时调 `close()`、停掉它起的子进程 (最多 3 秒) 后以 0 退出. 从开始答调用到 `managerclosed` 之间挂着一个计时器保活
   (`holdTheLoop`): 服务模块里没有别的挂起任务时, 事件循环也不会空了就结束 (2026-11-18 大联测里 5 个服务 ready 后十几秒内自己退出过). 需要 system 的 `native.Manager` 提供 `send(帧)`, 并把转来的调用和
   `release` 从 `pump()` 交出 (`{type: 'call', ...}`、`{type: 'release', fn}`, 也认不带 `type` 的原帧).
+  **后台服务的令牌** (dopame 令牌交接 A″, 用户 2026-11-20 定): welcome 的可选字段 `backendToken` 是管家按桌面清单给这个服务挑的那一份令牌
+  (等级由管家和 dopame 定, launcher 不看); 管家换令牌时推 `{type: 'backendtoken', token}` (`token` 为 null 或空串表示作废). 服务从
+  ServiceContext 的 `backendToken()` 取当前值 (没有时 null), `onBackendToken(回调)` 订阅变化 (值没变不回调, 回调抛错只记日志), 返回取消订阅的函数.
+  令牌只在内存里, 不进环境变量和文件.
 - **应用与桌面里的服务**: welcome 的 `services` (命名空间到形状) 进 `WebInit.services`, 页面据此生成代理; 管家推 `{type: 'services', services}`
   时整份交给页面替换代理 (`RemoteBridge.replaceServices`). 页面对这些命名空间的调用不经启动方的 rpc 解开, 原样 (含 `{__acdeFn: n}`) 转给
   `manager.call`, 结果或错误直接回给页面; 管家推来的 `{type: 'invoke', fn, args}` 转成页面 rpc 的 `invoke`.
