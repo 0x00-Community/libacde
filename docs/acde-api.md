@@ -32,9 +32,10 @@
 
 | 接口 | 替代者 | 起于 |
 | --- | --- | --- |
+| `ServiceContext.backendToken()`、`onBackendToken()` | `ServiceContext.backend` 的 `connect()`、`up`、`onChange()` (连接由管家代办, 不再交令牌) | 下一个小版本 (系统代办连接 R3, 用户 2026-11-20) |
 | `acde:windows` 事件 `open`、`title`、`state`、`activate`、`parent`、`desk`、`geometry` | `window` (每个窗口一批变化后的完整快照, `first` 表示新窗口, `changed` 列出变了的字段, `previous` 是上一个状态) | 0.1.0 之后的下一个小版本 (repo-split 04) |
 
-运行时照旧发这 7 个事件: page 一层收到 `window` 快照后按 `first` / `changed` 推出来再发.
+运行时照旧发这 7 个事件: page 一层收到 `window` 快照后按 `first` / `changed` 推出来再发. `backendToken()` 运行时保留, 但永远回 null, `onBackendToken()` 永不回调.
 
 从没发出过、在小版本里删掉的: `acde:windows` 的 `minsize` (`WindowMinSizeEvent`) 与 `animated` 事件 (只有已删的旧合成器会发, winman 下从来没有).
 

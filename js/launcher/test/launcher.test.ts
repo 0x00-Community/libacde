@@ -6,7 +6,7 @@ import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/app/calls.ts'
 import { sessionOf, type Welcome } from '../src/manager/manager.ts'
 import { WindowSnapshots } from '../src/app/events.ts'
-import { backendToken, incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
+import { backendUp, incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
 
 bindNatives({ host: {}, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
 
@@ -217,42 +217,63 @@ describe('a service process stays up while its manager channel is open', () => {
   })
 })
 
-describe('the backend token reaches the service', () => {
-  test('the welcome gives the first token and backendtoken frames replace it', async () => {
-    const events: { type: string; token?: unknown }[][] = [[]]
-    let wake: (() => void) | null = null
-    const manager = {
-      welcome: { kind: 'service', name: 'assistant', backendToken: 'first' },
-      call: async () => undefined,
-      onEvents: (callback: () => void) => {
-        wake = callback
-      },
-      pump: () => events.shift() ?? [],
-      send: () => undefined,
-    }
-    const host = new ServiceHost(manager as never, manager.welcome as never, {}, () => () => undefined)
-    const seen: (string | null)[] = []
-    const stop = host.onBackendToken((token) => void seen.push(token))
-    assert.equal(host.backendToken, 'first')
-    const running = host.run()
-    events.push([{ type: 'backendtoken', token: 'second' }, { type: 'backendtoken', token: 'second' }, { type: 'backendtoken', token: null }])
-    wake!()
-    await new Promise((later) => setTimeout(later, 10))
-    assert.deepEqual(seen, ['second', null])
-    assert.equal(host.backendToken, null)
-    stop()
-    events.push([{ type: 'backendtoken', token: 'third' }, { type: 'managerclosed' }])
-    wake!()
-    assert.equal(await running, 0)
-    assert.deepEqual(seen, ['second', null])
-    assert.equal(host.backendToken, 'third')
+function serviceManager(welcome: Record<string, unknown>, connectBackend?: () => Promise<unknown>) {
+  const events: { type: string; [field: string]: unknown }[][] = [[]]
+  const box: { wake: (() => void) | null } = { wake: null }
+  const manager = {
+    welcome: { kind: 'service', name: 'assistant', ...welcome },
+    call: async () => undefined,
+    onEvents: (callback: () => void) => {
+      box.wake = callback
+    },
+    pump: () => events.shift() ?? [],
+    send: () => undefined,
+    ...(connectBackend ? { connectBackend } : {}),
+  }
+  const host = new ServiceHost(manager as never, manager.welcome as never, {}, () => () => undefined)
+  const push = (frames: { type: string; [field: string]: unknown }[]) => {
+    events.push(frames)
+    box.wake!()
+  }
+  return { host, push }
+}
+
+describe('the desktop backend reaches the service', () => {
+  test('a service without a backend role has no backend', () => {
+    assert.equal(serviceManager({}).host.backend, null)
   })
 
-  test('only backendtoken frames carry a token', () => {
-    assert.equal(backendToken({ type: 'backendtoken', token: 'abc' } as never), 'abc')
-    assert.equal(backendToken({ type: 'backendtoken', token: '' } as never), null)
-    assert.equal(backendToken({ type: 'backendtoken' } as never), null)
-    assert.equal(backendToken({ type: 'release', token: 'abc' } as never), undefined)
+  test('up starts from the welcome, backend frames change it, and onChange hears only changes', async () => {
+    const { host, push } = serviceManager({ backend: { role: 'agent', up: false } })
+    const backend = host.backend!.api
+    assert.equal(backend.role, 'agent')
+    assert.equal(backend.up, false)
+    const seen: boolean[] = []
+    const stop = backend.onChange(({ up }) => void seen.push(up))
+    const running = host.run()
+    push([{ type: 'backend', up: true }, { type: 'backend', up: true }, { type: 'backend', up: false }])
+    await new Promise((later) => setTimeout(later, 10))
+    assert.deepEqual(seen, [true, false])
+    assert.equal(stop(), true)
+    push([{ type: 'backend', up: true }, { type: 'managerclosed' }])
+    assert.equal(await running, 0)
+    assert.deepEqual(seen, [true, false])
+    assert.equal(backend.up, true)
+  })
+
+  test('connect goes to the manager, and fails as unsupported when the manager cannot', async () => {
+    const link = { role: 'agent' }
+    const { host } = serviceManager({ backend: { role: 'agent', up: true } }, async () => link)
+    assert.equal(await host.backend!.api.connect(), link)
+    const old = serviceManager({ backend: { role: 'agent', up: true } }).host
+    await assert.rejects(old.backend!.api.connect(), { status: 501, code: 'unsupported' })
+  })
+
+  test('only backend frames carry up', () => {
+    assert.equal(backendUp({ type: 'backend', up: true } as never), true)
+    assert.equal(backendUp({ type: 'backend', up: 'yes' } as never), false)
+    assert.equal(backendUp({ type: 'backend' } as never), false)
+    assert.equal(backendUp({ type: 'release', up: true } as never), undefined)
   })
 })
 

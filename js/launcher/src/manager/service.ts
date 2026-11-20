@@ -1,8 +1,8 @@
-import type { AcdeVoice, ServiceFactory, ServiceInstance, ServiceProcess, SpawnOptions } from '@acde/api'
+import type { AcdeVoice, BackendConnection, ServiceBackend, ServiceFactory, ServiceInstance, ServiceProcess, SpawnOptions } from '@acde/api'
 import { sys } from '../../../page/src/sys/natives'
 import { pathToFileURL } from '../../../page/src/sys/url'
 import { process, stopGroup } from '../../../page/src/sys/process'
-import type { ManagerEvent, ManagerLink, ServiceShape, Welcome } from './manager'
+import type { BackendLink, ManagerEvent, ManagerLink, ServiceShape, Welcome } from './manager'
 
 const FN = '__acdeFn'
 const STOP_MS = 3000
@@ -35,10 +35,66 @@ export function released(event: ManagerEvent): number | null {
   return typeof fn === 'number' ? fn : null
 }
 
-export function backendToken(event: ManagerEvent): string | null | undefined {
-  if (event.type !== 'backendtoken') return undefined
-  const token = event['token']
-  return typeof token === 'string' && token !== '' ? token : null
+export function backendUp(event: ManagerEvent): boolean | undefined {
+  return event.type === 'backend' ? event['up'] === true : undefined
+}
+
+export class BackendState {
+  readonly #watchers = new Set<(state: { readonly up: boolean }) => void>()
+  readonly #connect: (() => Promise<BackendLink>) | undefined
+  readonly #log: (line: string) => void
+  #up: boolean
+  readonly api: ServiceBackend
+
+  constructor(readonly role: string, up: boolean, connect: (() => Promise<BackendLink>) | undefined, log: (line: string) => void) {
+    this.#up = up
+    this.#connect = connect
+    this.#log = log
+    const state = this
+    this.api = Object.freeze({
+      role,
+      get up() {
+        return state.#up
+      },
+      connect: () => state.connect(),
+      onChange: (handler: (state: { readonly up: boolean }) => void) => state.onChange(handler),
+    })
+  }
+
+  get up(): boolean {
+    return this.#up
+  }
+
+  connect(): Promise<BackendConnection> {
+    if (!this.#connect) return Promise.reject(Object.assign(new Error('this acde cannot connect to the desktop backend'), { status: 501, code: 'unsupported' }))
+    return this.#connect()
+  }
+
+  onChange(handler: (state: { readonly up: boolean }) => void): () => boolean {
+    this.#watchers.add(handler)
+    return () => this.#watchers.delete(handler)
+  }
+
+  take(up: boolean): void {
+    if (up === this.#up) return
+    this.#up = up
+    for (const watcher of [...this.#watchers]) {
+      try {
+        watcher({ up })
+      } catch (error) {
+        this.#log(`backend.onChange: ${(error as Error).message}`)
+      }
+    }
+  }
+}
+
+function unwatched(): () => boolean {
+  let on = true
+  return () => {
+    const was = on
+    on = false
+    return was
+  }
 }
 
 function members(target: unknown): { methods: Set<string>; values: Record<string, unknown> } {
@@ -96,8 +152,7 @@ function failure(error: unknown): { status: number; code: string; message: strin
 export class ServiceHost {
   readonly #processes = new Set<number>()
   readonly #released = new Set<number>()
-  readonly #tokenWatchers = new Set<(token: string | null) => void>()
-  #token: string | null = null
+  readonly backend: BackendState | null
   #instance: ServiceInstance | null = null
   #wake: (() => void) | null = null
   #ended: number | null = null
@@ -109,7 +164,8 @@ export class ServiceHost {
     readonly hold: Hold = holdTheLoop,
   ) {
     if (!manager.send) throw new Error('this native.Manager cannot answer as a service (no send)')
-    this.#token = welcome.backendToken || null
+    const given = welcome.backend
+    this.backend = given ? new BackendState(given.role, given.up === true, manager.connectBackend?.bind(manager), (line) => this.#log(line)) : null
     manager.onEvents(() => this.#wake?.())
   }
 
@@ -137,27 +193,6 @@ export class ServiceHost {
     })
     processes.add(pid)
     return { pid, write: (text) => native.write!(pid, text), end: () => native.endInput!(pid), kill: (signal = 'SIGTERM') => native.kill(-pid, signal) }
-  }
-
-  get backendToken(): string | null {
-    return this.#token
-  }
-
-  onBackendToken(watcher: (token: string | null) => void): () => boolean {
-    this.#tokenWatchers.add(watcher)
-    return () => this.#tokenWatchers.delete(watcher)
-  }
-
-  #takeToken(token: string | null): void {
-    if (token === this.#token) return
-    this.#token = token
-    for (const watcher of [...this.#tokenWatchers]) {
-      try {
-        watcher(token)
-      } catch (error) {
-        this.#log(`onBackendToken: ${(error as Error).message}`)
-      }
-    }
   }
 
   #import(specifier: string): Promise<object> {
@@ -195,8 +230,9 @@ export class ServiceHost {
       log: (line: string) => this.#log(line),
       spawn: (argv: readonly string[], options?: SpawnOptions) => this.#spawn(argv, options),
       import: ((specifier: string) => this.#import(specifier)) as never,
-      backendToken: () => this.backendToken,
-      onBackendToken: (watcher: (token: string | null) => void) => this.onBackendToken(watcher),
+      ...(this.backend ? { backend: this.backend.api } : {}),
+      backendToken: () => null,
+      onBackendToken: unwatched,
     }
     this.#instance = await loaded.default(context as never)
     this.ready()
@@ -258,8 +294,8 @@ export class ServiceHost {
         if (call) void this.#answer(call)
         const fn = released(event)
         if (fn !== null) this.#released.add(fn)
-        const token = backendToken(event)
-        if (token !== undefined) this.#takeToken(token)
+        const up = backendUp(event)
+        if (up !== undefined) this.backend?.take(up)
       }
       if (this.#ended !== null) break
       await new Promise<void>((wake) => {

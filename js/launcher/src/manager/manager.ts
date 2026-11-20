@@ -28,7 +28,7 @@ export interface Welcome {
   readonly module?: string
   readonly modules?: readonly string[]
   readonly stateDir?: string
-  readonly backendToken?: string
+  readonly backend?: { readonly role: string; readonly up: boolean }
   readonly session?: { readonly own: boolean }
   readonly lock?: boolean
   readonly instance?: number
@@ -45,6 +45,15 @@ export interface ManagerLink {
   onEvents(callback: () => void): void
   pump(): ManagerEvent[]
   send?(frame: object): void
+  connectBackend?(): Promise<BackendLink>
+}
+
+export interface BackendLink {
+  readonly role: string
+  write(data: string | Uint8Array): void
+  onData(handler: (chunk: Uint8Array) => void): void
+  onClose(handler: () => void): void
+  close(): void
 }
 
 export interface Session {

@@ -78,10 +78,13 @@
   `managerclosed` 时调 `close()`、停掉它起的子进程 (最多 3 秒) 后以 0 退出. 从开始答调用到 `managerclosed` 之间挂着一个计时器保活
   (`holdTheLoop`): 服务模块里没有别的挂起任务时, 事件循环也不会空了就结束 (2026-11-18 大联测里 5 个服务 ready 后十几秒内自己退出过). 需要 system 的 `native.Manager` 提供 `send(帧)`, 并把转来的调用和
   `release` 从 `pump()` 交出 (`{type: 'call', ...}`、`{type: 'release', fn}`, 也认不带 `type` 的原帧).
-  **后台服务的令牌** (dopame 令牌交接 A″, 用户 2026-11-20 定): welcome 的可选字段 `backendToken` 是管家按桌面清单给这个服务挑的那一份令牌
-  (等级由管家和 dopame 定, launcher 不看); 管家换令牌时推 `{type: 'backendtoken', token}` (`token` 为 null 或空串表示作废). 服务从
-  ServiceContext 的 `backendToken()` 取当前值 (没有时 null), `onBackendToken(回调)` 订阅变化 (值没变不回调, 回调抛错只记日志), 返回取消订阅的函数.
-  令牌只在内存里, 不进环境变量和文件.
+  **连桌面后台** (系统代办连接, 用户 2026-11-20 定, 总仓 `.scratch/dopame/system-broker-design.md`): 桌面清单里写了 `backend` 角色的服务,
+  welcome 带 `backend: {role, up}`, ServiceContext 就有 `backend` (`BackendState`; 没有角色时 `ctx.backend` 是 undefined): `role`、`up` (初值取
+  welcome, 之后随管家推的 `{type: 'backend', up}` 变), `onChange(回调)` 只在 `up` 真变了时回调 (回调抛错只记日志), 返回取消订阅的函数;
+  `connect()` 转给 `native.Manager` 的 `connectBackend()`, 由管家代为连上后台服务, 得到 `BackendConnection` (`role`、`write`、`onData` 原样的字节块、
+  `onClose`、`close`), 后台服务没起来时以 503 `service_not_running` 拒绝, 服务没有角色时 403 `forbidden`; `native.Manager` 没有
+  `connectBackend` 时以 501 `unsupported` 拒绝..
+  原来的令牌交接已过时 (R3): `backendToken()` 永远回 null, `onBackendToken()` 永不回调 (返回的取消函数照常可调), 下个大版本删.
 - **应用与桌面里的服务**: welcome 的 `services` (命名空间到形状) 进 `WebInit.services`, 页面据此生成代理; 管家推 `{type: 'services', services}`
   时整份交给页面替换代理 (`RemoteBridge.replaceServices`). 页面对这些命名空间的调用不经启动方的 rpc 解开, 原样 (含 `{__acdeFn: n}`) 转给
   `manager.call`, 结果或错误直接回给页面; 管家推来的 `{type: 'invoke', fn, args}` 转成页面 rpc 的 `invoke`.

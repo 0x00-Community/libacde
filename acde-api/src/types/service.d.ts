@@ -6,11 +6,29 @@ export interface ServiceContext {
   readonly inspect?: import('./page').AcdeInspect
   log(line: string): void
   spawn(argv: readonly string[], options?: SpawnOptions): ServiceProcess
+  readonly backend?: ServiceBackend
+  /** @deprecated 改用 backend.connect() */
   backendToken?(): string | null
+  /** @deprecated 改用 backend.onChange() */
   onBackendToken?(handler: (token: string | null) => void): () => boolean
   import<K extends keyof import('./page').ServiceModuleTypes>(
     specifier: `acde:${K}`,
   ): Promise<{ readonly default: import('./page').ServiceModuleTypes[K] } & { readonly [N in K]: import('./page').ServiceModuleTypes[K] }>
+}
+
+export interface ServiceBackend {
+  readonly role: string
+  readonly up: boolean
+  connect(): Promise<BackendConnection>
+  onChange(handler: (state: { readonly up: boolean }) => void): () => boolean
+}
+
+export interface BackendConnection {
+  readonly role: string
+  write(data: string | Uint8Array): void
+  onData(handler: (chunk: Uint8Array) => void): void
+  onClose(handler: () => void): void
+  close(): void
 }
 
 export interface SpawnOptions {
