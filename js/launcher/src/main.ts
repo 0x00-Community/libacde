@@ -202,6 +202,7 @@ class Launcher {
       reload: () => this.#devReload(false),
       ...(relay && { respond: relay.respond }),
       ...(this.#guest && { place: (windows: unknown) => this.#guest!.place(windows) }),
+      production: !process.env['ACDE_DEV'],
     }, process.env['ACDE_COLOR_SCHEME'] === 'dark')
     this.#backend = session.kind === 'app' && session.found?.app.backend ? new AppBackend(session.found) : null
   }

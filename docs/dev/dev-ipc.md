@@ -131,6 +131,12 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
   宿主上 `acdev dev --lock` 的预览没有管家, 页面名仍是 `desktop`, 也带 `lock: true`.
 - 页面和运行时的开发能力 (`debug.eval`/`evalOn`、`dev.clock`、devInit、devroute、DevTools 端点与页面域、V8 live-edit) 只看 `ACDE_DEV` 在不在.
   客户机里由会话总管在开发客户机 (fw_cfg 文件存在) 时设 `ACDE_DEV=guest`, 启动器把 `ACDE_*` 传给页面线程; 正式系统里没有它, 即使有, 没有管家转发请求也到不了页面.
+- 正式会话 (启动器所在进程没有 `ACDE_DEV`; 用户 2026-11-20 定, pending-decisions 第 7、8 项): 总管经 assistant 服务的 `acde:inspect` 也能看别的应用窗口、
+  按元素点击, 请求照旧由管家经 `devrequest` 转给各启动器. 启动器只回答 `webs`、`snapshot`、`query`、`act`、`run` (`DevChannel.PRODUCTION`),
+  别的 (`input` 按坐标发原始事件没法按元素核对, 以及 `eval`、`route`、`clock`、`console`、`network` 等) 回
+  `<op>: not available in a production session (webs, snapshot, query, act, run)`. 谁能调、目标元素能不能点 (独占键盘的面板: 权限询问、确认卡片,
+  dopame 给它们加标记) 由 acdes 管家转发前核对; 启动器这一层只按白名单放行, 是第二道. 窗口表照旧随请求的 `windows` 来 (正式会话里管家向
+  winman 取只读的那份). 开发会话不变.
 - 窗口表 (和 acdes 对齐, 2026-11-20): 管家转发 snapshot、act、query、run、open 时在请求里附 `windows: [{id, app_id, pid, title, x, y, width, height,
   activated, hidden, state, desktop}]` (winman 的窗口表, 上层在前; `desk` 是虚拟桌面号; 最后一行是桌面 `{id: 0, desktop: true, pid}`, 没有坐标). 启动器的 Inspect 有它时用它列窗口 (`dev/guest.ts` `GuestWindows`): 窗口号就是 winman 的 id
   (`w<id>`), 桌面是 `w0`; pid 等于本进程的那一行是自己的窗口 (桌面进程认 `desktop: true` 的那行), 有元素, 映射回本地窗口号; 别的进程的窗口列成 native, 没有元素.

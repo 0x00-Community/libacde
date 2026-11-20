@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { DevChannel, type DevHost, type DevTarget } from '../src/dev/dev.ts'
 
-function channel(evaluate: (code: string) => unknown = () => null) {
+function channel(evaluate: (code: string) => unknown = () => null, production = false) {
   const answers: { id: number; ok: boolean; payload: unknown }[] = []
   const posted: Record<string, unknown>[] = []
   const calls: [string, string, readonly unknown[]][] = []
@@ -23,6 +23,7 @@ function channel(evaluate: (code: string) => unknown = () => null) {
     page: () => page,
     inspect: () => { throw new Error('no inspect in this test') },
     reload: async () => void reloads++,
+    production,
   }
   const dev = new DevChannel(host)
   const ask = async (request: Record<string, unknown>) => {
@@ -138,5 +139,27 @@ describe('a dev request still running when the launcher ends', () => {
     void dev.request(JSON.stringify({ id: 1, op: 'webs' }))
     await dev.settle(1000)
     assert.deepEqual(answers, [1])
+  })
+})
+
+describe('a production session (no ACDE_DEV)', () => {
+  test('answers webs, snapshot, query, act and run, and nothing else', async () => {
+    const { ask, calls } = channel(() => 'secret', true)
+    assert.equal((await ask({ id: 1, op: 'webs' })).ok, true)
+    for (const op of ['snapshot', 'query', 'act', 'run']) {
+      assert.doesNotMatch(String((await ask({ id: 2, op })).payload), /production session/)
+    }
+    const refused = ['input', 'eval', 'route', 'unroute', 'clock', 'init', 'reload', 'dialog', 'emulate', 'clipboard', 'drop', 'choose', 'resize']
+    for (const op of [...refused, 'console', 'network']) {
+      const answer = await ask({ id: 3, op, web: 'notes', code: 'document.cookie' })
+      assert.equal(answer.ok, false)
+      assert.equal(answer.payload, `${op}: not available in a production session (webs, snapshot, query, act, run)`)
+    }
+    assert.deepEqual(calls, [])
+  })
+
+  test('a dev session answers as before', async () => {
+    const { ask } = channel(() => 'Notes')
+    assert.deepEqual(await ask({ id: 1, op: 'eval', web: 'notes', code: 'document.title' }), { id: 1, ok: true, payload: { value: 'Notes' } })
   })
 })

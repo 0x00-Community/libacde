@@ -43,6 +43,7 @@ export interface DevHost {
   reload(): Promise<void>
   respond?(id: number, ok: boolean, payload: string): void
   place?(windows: unknown): void
+  readonly production?: boolean
 }
 
 interface DevInit {
@@ -59,6 +60,7 @@ export class DevChannel {
   readonly #inflight = new Set<Promise<void>>()
   static readonly STATE_MS = 500
   static readonly SINGLE = 'a single-app session (acdev dev --app) has no other apps'
+  static readonly PRODUCTION: ReadonlySet<string> = new Set(['webs', 'snapshot', 'query', 'act', 'run'])
   readonly log = new DevLog()
   readonly #host: DevHost
   #routes: DevRoute[] = []
@@ -148,6 +150,9 @@ export class DevChannel {
 
   async answer(request: Request): Promise<unknown> {
     const { type: _type, id: _id, op, windows, ...args } = request
+    if (this.#host.production && !DevChannel.PRODUCTION.has(op)) {
+      throw new Error(`${op}: not available in a production session (${[...DevChannel.PRODUCTION].join(', ')})`)
+    }
     if (windows !== undefined) this.#host.place?.(windows)
     const inspect = () => this.#host.inspect().api
     switch (op) {
