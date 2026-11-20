@@ -638,6 +638,8 @@ export interface AcdeDesktop {
   pin?(element: Element, options?: PinOptions): PinnedPanel
   setDoubleClick?(action: DoubleClickAction): void
   setFrameTheme?(theme: FrameTheme | null): void
+  requestGrab?(kind: 'pointer' | 'keyboard'): void
+  releaseGrab?(kind: 'pointer' | 'keyboard'): void
   on<K extends keyof DesktopEventMap>(type: K, handler: (event: DesktopEventMap[K]) => void): () => boolean
 }
 

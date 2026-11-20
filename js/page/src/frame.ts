@@ -39,6 +39,20 @@ export class Frame {
     return [width, height + Frame.height(app)]
   }
 
+  static grabs(surface: Pick<NativeSurface, 'requestGrab' | 'releaseGrab'>): {
+    requestGrab(kind: 'pointer' | 'keyboard'): void
+    releaseGrab(kind: 'pointer' | 'keyboard'): void
+  } {
+    const checked = (kind: unknown, what: string): 'pointer' | 'keyboard' => {
+      if (kind !== 'pointer' && kind !== 'keyboard') throw new TypeError(`${what}: kind is 'pointer' or 'keyboard'`)
+      return kind
+    }
+    return {
+      requestGrab: (kind) => surface.requestGrab(checked(kind, 'requestGrab')),
+      releaseGrab: (kind) => surface.releaseGrab(checked(kind, 'releaseGrab')),
+    }
+  }
+
   static desktop(
     surface: Pick<NativeSurface, 'setDoubleClick' | 'setFrameTheme'>,
     warn: (line: string) => void = (line) => Log.write(Level.Warn, 'acde_host', line),
