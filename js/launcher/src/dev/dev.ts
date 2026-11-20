@@ -148,6 +148,12 @@ export class DevChannel {
     else this.#host.shell.devRespond?.(id, ok, payload)
   }
 
+  #guard(op: string, args: Record<string, unknown>): string | null {
+    const guard = typeof args['guard'] === 'string' && args['guard'] !== '' ? args['guard'] : null
+    if (this.#host.production && guard === null) throw new Error(`${op}: a production session needs a guard (the selector of what only the user may act on)`)
+    return guard
+  }
+
   async answer(request: Request): Promise<unknown> {
     const { type: _type, id: _id, op, windows, ...args } = request
     if (this.#host.production && !DevChannel.PRODUCTION.has(op)) {
@@ -167,10 +173,14 @@ export class DevChannel {
       }
       case 'snapshot':
         return inspect().snapshot(args)
-      case 'act':
-        return inspect().act(String(args['ref'] ?? ''), args['action'] as never, (args['arg'] ?? null) as InspectArg)
-      case 'run':
-        return inspect().run(args['steps'] as never)
+      case 'act': {
+        const guard = this.#guard(op, args)
+        return inspect().act(String(args['ref'] ?? ''), args['action'] as never, (args['arg'] ?? null) as InspectArg, guard)
+      }
+      case 'run': {
+        const guard = this.#guard(op, args)
+        return inspect().run(args['steps'] as never, guard)
+      }
       case 'query':
         return inspect().query(args as never)
       case 'input':

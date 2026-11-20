@@ -195,9 +195,10 @@ export class Inspect {
 
   readonly api = {
     snapshot: (options?: SnapshotOptions): Promise<Snapshot> => this.snapshot(options ?? {}),
-    act: (ref: string, action: InspectAction, arg?: InspectArg): Promise<ActResult> => this.act(String(ref), action, arg ?? null),
-    run: (steps: readonly InspectStep[]): Promise<ActResult> =>
-      this.run(Array.isArray(steps) ? steps.map((s) => ({ ref: String(s?.ref ?? ''), action: s?.action, text: s?.text ?? null })) : []),
+    act: (ref: string, action: InspectAction, arg?: InspectArg, guard?: string | null): Promise<ActResult> =>
+      this.act(String(ref), action, arg ?? null, guard ?? null),
+    run: (steps: readonly InspectStep[], guard?: string | null): Promise<ActResult> =>
+      this.run(Array.isArray(steps) ? steps.map((s) => ({ ref: String(s?.ref ?? ''), action: s?.action, text: s?.text ?? null })) : [], guard ?? null),
     open: (name: string): Promise<ActResult> => this.open(String(name)),
     query: (options: QueryOptions): Promise<Query> => this.query(options),
     input: (window: number, events: readonly InspectInput[]): Promise<ActResult> => this.input(window, events),
@@ -308,11 +309,11 @@ export class Inspect {
     return { nodes, lines: [...shown, ...notes] }
   }
 
-  act(ref: string, action: InspectAction, arg: InspectArg): Promise<ActResult> {
-    return this.run([{ ref, action, text: arg }])
+  act(ref: string, action: InspectAction, arg: InspectArg, guard: string | null = null): Promise<ActResult> {
+    return this.run([{ ref, action, text: arg }], guard)
   }
 
-  async run(steps: readonly InspectStep[]): Promise<ActResult> {
+  async run(steps: readonly InspectStep[], guard: string | null = null): Promise<ActResult> {
     if (!steps.length) return { ok: false, text: 'no steps to do' }
     const before = Inspect.#shape(this.windows())
     const opening = this.#opening()
@@ -320,7 +321,7 @@ export class Inspect {
     let last: InspectWindow | null = null
     let failed = false
     for (const [i, step] of steps.entries()) {
-      const done = await this.#step(step)
+      const done = await this.#step(step, guard)
       said.push(steps.length > 1 ? `${i + 1}. ${done.text}` : done.text)
       if (!done.ok || !done.window) {
         failed = true
@@ -357,13 +358,15 @@ export class Inspect {
     }
   }
 
-  async #step(step: InspectStep): Promise<ActResult & { window?: InspectWindow }> {
+  async #step(step: InspectStep, guard: string | null): Promise<ActResult & { window?: InspectWindow }> {
     const parsed = Inspect.#parse(step.ref)
     if (!parsed) return { ok: false, text: `cannot read ref ${step.ref} (expected like w3, w3.12 or a menu, w3.m1 or w3.m1.2)` }
     const window = this.windows().find((w) => w.ref === `w${parsed.window}`)
     if (!window) return { ok: false, text: `no window w${parsed.window}` }
     const arg = step.text ?? null
     try {
+      const refused = guard === null || parsed.menu !== null ? null : await this.#guarded(window, parsed.node, step.action, guard)
+      if (refused) return { ok: false, text: `${step.action} on ${step.ref}: only the user may act on ${refused}` }
       const done =
         parsed.menu !== null
           ? await this.#menuAct(window, parsed.menu, parsed.item, step.action)
@@ -378,6 +381,17 @@ export class Inspect {
       if (said === Inspect.PAGE_GONE) return { ok: true, text: `${step.action} on ${step.ref}: the page loaded another document`, window }
       return { ok: false, text: said }
     }
+  }
+
+  static readonly POINTER: ReadonlySet<string> = new Set(['click', 'double', 'right', 'hover', 'scroll', 'drag'])
+  static readonly KEYBOARD: ReadonlySet<string> = new Set(['key', 'type', 'settext', 'focus'])
+
+  async #guarded(window: InspectWindow, node: number | null, action: InspectAction, guard: string): Promise<string | null> {
+    if (window.kind === 'native') return null
+    const rpc = this.#host.web(window.id)
+    if (!rpc) return `${window.ref}, whose page cannot be checked`
+    const how = Inspect.KEYBOARD.has(action) ? 'keyboard' : node !== null || Inspect.POINTER.has(action) ? 'pointer' : 'none'
+    return (await rpc.call('inspect', 'guarded', [guard, node ?? -1, how])) as string | null
   }
 
   async #settle(window: InspectWindow): Promise<void> {

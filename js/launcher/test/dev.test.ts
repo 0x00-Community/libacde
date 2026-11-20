@@ -147,7 +147,7 @@ describe('a production session (no ACDE_DEV)', () => {
     const { ask, calls } = channel(() => 'secret', true)
     assert.equal((await ask({ id: 1, op: 'webs' })).ok, true)
     for (const op of ['snapshot', 'query', 'act', 'run']) {
-      assert.doesNotMatch(String((await ask({ id: 2, op })).payload), /production session/)
+      assert.doesNotMatch(String((await ask({ id: 2, op, guard: '[data-user-only]' })).payload), /production session/)
     }
     const refused = ['input', 'eval', 'route', 'unroute', 'clock', 'init', 'reload', 'dialog', 'emulate', 'clipboard', 'drop', 'choose', 'resize']
     for (const op of [...refused, 'console', 'network']) {
@@ -161,5 +161,16 @@ describe('a production session (no ACDE_DEV)', () => {
   test('a dev session answers as before', async () => {
     const { ask } = channel(() => 'Notes')
     assert.deepEqual(await ask({ id: 1, op: 'eval', web: 'notes', code: 'document.title' }), { id: 1, ok: true, payload: { value: 'Notes' } })
+  })
+})
+
+describe('the guard of act and run', () => {
+  test('a production session refuses act and run without one', async () => {
+    const { ask } = channel(() => null, true)
+    for (const op of ['act', 'run']) {
+      const answer = await ask({ id: 9, op, ref: 'w1.2', action: 'click', steps: [] })
+      assert.equal(answer.ok, false)
+      assert.match(String(answer.payload), new RegExp(`^${op}: a production session needs a guard`))
+    }
   })
 })

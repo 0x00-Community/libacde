@@ -142,7 +142,12 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
   按元素点击, 请求照旧由管家经 `devrequest` 转给各启动器. 启动器只回答 `webs`、`snapshot`、`query`、`act`、`run` (`DevChannel.PRODUCTION`),
   别的 (`input` 按坐标发原始事件没法按元素核对, 以及 `eval`、`route`、`clock`、`console`、`network` 等) 回
   `<op>: not available in a production session (webs, snapshot, query, act, run)`. 谁能调、目标元素能不能点 (独占键盘的面板: 权限询问、确认卡片,
-  dopame 给它们加标记) 由 acdes 管家转发前核对; 启动器这一层只按白名单放行, 是第二道. 窗口表照旧随请求的 `windows` 来 (正式会话里管家向
+  dopame 给它们加标记 `data-user-only`) 由 acdes 管家决定; 管家看不到 DOM, 所以在转发的 `act` / `run` 里带 `guard: "<CSS 选择器>"` (现在是
+  `[data-user-only]`), 由启动器的 `Inspect` 在每一步执行前问页面 (`inspect.guarded(guard, node, how)`): 目标元素、指针动作经 `point()` 命中的
+  元素 (`how: pointer`; 指向窗口本身的点击用页面中心)、没有目标元素的键盘动作的焦点元素 (`how: keyboard`), 任一个 `closest(guard)` 成立 (选择器
+  写错也算成立) 就整步拒绝, 回 `{ok: false, text: "<动作> on <ref>: only the user may act on this element | the element under the pointer | the focused element"}`,
+  什么也不注入; 窗口的应用菜单 (`w3.m1`) 和原生窗口不查. 正式会话里没带 `guard` 的 `act` / `run` 直接回错
+  `<op>: a production session needs a guard (...)`. 启动器这一层的白名单和这项核对是第二道. 窗口表照旧随请求的 `windows` 来 (正式会话里管家向
   winman 取只读的那份). 开发会话不变.
 - 窗口表 (和 acdes 对齐, 2026-11-20): 管家转发 snapshot、act、query、run、open 时在请求里附 `windows: [{id, app_id, pid, title, x, y, width, height,
   activated, hidden, state, desktop}]` (winman 的窗口表, 上层在前; `desk` 是虚拟桌面号; 最后一行是桌面 `{id: 0, desktop: true, pid}`, 没有坐标). 启动器的 Inspect 有它时用它列窗口 (`dev/guest.ts` `GuestWindows`): 窗口号就是 winman 的 id
