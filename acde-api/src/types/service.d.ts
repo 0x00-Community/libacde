@@ -2,7 +2,6 @@ export interface ServiceContext {
   readonly name: string
   readonly package: string
   readonly state: string
-  readonly native: Readonly<Record<string, unknown>> | null
   readonly env: Readonly<Record<string, string | undefined>>
   readonly inspect?: import('./page').AcdeInspect
   log(line: string): void

@@ -1,4 +1,4 @@
-import type { ServiceFactory, ServiceInstance, ServiceProcess, SpawnOptions } from '@acde/api'
+import type { AcdeVoice, ServiceFactory, ServiceInstance, ServiceProcess, SpawnOptions } from '@acde/api'
 import { sys } from '../../../page/src/sys/natives'
 import { pathToFileURL } from '../../../page/src/sys/url'
 import { process, stopGroup } from '../../../page/src/sys/process'
@@ -135,8 +135,21 @@ export class ServiceHost {
     if (!(this.welcome.modules ?? []).includes(name)) {
       return Promise.reject(new TypeError(`acde:${name} is not among the shell modules of service ${JSON.stringify(this.name)} in the desktop manifest`))
     }
+    if (name === 'voice') return this.#voice().then((voice) => ({ voice, default: voice }))
     const value = new Proxy({}, { get: (_, method) => (...args: unknown[]) => this.manager.call(name, String(method), args) })
     return Promise.resolve({ [name]: value, default: value })
+  }
+
+  #voiceOnce: Promise<AcdeVoice> | null = null
+
+  #voice(): Promise<AcdeVoice> {
+    this.#voiceOnce ??= (async () => {
+      const Voice = this.native['Voice'] as (new () => AcdeVoice) | undefined
+      if (typeof Voice !== 'function') throw new TypeError('acde:voice: this acde has no speech recognition')
+      const voice = new Voice()
+      return { listen: (onEvent) => voice.listen(onEvent), stop: (id) => voice.stop(id) }
+    })()
+    return this.#voiceOnce
   }
 
   async start(): Promise<void> {
@@ -148,7 +161,6 @@ export class ServiceHost {
       name: this.name,
       package: dir,
       state: stateDir ?? '',
-      native: this.native,
       env: process.env,
       log: (line: string) => this.#log(line),
       spawn: (argv: readonly string[], options?: SpawnOptions) => this.#spawn(argv, options),
