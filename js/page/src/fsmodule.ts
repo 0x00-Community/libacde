@@ -1,4 +1,4 @@
-import type { FileBytes, FsRootsEvent } from '@dopame/acde-api'
+import type { FileBytes, FsRootsEvent } from '@acde/api'
 import { FileTypes } from './mimedb'
 
 type NativeDownload = (root: string, path: string) => Promise<Omit<FileBytes, 'contentType'>>

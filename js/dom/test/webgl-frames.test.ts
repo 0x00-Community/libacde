@@ -41,3 +41,13 @@ test('webgl: animation frames wait while two presented frames are still on the G
   web.frame()
   assert.equal(web.run('ticks'), 3, 'the oldest frame finished on the GPU, so the page draws again')
 })
+
+test('webgl: both contexts have the texture unit constants TEXTURE0 to TEXTURE31', async () => {
+  const { native } = gpu()
+  using web = await page('<!doctype html><html><body><canvas id="c"></canvas></body></html>', { webgl: native })
+  const units = web.json(`(() => {
+    const gl = document.getElementById('c').getContext('webgl')
+    return [WebGLRenderingContext.TEXTURE0, WebGLRenderingContext.TEXTURE31, gl.TEXTURE1, WebGL2RenderingContext.TEXTURE5, WebGL2RenderingContext.prototype.TEXTURE31]
+  })()`)
+  assert.deepEqual(units, [0x84c0, 0x84df, 0x84c1, 0x84c5, 0x84df])
+})

@@ -1,5 +1,5 @@
-import { API_LEVEL, Manifest, type AppManifest, type PackageManifest } from '@dopame/acde-api/manifest'
-import type { DesktopManifest } from '@dopame/acde-api'
+import { API_LEVEL, Manifest, type AppManifest, type PackageManifest } from '@acde/api/manifest'
+import type { DesktopManifest } from '@acde/api'
 import type { WebInit, WebTier } from '../../../page/src/contract'
 import type { Languages } from '../../../page/src/language'
 import { PageSource } from '../../../page/src/page'

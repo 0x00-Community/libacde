@@ -1,5 +1,5 @@
-import type { NativeWindow } from '@dopame/acde-api'
-import type { AppManifest, Capabilities, ShellModule } from '@dopame/acde-api/manifest'
+import type { NativeWindow } from '@acde/api'
+import type { AppManifest, Capabilities, ShellModule } from '@acde/api/manifest'
 import type { CapabilitySnapshot } from './broker/access/capabilities'
 import type { Approval } from './broker/access/approval/permissions'
 import type { DevRoute } from './devroutes'

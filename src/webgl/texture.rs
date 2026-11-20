@@ -187,6 +187,9 @@ impl Context {
                 return false;
             }
         };
+        if usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT) {
+            self.clear_to_defaults(&texture, mips, if dimension == wgpu::TextureDimension::D3 { 1 } else { layers });
+        }
         let old = self.texture_mut(id).and_then(|t| t.alloc.take());
         if let Some(old) = old.filter(|o| o.format == format && o.layers == layers) {
             self.flush_pass();
@@ -222,6 +225,40 @@ impl Context {
             t.used = generation;
         }
         true
+    }
+
+    pub(crate) fn clear_to_defaults(&mut self, texture: &wgpu::Texture, mips: u32, layers: u32) {
+        let format = texture.format();
+        if !format.is_depth_stencil_format() {
+            return;
+        }
+        self.flush_pass();
+        let encoder = self.encoder();
+        for level in 0..mips {
+            for layer in 0..layers {
+                let view = texture.create_view(&wgpu::TextureViewDescriptor {
+                    label: Some("acde webgl depth defaults"),
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_mip_level: level,
+                    mip_level_count: Some(1),
+                    base_array_layer: layer,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                });
+                drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("acde webgl depth defaults"),
+                    color_attachments: &[],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &view,
+                        depth_ops: format.has_depth_aspect().then_some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                        stencil_ops: format.has_stencil_aspect().then_some(wgpu::Operations { load: wgpu::LoadOp::Clear(0), store: wgpu::StoreOp::Store }),
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                }));
+            }
+        }
     }
 
     fn ensure_level(&mut self, id: Id, face: u32, level: u32, [width, height, depth]: [u32; 3], format: Format) -> bool {
@@ -483,6 +520,7 @@ impl Context {
         let texture = alloc.texture.clone();
         let is_3d = t.target == TEXTURE_3D;
         let ordered = t.used == generation;
+        let in_flight = t.used + 1 == generation;
         t.version += 1;
         let [x, y, z] = origin;
         let [w, h, d] = size;
@@ -532,6 +570,9 @@ impl Context {
                 extent,
             );
         } else {
+            if in_flight {
+                self.settle();
+            }
             self.gpu.queue.write_texture(
                 destination,
                 tight,
@@ -760,7 +801,8 @@ impl Context {
         let flip = self.state.unpack_flip_y;
         let premultiply = self.state.unpack_premultiply;
         let viewport = [origin[0] as f32, origin[1] as f32, w as f32, h as f32];
-        self.blit(&source, [0.0, 0.0, 1.0, 1.0], &view, fmt.wgpu, viewport, flip, premultiply, false, wgpu::FilterMode::Nearest, 0.0);
+        let decode = fmt.wgpu.is_srgb() && !image.texture.format().is_srgb();
+        self.blit(&source, [0.0, 0.0, 1.0, 1.0], &view, fmt.wgpu, viewport, flip, premultiply, false, decode, wgpu::FilterMode::Nearest, 0.0);
         self.mark_used(&[id]);
         if let Some(t) = self.texture_mut(id) {
             t.version += 1;
@@ -778,6 +820,7 @@ impl Context {
         flip: bool,
         premultiply: bool,
         unpremultiply: bool,
+        decode: bool,
         filter: wgpu::FilterMode,
         lod: f32,
     ) {
@@ -814,6 +857,9 @@ impl Context {
             params.extend_from_slice(&v.to_le_bytes());
         }
         params.extend_from_slice(&lod.to_le_bytes());
+        for v in [u32::from(decode), 0, 0, 0] {
+            params.extend_from_slice(&v.to_le_bytes());
+        }
         let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("acde webgl blit"),
             contents: &params,
@@ -916,6 +962,7 @@ impl Context {
                         &dst,
                         format.wgpu,
                         [0.0, 0.0, w as f32, h as f32],
+                        false,
                         false,
                         false,
                         false,

@@ -1,4 +1,4 @@
-import type { WebInternals } from '@dopame/acde-dom'
+import type { WebInternals } from '@acde/dom'
 import type { HandOver } from './pagecalls'
 import { readFileSync, stat } from './sys/fs'
 import { basename } from './sys/path'

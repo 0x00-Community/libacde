@@ -1,5 +1,5 @@
-import type { CapabilityStatus } from '@dopame/acde-api'
-import type { CaptureNative, DeviceNative } from '@dopame/acde-dom'
+import type { CapabilityStatus } from '@acde/api'
+import type { CaptureNative, DeviceNative } from '@acde/dom'
 import { FileAccess } from '../files'
 import { Permissions, type Approval } from './permissions'
 

@@ -1,6 +1,6 @@
 use super::beneath::{self, Dir};
 use super::path::NodePath;
-use crate::runtime::failure::{Errno, Failure, Outcome};
+use crate::runtime::failure::{Failure, Outcome};
 use icu_collator::{Collator, CollatorBorrowed, options::CollatorOptions};
 use icu_locale_core::Locale;
 use serde::{Deserialize, Serialize};
@@ -595,9 +595,10 @@ impl WorkspaceFs {
         Self::contents(root, relative).map(|(_, contents)| contents)
     }
 
+    #[cfg(test)]
     pub fn read_text_in(root: &FinderRoot, relative: &str) -> Outcome<(String, i64)> {
         let Contents { data, modified_ms, .. } = Self::read_bytes_in(root, relative)?;
-        let text = String::from_utf8(data).map_err(|_| Failure::invalid("file is not valid UTF-8 text").with(Errno::Ilseq))?;
+        let text = String::from_utf8(data).map_err(|_| Failure::invalid("file is not valid UTF-8 text").with(crate::runtime::failure::Errno::Ilseq))?;
         Ok((text, modified_ms))
     }
 

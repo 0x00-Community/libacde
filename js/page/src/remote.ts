@@ -1,6 +1,6 @@
 import type {
   AppMenu, NativeWindow, WindowApp, WindowEdge, WindowEventName, WindowMode, WindowOutput, WindowRect, WindowState,
-} from '@dopame/acde-api'
+} from '@acde/api'
 import type { ServiceShape, WebInit, WireMenu } from './contract'
 import { Level, Log } from './log'
 import { WINDOWS_EVENT_NAMES, windowsEventName, type NativeSurface, type WindowEvent } from './native'
@@ -10,7 +10,7 @@ import { CapabilityCheck } from './broker/access/capabilities'
 import { Permits } from './broker/access/approval/permits'
 import type { Approval } from './broker/access/approval/permissions'
 import type { HandOver } from './pagecalls'
-import type { CapabilityStatus } from '@dopame/acde-api/manifest'
+import type { CapabilityStatus } from '@acde/api/manifest'
 
 export class WindowList {
   static readonly EVENTS = WINDOWS_EVENT_NAMES
@@ -353,7 +353,7 @@ export class RemoteBridge {
     const globalWindows = () => ({
       ...windows.api,
       ...Rpc.calls(() => rpc, 'windows', 'kill', 'focus', 'hide', 'show', 'requestState', 'invokeMenu', 'stats', 'animate', 'shortcut', 'unshortcut', 'place',
-        'addDesk', 'removeDesk', 'showDesk', 'moveToDesk', 'setWallpaper'),
+        'addDesk', 'removeDesk', 'showDesk', 'moveToDesk', 'setWallpaper', 'screenshot'),
     })
     const tier = {
       packages: () => ({ ...Rpc.calls(() => rpc, 'packages', 'refresh', 'install', 'natives', 'runNative'), on: windows.notices.for('apps', ['changed']) }),

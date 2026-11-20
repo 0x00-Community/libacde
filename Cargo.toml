@@ -70,6 +70,8 @@ pollster = "0.4"
 # webgl: src/webgl/glsl is naga's GLSL frontend with the WebGL dialect
 naga = "30"
 unicode-xid = "0.2"
+# webgl: fast hashing for the per-draw object and cache maps (integer and small-struct keys)
+rustc-hash = "2"
 # audio: ConvolverNode partitioned convolution and AnalyserNode spectra
 realfft = "3"
 half = "2"

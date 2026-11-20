@@ -1,6 +1,6 @@
 # 桌面包
 
-桌面包是一个目录, `package.json` 的 `acde` 字段 (类型 acde-api `manifest.d.ts`):
+桌面包是一个目录, `package.json` 的 `acde` 字段 (类型 acde-api `manifest.d.ts`). 桌面要遵守的行为规则 (窗口、面板、锁屏页 …) 见 `docs/runtime/desktop.md`.
 
 ```json
 "acdev": {
@@ -30,7 +30,8 @@
   (调用者是 `WindowCalls.SERVICE`, 和桌面页面同一段检查; `launch` 的 `slot` 不算数, 服务没有窗口可嵌), `on(类型)` 收全局窗口事件 (不认识的类型抛 TypeError);
   `acde:packages` 同页面 (含 `on('changed')`); `acde:session`、`acde:desktops`、`acde:inspect`、`acde:setDefault` 同页面; `acde:desktop` 只有 `apps()` (钉面板、
   `setDoubleClick`、`setFrameTheme` 要页面或 surface, `download` / `notification` / `screenshot` / `shortcut` 事件只发给页面); `acde:permissions` 不给服务
-  (`is not available to services here`). SDK 里写成 Promise 的调用在服务里也回 Promise (`ServiceModules` 包一层 async). 事件: Broker 的 `#toDesktop` 同时交给
+  (`is not available to services here`); `acde:voice` (语音识别: `listen(onEvent)` 回录音号, 事件 `partial` / `final` / `error`, `stop(号)` 结束录音等结果)
+  只给服务, 在服务进程里直接调运行时的 `Voice` (同一时间一段录音, 新的取消旧的). SDK 里写成 Promise 的调用在服务里也回 Promise (`ServiceModules` 包一层 async). 事件: Broker 的 `#toDesktop` 同时交给
   `ServiceModules.emit`, 每个服务一份 `Notices` (`notices.ts`, 页面的 `on` 用的也是它), 处理函数在 Broker 线程上同步跑, 抛错只记日志; 服务停了 (或没起来)
   `release(服务名)` 丢掉它的订阅.
 
@@ -39,7 +40,7 @@
 不列 acdev 自己的、`Hidden` / `NoDisplay`、程序找不到的.
 
 **契约级别** (`apiLevel`): 每个包清单的 `acde` 字段带一个整数 `apiLevel`, 运行时的级别只在本仓库的 `acde-api/api-level` (只写一个数字) 定义 (acde-host 经
-`@dopame/acde-api/manifest` 读, `<运行时> --version` 编译时从这个文件读). 级别不同或不是正整数的包 (`Packages.refused`) 不进应用列表、
+`@acde/api/manifest` 读, `<运行时> --version` 编译时从这个文件读). 级别不同或不是正整数的包 (`Packages.refused`) 不进应用列表、
 桌面列表和打开方式, 启动它的应用报 `<id>: needs level N, runtime is level M` (409, `api_level`), 选它的桌面同样报错. 没有 `apiLevel` 的包
 (第 1 级之前构建的) 同样拒绝, 报 `Manifest.UNVERSIONED` (`no acde.apiLevel: ...; rebuild it with the current acdev (level 1)`), 要用现在的 acdev
 重新构建; 校验器也把它当错误. 第 0 级 (契约级别之前的扩展期形态) 已全部去掉. acde-host 自己的包不查.

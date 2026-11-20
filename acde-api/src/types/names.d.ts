@@ -29,4 +29,4 @@ export type IconName =
   | 'map'
   | 'weather'
 
-export type ShellModule = 'windows' | 'packages' | 'session' | 'desktops' | 'inspect' | 'desktop' | 'setDefault' | 'permissions'
+export type ShellModule = 'windows' | 'packages' | 'session' | 'desktops' | 'inspect' | 'desktop' | 'setDefault' | 'permissions' | 'voice'

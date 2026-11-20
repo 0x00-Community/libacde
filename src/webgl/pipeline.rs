@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use crate::webgl::FastMap;
 use std::rc::Rc;
 
 use crate::webgl::shader::Sampled;
@@ -39,10 +39,17 @@ impl SampleKind {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct VertexSlot {
+    pub stride: u64,
+    pub instance: bool,
+    pub attributes: Vec<(u32, u64, wgpu::VertexFormat)>,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct PipelineKey {
     pub program: u64,
     pub layout: Vec<Binding>,
-    pub vertex: Vec<(u32, u64, bool, wgpu::VertexFormat)>,
+    pub vertex: Vec<VertexSlot>,
     pub topology: wgpu::PrimitiveTopology,
     pub strip: Option<wgpu::IndexFormat>,
     pub front_face: wgpu::FrontFace,
@@ -75,14 +82,14 @@ pub struct DepthKey {
 
 pub struct Caches {
     pub uniforms: wgpu::BindGroupLayout,
-    pub layouts: HashMap<Vec<Binding>, Rc<(wgpu::BindGroupLayout, wgpu::PipelineLayout)>>,
+    pub layouts: FastMap<Vec<Binding>, Rc<(wgpu::BindGroupLayout, wgpu::PipelineLayout)>>,
     pub empty: Rc<(wgpu::BindGroupLayout, wgpu::PipelineLayout)>,
-    pub pipelines: HashMap<PipelineKey, wgpu::RenderPipeline>,
-    pub samplers: HashMap<SamplerKey, wgpu::Sampler>,
-    pub groups: HashMap<GroupKey, wgpu::BindGroup>,
-    pub helpers: HashMap<String, wgpu::RenderPipeline>,
-    pub compute: HashMap<&'static str, (wgpu::ComputePipeline, wgpu::BindGroupLayout)>,
-    pub dummies: HashMap<(wgpu::TextureViewDimension, SampleKind), (wgpu::Texture, wgpu::TextureView)>,
+    pub pipelines: FastMap<PipelineKey, wgpu::RenderPipeline>,
+    pub samplers: FastMap<SamplerKey, wgpu::Sampler>,
+    pub groups: FastMap<GroupKey, wgpu::BindGroup>,
+    pub helpers: FastMap<String, wgpu::RenderPipeline>,
+    pub compute: FastMap<&'static str, (wgpu::ComputePipeline, wgpu::BindGroupLayout)>,
+    pub dummies: FastMap<(wgpu::TextureViewDimension, SampleKind), (wgpu::Texture, wgpu::TextureView)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -120,14 +127,14 @@ impl Caches {
         });
         Caches {
             uniforms,
-            layouts: HashMap::new(),
+            layouts: FastMap::default(),
             empty: Rc::new((empty_group, empty_layout)),
-            pipelines: HashMap::new(),
-            samplers: HashMap::new(),
-            groups: HashMap::new(),
-            helpers: HashMap::new(),
-            compute: HashMap::new(),
-            dummies: HashMap::new(),
+            pipelines: FastMap::default(),
+            samplers: FastMap::default(),
+            groups: FastMap::default(),
+            helpers: FastMap::default(),
+            compute: FastMap::default(),
+            dummies: FastMap::default(),
         }
     }
 

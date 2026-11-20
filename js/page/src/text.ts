@@ -1,5 +1,5 @@
-import { hostTime } from '@dopame/acde-dom'
-import type { DomNative, WebInternals } from '@dopame/acde-dom'
+import { hostTime } from '@acde/dom'
+import type { DomNative, WebInternals } from '@acde/dom'
 import { InputMethod, type ImePanelEvent } from './ime'
 import { ImePanel } from './panel'
 import type { ClipboardBytes, Shell } from './native'

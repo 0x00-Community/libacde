@@ -6,8 +6,8 @@ import type {
   PermissionDecision,
   PermissionPrompt,
   PermissionPromptEvent,
-} from '@dopame/acde-api'
-import { APPROVAL_CAPABILITIES } from '@dopame/acde-api/manifest'
+} from '@acde/api'
+import { APPROVAL_CAPABILITIES } from '@acde/api/manifest'
 import type { AppManifest, AppOrigin } from '../../../contract'
 
 export type Permit = 'granted' | 'denied' | 'ask'

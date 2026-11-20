@@ -34,11 +34,11 @@ export class HTMLImageElement extends HTMLElement {
   }
 
   get naturalWidth(): number {
-    return this.#state()[0] ?? 0
+    return Math.round(this.#state()[0] ?? 0)
   }
 
   get naturalHeight(): number {
-    return this.#state()[1] ?? 0
+    return Math.round(this.#state()[1] ?? 0)
   }
 
   get complete(): boolean {

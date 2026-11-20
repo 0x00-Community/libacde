@@ -1,8 +1,8 @@
 import { DevLog, type DevPost, type DevQuery } from '../../../page/src/devlog'
 import { DevRoutes, type DevRoute } from '../../../page/src/devroutes'
 import { isAbsolute } from '../../../page/src/sys/path'
-import type { ConsoleLevel } from '@dopame/acde-dom'
-import type { InspectArg } from '@dopame/acde-api'
+import type { ConsoleLevel } from '@acde/dom'
+import type { InspectArg } from '@acde/api'
 import type { Inspect, InspectInput } from './inspect'
 
 export interface DevTarget {

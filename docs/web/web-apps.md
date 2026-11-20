@@ -3,7 +3,7 @@
 网页存储见 `docs/web/storage.md`, 应用后端和请求路由见 `docs/web/backend.md`.
 
 工程、构建和 `acdev dev` 是 acdev 仓库的事 (`acdev new / check / build / install / dev`, 框架识别、模板、listen preload). 本仓库对外只发 SDK
-`@dopame/acde-api`. 运行时只认构建出来的包: 清单 `package.json`、`web/`、`backend/server.js` 和 `backend/acde-listen.js` (把每个
+`@acde/api`. 运行时只认构建出来的包: 清单 `package.json`、`web/`、`backend/server.js` 和 `backend/acde-listen.js` (把每个
 `listen(P)` 换成 `<sockets>/P.sock`).
 
 **校验只有一份**: acde-api `src/validate.ts` 的 `Manifest`: `Manifest.app` 是 Broker 用的, `Manifest.check` 另加工具才查的 (资源目录、entry 和图片

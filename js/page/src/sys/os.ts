@@ -1,4 +1,4 @@
-import { readFileSync } from './fs'
+import { mkdirSync, readFileSync } from './fs'
 import { sys } from './natives'
 import { isAbsolute, join } from './path'
 import { process } from './process'
@@ -44,4 +44,11 @@ export function userDir(name: 'PICTURES' | 'DOWNLOAD', fallback: string): string
   } catch {
   }
   return join(home, fallback)
+}
+
+export function screenshotFile(): string {
+  const dir = userDir('PICTURES', 'Pictures')
+  mkdirSync(dir, { recursive: true })
+  const stamp = new Date().toLocaleString('sv-SE').replace(/:/g, '.')
+  return join(dir, `截图 ${stamp}.png`)
 }

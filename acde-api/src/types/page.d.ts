@@ -194,6 +194,20 @@ export interface AcdeWindows extends WindowsEvents {
   showDesk?(desk: number): Promise<void>
   moveToDesk?(window: number, desk: number): Promise<void>
   setWallpaper?(wallpaper: DisplayWallpaper): Promise<void>
+  screenshot?(options?: ScreenshotOptions): Promise<Screenshot>
+}
+
+export interface ScreenshotOptions {
+  readonly screen?: number
+  readonly window?: number
+  readonly cursor?: boolean
+  readonly path?: string
+}
+
+export interface Screenshot {
+  readonly path: string
+  readonly width: number
+  readonly height: number
 }
 
 export interface DisplayWallpaper {
@@ -662,6 +676,17 @@ export interface ServiceModuleTypes {
   readonly inspect: AcdeInspect
   readonly desktop: Pick<AcdeDesktop, 'apps'>
   readonly setDefault: AcdeOpenFiles['setDefault']
+  readonly voice: AcdeVoice
+}
+
+export type VoiceEvent =
+  | { readonly type: 'partial'; readonly text: string }
+  | { readonly type: 'final'; readonly text: string }
+  | { readonly type: 'error'; readonly message: string }
+
+export interface AcdeVoice {
+  listen(onEvent: (event: VoiceEvent) => void): number
+  stop(id: number): boolean
 }
 
 export interface SystemInfo {

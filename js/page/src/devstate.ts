@@ -1,4 +1,4 @@
-import { hostTime } from '@dopame/acde-dom'
+import { hostTime } from '@acde/dom'
 
 interface Field {
   readonly path: string

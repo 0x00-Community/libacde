@@ -286,3 +286,45 @@ fn wide_points() {
     assert!(top_left[0] < 64 && top_left[1] < 64, "gl_PointCoord starts at the top left: {top_left:?}");
     assert!(bottom_right[0] > 191 && bottom_right[1] > 191, "and ends at the bottom right: {bottom_right:?}");
 }
+
+#[test]
+fn attributes_sharing_a_buffer() {
+    let Some(gpu) = gpu() else { return };
+    let mut gl = Context::new(gpu, true, Attributes { antialias: false, ..Default::default() }, 8, 8);
+    let p = program(
+        &mut gl,
+        "#version 300 es\nin vec2 shift; in vec4 tint; in vec2 p; in vec2 q; out vec4 v; void main() { v = vec4(tint.rgb * q.x, 1.0); gl_Position = vec4(p + shift, 0.0, 1.0); }",
+        "#version 300 es\nprecision mediump float; in vec4 v; out vec4 o; void main() { o = v; }",
+    );
+    gl.use_program(Some(p));
+    let mut data = Vec::new();
+    for (shift, tint) in [([0.0f32, 0.0], [255u8, 0, 0, 255]), ([1.0, 0.0], [0, 255, 0, 255])] {
+        data.extend(floats(&shift));
+        data.extend(tint);
+    }
+    data.resize(64, 0);
+    let quad = [-1.0, -1.0, 0.0, -1.0, 0.0, 1.0, -1.0, -1.0, 0.0, 1.0, -1.0, 1.0];
+    data.extend(floats(&quad));
+    data.extend(floats(&[1.0, 0.0].repeat(6)));
+    let b = gl.create_buffer();
+    gl.bind_buffer(ARRAY_BUFFER, Some(b));
+    gl.buffer_data(ARRAY_BUFFER, Some(&data), 0, STATIC_DRAW);
+    let at = |gl: &mut Context, name: &str| gl.attrib_location(p, name) as u32;
+    let (shift, tint, pos, q) = (at(&mut gl, "shift"), at(&mut gl, "tint"), at(&mut gl, "p"), at(&mut gl, "q"));
+    gl.vertex_attrib_pointer(shift, 2, FLOAT, false, 12, 0, false);
+    gl.vertex_attrib_pointer(tint, 4, UNSIGNED_BYTE, true, 12, 8, false);
+    gl.vertex_attrib_pointer(pos, 2, FLOAT, false, 8, 64, false);
+    gl.vertex_attrib_pointer(q, 2, FLOAT, false, 8, 64 + 48, false);
+    for l in [shift, tint, pos, q] {
+        gl.enable_vertex_attrib(l, true);
+    }
+    gl.vertex_attrib_divisor(shift, 1);
+    gl.vertex_attrib_divisor(tint, 1);
+    gl.draw(TRIANGLES, 0, 6, 2, None);
+    assert_eq!(gl.get_error(), NO_ERROR);
+    assert_eq!(pixel(&mut gl, 1, 4), [255, 0, 0, 255], "instance 0 reads its shift and tint from one stride");
+    assert_eq!(pixel(&mut gl, 6, 4), [0, 255, 0, 255], "instance 1 reads the next stride");
+    gl.vertex_attrib_pointer(tint, 4, UNSIGNED_BYTE, true, 12, 0, false);
+    gl.draw(TRIANGLES, 0, 6, 2, None);
+    assert_eq!(pixel(&mut gl, 1, 4), [0, 0, 0, 255], "tint now reads the shift's bytes: zero floats are zero bytes");
+}

@@ -1,4 +1,4 @@
-import type { ConsoleLevel, DialogType, PageErrorKind, RequestEvent, RequestKind } from '@dopame/acde-dom'
+import type { ConsoleLevel, DialogType, PageErrorKind, RequestEvent, RequestKind } from '@acde/dom'
 
 export type DevPost =
   | { readonly devlog: 'console'; readonly time: number; readonly level: ConsoleLevel; readonly text: string }
