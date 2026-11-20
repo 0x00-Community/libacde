@@ -21,7 +21,7 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 > - 兼容的是标准接口, 不是 Chromium: 渲染器是自研的 (Blitz 的 fork, `vendor/blitz` 子模块, 没有 JS 引擎), 页面 JS 在本库自己的 V8 里. 没有
 >   Chromium 的浏览器外壳; 正式运行没有远程调试端口, 只在开发模式 (`ACDE_DEV`) 下在本机 `127.0.0.1` 开 CDP 端点 (见 `docs/dev/devtools.md`).
 > - 现有的债 (不是先例, 新代码不许再加, 动到时往这个方向收): web 里除 fs / terminal / network / office / picker 以外的 `acde:` 模块
->   还是经 `rpc.ts` / `remote.ts` 调到 Broker (见 `docs/runtime/webs.md`「通信」); acde-dopame 还直接用 napi 导出.
+>   还是经 `rpc.ts` / `remote.ts` 调到 Broker (见 `docs/runtime/webs.md`「通信」); 服务的 `ctx.spawn` 起的进程不受清单约束.
 
 `web/` (acde-api、acde-dom、acde-host) 已于 91e7dd1e 删除 (CTO 决定). SDK 的替代品是 `acde-api/` 的 `@acde/api`, 只有类型声明
 (见 `docs/acde-api.md`). 契约级别只有一个来源: `acde-api/api-level` (只写一个数字的纯数据文件, 用户 2026-11-17 定), `src/host` 编译时

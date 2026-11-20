@@ -660,6 +660,17 @@ export interface ServiceModuleTypes {
   readonly inspect: AcdeInspect
   readonly desktop: Pick<AcdeDesktop, 'apps'>
   readonly setDefault: AcdeOpenFiles['setDefault']
+  readonly voice: AcdeVoice
+}
+
+export type VoiceEvent =
+  | { readonly type: 'partial'; readonly text: string }
+  | { readonly type: 'final'; readonly text: string }
+  | { readonly type: 'error'; readonly message: string }
+
+export interface AcdeVoice {
+  listen(onEvent: (event: VoiceEvent) => void): number
+  stop(id: number): boolean
 }
 
 export interface SystemInfo {
