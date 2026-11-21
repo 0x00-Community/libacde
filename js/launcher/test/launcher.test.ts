@@ -4,7 +4,7 @@ import { bindNatives } from '../../page/src/sys/natives.ts'
 import { AppLookup, webInit } from '../src/app/app.ts'
 import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/app/calls.ts'
-import { nativeArgs, rejectingCalls, sessionOf, windowSize, withoutUndefined, type Welcome } from '../src/manager/manager.ts'
+import { nativeArgs, rejectingCalls, sessionOf, windowGrant, windowSize, withoutUndefined, type Welcome } from '../src/manager/manager.ts'
 import { WindowSnapshots } from '../src/app/events.ts'
 import { backendUp, Callbacks, incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
 
@@ -360,6 +360,14 @@ describe('the window size the manager asks for', () => {
     for (const bad of [undefined, null, [640], [640, 480, 1], [0, 480], [640, 16385], ['640', 480], [Number.NaN, 480], { width: 640, height: 480 }]) {
       assert.equal(windowSize(bad), null, JSON.stringify(bad))
     }
+  })
+
+  test('the welcome outer size or size comes first, then the manifest size, else none (the window system default)', () => {
+    assert.deepEqual(windowGrant({ outerSize: [700, 532] }, [400, 300]), { outerSize: [700, 532] })
+    assert.deepEqual(windowGrant({ size: [640, 480] }, [400, 300]), { size: [640, 480] })
+    assert.deepEqual(windowGrant({ outerSize: [0, 1] as never, size: [640, 480] }, null), { size: [640, 480] })
+    assert.deepEqual(windowGrant(undefined, [400, 300]), { size: [400, 300] })
+    assert.deepEqual(windowGrant({}, null), {})
   })
 })
 
