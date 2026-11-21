@@ -109,6 +109,7 @@ export type { WebglNative } from './webgl/index'
 export type { WorkersNative } from './core/worker'
 export { installBackendTransport, type BackendTransport, type Header as BackendHeader, type HttpEvent, type WsEvent } from './core/backend'
 export { NO_NETWORK } from './core/net'
+export { linePort, PORT_LIMIT, type LinePort, type PortLine } from './core/message'
 export {
   observe,
   type ConsoleLevel,

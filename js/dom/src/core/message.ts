@@ -43,7 +43,10 @@ export function structuredClone<T>(value: T, options?: { transfer?: unknown }): 
   return result
 }
 
+const UNREADABLE = Symbol('unreadable')
+
 let entangle: (a: MessagePort, b: MessagePort) => void
+let sinkInto: (port: MessagePort, sink: (data: unknown) => void) => void
 let receive: (port: MessagePort, data: unknown) => void
 let disentangled: (port: MessagePort) => void
 
@@ -52,6 +55,7 @@ export class MessagePort extends EventTarget {
   #started = false
   #closed = false
   #queue: unknown[] = []
+  #sink: ((data: unknown) => void) | null = null
 
   constructor(...key: unknown[]) {
     illegal(key[0])
@@ -63,13 +67,16 @@ export class MessagePort extends EventTarget {
       a.#other = b
       b.#other = a
     }
+    sinkInto = (port, sink) => {
+      port.#sink = sink
+    }
     receive = (port, data) => {
       if (port.#closed) return
       if (!port.#started) return void port.#queue.push(data)
       host.setTimer(0, () => {
         if (port.#closed) return
         try {
-          fire(port, new MessageEvent('message', { data }))
+          fire(port, data === UNREADABLE ? new MessageEvent('messageerror') : new MessageEvent('message', { data }))
         } catch (error) {
           report(error)
         }
@@ -91,7 +98,8 @@ export class MessagePort extends EventTarget {
     const data = structuredClone(message, { transfer: transferList(transfer) })
     const other = this.#other
     if (!other || this.#closed) return
-    receive(other, data)
+    if (other.#sink) other.#sink(data)
+    else receive(other, data)
   }
 
   start(): void {
@@ -136,6 +144,92 @@ export class MessageChannel {
   }
 }
 tag(MessageChannel)
+
+export const PORT_LIMIT = 262144
+
+export interface PortLine {
+  send(line: string): void
+  closed(): void
+}
+
+export interface LinePort {
+  readonly port: MessagePort
+  receive(line: string | null): void
+  close(): void
+}
+
+export function linePort(line: PortLine): LinePort {
+  const port = new MessagePort(KEY)
+  const inner = new MessagePort(KEY)
+  entangle(port, inner)
+  let open = true
+  sinkInto(inner, (data) => line.send(jsonLine(data)))
+  inner.addEventListener('close', () => {
+    open = false
+    line.closed()
+  })
+  return {
+    port,
+    receive: (text) => {
+      if (!open) return
+      const data = text === null || utf8Length(text) > PORT_LIMIT ? UNREADABLE : parsed(text)
+      if (data === UNREADABLE) receive(port, UNREADABLE)
+      else inner.postMessage(data)
+    },
+    close: () => {
+      open = false
+      inner.close()
+    },
+  }
+}
+
+function parsed(text: string): unknown {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return UNREADABLE
+  }
+}
+
+function jsonLine(data: unknown): string {
+  const why = notJson(data, new Set())
+  if (why) throw new DOMException(`this port carries JSON only (${why})`, 'DataCloneError')
+  const text = JSON.stringify(data)
+  const size = utf8Length(text)
+  if (size > PORT_LIMIT) throw new DOMException(`message is ${size} bytes, over the ${PORT_LIMIT}-byte limit of this port`, 'DataCloneError')
+  return text
+}
+
+function notJson(value: unknown, seen: Set<object>): string | null {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return null
+  if (typeof value === 'number') return Number.isFinite(value) ? null : `${value} is not a JSON number`
+  if (typeof value !== 'object') return `${typeof value} values are not JSON`
+  if (seen.has(value)) return 'it refers to itself'
+  const proto = Object.getPrototypeOf(value)
+  const plain = proto === null || (Object.getPrototypeOf(proto) === null && proto.constructor?.name === 'Object')
+  if (!Array.isArray(value) && !plain) return `${proto?.constructor?.name ?? 'this object'} values are not JSON`
+  seen.add(value)
+  for (const item of Object.values(value)) {
+    const why = notJson(item, seen)
+    if (why) return why
+  }
+  seen.delete(value)
+  return null
+}
+
+function utf8Length(text: string): number {
+  let size = 0
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i)
+    if (code < 0x80) size += 1
+    else if (code < 0x800) size += 2
+    else if (code >= 0xd800 && code < 0xdc00 && i + 1 < text.length) {
+      size += 4
+      i++
+    } else size += 3
+  }
+  return size
+}
 
 export class BroadcastChannel extends EventTarget {
   #closed = false
