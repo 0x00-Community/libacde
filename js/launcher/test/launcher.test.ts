@@ -4,7 +4,7 @@ import { bindNatives } from '../../page/src/sys/natives.ts'
 import { AppLookup, webInit } from '../src/app/app.ts'
 import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/app/calls.ts'
-import { sessionOf, type Welcome } from '../src/manager/manager.ts'
+import { rejectingCalls, sessionOf, type Welcome } from '../src/manager/manager.ts'
 import { WindowSnapshots } from '../src/app/events.ts'
 import { backendUp, Callbacks, incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
 
@@ -299,6 +299,32 @@ describe('a service hears when a caller lets go of a callback', () => {
     assert.equal(callbacks.signal(other).aborted, false)
     assert.throws(() => callbacks.signal(() => {}), TypeError)
     assert.throws(() => callbacks.signal('x'), /not a callback a caller passed/)
+  })
+})
+
+describe('a call the manager refuses at once', () => {
+  test('becomes a rejected promise; the rest of the link is passed through as it is', async () => {
+    const sent: object[] = []
+    const link = {
+      welcome: { kind: 'app' },
+      call: (service: string, method: string, args?: readonly unknown[]) => {
+        if (args?.includes(undefined)) throw new TypeError('undefined cannot be represented as a serde_json::Value')
+        return Promise.resolve(`${service}.${method}`)
+      },
+      onEvents: () => {},
+      pump: () => [{ type: 'x' }],
+      send: (frame: object) => void sent.push(frame),
+    }
+    const calls = rejectingCalls(link as never)
+    const refused = calls.call('settings', 'enable', ['id', undefined])
+    assert.ok(refused instanceof Promise)
+    await assert.rejects(refused, /serde_json::Value/)
+    assert.equal(await calls.call('settings', 'enable', ['id']), 'settings.enable')
+    assert.equal(calls.welcome, link.welcome)
+    assert.deepEqual(calls.pump(), [{ type: 'x' }])
+    calls.send!({ ready: true })
+    assert.deepEqual(sent, [{ ready: true }])
+    assert.equal(calls.connectBackend, undefined)
   })
 })
 

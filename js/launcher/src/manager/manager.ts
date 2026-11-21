@@ -49,6 +49,24 @@ export interface ManagerLink {
   connectBackend?(): Promise<BackendLink>
 }
 
+export function rejectingCalls(link: ManagerLink): ManagerLink {
+  const call = (service: string, method: string, args?: readonly unknown[]): Promise<unknown> => {
+    try {
+      return link.call(service, method, args)
+    } catch (error) {
+      return Promise.reject(error)
+    }
+  }
+  return {
+    welcome: link.welcome,
+    call,
+    onEvents: (callback) => link.onEvents(callback),
+    pump: () => link.pump(),
+    ...(link.send && { send: (frame: object) => link.send!(frame) }),
+    ...(link.connectBackend && { connectBackend: () => link.connectBackend!() }),
+  }
+}
+
 export interface BackendLink {
   readonly role: string
   write(data: string | Uint8Array): void
