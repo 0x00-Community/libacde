@@ -49,8 +49,8 @@
   文件 (用户 2026-11-18): 清单声明了 `fs` 就授予 `{places, paths: false}` (形状同客户机管家的 `grants.fs`): 只在设了 `ACDE_DEV_PLACES` (`acdev dev` 设,
   它同时用 `XDG_<名>_DIR` 把公共位置换成会话自己的隔离目录) 时给清单 `fs.roots` 列的位置, 否则只有应用私有目录; 不给任意路径.
 - **锁屏页预览** (`lock <桌面 id|目录>`, 只在没有管家时, `acdev dev --lock` 用, 日常桌面工作项 23): 按 `ACDE_PATH` 或目录找桌面包, 打开它清单 `lock`
-  写的页面 (桌面窗口, 等级最低, 授予全无, 页面初始化数据带 `lock: true`, 所以只有 `acde:lock` 和 `acde:services`). `lock.user` / `lock.unlock` 由
-  `js/launcher/src/app/lock.ts` 的 `FakeLock` 回答: 固定用户 (头像 null); `right-password` 解锁, `wrong-password` auth (403)、`busy-password` busy (409)、
+  写的页面 (桌面窗口, 等级最低, 授予全无, 页面初始化数据带 `lock: true`, 所以只有 `acde:lock` 和 `acde:services`). `lock.user` / `lock.unlock` / `lock.cancel` 由
+  `js/launcher/src/app/lock.ts` 的 `FakeLock` 回答: 固定用户 (头像 null); `cancel` 直接成功; `right-password` 解锁 (第二个参数不看), `wrong-password` auth (403)、`busy-password` busy (409)、
   `throttled-password` throttled (429, `retryAfter` 3), 别的 auth. 有管家时 `lock` 命令报错, `lock.*` 照常交给管家.
   `window.ready`、`page.shown` 直接应答, `desktops.list` 回 `{desktops: [], current: ''}`, 其余 (含 `session.*`、
   `desktops.choose`、`lock.*`) 回 `unsupported` (501).
@@ -68,6 +68,11 @@
   `lock.user()` 回 `{name, fullName, avatar}` (`avatar` 是 `data:` URL 或 null), `lock.unlock(password)` 失败时的错误带 `code`: `auth` (403,
   密码错)、`busy` (409, 上一次验证还没完)、`throttled` (429, 失败后的延迟期内, 另带 `retryAfter` 秒数); 这些字段由 rpc 原样带回页面
   (SDK 类型 `LockError`). 管家按调用方拒绝: 锁屏页只能调 `lock.*`、`window.ready`、`page.shown`.
+  系统确认页 (2026-11-21, 管家以确认模式开同一个锁屏进程, 欢迎消息和 `lock.user()` 的应答多一项 `confirm`, 见 acdes `docs/manager.md`) 另有两处,
+  都只是加法: `lock.unlock(password, {remember?})` 的第二个参数 (`'once' | 'task' | 'scope' | 'until'`, 这次批准记多久, 原样转给管家;
+  确认页不要密码时 `password` 传空串), 和 `lock.cancel()` (拒绝, 管家立刻回成功, 随后会话进程让页面放开锁屏并退出). 页面胶水按原样转发参数,
+  不看 `confirm` 的内容; 它的形状是 SDK 的 `LockConfirm` (`{id, agent, waiting: {title, detail, expires, password, judge, remember?: {may, default, max_days?},
+  tries_left?}}`, `waiting` 里照系统总管协议用下划线名), 只在确认页里有, 锁屏页没有.
 - **服务模式** (`service <名字>`, system 工作项 12, 帧格式见总仓 `.scratch/system/issues/12-services.md`, `js/launcher/src/manager/service.ts`):
   不开窗口, 在启动方的 isolate 里 `import` welcome 的 `module` (绝对路径), 用 ServiceContext (`name`、`package` 即包目录、`state` 即管家建好的
   `stateDir`、`env`、`log`、`spawn`, `import('acde:<模块>')` 只放行 welcome 的 `modules`, 其方法经管家调用; `acde:voice` 例外, 在服务进程里直接调 napi `Voice`;

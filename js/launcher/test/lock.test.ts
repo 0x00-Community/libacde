@@ -30,6 +30,9 @@ describe('the lock page preview of acdev dev', () => {
     assert.deepEqual(failure(() => lock.answer('unlock', ['busy-password'])), { code: 'busy', status: 409, retryAfter: undefined })
     assert.deepEqual(failure(() => lock.answer('unlock', ['throttled-password'])), { code: 'throttled', status: 429, retryAfter: 3 })
     assert.deepEqual(failure(() => lock.answer('unlock', ['anything else'])), { code: 'auth', status: 403, retryAfter: undefined })
+    assert.equal(lock.answer('unlock', ['right-password', { remember: 'task' }]), undefined)
+    assert.equal(lock.answer('cancel', []), undefined)
+    assert.deepEqual(failure(() => lock.answer('other', [])), { code: 'not_found', status: 404, retryAfter: undefined })
   })
 
   test('without a manager lock calls stay in the launcher; with one they go to the manager', () => {

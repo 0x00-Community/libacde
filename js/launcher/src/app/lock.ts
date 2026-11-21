@@ -12,7 +12,8 @@ export class FakeLock {
   answer(method: string, args: readonly unknown[]): unknown {
     if (method === 'user') return { ...FakeLock.USER }
     if (method === 'unlock') return FakeLock.#unlock(args[0])
-    throw Object.assign(new Error(`acdev: lock.${method} does not exist (user, unlock)`), { status: 404, code: 'not_found' })
+    if (method === 'cancel') return undefined
+    throw Object.assign(new Error(`acdev: lock.${method} does not exist (user, unlock, cancel)`), { status: 404, code: 'not_found' })
   }
 
   static #unlock(password: unknown): undefined {
