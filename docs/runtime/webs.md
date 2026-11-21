@@ -20,7 +20,7 @@
   `Frame.HEIGHT` (32), 经 `claimSurface(token, {frame})` 交给 surface; 画法在 render 的 `Decoration`. 全屏时窗框照旧在. `acde:inspect` 看不到窗框
   (页面坐标加 `contentOffset`).
 - **钉住的面板** (Dock、菜单栏、弹出层): 桌面页面调 `acde.desktop.pin(element, {margin?})` → `{update(), unpin()}`, 元素成为单独的 `pinned`
-  窗口, 状态和 React 树还在同一个文档里. `pinned.ts` 量元素 (并上 render 报的绘制范围 `panelmove`; 绘制范围记在当时的视口坐标里, 视口宽高或 `devicePixelRatio` 变了就丢掉重量, 并完截到视口以内是裁边不是平移), 要令牌 (`Shell.grant({mode: 'pinned', rect})`),
+  窗口, 状态和 React 树还在同一个文档里. `pinned.ts` 量元素 (并上 render 报的绘制范围 `panelmove`, 页面坐标由 render 用画那一帧的面板矩形算 (`Panel.reach`); 绘制范围记在当时的视口坐标里, 视口宽高或 `devicePixelRatio` 变了就丢掉重量, 并完截到视口以内是裁边不是平移), 要令牌 (`Shell.grant({mode: 'pinned', rect})`),
   再开一个 toplevel (acdebin-system 的 `crates/window` `panel.rs`; 宿主窗口里是 owner 为桌面的表项), `Dom::set_panel` 让 render 单独画它 (`Frame.panels`). 输入区域只是
   元素的盒子 (`pointer-events: none` / 不可见时为空), 指针送回同一个文档; 主窗口或任一面板有焦点就算 `activate`. 元素变了 (ResizeObserver +
   MutationObserver, 700 ms 后补量; 元素上的 `animationend` / `transitionend` 也补量, 淡入时量到的不透明度 0 不会让输入区域一直空着) 重新量, 量不到时 `hide`.

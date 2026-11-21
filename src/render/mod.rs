@@ -189,6 +189,7 @@ pub struct Panel {
     pub size: (u32, u32),
     pub plane: Plane,
     pub extent: Option<Rect>,
+    pub reach: Option<Rect>,
 }
 
 #[derive(Default)]

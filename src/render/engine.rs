@@ -397,7 +397,8 @@ impl Engine {
             .map(|(_, r)| *r)
             .reduce(|a, b| a.union(b))
             .map(Rect::from);
-        Panel { id, size, plane: damage.plane(commands, rects, scale, viewport), extent }
+        let reach = extent.map(|e| Rect { x: (rect.x0 + e.x) / scale, y: (rect.y0 + e.y) / scale, width: e.width / scale, height: e.height / scale });
+        Panel { id, size, plane: damage.plane(commands, rects, scale, viewport), extent, reach }
     }
 
     pub(crate) fn paint_frame(&mut self) -> Painted {
