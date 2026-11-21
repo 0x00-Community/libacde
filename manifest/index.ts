@@ -78,7 +78,7 @@ export interface ConfiguredService extends DesktopServiceGrant {
   readonly module: string
 }
 
-export type AppManifest = Required<Omit<AppEntry, 'backend' | 'size'>> & {
+export type AppManifest = Required<Omit<AppEntry, 'backend' | 'size' | 'sensitive'>> & {
   readonly backend: Required<AppBackend> | null
   readonly size: readonly [number, number] | null
 }
