@@ -4,7 +4,7 @@ import { bindNatives } from '../../page/src/sys/natives.ts'
 import { AppLookup, webInit } from '../src/app/app.ts'
 import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/app/calls.ts'
-import { nativeArgs, rejectingCalls, sessionOf, withoutUndefined, type Welcome } from '../src/manager/manager.ts'
+import { nativeArgs, rejectingCalls, sessionOf, windowSize, withoutUndefined, type Welcome } from '../src/manager/manager.ts'
 import { WindowSnapshots } from '../src/app/events.ts'
 import { backendUp, Callbacks, incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
 
@@ -350,6 +350,16 @@ describe('arguments on their way to a native call', () => {
     const answer = () => 'desk.list: the answer'
     assert.deepEqual(withoutUndefined({ desks: [{ id: 'a', note: undefined }], more: undefined }, answer), { desks: [{ id: 'a' }] })
     assert.throws(() => withoutUndefined({ desks: [undefined] }, answer), /desk\.list: the answer\.desks\[0\] is undefined/)
+  })
+})
+
+describe('the window size the manager asks for', () => {
+  test('two whole numbers from 1 to 16384, rounded; anything else is no size, and the manifest size stands', () => {
+    assert.deepEqual(windowSize([640.4, 480.6]), [640, 481])
+    assert.deepEqual(windowSize([1, 16384]), [1, 16384])
+    for (const bad of [undefined, null, [640], [640, 480, 1], [0, 480], [640, 16385], ['640', 480], [Number.NaN, 480], { width: 640, height: 480 }]) {
+      assert.equal(windowSize(bad), null, JSON.stringify(bad))
+    }
   })
 })
 

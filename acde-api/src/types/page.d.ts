@@ -268,6 +268,7 @@ export interface OpenWindowOptions {
   readonly modal?: boolean
   readonly root?: LentRoot
   readonly newWindow?: boolean
+  readonly size?: readonly [width: number, height: number]
 }
 
 export interface OpenFileRequest {

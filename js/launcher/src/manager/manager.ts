@@ -30,9 +30,16 @@ export interface Welcome {
   readonly stateDir?: string
   readonly backend?: { readonly role: string; readonly up: boolean }
   readonly port?: { readonly data: unknown }
+  readonly size?: readonly [number, number]
   readonly session?: { readonly own: boolean }
   readonly lock?: boolean
   readonly instance?: number
+}
+
+export function windowSize(given: unknown): readonly [number, number] | null {
+  if (!Array.isArray(given) || given.length !== 2) return null
+  const [width, height] = given.map((n) => (typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : 0))
+  return width! >= 1 && height! >= 1 && width! <= 16384 && height! <= 16384 ? [width!, height!] : null
 }
 
 export interface ManagerEvent {

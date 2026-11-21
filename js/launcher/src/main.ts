@@ -19,7 +19,7 @@ import { API_LEVEL } from '@acde/api/manifest'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported, wallpaperOf } from './app/calls'
 import type { LentRoot } from '@acde/api'
-import { rejectingCalls, sessionOf, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
+import { rejectingCalls, sessionOf, windowSize, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
 import { WindowSnapshots, type ShellEvent } from './app/events'
 import { ServiceHost } from './manager/service'
 import { DevChannel, type DevShell, type DevTarget } from './dev/dev'
@@ -286,7 +286,7 @@ class Launcher {
 
   #grant(): Grant {
     if (this.#desktop) return this.#shell.grant({ desktop: true })
-    const size = this.session.found!.app.size
+    const size = windowSize(this.manager?.welcome.size) ?? this.session.found!.app.size
     return this.#shell.grant({ window: 1, mode: 'fullscreen', host: true, ...(size && { size }) })
   }
 

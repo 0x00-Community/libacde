@@ -72,9 +72,11 @@
   (或重载后补报的), `changed` 列出这批变了的字段. 另有 `close` (窗口没了)、`crash` (进程崩了; 和 `close` 一样把窗口从表里删掉, 两者都要当「窗口没了」处理,
   且可能先后都到)、`menus`、`currentdesk`. `open`、`title`、`state`、`activate`、`parent`、`desk`、`geometry` 已过时 (由快照推出, 照旧发), 新桌面只听 `window`.
   `ready`、`show`、`attention`、`hang`、`responsive` 不保证发 (今天 acdes 都不发).
-- **打开应用**: `acde:apps.open(id, request?, {parent, modal, newWindow, root})` → `{window, instance?, running?}`. 回答里的 `window` 可能是 0
+- **打开应用**: `acde:apps.open(id, request?, {parent, modal, newWindow, root, size})` → `{window, instance?, running?}`. 回答里的 `window` 可能是 0
   (窗口还没出来, acdes 总是这样): 桌面按随后 `first` 快照的 `appId` (有 `instance` 时再对 `instance`) 认领, 认领要能在回答之前或之后发生.
   带请求打开已在运行的单例应用时请求交给它 (`running: true`), 不开新窗口; 要新窗口给 `newWindow: true` (清单 `multiple` 的应用才真开).
+  `size: [宽, 高]` (2026-11-21) 是这次新窗口的页面尺寸, 单位同清单 `size` (内容区的逻辑像素, 窗框另算), 只在真起新进程时用, 已在运行的单例不改;
+  管家要两个有限正数 (取整后 1–16384), 否则 400 `bad_request`, 不给或 null 等于没给; 带请求打开 (`open-file`、`open-link`) 同理.
   `acde:openPath(path)` 回 `no_app` (404) 时运行时不弹任何东西, 「打开方式」由桌面自己画 (`acde:handlers` + `acde:setDefault`).
   起原生程序用 `acde:launch.start(argv)` 或 `acde:packages.runNative(id)`, 窗口号同样从快照认领.
 - **摆放**: 新窗口由合成器摆 (工作区居中, 按窗口数错开; 有父窗口的在父窗口上方). 桌面可以 `place(id, [x, y, w, h])`
