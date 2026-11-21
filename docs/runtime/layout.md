@@ -71,7 +71,8 @@
   系统确认页 (2026-11-21, 管家以确认模式开同一个锁屏进程, 欢迎消息和 `lock.user()` 的应答多一项 `confirm`, 见 acdes `docs/manager.md`) 另有两处,
   都只是加法: `lock.unlock(password, {remember?})` 的第二个参数 (`'once' | 'round' | 'scope' | 'until'`, 这次批准记多久, 原样转给管家;
   确认页不要密码时 `password` 传空串), 和 `lock.cancel()` (拒绝, 管家立刻回成功, 随后会话进程让页面放开锁屏并退出). 页面胶水按原样转发参数,
-  不看 `confirm` 的内容.
+  不看 `confirm` 的内容; 它的形状是 SDK 的 `LockConfirm` (`{id, agent, waiting: {title, detail, expires, password, judge, remember?: {may, default, max_days?},
+  tries_left?}}`, `waiting` 里照系统总管协议用下划线名), 只在确认页里有, 锁屏页没有.
 - **服务模式** (`service <名字>`, system 工作项 12, 帧格式见总仓 `.scratch/system/issues/12-services.md`, `js/launcher/src/manager/service.ts`):
   不开窗口, 在启动方的 isolate 里 `import` welcome 的 `module` (绝对路径), 用 ServiceContext (`name`、`package` 即包目录、`state` 即管家建好的
   `stateDir`、`env`、`log`、`spawn`, `import('acde:<模块>')` 只放行 welcome 的 `modules`, 其方法经管家调用; `acde:voice` 例外, 在服务进程里直接调 napi `Voice`;
