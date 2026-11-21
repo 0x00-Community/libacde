@@ -1,10 +1,10 @@
 import type { AppBackend, AppManifest as AppEntry, Capabilities, PackageManifest } from '../acde-api/src/index'
-import { API_LEVEL } from './level.ts'
+import { API_LEVEL, MIN_API_LEVEL } from './level.ts'
 import { FS_ROOTS, SHARED_PLACES } from './places.ts'
 
 export type { Capabilities, PackageManifest } from '../acde-api/src/index'
 export type { CapabilityState, CapabilityStatus, PlatformSupport, RunningMode, WindowFeatures } from '../acde-api/src/index'
-export { API_LEVEL, FS_ROOTS, SHARED_PLACES }
+export { API_LEVEL, FS_ROOTS, MIN_API_LEVEL, SHARED_PLACES }
 export type { FsRootName, PlaceCapability, SharedPlace } from '../acde-api/src/index'
 export { PLATFORM_SUPPORT, RUNNING_MODES, platformSupport } from './platforms.ts'
 
@@ -201,8 +201,14 @@ export class Manifest {
 
   static readonly UNVERSIONED = `no acde.apiLevel: a package built before contract levels; rebuild it with the current acde (level ${API_LEVEL})`
 
+  static supports(level: number): boolean {
+    return level >= MIN_API_LEVEL && level <= API_LEVEL
+  }
+
   static refusal(level: number): string | null {
-    return level === API_LEVEL ? null : `needs level ${level}, runtime is level ${API_LEVEL}`
+    if (Manifest.supports(level)) return null
+    const runtime = MIN_API_LEVEL === API_LEVEL ? `is level ${API_LEVEL}` : `supports levels ${MIN_API_LEVEL}–${API_LEVEL}`
+    return `needs level ${level}, runtime ${runtime}`
   }
 
   static heapMb(value: unknown, fallback: number): number {
