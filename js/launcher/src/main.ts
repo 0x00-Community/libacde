@@ -30,6 +30,7 @@ import { GuestWindows } from './dev/guest'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
 import { PagePort } from './manager/pageport'
+import type { AnchorWire } from '../../page/src/pinanchor'
 
 interface Grant {
   readonly window: number
@@ -43,6 +44,7 @@ interface GrantOptions {
   readonly size?: readonly number[]
   readonly rect?: readonly number[]
   readonly host?: boolean
+  readonly anchor?: AnchorWire
 }
 
 interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState' | 'windows' | 'inject'> {
@@ -56,6 +58,8 @@ interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState
   place(window: number, x: number, y: number, width: number, height: number): void
   hide(window: number, hidden: boolean): void
   release?(window: number): void
+  readonly anchors?: boolean
+  reanchor?(window: number, anchor: AnchorWire): void
   focus(window: number): void
   close(window: number): void
   kill?(window: number): void
@@ -337,7 +341,8 @@ class Launcher {
     const lock = this.session.lock ? { lock: true } : {}
     const services = this.#services
     const dev = this.#dev.prepare(given.name, app)
-    const extra = { ...this.#backend?.init(), ...this.#port?.init(), session, ...lock, ...(state ? { devState: state } : {}) }
+    const anchors = this.#desktop && this.#shell.anchors === true ? { anchors: true } : {}
+    const extra = { ...this.#backend?.init(), ...this.#port?.init(), ...anchors, session, ...lock, ...(state ? { devState: state } : {}) }
     const init: WebInit = { ...given, services, ...dev, ...extra }
     const rpc = new Rpc((message) => thread.post(message))
     rpc.serve((service, method, args) => this.#serve(service, method, args))
@@ -472,7 +477,9 @@ class Launcher {
     switch (method) {
       case 'open': {
         const at = rect(args[0])
-        const grant = this.#shell.grant({ mode: 'pinned', rect: at })
+        const anchor = args[1] as AnchorWire | undefined
+        if (anchor && !this.#shell.anchors) throw unsupported('panel', 'open with an anchor')
+        const grant = this.#shell.grant({ mode: 'pinned', rect: at, ...(anchor && { anchor: { ...anchor, visible: rect(anchor.visible) } }) })
         this.#panels.set(grant.window, { rect: at, hidden: false })
         return grant
       }
@@ -485,6 +492,12 @@ class Launcher {
         if (hidden) return this.#shell.hide(id, true)
         this.#shell.place(id, x, y, width, height)
         return this.#shell.hide(id, false)
+      }
+      case 'anchor': {
+        if (!this.#panels.has(id)) throw refused(`panel ${id} is not this desktop's`)
+        const anchor = args[1] as AnchorWire
+        if (!this.#shell.reanchor) throw unsupported('panel', method)
+        return this.#shell.reanchor(id, { ...anchor, visible: rect(anchor.visible) })
       }
       case 'close':
         if (this.#panels.delete(id)) this.#shell.release?.(id)
