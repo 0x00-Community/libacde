@@ -2,6 +2,7 @@ mod blur_plan;
 mod compose;
 #[cfg(target_os = "linux")]
 mod device;
+mod fonts;
 mod offscreen;
 #[cfg(target_os = "linux")]
 mod raster;
