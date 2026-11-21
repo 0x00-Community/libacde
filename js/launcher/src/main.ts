@@ -19,7 +19,7 @@ import { API_LEVEL } from '@acde/api/manifest'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported, wallpaperOf } from './app/calls'
 import type { LentRoot } from '@acde/api'
-import { sessionOf, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
+import { rejectingCalls, sessionOf, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
 import { WindowSnapshots, type ShellEvent } from './app/events'
 import { ServiceHost } from './manager/service'
 import { DevChannel, type DevShell, type DevTarget } from './dev/dev'
@@ -716,7 +716,7 @@ export default async function launch(natives: LauncherNatives): Promise<void> {
   bindNatives(natives)
   try {
     const args = LaunchArgs.parse(process.argv)
-    const manager = process.env['ACDE_MANAGER_FD'] && natives.native.Manager ? natives.native.Manager.connect() : null
+    const manager = process.env['ACDE_MANAGER_FD'] && natives.native.Manager ? rejectingCalls(natives.native.Manager.connect()) : null
     if (args.kind === 'service') {
       if (!manager) throw new Error('service needs the session manager (ACDE_MANAGER_FD)')
       if (manager.welcome.kind !== 'service') throw new Error(`the session manager started this process as ${manager.welcome.kind}, not service`)

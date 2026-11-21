@@ -49,6 +49,40 @@ export interface ManagerLink {
   connectBackend?(): Promise<BackendLink>
 }
 
+function withoutUndefined(value: unknown, at: () => string): unknown {
+  if (value === undefined) throw new TypeError(`${at()} is undefined; leave it out or pass null`)
+  if (Array.isArray(value)) return value.map((item, i) => withoutUndefined(item, () => `${at()}[${i}]`))
+  if (typeof value !== 'object' || value === null) return value
+  const proto = Object.getPrototypeOf(value)
+  if (proto !== Object.prototype && proto !== null) return value
+  const kept = Object.entries(value).filter(([, item]) => item !== undefined)
+  return Object.fromEntries(kept.map(([key, item]) => [key, withoutUndefined(item, () => `${at()}.${key}`)]))
+}
+
+export function nativeArgs(service: string, method: string, args: readonly unknown[] = []): unknown[] {
+  let length = args.length
+  while (length > 0 && args[length - 1] === undefined) length--
+  return args.slice(0, length).map((arg, i) => withoutUndefined(arg, () => `${service}.${method}: argument ${i + 1}`))
+}
+
+export function rejectingCalls(link: ManagerLink): ManagerLink {
+  const call = (service: string, method: string, args?: readonly unknown[]): Promise<unknown> => {
+    try {
+      return link.call(service, method, nativeArgs(service, method, args))
+    } catch (error) {
+      return Promise.reject(error)
+    }
+  }
+  return {
+    welcome: link.welcome,
+    call,
+    onEvents: (callback) => link.onEvents(callback),
+    pump: () => link.pump(),
+    ...(link.send && { send: (frame: object) => link.send!(frame) }),
+    ...(link.connectBackend && { connectBackend: () => link.connectBackend!() }),
+  }
+}
+
 export interface BackendLink {
   readonly role: string
   write(data: string | Uint8Array): void
