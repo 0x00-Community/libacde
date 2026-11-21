@@ -4,7 +4,7 @@ import { bindNatives } from '../../page/src/sys/natives.ts'
 import { AppLookup, webInit } from '../src/app/app.ts'
 import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/app/calls.ts'
-import { nativeArgs, rejectingCalls, sessionOf, type Welcome } from '../src/manager/manager.ts'
+import { nativeArgs, rejectingCalls, sessionOf, withoutUndefined, type Welcome } from '../src/manager/manager.ts'
 import { WindowSnapshots } from '../src/app/events.ts'
 import { backendUp, Callbacks, incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
 
@@ -344,6 +344,12 @@ describe('arguments on their way to a native call', () => {
     const message = 'lock.unlock: argument 2 is undefined; leave it out or pass null'
     assert.throws(() => nativeArgs('lock', 'unlock', ['pw', undefined, 1]), { name: 'TypeError', message })
     assert.throws(() => nativeArgs('s', 'm', [{ list: [1, undefined] }]), /s\.m: argument 1\.list\[1\] is undefined/)
+  })
+
+  test('a service answer is cleaned the same way, and an undefined it cannot drop names the call', () => {
+    const answer = () => 'desk.list: the answer'
+    assert.deepEqual(withoutUndefined({ desks: [{ id: 'a', note: undefined }], more: undefined }, answer), { desks: [{ id: 'a' }] })
+    assert.throws(() => withoutUndefined({ desks: [undefined] }, answer), /desk\.list: the answer\.desks\[0\] is undefined/)
   })
 })
 

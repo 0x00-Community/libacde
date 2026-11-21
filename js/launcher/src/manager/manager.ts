@@ -49,7 +49,7 @@ export interface ManagerLink {
   connectBackend?(): Promise<BackendLink>
 }
 
-function withoutUndefined(value: unknown, at: () => string): unknown {
+export function withoutUndefined(value: unknown, at: () => string): unknown {
   if (value === undefined) throw new TypeError(`${at()} is undefined; leave it out or pass null`)
   if (Array.isArray(value)) return value.map((item, i) => withoutUndefined(item, () => `${at()}[${i}]`))
   if (typeof value !== 'object' || value === null) return value

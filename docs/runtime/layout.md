@@ -45,7 +45,9 @@
   页面的调用除下面留在本进程的以外原样转给管家 (`manager.call`), 失败的 `Error` 带 `status`、`code` 抛回页面
   (`native.Manager.call` 当场抛的错, 如参数转不成 JSON, 经 `rejectingCalls` 也变成这次调用的失败, 不会让页面或服务一直等). 交给管家之前参数按 JS 习惯
   处理一次 (`nativeArgs`, 用户 2026-11-21 选 A): 末尾为 undefined 的参数去掉, 普通对象里值为 undefined 的字段逐层省略 (同 `JSON.stringify`), 中间位置
-  或数组里的 undefined 让这次调用以 `TypeError` 失败 (`lock.unlock: argument 2 is undefined; leave it out or pass null`); 页面与启动器之间的 rpc 照旧原样传; `window.ready`、`page.shown`
+  或数组里的 undefined 让这次调用以 `TypeError` 失败 (`lock.unlock: argument 2 is undefined; leave it out or pass null`); 服务交给管家的应答和回调的参数
+  也一样 (`service.ts`): 应答里省不掉的 undefined 让调用方收到 500 `internal` (`desk.list: the answer.desks[0] is undefined; …`), 回调参数的在服务代码里抛 `TypeError`;
+  页面与启动器之间的 rpc 照旧原样传; `window.ready`、`page.shown`
   也转过去 (管家据此记冷启动). 管家推来的 `request` 交给页面 `window.request`, 桌面进程收到的其余推送原样交给桌面页, `managerclosed` 时以 0 退出.
 - **没有管家时** (宿主窗口跑法): 只认 `app`; 目录取其 package.json 里第一个应用, id 在 `ACDE_PATH` 的各目录及其下一层找; 资源前缀按
   `acde.assets`, 没有 `/` 时 `/` 指包目录; 没有服务、最低权限等级、存储在 `$ACDE_STORAGE` 或 `~/.local/share/acde/storage` 的 `app-<id>`.

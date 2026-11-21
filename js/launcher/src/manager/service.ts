@@ -2,7 +2,7 @@ import type { AcdeVoice, BackendConnection, ServiceBackend, ServiceFactory, Serv
 import { sys } from '../../../page/src/sys/natives'
 import { pathToFileURL } from '../../../page/src/sys/url'
 import { process, stopGroup } from '../../../page/src/sys/process'
-import type { BackendLink, ManagerEvent, ManagerLink, ServiceShape, Welcome } from './manager'
+import { nativeArgs, withoutUndefined, type BackendLink, type ManagerEvent, type ManagerLink, type ServiceShape, type Welcome } from './manager'
 
 const FN = '__acdeFn'
 const STOP_MS = 3000
@@ -286,7 +286,10 @@ export class ServiceHost {
     try {
       const target = this.#instance?.api?.[call.service] as Record<string, (...a: unknown[]) => unknown> | ((...a: unknown[]) => unknown) | undefined
       if (!target) throw Object.assign(new Error(`acde.${call.service} is not provided by ${this.name}`), { status: 404, code: 'not_found' })
-      const args = withCallbacks(call.args, (fn) => this.#callbacks.make(fn, (given) => this.manager.send!({ invoke: { fn, args: given } }))) as unknown[]
+      const invoke = (fn: number) => (given: unknown[]) => {
+        this.manager.send!({ invoke: { fn, args: nativeArgs(call.service, `${call.method} callback`, given) } })
+      }
+      const args = withCallbacks(call.args, (fn) => this.#callbacks.make(fn, invoke(fn))) as unknown[]
       let value: unknown
       if (call.method === '' && typeof target === 'function') value = await target(...args)
       else {
@@ -294,7 +297,8 @@ export class ServiceHost {
         if (typeof fn !== 'function') throw Object.assign(new Error(`acde.${call.service} has no ${call.method}`), { status: 404, code: 'not_found' })
         value = await fn.apply(target, args)
       }
-      this.manager.send!({ id: call.id, ok: value === undefined ? null : value })
+      const ok = value === undefined ? null : withoutUndefined(value, () => `${call.service}.${call.method || '()'}: the answer`)
+      this.manager.send!({ id: call.id, ok })
     } catch (error) {
       this.manager.send!({ id: call.id, error: failure(error) })
     }
