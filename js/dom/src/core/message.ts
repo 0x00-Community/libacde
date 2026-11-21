@@ -1,4 +1,4 @@
-import { defineHandlers, EventTarget, fire, MessageEvent } from './event'
+import { defineHandlers, Event, EventTarget, fire, MessageEvent } from './event'
 import { DOMException } from './exception'
 import { host, illegal, KEY, report, tag } from './host'
 
@@ -45,6 +45,7 @@ export function structuredClone<T>(value: T, options?: { transfer?: unknown }): 
 
 let entangle: (a: MessagePort, b: MessagePort) => void
 let receive: (port: MessagePort, data: unknown) => void
+let disentangled: (port: MessagePort) => void
 
 export class MessagePort extends EventTarget {
   #other: MessagePort | null = null
@@ -74,6 +75,15 @@ export class MessagePort extends EventTarget {
         }
       })
     }
+    disentangled = (port) => {
+      host.setTimer(0, () => {
+        try {
+          fire(port, new Event('close'))
+        } catch (error) {
+          report(error)
+        }
+      })
+    }
   }
 
   postMessage(message: unknown, transfer?: unknown): void {
@@ -94,8 +104,11 @@ export class MessagePort extends EventTarget {
 
   close(): void {
     this.#closed = true
-    if (this.#other) this.#other.#other = null
+    const other = this.#other
     this.#other = null
+    if (!other) return
+    other.#other = null
+    disentangled(other)
   }
 
   get onmessage(): unknown {
@@ -111,7 +124,7 @@ export class MessagePort extends EventTarget {
   }
   #onmessage: ((event: unknown) => void) | null = null
 }
-defineHandlers(MessagePort.prototype, ['messageerror'])
+defineHandlers(MessagePort.prototype, ['messageerror', 'close'])
 tag(MessagePort)
 
 export class MessageChannel {

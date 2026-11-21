@@ -284,6 +284,9 @@
   - 还没有: 把 `MessagePort` 转给 worker (抛 `DataCloneError`)、`SharedArrayBuffer`、克隆 `WebAssembly.Module`、worker 里的
     `requestAnimationFrame` / OffscreenCanvas / IndexedDB / Cache API / cookie、嵌套 worker、`importScripts` 后端的脚本和页面建的 `blob:` URL
     (`NetworkError`)、worker 里的同步 XHR; DevTools 看不到 worker (没有 worker 目标, Network 面板不记它的请求), dev 的 console 记录不含 worker 的输出.
+- **MessageChannel / MessagePort** (acde-dom `core/message.ts`): 同一个页面里两端互发, `postMessage` 当场结构化克隆; 没有 `start()` 也没设
+  `onmessage` 之前消息在收端排队, `start()` 后按顺序派发. 关闭 (2026-11-21, 全局行为变化, 照 HTML 规范和 Chrome 123 起的做法): 一端
+  `close()` 后, 另一端在下一个任务里收到一次 `close` 事件 (`onclose` 也有), 之后两端互发都静默丢弃; 关的那一端自己不收 `close`, 再关一次什么也不做.
 - **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`)、从文件读的页面 (`PageSource.html`) 只认 `.html` 入口 (`.xhtml` 文件不按 XML 解析)、页面按响应的字符编码解码 (现在总按 UTF-8)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、`SharedWorker` 和 Service Worker、`crypto.subtle`、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
 - **指针锁定** (https://w3c.github.io/pointerlock/, acde-dom `dom/pointerlock.ts`, 2026-11-19): `Element.requestPointerLock(options?)` 返回 promise,
   `document.pointerLockElement` / `ShadowRoot.pointerLockElement` (和 `activeElement` 一样不往影子宿主换), `document.exitPointerLock()`,
