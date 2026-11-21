@@ -4,7 +4,7 @@ import { bindNatives } from '../../page/src/sys/natives.ts'
 import { AppLookup, webInit } from '../src/app/app.ts'
 import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/app/calls.ts'
-import { rejectingCalls, sessionOf, type Welcome } from '../src/manager/manager.ts'
+import { nativeArgs, rejectingCalls, sessionOf, type Welcome } from '../src/manager/manager.ts'
 import { WindowSnapshots } from '../src/app/events.ts'
 import { backendUp, Callbacks, incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
 
@@ -308,23 +308,42 @@ describe('a call the manager refuses at once', () => {
     const link = {
       welcome: { kind: 'app' },
       call: (service: string, method: string, args?: readonly unknown[]) => {
-        if (args?.includes(undefined)) throw new TypeError('undefined cannot be represented as a serde_json::Value')
-        return Promise.resolve(`${service}.${method}`)
+        if (method === 'boom') throw new TypeError('undefined cannot be represented as a serde_json::Value')
+        return Promise.resolve(`${service}.${method}(${JSON.stringify(args)})`)
       },
       onEvents: () => {},
       pump: () => [{ type: 'x' }],
       send: (frame: object) => void sent.push(frame),
     }
     const calls = rejectingCalls(link as never)
-    const refused = calls.call('settings', 'enable', ['id', undefined])
+    const refused = calls.call('settings', 'boom', ['id'])
     assert.ok(refused instanceof Promise)
     await assert.rejects(refused, /serde_json::Value/)
-    assert.equal(await calls.call('settings', 'enable', ['id']), 'settings.enable')
+    assert.equal(await calls.call('settings', 'enable', ['id', undefined]), 'settings.enable(["id"])')
+    const message = 'lock.unlock: argument 1 is undefined; leave it out or pass null'
+    await assert.rejects(calls.call('lock', 'unlock', [undefined, {}]), { name: 'TypeError', message })
     assert.equal(calls.welcome, link.welcome)
     assert.deepEqual(calls.pump(), [{ type: 'x' }])
     calls.send!({ ready: true })
     assert.deepEqual(sent, [{ ready: true }])
     assert.equal(calls.connectBackend, undefined)
+  })
+})
+
+describe('arguments on their way to a native call', () => {
+  test('trailing undefined ones are left out and undefined fields of plain objects dropped, at any depth', () => {
+    assert.deepEqual(nativeArgs('s', 'm', ['a', undefined, undefined]), ['a'])
+    assert.deepEqual(nativeArgs('s', 'm', [undefined]), [])
+    assert.deepEqual(nativeArgs('s', 'm'), [])
+    assert.deepEqual(nativeArgs('s', 'm', [{ a: 1, b: undefined, c: { d: undefined, e: [{ f: undefined, g: null }] } }]), [{ a: 1, c: { e: [{ g: null }] } }])
+    const bytes = new Uint8Array([1])
+    assert.equal(nativeArgs('s', 'm', [bytes])[0], bytes)
+  })
+
+  test('an undefined in the middle, or in an array, is a TypeError naming the call and where', () => {
+    const message = 'lock.unlock: argument 2 is undefined; leave it out or pass null'
+    assert.throws(() => nativeArgs('lock', 'unlock', ['pw', undefined, 1]), { name: 'TypeError', message })
+    assert.throws(() => nativeArgs('s', 'm', [{ list: [1, undefined] }]), /s\.m: argument 1\.list\[1\] is undefined/)
   })
 })
 
