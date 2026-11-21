@@ -310,14 +310,14 @@ impl Engine {
     }
 
     pub(in crate::render::dom) fn match_media(&mut self, query: &str) -> bool {
-        use style::media_queries::MediaList;
-        use style::stylesheets::{CssRuleType, CustomMediaEvaluator, UrlExtraData};
+        use blitz_dom::style::media_queries::MediaList;
+        use blitz_dom::style::stylesheets::{CssRuleType, CustomMediaEvaluator, UrlExtraData};
         let url = UrlExtraData::from(self.doc.url().clone());
         let mut context = css_context(&url, CssRuleType::Media);
-        let mut parser = cssparser::Parser::new(query);
+        let mut parser = blitz_dom::cssparser::Parser::new(query);
         let list = MediaList::parse(&mut context, &mut parser);
         let device = self.doc.stylist_device();
-        list.evaluate(device, style::context::QuirksMode::NoQuirks, &mut CustomMediaEvaluator::none())
+        list.evaluate(device, blitz_dom::style::context::QuirksMode::NoQuirks, &mut CustomMediaEvaluator::none())
     }
 
     pub(in crate::render::dom) fn scroll_to(&mut self, node: NodeId, left: f64, top: f64, smooth: bool) {
@@ -467,8 +467,8 @@ impl Engine {
     }
 
     pub(in crate::render::dom) fn inner_text_walk(&self, n: &Node, out: &mut Vec<Piece>) {
-        use style::computed_values::visibility::T as Visibility;
-        use style::values::specified::box_::DisplayOutside;
+        use blitz_dom::style::computed_values::visibility::T as Visibility;
+        use blitz_dom::style::values::specified::box_::DisplayOutside;
         for &child in &n.children {
             let Some(c) = self.doc.get_node(child) else { continue };
             match &c.data {
@@ -525,13 +525,13 @@ impl Engine {
     }
 
     pub(in crate::render::dom) fn parse_color(&mut self, text: &str) -> Option<[f64; 4]> {
-        use style::color::{AbsoluteColor, ColorSpace};
-        use style::stylesheets::{CssRuleType, UrlExtraData};
+        use blitz_dom::style::color::{AbsoluteColor, ColorSpace};
+        use blitz_dom::style::stylesheets::{CssRuleType, UrlExtraData};
         let url = UrlExtraData::from(self.doc.url().clone());
         let context = css_context(&url, CssRuleType::Style);
-        let mut parser = cssparser::Parser::new(text);
+        let mut parser = blitz_dom::cssparser::Parser::new(text);
         let device = self.doc.stylist_device();
-        let computed = style::values::specified::Color::parse_and_compute(&context, &mut parser, Some(device)).ok()?;
+        let computed = blitz_dom::style::values::specified::Color::parse_and_compute(&context, &mut parser, Some(device)).ok()?;
         let color = computed.resolve_to_absolute(&AbsoluteColor::BLACK).to_color_space(ColorSpace::Srgb);
         let [r, g, b, _] = *color.raw_components();
         let channel = |v: f32| if v.is_finite() { f64::from(v).clamp(0.0, 1.0) } else { 0.0 };

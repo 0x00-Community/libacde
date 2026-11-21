@@ -156,6 +156,7 @@ pub struct Stats {
 
 pub struct Frame {
     pub size: (u32, u32),
+    pub scale: f64,
     pub animating: bool,
     pub commit: u64,
     pub trace: Option<crate::log::Trace>,
@@ -189,6 +190,7 @@ pub struct Panel {
     pub size: (u32, u32),
     pub plane: Plane,
     pub extent: Option<Rect>,
+    pub reach: Option<Rect>,
 }
 
 #[derive(Default)]

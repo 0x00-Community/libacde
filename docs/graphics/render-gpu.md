@@ -21,8 +21,8 @@
 - 出帧 (物理像素): `RenderHandle {tick(now_ms), frame(), scroll_at, pointer, commit, invalidate, set_waker}`. CSS 动画的时钟是单调墙上时间,
   tick 只对齐到 vblank. 脚本的一个任务里 (从任务里第一次经 `Dom` 读写引擎到任务末的 `Dom::commit`) 动画时钟不走: 任务里第一次重算记下当时的时间,
   之后这个任务里的重算都用它 (照 HTML, 文档时间线只在「更新渲染」时前进; 不然一个任务里先起的动画到后面读 `getComputedStyle` 时已经多走了几十毫秒,
-  WPT 插值测试的「100s 时长、-50s 延迟」会差 0.01px). 出帧线程的重算不在任务里, 照旧用墙上时间; 时间只进不退. `Frame {plane, panels, size, animating, commit, trace}`: plane 是整页 (含画布背景, 不含面板); `panels` 是
-  `Dom::set_panel` 钉住的元素 `Panel {id, size, plane, extent}`. `Plane {drawing, layers, damage, damage_rects (最多 8 块), bounds}`;
+  WPT 插值测试的「100s 时长、-50s 延迟」会差 0.01px). 出帧线程的重算不在任务里, 照旧用墙上时间; 时间只进不退. `Frame {plane, panels, size, scale, animating, commit, trace}` (size 是物理像素, scale 是画这一帧时的缩放: 前端靠这两个认出改尺寸或缩放之前画、晚到的帧): plane 是整页 (含画布背景, 不含面板); `panels` 是
+  `Dom::set_panel` 钉住的元素 `Panel {id, size, plane, extent, reach}`: extent 是面板里实际画到的范围 (物理像素, 相对这一帧的面板矩形), reach 是同一块换成页面坐标 (CSS 像素, 用这一帧画面板时的矩形和缩放算, 前端报 `panelmove` 用它, 不拿自己记的矩形去拼: 缩放切换时两边不同步, 拼出来的位置是错的; 尺寸或缩放和窗口现在的不一样的帧是改之前画的, 前端不报它的范围, 不然页面会拿旧布局的范围去并新的盒子). `Plane {drawing, layers, damage, damage_rects (最多 8 块), bounds}`;
   layers 是有 backdrop-filter / filter 时切成的段, 每段 `{drawing, bounds, backdrop, filter}` (`Drawing` 出 `scene` / `scene_for`): backdrop 先处理画布上已画的那块再画这段, filter
   先画进临时纹理再合成. 光栅化方 (src/vello) 做 filter 的 drop-shadow、模糊、颜色矩阵, backdrop 的模糊和所有颜色函数 (`Backdrop::effect`:
   按顺序合成一个颜色矩阵, 几个 blur 按平方和开方合并); backdrop-filter 里的 drop-shadow 不做; 只切最外层: 已有 filter 的元素里面再有 filter / backdrop-filter 时不做 (#46);

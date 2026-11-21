@@ -1,6 +1,6 @@
+use blitz_dom::style::computed_values::visibility::T as Visibility;
 use blitz_dom::{Node, NodeData, NodeId};
 use serde::Serialize;
-use style::computed_values::visibility::T as Visibility;
 
 use super::{Control, Dom};
 use crate::render::Rect;

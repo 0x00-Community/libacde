@@ -1,7 +1,7 @@
 use crate::gpu::{PaintScene, Scene};
+use blitz_dom::parley::fontique::{Collection, CollectionOptions, SourceCache};
+use blitz_dom::parley::{FontContext, FontFamily, FontWeight, Layout, LayoutContext, LineHeight, StyleProperty};
 use kurbo::{Affine, Line, Rect, RoundedRect, Stroke};
-use parley::fontique::{Collection, CollectionOptions, SourceCache};
-use parley::{FontContext, FontFamily, FontWeight, Layout, LayoutContext, LineHeight, StyleProperty};
 use peniko::{Color, Fill};
 
 use super::decoration::draw_line;
