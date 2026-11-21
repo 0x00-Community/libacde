@@ -518,9 +518,7 @@ impl Engine {
                 tree.ids.owners.insert(copy, owner);
             }
             let xml = tree.ids.xml_owned(owner);
-            if let Some(data) = tree.m.doc.get_node_mut(copy) {
-                data.flags.set(blitz_dom::node::NodeFlags::IN_XML_DOCUMENT, xml);
-            }
+            tree.m.doc.set_in_xml_document(copy, xml);
         }
         if let Some(form) = tree.ids.forms.get(&node).cloned() {
             tree.ids.forms.insert(copy, form);
@@ -653,9 +651,7 @@ impl Engine {
                     None => self.ids.owners.remove(&n),
                 };
             }
-            if let Some(data) = self.doc.get_node_mut(n) {
-                data.flags.set(blitz_dom::node::NodeFlags::IN_XML_DOCUMENT, xml);
-            }
+            self.doc.set_in_xml_document(n, xml);
             if let Some(data) = self.doc.get_node(n) {
                 stack.extend(data.children.iter().copied());
                 if let Some(content) = data.element_data().and_then(|e| e.template_contents) {

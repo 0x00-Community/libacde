@@ -12,15 +12,24 @@ dependencies = [
 
 [[package]]
 name = "acss"
-version = "0.0.8"
+version = "0.0.9"
 source = "sparse+http://gitea.dopamine/api/packages/AC/cargo/"
-checksum = "e950d3e591c4a751e3f2474afb7af83e833cfd7a824dd96425da10ef3d3499a6"
+checksum = "4f772c2425965bb8a7122e2df4cbe6a13aa807c9f37d6a3361f2a659e2a59a89"
 dependencies = [
  "cssparser",
  "log",
  "serde",
  "toml 1.2.1+spec-1.1.0",
  "url",
+]
+
+[[package]]
+name = "acss_taffy"
+version = "0.3.0-beta.5"
+dependencies = [
+ "acss",
+ "bitflags",
+ "taffy",
 ]
 
 [[package]]
@@ -476,6 +485,7 @@ version = "0.3.0-beta.5"
 dependencies = [
  "acde-scene",
  "acss",
+ "acss_taffy",
  "app_units",
  "atomic_refcell",
  "bitflags",
