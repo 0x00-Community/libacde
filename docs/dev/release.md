@@ -12,6 +12,6 @@ Rust 包发到 cargo 源 ac 是手动的, 见下面「cargo 源 ac」那条的�
 
 - 发布到 gitea.dopamine AC 组织的 cargo 源 `ac` (`.cargo/config.toml`; 读也要令牌, 匿名 401):
   `CARGO_REGISTRIES_AC_TOKEN="Bearer <令牌>" cargo publish -p <包> --registry ac`. ac 上除了 libacde 只有它不得不单独发的依赖: blitz fork 的包
-  (blitz-dom / blitz-paint / blitz-traits / stylo_taffy / debug_timer, 原名), blitz 的 taffy (上游 Blitz 钉的 git 提交, `0.15.0-git.4e59968`);
-  2D 场景是本仓库的 `acde-scene` (`scene/`, 同样发到 ac). 顺序: acde-scene → blitz 那五个 (在 `vendor/blitz` 里发) → libacde.
+  (blitz-dom / blitz-paint / blitz-traits / stylo_taffy / acss_taffy / debug_timer, 原名; blitz-dom 的 `acss` 特性要 acss_taffy, 它又要 ac 上的 acss), blitz 的 taffy (上游 Blitz 钉的 git 提交, `0.15.0-git.4e59968`);
+  2D 场景是本仓库的 `acde-scene` (`scene/`, 同样发到 ac). 顺序: acde-scene → blitz 那六个 (acss_taffy 在 blitz-dom 之前) (在 `vendor/blitz` 里发) → libacde.
   升版本时改仓库根 `Cargo.toml` 的 `[workspace.package] version`; blitz 升版本时它自己的 `[workspace.package]`、`[workspace.dependencies]` 和这里的 `=0.3.0-beta.N` 一起改.

@@ -87,4 +87,6 @@ export interface WebInit {
   readonly windows?: readonly NativeWindow[]
   readonly session?: { readonly own: boolean }
   readonly lock?: boolean
+  readonly anchors?: boolean
+  readonly port?: { readonly data: unknown }
 }

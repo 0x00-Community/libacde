@@ -28,6 +28,8 @@
 
 同一个包里还要有 `apiLevel` (和运行时的契约级别相同, 否则整个包不加载), 可以有 `apps` (和桌面同包的应用是**系统应用**, 可以声明外壳模块)、
 `assets` (同源 URL 前缀 → 包里的目录)、`services` (服务名 → 模块文件). 桌面自己不需要声明 capabilities: 桌面页拿到全部模块.
+系统应用的条目可以写 `"sensitive": true` (SDK `AppManifest.sensitive`, 2026-11-21, F7): 标成敏感应用, 只对带桌面的系统包有效, 第三方包不能自标
+(写了的话 acdes 拒收这个应用); 敏感应用怎么对待由 acdes 认定 (见 acdes `docs/manager.md`「敏感应用」), libacde 不看这个字段.
 
 ## 谁能拿到哪些模块
 
@@ -70,9 +72,11 @@
   (或重载后补报的), `changed` 列出这批变了的字段. 另有 `close` (窗口没了)、`crash` (进程崩了; 和 `close` 一样把窗口从表里删掉, 两者都要当「窗口没了」处理,
   且可能先后都到)、`menus`、`currentdesk`. `open`、`title`、`state`、`activate`、`parent`、`desk`、`geometry` 已过时 (由快照推出, 照旧发), 新桌面只听 `window`.
   `ready`、`show`、`attention`、`hang`、`responsive` 不保证发 (今天 acdes 都不发).
-- **打开应用**: `acde:apps.open(id, request?, {parent, modal, newWindow, root})` → `{window, instance?, running?}`. 回答里的 `window` 可能是 0
+- **打开应用**: `acde:apps.open(id, request?, {parent, modal, newWindow, root, size})` → `{window, instance?, running?}`. 回答里的 `window` 可能是 0
   (窗口还没出来, acdes 总是这样): 桌面按随后 `first` 快照的 `appId` (有 `instance` 时再对 `instance`) 认领, 认领要能在回答之前或之后发生.
   带请求打开已在运行的单例应用时请求交给它 (`running: true`), 不开新窗口; 要新窗口给 `newWindow: true` (清单 `multiple` 的应用才真开).
+  `size: [宽, 高]` (2026-11-21) 是这次新窗口的页面尺寸, 单位同清单 `size` (内容区的逻辑像素, 窗框另算), 只在真起新进程时用, 已在运行的单例不改;
+  管家要两个有限正数 (取整后 1–16384), 否则 400 `bad_request`, 不给或 null 等于没给; 带请求打开 (`open-file`、`open-link`) 同理.
   `acde:openPath(path)` 回 `no_app` (404) 时运行时不弹任何东西, 「打开方式」由桌面自己画 (`acde:handlers` + `acde:setDefault`).
   起原生程序用 `acde:launch.start(argv)` 或 `acde:packages.runNative(id)`, 窗口号同样从快照认领.
 - **摆放**: 新窗口由合成器摆 (工作区居中, 按窗口数错开; 有父窗口的在父窗口上方). 桌面可以 `place(id, [x, y, w, h])`
@@ -109,7 +113,7 @@
 
 ## 面板与占边
 
-`acde:desktop.pin(element, {margin?, reserve?, keyboard?})` → `PinnedPanel` (机制见 `docs/runtime/webs.md`「钉住的面板」):
+`acde:desktop.pin(element, {margin?, reserve?, keyboard?, anchor?})` → `PinnedPanel` (机制见 `docs/runtime/webs.md`「钉住的面板」):
 
 - 元素变成单独的面板, 盖在所有应用窗口上面, 但状态和 DOM 还在桌面页这一个文档里 (同一棵组件树, 同一份事件). 元素要是 stacking context,
   不带祖先的裁剪和透明度; 输入区域就是元素的盒子 (`pointer-events: none` 或不可见时为空), 元素变了运行时自动重量, `update()` 立即重量,
@@ -121,6 +125,16 @@
 - `keyboard`: `'on-demand'` (默认, 点到面板才拿键盘, 菜单栏、Dock) 或 `'exclusive'` (面板显示期间独占键盘, 收起后键盘回原窗口; 弹出菜单、确认卡这类
   用键盘打开、要马上接按键的). 面板拿到键盘之后, 按键交给桌面页的焦点元素: 面板打开时要把页面焦点放进面板.
 - 桌面页本身和 `on-demand` 面板一样: 点到才拿键盘.
+- **锚定弹出** (`anchor: {window, x, y, width?, height?, edge?, align?, adjust?}`, 2026-11-21, 总仓 `.scratch/system/anchored-popup.md`): 菜单、提示气泡、
+  下拉框这类跟着某扇窗里某个位置的面板, 不给屏幕坐标, 只说锚在窗口 `window` (`windows.list()` 的窗口号) 内容区的矩形 `(x, y, width, height)` 上
+  (那扇窗页面的 CSS 像素, 宽高缺省 0 即一个点); 合成器按真实窗框和缩放把面板放在它的 `edge` 边 (缺省 `bottom`), 沿边 `align` 对齐 (`start` /
+  `center` / `end`, 缺省 `start`), 放不下时 `adjust` 里的 `flip` 换到对边、`slide` 平移进屏幕 (缺省两个都要, 空数组都不要); 跟着父窗口移动和隐藏,
+  父窗口关了一起收起. 贴边按元素本身算 (运行时把元素在面板里的位置交给合成器), `margin` 留的阴影位置不让它偏. 页面里元素的位置不再决定屏幕位置,
+  元素仍要在桌面页可见范围里布局. 已钉住的用 `anchor(next)` 换锚点 (下拉框跟着输入框滚动). 不能和 `reserve` 同给, 也不能和
+  `keyboard: 'exclusive'` 同给 (`TypeError`; 菜单要键盘走 `requestGrab`). 窗口系统不会放锚定面板 (老 acdes、acdev 宿主窗口) 时 `pin` 当场抛
+  `NotSupportedError`, 桌面可以退回自己换算坐标.
+- **`closed`**: 每个面板都带的 Promise, 面板结束时兑现: `'unpinned'` (页面 `unpin()`)、`'parent-closed'` (锚定的父窗口关了, 运行时已收起面板,
+  页面只清自己的状态)、`'refused'` (窗口系统这次不让锚: 窗口不存在、会话锁着等, 或面板根本没开出来).
 - 面板里的 `backdrop-filter` 交给合成器模糊下面的窗口 (acdes: 每个面板只取最大的一块).
 - 全屏窗口盖住面板所在的边时, 面板仍在最上面: 要给全屏让路, 桌面自己把面板变透明、不接指针 (按前台窗口的 `state`).
 
@@ -189,6 +203,7 @@
 - 服务只用 `ServiceContext` 和标准接口, 外壳模块按清单的 `modules` 给. 服务的 `api` 是一组命名空间, 页面以 `acde:<命名空间>` 导入; 应用要在自己清单的
   `services` 里写服务名才能用.
 - 页面和服务的起停互不等待: 页面用 `acde:services` 跟上服务的出现和消失.
+- 页面传给服务的回调 (订阅等) 在页面释放或关掉时作废; 服务用 `ctx.releaseSignal(回调)` 拿一个 `AbortSignal`, 在它 `abort` 时清掉为这个回调留下的东西 (细节见 `docs/runtime/layout.md`「服务模式」).
 - 有角色的服务经 `ctx.backend.connect()` 连桌面后台, 连接由管家代办, 服务不碰后台的套接字和令牌; 后台在不在看 `ctx.backend.up` 和 `onChange` (细节见 `docs/runtime/layout.md`「连桌面后台」).
 
 ## 必须和可以

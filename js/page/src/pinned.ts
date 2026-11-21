@@ -1,6 +1,7 @@
 import { hostTime } from '@acde/dom'
-import type { PanelReserve, PinnedPanel, PinOptions, WindowEdge } from '@acde/api'
+import type { PanelReserve, PinAnchor, PinClosed, PinnedPanel, PinOptions, WindowEdge } from '@acde/api'
 import type { NativeSurface } from './native'
+import { anchorOf, type Anchor, type AnchorWire } from './pinanchor'
 import type { Rpc } from './rpc'
 
 type PanelSurface = Pick<NativeSurface, 'openPanel' | 'placePanel' | 'closePanel' | 'reservePanel'>
@@ -19,6 +20,7 @@ interface PinnedPage {
     addEventListener(type: string, fn: () => void): void
     requestAnimationFrame(fn: () => void): number
     getComputedStyle(element: Element): CSSStyleDeclaration
+    DOMException?: typeof DOMException
   }
   idOf(node: unknown): number
 }
@@ -32,6 +34,10 @@ interface Panel {
   readonly exclusive: boolean
   reserve: PanelReserve | null
   reserved: string
+  anchor: Anchor | null
+  sent: string
+  readonly closed: Promise<PinClosed>
+  readonly end: (why: PinClosed) => void
   window: number | null
   opening: boolean
   rect: Box | null
@@ -49,7 +55,10 @@ export class Pinned {
   readonly #page: PinnedPage
   readonly #panels = new Map<Element, Panel>()
 
-  constructor(rpc: Rpc, surface: PanelSurface, dom: PanelDom, page: PinnedPage) {
+  readonly #anchors: boolean
+
+  constructor(rpc: Rpc, surface: PanelSurface, dom: PanelDom, page: PinnedPage, anchors = false) {
+    this.#anchors = anchors
     this.#rpc = rpc
     this.#surface = surface
     this.#dom = dom
@@ -66,9 +75,19 @@ export class Pinned {
     const known = this.#panels.get(element)
     if (known) return this.#handle(known)
     const reserve = options.reserve && Pinned.#EDGES[options.reserve.edge] ? options.reserve : null
+    const anchor = options.anchor === undefined ? null : this.#anchor(options.anchor)
+    if (anchor && reserve) throw new TypeError('pin: anchor and reserve do not go together (an anchored panel reserves no edge)')
+    if (anchor && exclusive) throw new TypeError("pin: anchor and keyboard 'exclusive' do not go together (a menu takes the keyboard with requestGrab)")
     const margin = Math.max(0, options.margin ?? 0)
     const id = this.#page.idOf(element)
-    const panel: Panel = { element, id, margin, exclusive, reserve, reserved: '', window: null, opening: false, rect: null, extent: null, view: '', stops: [] }
+    let end: (why: PinClosed) => void = () => {}
+    const closed = new Promise<PinClosed>((resolve) => {
+      end = resolve
+    })
+    const panel: Panel = {
+      element, id, margin, exclusive, reserve, reserved: '', anchor, sent: '', closed, end,
+      window: null, opening: false, rect: null, extent: null, view: '', stops: [],
+    }
     this.#panels.set(element, panel)
     const { ResizeObserver, MutationObserver } = this.#page.window
     const resized = new ResizeObserver(() => this.#place(panel))
@@ -91,6 +110,19 @@ export class Pinned {
     })
     this.#place(panel)
     return this.#handle(panel)
+  }
+
+  #anchor(given: PinAnchor): Anchor {
+    if (!this.#anchors) {
+      const Exception = this.#page.window.DOMException ?? DOMException
+      throw new Exception('pin: this window system places no anchored panels', 'NotSupportedError')
+    }
+    return anchorOf(given)
+  }
+
+  ended(id: number, why: 'parent-closed' | 'refused'): void {
+    const panel = [...this.#panels.values()].find((p) => p.id === id)
+    if (panel) this.#unpin(panel, why)
   }
 
   static #exclusive(keyboard: unknown): boolean {
@@ -128,7 +160,35 @@ export class Pinned {
   }
 
   #handle(panel: Panel): PinnedPanel {
-    return { update: () => this.#place(panel), unpin: () => this.#unpin(panel), reserve: (reserve) => this.#rereserve(panel, reserve) }
+    return {
+      update: () => this.#place(panel),
+      unpin: () => this.#unpin(panel, 'unpinned'),
+      reserve: (reserve) => this.#rereserve(panel, reserve),
+      anchor: (next) => this.#reanchor(panel, next),
+      closed: panel.closed,
+    }
+  }
+
+  #reanchor(panel: Panel, next: PinAnchor): void {
+    if (!panel.anchor) throw new TypeError('anchor: this panel was pinned without an anchor')
+    const anchor = this.#anchor(next)
+    if (this.#panels.get(panel.element) !== panel) return
+    panel.anchor = anchor
+    panel.sent = ''
+    this.#place(panel)
+  }
+
+  #wire(panel: Panel, visible: Box): AnchorWire | null {
+    return panel.anchor ? { ...panel.anchor, visible: [...visible] as unknown as AnchorWire['visible'] } : null
+  }
+
+  #sendAnchor(panel: Panel, visible: Box): void {
+    const wire = this.#wire(panel, visible)
+    if (!wire || panel.window === null) return
+    const key = JSON.stringify(wire)
+    if (key === panel.sent) return
+    panel.sent = key
+    void this.#rpc.call('panel', 'anchor', [panel.window, wire]).catch(() => undefined)
   }
 
   #rereserve(panel: Panel, reserve: PanelReserve | null): void {
@@ -142,11 +202,12 @@ export class Pinned {
     panel.reserve = reserve
     if (panel.rect) this.#reserve(panel, panel.rect)  }
 
-  #unpin(panel: Panel): void {
+  #unpin(panel: Panel, why: PinClosed): void {
     if (this.#panels.get(panel.element) !== panel) return
     this.#panels.delete(panel.element)
     for (const stop of panel.stops) stop()
     this.#dom.setPanel(panel.id, 0, 0, 0, 0)
+    panel.end(why)
     if (panel.window === null) return
     this.#surface.closePanel(panel.id)
     void this.#rpc.call('panel', 'close', [panel.window]).catch(() => undefined)
@@ -191,6 +252,7 @@ export class Pinned {
       void this.#rpc.call('panel', 'place', [panel.window, rect]).catch(() => undefined)
     }
     this.#surface.placePanel(panel.id, ...rect, ...input)
+    this.#sendAnchor(panel, input)
     this.#reserve(panel, rect)
   }
 
@@ -209,7 +271,9 @@ export class Pinned {
   #open(panel: Panel, rect: Box, input: Box): void {
     panel.opening = true
     this.#dom.setPanel(panel.id, ...rect)
-    this.#rpc.call('panel', 'open', [rect]).then(
+    const wire = this.#wire(panel, input)
+    if (wire) panel.sent = JSON.stringify(wire)
+    this.#rpc.call('panel', 'open', wire ? [rect, wire] : [rect]).then(
       (granted) => {
         panel.opening = false
         const { window, token } = granted as { window: number; token: bigint }
@@ -222,7 +286,9 @@ export class Pinned {
       },
       () => {
         panel.opening = false
-        if (this.#panels.get(panel.element) === panel) this.#dom.setPanel(panel.id, 0, 0, 0, 0)
+        if (this.#panels.get(panel.element) !== panel) return
+        if (panel.anchor) return this.#unpin(panel, 'refused')
+        this.#dom.setPanel(panel.id, 0, 0, 0, 0)
       },
     )
   }

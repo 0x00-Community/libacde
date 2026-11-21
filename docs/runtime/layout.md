@@ -24,8 +24,8 @@
 `web/` 于 acdert 91e7dd1e 删除 (CTO 决定) 后, 网页接口层和页面胶水按 system 第一个里程碑 (gitea `AC/acdebin-system#15`, 工作项 05;
 用户 2026-11-17: "不出现 JS" 只针对 SDK) 从 git 历史 (91e7dd1e^) 取回, 放在 `js/`, 是运行时的内部组件: 不发布、不进 SDK,
 也不再有单独的 `web.js` 文件. `build.rs` 用 bun (`ACDEV_BUN`, 默认 `bun`) 把 `js/page/src/worker.ts` 打成一个 ES 模块
-(`$OUT_DIR/page.js`, 压缩空白和语法、保留名字), 契约级别取 `acde-api/api-level`、版本取包版本 (`ACDEV_API_LEVEL`、
-`ACDEV_RUNTIME_VERSION` 两个 define), `src/host/web.rs` 用 `include_str!` 嵌进二进制, web 线程从 `acde-runtime:/page.js` 加载它
+(`$OUT_DIR/page.js`, 压缩空白和语法、保留名字), 契约级别取 `acde-api/api-level`、最低支持级别取 `acde-api/min-api-level`、版本取包版本 (`ACDEV_API_LEVEL`、
+`ACDEV_MIN_API_LEVEL`、`ACDEV_RUNTIME_VERSION` 三个 define), `src/host/web.rs` 用 `include_str!` 嵌进二进制, web 线程从 `acde-runtime:/page.js` 加载它
 (`WebLoader` 认这个地址); 同样把 `js/page/src/webworker.ts` 打成 `webworker.js`, Web Worker 的线程从 `acde-runtime:/webworker.js` 加载它
 (它只引 acde-dom 的 `core/` 和 `worker/`, 不带 DOM). 所以构建运行时库要有 bun. 打包命令只在 `js/bundle.ts` 一处 (`bun bundle.ts [输出目录] [版本]`, 默认 `js/dist`, `build.rs` 也调它).
 调试版运行时设了 `ACDEV_JS_DIR` 时从那个目录读 `page.js`、`webworker.js`、`launcher.js`, 读不到才用内嵌的 (发布版只用内嵌的): 改 `js/` 后
@@ -41,16 +41,23 @@
 
 - **有管家时** (会话里, 环境里有 `ACDE_MANAGER_FD` 且 `native.Manager` 在, acdebin-system 的管家, 总仓 `.scratch/system/issues/09-manager.md`,
   协议见 acdebin-system `docs/manager.md`): `native.Manager.connect()` 拿 welcome, 应用的清单、包目录、资源、等级 (`tier`)、授予 (`grants`)、
-  拉起时的请求 (`request`) 都取自它; 桌面的页面是 `welcome.dir` 加 `welcome.desktop.entry`. 子进程的环境里不再带 `ACDE_MANAGER_FD`.
-  页面的调用除下面留在本进程的以外原样转给管家 (`manager.call`), 失败的 `Error` 带 `status`、`code` 抛回页面; `window.ready`、`page.shown`
+  拉起时的请求 (`request`) 都取自它; 窗口大小按欢迎消息顶层的 `size` (`[宽, 高]`, 管家按 `apps.open` 的 `size` 给, 1–16384 的整数) 或 `outerSize` (含标题栏的外框, 逻辑像素, 和
+  `size` 二选一; 原样交给 `grant({outerSize})`, 窗口客户端扣标题栏; 只在欢迎消息这条内部路径上, 页面的 `apps.open` 没有这个选项) → 清单 `size` →
+  窗口系统默认 (800x600) 取第一个有的 (`windowGrant` 和 `windowSize`, 形状不对的欢迎消息值不用); 桌面的页面是 `welcome.dir` 加 `welcome.desktop.entry`. 子进程的环境里不再带 `ACDE_MANAGER_FD`.
+  页面的调用除下面留在本进程的以外原样转给管家 (`manager.call`), 失败的 `Error` 带 `status`、`code` 抛回页面
+  (`native.Manager.call` 当场抛的错, 如参数转不成 JSON, 经 `rejectingCalls` 也变成这次调用的失败, 不会让页面或服务一直等). 交给管家之前参数按 JS 习惯
+  处理一次 (`nativeArgs`, 用户 2026-11-21 选 A): 末尾为 undefined 的参数去掉, 普通对象里值为 undefined 的字段逐层省略 (同 `JSON.stringify`), 中间位置
+  或数组里的 undefined 让这次调用以 `TypeError` 失败 (`lock.unlock: argument 2 is undefined; leave it out or pass null`); 服务交给管家的应答和回调的参数
+  也一样 (`service.ts`): 应答里省不掉的 undefined 让调用方收到 500 `internal` (`desk.list: the answer.desks[0] is undefined; …`), 回调参数的在服务代码里抛 `TypeError`;
+  页面与启动器之间的 rpc 照旧原样传; `window.ready`、`page.shown`
   也转过去 (管家据此记冷启动). 管家推来的 `request` 交给页面 `window.request`, 桌面进程收到的其余推送原样交给桌面页, `managerclosed` 时以 0 退出.
 - **没有管家时** (宿主窗口跑法): 只认 `app`; 目录取其 package.json 里第一个应用, id 在 `ACDE_PATH` 的各目录及其下一层找; 资源前缀按
   `acde.assets`, 没有 `/` 时 `/` 指包目录; 没有服务、最低权限等级、存储在 `$ACDE_STORAGE` 或 `~/.local/share/acde/storage` 的 `app-<id>`.
   文件 (用户 2026-11-18): 清单声明了 `fs` 就授予 `{places, paths: false}` (形状同客户机管家的 `grants.fs`): 只在设了 `ACDE_DEV_PLACES` (`acdev dev` 设,
   它同时用 `XDG_<名>_DIR` 把公共位置换成会话自己的隔离目录) 时给清单 `fs.roots` 列的位置, 否则只有应用私有目录; 不给任意路径.
 - **锁屏页预览** (`lock <桌面 id|目录>`, 只在没有管家时, `acdev dev --lock` 用, 日常桌面工作项 23): 按 `ACDE_PATH` 或目录找桌面包, 打开它清单 `lock`
-  写的页面 (桌面窗口, 等级最低, 授予全无, 页面初始化数据带 `lock: true`, 所以只有 `acde:lock` 和 `acde:services`). `lock.user` / `lock.unlock` 由
-  `js/launcher/src/app/lock.ts` 的 `FakeLock` 回答: 固定用户 (头像 null); `right-password` 解锁, `wrong-password` auth (403)、`busy-password` busy (409)、
+  写的页面 (桌面窗口, 等级最低, 授予全无, 页面初始化数据带 `lock: true`, 所以只有 `acde:lock` 和 `acde:services`). `lock.user` / `lock.unlock` / `lock.cancel` 由
+  `js/launcher/src/app/lock.ts` 的 `FakeLock` 回答: 固定用户 (头像 null); `cancel` 直接成功; `right-password` 解锁 (第二个参数不看), `wrong-password` auth (403)、`busy-password` busy (409)、
   `throttled-password` throttled (429, `retryAfter` 3), 别的 auth. 有管家时 `lock` 命令报错, `lock.*` 照常交给管家.
   `window.ready`、`page.shown` 直接应答, `desktops.list` 回 `{desktops: [], current: ''}`, 其余 (含 `session.*`、
   `desktops.choose`、`lock.*`) 回 `unsupported` (501).
@@ -68,13 +75,20 @@
   `lock.user()` 回 `{name, fullName, avatar}` (`avatar` 是 `data:` URL 或 null), `lock.unlock(password)` 失败时的错误带 `code`: `auth` (403,
   密码错)、`busy` (409, 上一次验证还没完)、`throttled` (429, 失败后的延迟期内, 另带 `retryAfter` 秒数); 这些字段由 rpc 原样带回页面
   (SDK 类型 `LockError`). 管家按调用方拒绝: 锁屏页只能调 `lock.*`、`window.ready`、`page.shown`.
+  系统确认页 (2026-11-21, 管家以确认模式开同一个锁屏进程, 欢迎消息和 `lock.user()` 的应答多一项 `confirm`, 见 acdes `docs/manager.md`) 另有两处,
+  都只是加法: `lock.unlock(password, {remember?})` 的第二个参数 (`'once' | 'task' | 'scope' | 'until'`, 这次批准记多久, 原样转给管家;
+  确认页不要密码时 `password` 传空串), 和 `lock.cancel()` (拒绝, 管家立刻回成功, 随后会话进程让页面放开锁屏并退出). 页面胶水按原样转发参数,
+  不看 `confirm` 的内容; 它的形状是 SDK 的 `LockConfirm` (`{id, agent, waiting: {title, detail, expires, password, judge, remember?: {may, default, max_days?},
+  tries_left?}}`, `waiting` 里照系统总管协议用下划线名), 只在确认页里有, 锁屏页没有.
 - **服务模式** (`service <名字>`, system 工作项 12, 帧格式见总仓 `.scratch/system/issues/12-services.md`, `js/launcher/src/manager/service.ts`):
   不开窗口, 在启动方的 isolate 里 `import` welcome 的 `module` (绝对路径), 用 ServiceContext (`name`、`package` 即包目录、`state` 即管家建好的
   `stateDir`、`env`、`log`、`spawn`, `import('acde:<模块>')` 只放行 welcome 的 `modules`, 其方法经管家调用; `acde:voice` 例外, 在服务进程里直接调 napi `Voice`;
   服务拿不到 napi 导出本身, 2026-11-20 起没有 `native`) 调它的默认导出;
   起好后向管家发 `{ready: {provides: {命名空间: {methods, values, sync, callable}}}}` (形状同旧管理中枢). 管家转来的调用
   (`{type: 'call', id, service, method, args}`, `method` 为空串时调命名空间本身) 里的 `{__acdeFn: g}` 换成回调, 回调发
-  `{invoke: {fn: g, args}}`; 收到 `release` 后这个回调不再发. 应答 `{id, ok}` 或 `{id, error: {status, code, message}}`.
+  `{invoke: {fn: g, args}}`; 收到 `release` 后这个回调不再发. 服务代码要知道调用方放手了 (如关窗后清掉订阅) 时用
+  `ctx.releaseSignal(回调)` (2026-11-21): 给这个回调一个标准 `AbortSignal`, 同一个编号的回调共用一个, 收到它的 `release` (页面释放或断开时管家发)
+  就 abort, 已释放的直接给已 abort 的; 传的不是调用方给的回调时抛 `TypeError`. 应答 `{id, ok}` 或 `{id, error: {status, code, message}}`.
   `managerclosed` 时调 `close()`、停掉它起的子进程 (最多 3 秒) 后以 0 退出. 从开始答调用到 `managerclosed` 之间挂着一个计时器保活
   (`holdTheLoop`): 服务模块里没有别的挂起任务时, 事件循环也不会空了就结束 (2026-11-18 大联测里 5 个服务 ready 后十几秒内自己退出过). 需要 system 的 `native.Manager` 提供 `send(帧)`, 并把转来的调用和
   `release` 从 `pump()` 交出 (`{type: 'call', ...}`、`{type: 'release', fn}`, 也认不带 `type` 的原帧).
@@ -95,7 +109,11 @@
 - **两种都留在本进程的调用** (`js/launcher/src/app/calls.ts` 的 `route`): `window.close` 和以自己窗口号调的 `windows.close` 关掉窗口 (结束页面线程,
   进程随之退出); `window.minimize`、`window.requestState('minimized')` 让页面自己最小化 (其余状态回 501); `window.reload([url])` 结束页面线程、
   对同一个窗口重新授予后再起 (url 须在 `http://acde.local/` 下); `capabilities.get/list` 按清单声明回 `available` / `not-declared`
-  (临时, 不看平台与逐次同意). 桌面另答 `panel.open/place/close` (钉住的面板, 同旧管理中枢) 和 `windows.*` (`close`、`kill`、`focus`、`hide`、
+  (临时, 不看平台与逐次同意). 桌面另答 `panel.open/place/anchor/close` (钉住的面板, 同旧管理中枢; 锚定弹出时 `open` 带第二个参数 `anchor`
+  `{window, x, y, width, height, edge, align, adjust, visible}` 交给窗口系统的 `grant({mode: 'pinned', rect, anchor})`, `anchor` 转 `reanchor(id, anchor)`;
+  父窗口关了或这次被拒时窗口客户端在桌面页的界面事件里发 `panelended` (`code` 是开面板时的面板号, `key` 是 `parent-closed` / `refused`,
+  同 `panelmove` 的路子, 不经启动器), 页面里的面板收尾并兑现 `closed`; 窗口系统的只读 `anchors` 为真时页面初始化数据带
+  `anchors: true`, 否则页面的 `pin` 带 `anchor` 抛 `NotSupportedError`) 和 `windows.*` (`close`、`kill`、`focus`、`hide`、
   `show`、`requestState`、`screenshot(path)` (PrintScreen 那条, 参数是路径)、`animate`、`stats`、`shortcut`、`unshortcut`、`place`、虚拟桌面的 `addDesk`、`removeDesk`、
   `showDesk`、`moveToDesk` 交给窗口系统对象的同名方法 (acdes 里是 `native.Windows.connect()`, acdev 宿主窗口里是 `native.Shell.broker()`; `animate`、`stats` 在 acdes 里不做事); `launch` 有管家时转给 `launch.start`;
   多屏方案 A 的副屏壁纸 `setWallpaper({color, image?})` 只给桌面页, 先查 `color` 是 `#rrggbb` / `#rrggbbaa` (否则 400 `bad_color`)、`image` 是绝对路径或 null
@@ -122,6 +140,14 @@
 - **DevTools** (`js/launcher/src/dev/devtools.ts` 的 `DevToolsEndpoint`, 工作项 12): 运行时的 `DevTools.open()` 开了端点 (设了 `ACDE_DEV` 时) 就每 250 毫秒
   把本页登记成 CDP 目标 (id 是 web 名, 列表没变不重登); `devtools` 请求回 `{port}`; 重载前调 `reloading(web)` 让连着的 DevTools 接上新页面;
   宿主窗口的 F12 (`devtools` 事件) 经 `Shell.devEvent` 发 `{type: 'event', event: 'devtools', web, app, window}`, 由 `acdev dev` 打开 DevTools.
+- **启动时交给页面的端口** (2026-11-21, 总仓 `.scratch/libacde/launch-port-design.md`; launcher `manager/pageport.ts`, page `launchport.ts`,
+  acde-dom `linePort`): 欢迎消息带 `port: {data}` 时 (由管家决定给谁、连到哪里; 目前是 acdes 的插件窗口, `data` 由开窗的一方给, 可为 null),
+  启动器每开一次页面 (含重载) 调一次 `native.Manager.connectBackend()`, 不传参数; 页面运行时用 `linePort` 造一个标准 `MessagePort`,
+  页面 `load` 之后的下一个任务在 `window` 上派发一次 `MessageEvent('message', {data, ports: [端口]})` (`source` 为 null, `origin` 为空串).
+  线路一行一个 JSON (UTF-8, `\n` 结尾, 单行最多 262144 字节): 页面发的经 rpc 帧 `{portline}` 到启动器写到连接上 (连上之前先排着),
+  连接来的按行切开以 `{type: 'portline', line}` 推给页面 (超长的行丢掉, 页面那端收到 `messageerror`). 页面关端口发 `{portclosed: true}`,
+  启动器关连接; 连接断了或被拒 (503 `service_not_running`、403、没有 `connectBackend` 时 501 `unsupported`, 都记一行日志) 推
+  `{type: 'portclosed'}`, 页面那端收到 `close`. 重载、退出时关掉旧连接. 页面一侧的约定见 `docs/web/web-apps.md`「启动时交给页面的端口」.
 - **应用后端** (`js/launcher/src/backend/backend.ts` 的 `AppBackend`, 工作项 13; 用户 2026-11-18 定由启动器起, 宿主和客户机同一份): 应用清单有 `backend`
   时随应用起, 地址 (`sockets` / `channel`) 每次开页面都并进 `WebInit`; `acdev dev` 的 `devreload` (非热替换) 和页面的 `window.reload` 都先停后端
   再起 (`devreload` 用重新找到的清单), 页面的请求在后端就绪前重试 10 秒; 启动器退出前停掉它并删本进程的 socket 目录. 起停、崩溃重起和日志见

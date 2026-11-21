@@ -125,6 +125,8 @@ impl PaintScene for VelloScene<'_> {
         glyph_transform: Option<Affine>,
         glyphs: impl Iterator<Item = Glyph> + Clone,
     ) {
+        let outlined = super::fonts::outlined(font);
+        let font = outlined.as_ref().unwrap_or(font);
         self.0
             .draw_glyphs(font)
             .font_size(font_size)

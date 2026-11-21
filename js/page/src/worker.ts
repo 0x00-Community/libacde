@@ -1,5 +1,5 @@
 import { Notices } from './notices'
-import { install, installBackendTransport, observe } from '@acde/dom'
+import { install, installBackendTransport, linePort, observe } from '@acde/dom'
 import type { AudioNative, BackendTransport, CaptureNative, DeviceNative, DomNative, GpuNative, HostNative, StorageNative, WebglNative, WorkersNative } from '@acde/dom'
 import type { ServiceShape, WebInit } from './contract'
 import { BluetoothModule, type BluetoothNatives } from './bluetooth'
@@ -30,6 +30,7 @@ import { RemoteBridge, WindowList, WindowSelf } from './remote'
 import { Permits } from './broker/access/approval/permits'
 import type { Approval } from './broker/access/approval/permissions'
 import type { CapabilityStatus } from '@acde/api/manifest'
+import type { PinOptions } from '@acde/api'
 import { Rpc } from './rpc'
 import { OfficePage } from './office'
 import { readFileSync, readTextOr } from './sys/fs'
@@ -38,6 +39,7 @@ import { process } from './sys/process'
 import { StartupTimeline } from './timeline'
 import { WebAppPage } from './webapp'
 import { HostStrings } from './language'
+import { LaunchPort } from './launchport'
 import { SourceMaps } from './devlog'
 
 interface WebNatives extends Natives {
@@ -114,6 +116,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   }
   const permits = new Permits(init.tier?.approvals, init.app?.label ?? init.kind)
   const rpc = new Rpc((message) => port.post(message))
+  const launched = init.port ? new LaunchPort(init.port.data, linePort, (message) => port.post(message)) : null
   const access = {
     supported: (name: string) => init.tier?.capabilities?.statuses.find((s) => s.name === name)?.state !== 'unsupported',
     request: (name: string) => rpc.call('capabilities', 'request', [name]) as Promise<CapabilityStatus>,
@@ -217,6 +220,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
       approval?: Approval
       status?: CapabilityStatus
     }
+    if (launched?.take(m)) return
     switch (m.type) {
       case 'menukeys':
         web.menuKeys = Array.isArray((m as { keys?: unknown }).keys) ? ((m as { keys: unknown[] }).keys.map(String)) : []
@@ -275,11 +279,12 @@ export default async function boot(natives: WebNatives): Promise<void> {
   }
   if (init.kind === 'desktop') {
     web.onFirstFrame = () => void rpc.call('page', 'shown').catch(() => undefined)
-    const pinned = new Pinned(rpc, surface, dom, page as never)
+    const pinned = new Pinned(rpc, surface, dom, page as never, init.anchors === true)
     web.onPanelMove = (id, extent) => pinned.extend(id, extent)
+    web.onPanelEnded = (id, why) => pinned.ended(id, why)
     bridge.value['desktop'] = {
       ...(bridge.value['desktop'] as object),
-      pin: (element: Element, options?: { margin?: number }) => pinned.pin(element, options),
+      pin: (element: Element, options?: PinOptions) => pinned.pin(element, options),
       ...Frame.grabs(surface),
     }
   }
@@ -364,6 +369,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
     }
   }
   await page.loadPage(html, fetched?.type)
+  launched?.hand(page.window as never)
   if (init.kind === 'window' && Frame.height(init.app) > 0) Frame.followScheme(page.window as never, surface, (run) => void setTimeout(run, 50))
   if (init.devState) {
     DevState.restore(page.window as never, init.devState as DevSnapshot, (restored, missed) =>

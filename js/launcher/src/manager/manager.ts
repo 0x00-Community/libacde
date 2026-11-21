@@ -29,9 +29,28 @@ export interface Welcome {
   readonly modules?: readonly string[]
   readonly stateDir?: string
   readonly backend?: { readonly role: string; readonly up: boolean }
+  readonly port?: { readonly data: unknown }
+  readonly size?: readonly [number, number]
+  readonly outerSize?: readonly [number, number]
   readonly session?: { readonly own: boolean }
   readonly lock?: boolean
   readonly instance?: number
+}
+
+export function windowSize(given: unknown): readonly [number, number] | null {
+  if (!Array.isArray(given) || given.length !== 2) return null
+  const [width, height] = given.map((n) => (typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : 0))
+  return width! >= 1 && height! >= 1 && width! <= 16384 && height! <= 16384 ? [width!, height!] : null
+}
+
+export function windowGrant(
+  welcome: Pick<Welcome, 'size' | 'outerSize'> | undefined,
+  manifest: readonly [number, number] | null,
+): { readonly size?: readonly [number, number]; readonly outerSize?: readonly [number, number] } {
+  const outerSize = windowSize(welcome?.outerSize)
+  if (outerSize) return { outerSize }
+  const size = windowSize(welcome?.size) ?? manifest
+  return size ? { size } : {}
 }
 
 export interface ManagerEvent {
@@ -46,6 +65,40 @@ export interface ManagerLink {
   pump(): ManagerEvent[]
   send?(frame: object): void
   connectBackend?(): Promise<BackendLink>
+}
+
+export function withoutUndefined(value: unknown, at: () => string): unknown {
+  if (value === undefined) throw new TypeError(`${at()} is undefined; leave it out or pass null`)
+  if (Array.isArray(value)) return value.map((item, i) => withoutUndefined(item, () => `${at()}[${i}]`))
+  if (typeof value !== 'object' || value === null) return value
+  const proto = Object.getPrototypeOf(value)
+  if (proto !== Object.prototype && proto !== null) return value
+  const kept = Object.entries(value).filter(([, item]) => item !== undefined)
+  return Object.fromEntries(kept.map(([key, item]) => [key, withoutUndefined(item, () => `${at()}.${key}`)]))
+}
+
+export function nativeArgs(service: string, method: string, args: readonly unknown[] = []): unknown[] {
+  let length = args.length
+  while (length > 0 && args[length - 1] === undefined) length--
+  return args.slice(0, length).map((arg, i) => withoutUndefined(arg, () => `${service}.${method}: argument ${i + 1}`))
+}
+
+export function rejectingCalls(link: ManagerLink): ManagerLink {
+  const call = (service: string, method: string, args?: readonly unknown[]): Promise<unknown> => {
+    try {
+      return link.call(service, method, nativeArgs(service, method, args))
+    } catch (error) {
+      return Promise.reject(error)
+    }
+  }
+  return {
+    welcome: link.welcome,
+    call,
+    onEvents: (callback) => link.onEvents(callback),
+    pump: () => link.pump(),
+    ...(link.send && { send: (frame: object) => link.send!(frame) }),
+    ...(link.connectBackend && { connectBackend: () => link.connectBackend!() }),
+  }
 }
 
 export interface BackendLink {

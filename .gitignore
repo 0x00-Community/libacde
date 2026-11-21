@@ -9,3 +9,6 @@ logs/
 # macos desktop files
 .DS_Store
 
+
+# dependencies resolve afresh on every build (AGENTS.md)
+Cargo.lock

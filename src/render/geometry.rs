@@ -82,7 +82,7 @@ impl Geometry<'_> {
     }
 
     pub(crate) fn offset_parent(&self, node: NodeId) -> Option<NodeId> {
-        use style::computed_values::position::T as Position;
+        use blitz_dom::style::computed_values::position::T as Position;
         let n = self.doc.get_node(node)?;
         let e = n.element_data()?;
         if !n.flags.is_in_document() || matches!(&*e.name.local, "html" | "body") {

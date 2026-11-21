@@ -24,7 +24,7 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 >   还是经 `rpc.ts` / `remote.ts` 调到 Broker (见 `docs/runtime/webs.md`「通信」); 服务的 `ctx.spawn` 起的进程不受清单约束.
 
 `web/` (acde-api、acde-dom、acde-host) 已于 91e7dd1e 删除 (CTO 决定). SDK 的替代品是 `acde-api/` 的 `@acde/api`, 只有类型声明
-(见 `docs/acde-api.md`). 契约级别只有一个来源: `acde-api/api-level` (只写一个数字的纯数据文件, 用户 2026-11-17 定), `src/host` 编译时
+(见 `docs/acde-api.md`). 契约级别只有一个来源: `acde-api/api-level` (只写一个数字的纯数据文件, 用户 2026-11-17 定; 最低支持级别在旁边的 `min-api-level`, 2026-11-21), `src/host` 编译时
 `include_str!` 读它, 清单规则 `manifest/level.ts` 也读它; 清单规则在 `manifest/`, 运行时的页面一侧和 acdev 的命令行共用. 网页接口层 (原 acde-dom)
 和页面胶水 (原 acde-host 的页面一侧) 在 `js/`, 作运行时内部组件嵌进二进制 (见 `docs/runtime/layout.md`「js」); 管理中枢 (broker.js) 没有取回.
 
@@ -43,14 +43,13 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
   用户 2026-11-20 定, 见 `docs/acde-api.md`「版本与兼容」). derive 要读的文字写成属性.
 - 改了包清单、`acde:` 模块或别的对外可见的行为, 同时告知 acdev (它的命令行和 skill `npm/skills/acdev/` 要跟着改).
 - 系统调用走 rustix, 不直接依赖 libc; rustix 没有的用专门的 crate (signal-hook、jiff). 按平台的代码用 `#[cfg]` / `cfg_select!`, 先用 std.
-- 依赖版本 1.0 及以上只写主版本号 (`wgpu = "30"`), 0.x 写到次版本 (`log = "0.4"`), 用最新的; 例外是换成 `vendor/` 的 crate 和配套的 (blitz-*、stylo*、
-  parley、html5ever、cssparser) 用 `=` 钉住.
-- `Cargo.lock` 进 git (用户定 2026-11-18, 同 acdev): 依赖只在主动更新时变. 更新时 `cargo update` 单独一个提交, 测过再推; 改了依赖的提交
-  同时更新锁文件. 前端 (acdev、acdes) 以 path 链本仓库时用的是它们自己的锁文件: 本仓库改了依赖, 它们要 `cargo update -p libacde` 跟上.
-  `mach-dxcompiler-rs` (wgpu-hal 在 Windows 的静态 DXC) 锁在 0.1.4: 0.1.6、0.1.7 的 build.rs 编译时匿名查 GitHub API, 被限流就失败
-  (acdev `docs/runtime-build.md`「DXC 钉版本」); 更新依赖后若它变了, 用 `cargo update -p mach-dxcompiler-rs --precise 0.1.4+2024.11.22-df583a3.1` 退回.
-  0.x 写到次版本正是因为这个: 只写 `"0"` 时, workspace 的版本号一变, cargo 会重新解析这些 crate 的依赖, 它们会落到旧锁里已有的老版本上, 只在 Linux
-  编的 `voice`、`office` 就编不过 (`rand::rng` 找不到, `Hmac<Sha256>` 的 trait 对不上); macOS 和 Windows 不编这两个模块, 看不到这个错.
+- 依赖版本在 `Cargo.toml` 里精确锁定 (`wgpu = "=30.0.2"`; 用户定 2026-11-21: 大项目, 不只写一位, 取代 11-18 的"0.x 写到次版本"),
+  和并排的 acdes 共用的包锁同一个版本; 升级就是改这些版本号 (本仓库与 acdes 一起改), 单独一个提交, 编过测过再推. blitz-* 锁
+  `=0.3.0-beta.5` (path 依赖). 和 blitz 共用类型的 stylo (`style`、`style_dom`、`style_traits`)、parley、cssparser 不自己写版本,
+  经 blitz-dom 的重新导出用 (`blitz_dom::style::…`), 类型和文档的是同一份, 版本跟着 blitz.
+- `Cargo.lock` 不进 git (`.gitignore`, 用户定 2026-11-21, 取代 11-18 的"锁文件进 git"): 直接依赖按上面锁定的版本, 间接依赖每次构建全新解析.
+  前端 (acdev、acdes) 以 path 链本仓库, 用它们自己的锁. Windows 的 `mach-dxcompiler-rs` (wgpu-hal 的静态 DXC) 0.1.6 起 build.rs 编译时
+  匿名查 GitHub API, 被限流就失败 (acdev `docs/runtime-build.md`「DXC 钉版本」): 这个靠 acdev 自己的锁钉在 0.1.4, 本仓库不再管.
 - `js/bun.lock`、`scripts/wpt/bun.lock` 进 git, 改依赖时放在同一个提交里.
 - 诊断用 `log` 的宏, 不用 `eprintln!` (测试、命令行输出除外).
 - 格式化: Rust 只格式化自己改的文件: `rustfmt --edition 2024 --config-path rustfmt.toml <文件...>`, 或加 `--check` 只看不改 (根目录
@@ -99,7 +98,7 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 | 改 `src/render` 的接口、canvas 2D、窗框绘制、模糊、GPU 设备或性能预算 | `docs/graphics/render-gpu.md` |
 | 改 WebGL (`src/webgl`、`js/dom/src/webgl/`) 或 GLSL 前端 | `docs/graphics/webgl.md` |
 | 改运行时自带的 JS (`js/`: 网页接口层、页面胶水、单应用启动器) 或它的打包 | `docs/runtime/layout.md`「js」 |
-| 改 `vendor/blitz`, 或升 stylo / parley / html5ever / naga 这类钉住版本的依赖 | `docs/graphics/vendor.md` |
+| 改 `vendor/blitz`, 或升 stylo / parley / html5ever / naga 这类跟着 blitz 走的依赖 | `docs/graphics/vendor.md` |
 | 构建运行时、在 Windows 上编、升 v8 或改依赖镜像、设环境变量、跑运行时的命令和 doctor、看日志和 `perf::` 计时 | `docs/dev/build-run.md` |
 | 改 dev 的 IPC、调试请求 (eval / shot / route / clock / input …)、dev 日志或热重载 (运行时一侧) | `docs/dev/dev-ipc.md` |
 | 改 DevTools 端点、页面一侧的 CDP 域 (DOM / CSS / Network / Overlay)、断点或重载不断开 | `docs/dev/devtools.md` |

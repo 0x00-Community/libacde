@@ -2,7 +2,7 @@ import type { AcdeVoice, BackendConnection, ServiceBackend, ServiceFactory, Serv
 import { sys } from '../../../page/src/sys/natives'
 import { pathToFileURL } from '../../../page/src/sys/url'
 import { process, stopGroup } from '../../../page/src/sys/process'
-import type { BackendLink, ManagerEvent, ManagerLink, ServiceShape, Welcome } from './manager'
+import { nativeArgs, withoutUndefined, type BackendLink, type ManagerEvent, type ManagerLink, type ServiceShape, type Welcome } from './manager'
 
 const FN = '__acdeFn'
 const STOP_MS = 3000
@@ -149,9 +149,42 @@ function failure(error: unknown): { status: number; code: string; message: strin
   return { status, code: typeof e?.code === 'string' ? e.code : status === 500 ? 'internal' : 'error', message: String(e?.message ?? error) }
 }
 
+export class Callbacks {
+  readonly #gone = new Set<number>()
+  readonly #numbers = new WeakMap<object, number>()
+  readonly #signals = new Map<number, AbortController>()
+
+  make(fn: number, invoke: (args: unknown[]) => void): (...args: unknown[]) => void {
+    const callback = (...args: unknown[]) => {
+      if (!this.#gone.has(fn)) invoke(args)
+    }
+    this.#numbers.set(callback, fn)
+    return callback
+  }
+
+  release(fn: number): void {
+    this.#gone.add(fn)
+    const controller = this.#signals.get(fn)
+    this.#signals.delete(fn)
+    controller?.abort()
+  }
+
+  signal(callback: unknown): AbortSignal {
+    const fn = typeof callback === 'function' ? this.#numbers.get(callback) : undefined
+    if (fn === undefined) throw new TypeError('releaseSignal: not a callback a caller passed to this service')
+    if (this.#gone.has(fn)) return AbortSignal.abort()
+    let controller = this.#signals.get(fn)
+    if (!controller) {
+      controller = new AbortController()
+      this.#signals.set(fn, controller)
+    }
+    return controller.signal
+  }
+}
+
 export class ServiceHost {
   readonly #processes = new Set<number>()
-  readonly #released = new Set<number>()
+  readonly #callbacks = new Callbacks()
   readonly backend: BackendState | null
   #instance: ServiceInstance | null = null
   #wake: (() => void) | null = null
@@ -230,6 +263,7 @@ export class ServiceHost {
       log: (line: string) => this.#log(line),
       spawn: (argv: readonly string[], options?: SpawnOptions) => this.#spawn(argv, options),
       import: ((specifier: string) => this.#import(specifier)) as never,
+      releaseSignal: (callback: unknown) => this.#callbacks.signal(callback),
       ...(this.backend ? { backend: this.backend.api } : {}),
       backendToken: () => null,
       onBackendToken: unwatched,
@@ -252,9 +286,10 @@ export class ServiceHost {
     try {
       const target = this.#instance?.api?.[call.service] as Record<string, (...a: unknown[]) => unknown> | ((...a: unknown[]) => unknown) | undefined
       if (!target) throw Object.assign(new Error(`acde.${call.service} is not provided by ${this.name}`), { status: 404, code: 'not_found' })
-      const args = withCallbacks(call.args, (fn) => (...given: unknown[]) => {
-        if (!this.#released.has(fn)) this.manager.send!({ invoke: { fn, args: given } })
-      }) as unknown[]
+      const invoke = (fn: number) => (given: unknown[]) => {
+        this.manager.send!({ invoke: { fn, args: nativeArgs(call.service, `${call.method} callback`, given) } })
+      }
+      const args = withCallbacks(call.args, (fn) => this.#callbacks.make(fn, invoke(fn))) as unknown[]
       let value: unknown
       if (call.method === '' && typeof target === 'function') value = await target(...args)
       else {
@@ -262,7 +297,8 @@ export class ServiceHost {
         if (typeof fn !== 'function') throw Object.assign(new Error(`acde.${call.service} has no ${call.method}`), { status: 404, code: 'not_found' })
         value = await fn.apply(target, args)
       }
-      this.manager.send!({ id: call.id, ok: value === undefined ? null : value })
+      const ok = value === undefined ? null : withoutUndefined(value, () => `${call.service}.${call.method || '()'}: the answer`)
+      this.manager.send!({ id: call.id, ok })
     } catch (error) {
       this.manager.send!({ id: call.id, error: failure(error) })
     }
@@ -293,7 +329,7 @@ export class ServiceHost {
         const call = incomingCall(event)
         if (call) void this.#answer(call)
         const fn = released(event)
-        if (fn !== null) this.#released.add(fn)
+        if (fn !== null) this.#callbacks.release(fn)
         const up = backendUp(event)
         if (up !== undefined) this.backend?.take(up)
       }

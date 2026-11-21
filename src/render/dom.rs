@@ -3,8 +3,8 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 
 use blitz_dom::node::{ImageData, SpecialElementData, TextInputData};
+use blitz_dom::style_dom::ElementState;
 use blitz_dom::{BaseDocument, Node, NodeData, NodeId, QualName, ns};
-use style_dom::ElementState;
 
 use crate::render::canvas::Canvas;
 use crate::render::caret::{Caret, utf16_to_byte};

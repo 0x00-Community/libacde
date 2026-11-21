@@ -19,7 +19,7 @@ import { API_LEVEL } from '@acde/api/manifest'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported, wallpaperOf } from './app/calls'
 import type { LentRoot } from '@acde/api'
-import { sessionOf, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
+import { rejectingCalls, sessionOf, windowGrant, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
 import { WindowSnapshots, type ShellEvent } from './app/events'
 import { ServiceHost } from './manager/service'
 import { DevChannel, type DevShell, type DevTarget } from './dev/dev'
@@ -29,6 +29,8 @@ import { Inspect, type InspectHost, type InspectShell, type ShellWindow } from '
 import { GuestWindows } from './dev/guest'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
+import { PagePort } from './manager/pageport'
+import type { AnchorWire } from '../../page/src/pinanchor'
 
 interface Grant {
   readonly window: number
@@ -40,8 +42,10 @@ interface GrantOptions {
   readonly window?: number
   readonly mode?: 'fullscreen' | 'free' | 'pinned'
   readonly size?: readonly number[]
+  readonly outerSize?: readonly number[]
   readonly rect?: readonly number[]
   readonly host?: boolean
+  readonly anchor?: AnchorWire
 }
 
 interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState' | 'windows' | 'inject'> {
@@ -55,6 +59,8 @@ interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState
   place(window: number, x: number, y: number, width: number, height: number): void
   hide(window: number, hidden: boolean): void
   release?(window: number): void
+  readonly anchors?: boolean
+  reanchor?(window: number, anchor: AnchorWire): void
   focus(window: number): void
   close(window: number): void
   kill?(window: number): void
@@ -169,6 +175,7 @@ class Launcher {
   readonly #relay: DevRelay | null
   #devState: unknown = null
   readonly #backend: AppBackend | null
+  readonly #port: PagePort | null
 
   constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
     this.#shell = Launcher.shell(natives, session.label)
@@ -205,6 +212,8 @@ class Launcher {
       production: !process.env['ACDE_DEV'],
     }, process.env['ACDE_COLOR_SCHEME'] === 'dark')
     this.#backend = session.kind === 'app' && session.found?.app.backend ? new AppBackend(session.found) : null
+    const port = manager?.welcome.port
+    this.#port = port ? new PagePort(port.data ?? null, manager.connectBackend?.bind(manager), (line) => process.stderr.write(`acdev: ${line}\n`)) : null
   }
 
   static shell(natives: LauncherNatives, title: string): LauncherShell {
@@ -278,8 +287,7 @@ class Launcher {
 
   #grant(): Grant {
     if (this.#desktop) return this.#shell.grant({ desktop: true })
-    const size = this.session.found!.app.size
-    return this.#shell.grant({ window: 1, mode: 'fullscreen', host: true, ...(size && { size }) })
+    return this.#shell.grant({ window: 1, mode: 'fullscreen', host: true, ...windowGrant(this.manager?.welcome, this.session.found!.app.size) })
   }
 
   start(): void {
@@ -333,7 +341,9 @@ class Launcher {
     const lock = this.session.lock ? { lock: true } : {}
     const services = this.#services
     const dev = this.#dev.prepare(given.name, app)
-    const init: WebInit = { ...given, services, ...dev, ...this.#backend?.init(), session, ...lock, ...(state ? { devState: state } : {}) }
+    const anchors = this.#desktop && this.#shell.anchors === true ? { anchors: true } : {}
+    const extra = { ...this.#backend?.init(), ...this.#port?.init(), ...anchors, session, ...lock, ...(state ? { devState: state } : {}) }
+    const init: WebInit = { ...given, services, ...dev, ...extra }
     const rpc = new Rpc((message) => thread.post(message))
     rpc.serve((service, method, args) => this.#serve(service, method, args))
     const env = { ...Launcher.env(), ...(this.#shell.socketName && { WAYLAND_DISPLAY: this.#shell.socketName }) }
@@ -346,11 +356,13 @@ class Launcher {
     this.#rpc = rpc
     this.#thread = thread
     this.#init = init
+    this.#port?.open((message) => thread.post(message))
     if (this.#desktop) this.#catchUp(thread)
   }
 
   #fromPage(message: unknown, rpc: Rpc): void {
     if (this.#dev.take(message)) return
+    if (this.#port?.take(message)) return
     const chord = (message as { menukey?: unknown } | null)?.menukey
     if (typeof chord === 'string') return void this.#menuKey(chord)
     const call = message as { rpc?: string; id?: number; service?: string; method?: string; args?: unknown[] } | null
@@ -467,7 +479,9 @@ class Launcher {
     switch (method) {
       case 'open': {
         const at = rect(args[0])
-        const grant = this.#shell.grant({ mode: 'pinned', rect: at })
+        const anchor = args[1] as AnchorWire | undefined
+        if (anchor && !this.#shell.anchors) throw unsupported('panel', 'open with an anchor')
+        const grant = this.#shell.grant({ mode: 'pinned', rect: at, ...(anchor && { anchor: { ...anchor, visible: rect(anchor.visible) } }) })
         this.#panels.set(grant.window, { rect: at, hidden: false })
         return grant
       }
@@ -480,6 +494,12 @@ class Launcher {
         if (hidden) return this.#shell.hide(id, true)
         this.#shell.place(id, x, y, width, height)
         return this.#shell.hide(id, false)
+      }
+      case 'anchor': {
+        if (!this.#panels.has(id)) throw refused(`panel ${id} is not this desktop's`)
+        const anchor = args[1] as AnchorWire
+        if (!this.#shell.reanchor) throw unsupported('panel', method)
+        return this.#shell.reanchor(id, { ...anchor, visible: rect(anchor.visible) })
       }
       case 'close':
         if (this.#panels.delete(id)) this.#shell.release?.(id)
@@ -681,6 +701,7 @@ class Launcher {
       })
     }
     await this.#dev.settle(Launcher.DEV_SETTLE_MS)
+    this.#port?.close()
     await this.#backend?.close()
     return this.#ended
   }
@@ -697,7 +718,7 @@ export default async function launch(natives: LauncherNatives): Promise<void> {
   bindNatives(natives)
   try {
     const args = LaunchArgs.parse(process.argv)
-    const manager = process.env['ACDE_MANAGER_FD'] && natives.native.Manager ? natives.native.Manager.connect() : null
+    const manager = process.env['ACDE_MANAGER_FD'] && natives.native.Manager ? rejectingCalls(natives.native.Manager.connect()) : null
     if (args.kind === 'service') {
       if (!manager) throw new Error('service needs the session manager (ACDE_MANAGER_FD)')
       if (manager.welcome.kind !== 'service') throw new Error(`the session manager started this process as ${manager.welcome.kind}, not service`)

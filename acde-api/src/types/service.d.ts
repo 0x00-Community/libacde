@@ -6,6 +6,7 @@ export interface ServiceContext {
   readonly inspect?: import('./page').AcdeInspect
   log(line: string): void
   spawn(argv: readonly string[], options?: SpawnOptions): ServiceProcess
+  releaseSignal?(callback: (...args: never[]) => unknown): AbortSignal
   readonly backend?: ServiceBackend
   /** @deprecated 改用 backend.connect() */
   backendToken?(): string | null

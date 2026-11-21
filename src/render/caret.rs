@@ -1,6 +1,6 @@
 use blitz_dom::node::{TextBrush, TextInputData};
+use blitz_dom::parley::{Affinity, BoundingBox, Cursor, Layout, Selection};
 use blitz_dom::{BaseDocument, Node, NodeId};
-use parley::{Affinity, BoundingBox, Cursor, Layout, Selection};
 
 use crate::render::geometry::Geometry;
 use crate::render::{Error, Rect, Result};

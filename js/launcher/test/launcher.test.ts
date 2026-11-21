@@ -4,9 +4,9 @@ import { bindNatives } from '../../page/src/sys/natives.ts'
 import { AppLookup, webInit } from '../src/app/app.ts'
 import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/app/calls.ts'
-import { sessionOf, type Welcome } from '../src/manager/manager.ts'
+import { nativeArgs, rejectingCalls, sessionOf, windowGrant, windowSize, withoutUndefined, type Welcome } from '../src/manager/manager.ts'
 import { WindowSnapshots } from '../src/app/events.ts'
-import { backendUp, incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
+import { backendUp, Callbacks, incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
 
 bindNatives({ host: {}, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
 
@@ -274,6 +274,100 @@ describe('the desktop backend reaches the service', () => {
     assert.equal(backendUp({ type: 'backend', up: 'yes' } as never), false)
     assert.equal(backendUp({ type: 'backend' } as never), false)
     assert.equal(backendUp({ type: 'release', up: true } as never), undefined)
+  })
+})
+
+describe('a service hears when a caller lets go of a callback', () => {
+  test('releaseSignal gives one AbortSignal per callback number; release aborts it and silences the callback', () => {
+    const callbacks = new Callbacks()
+    const sent: unknown[][] = []
+    const first = callbacks.make(7, (args) => void sent.push(args))
+    const again = callbacks.make(7, (args) => void sent.push(args))
+    const other = callbacks.make(8, () => {})
+    const signal = callbacks.signal(first)
+    assert.equal(callbacks.signal(again), signal)
+    assert.equal(signal.aborted, false)
+    let heard = 0
+    signal.addEventListener('abort', () => heard++)
+    first('a')
+    callbacks.release(7)
+    first('b')
+    assert.deepEqual(sent, [['a']])
+    assert.equal(heard, 1)
+    assert.equal(signal.aborted, true)
+    assert.equal(callbacks.signal(again).aborted, true)
+    assert.equal(callbacks.signal(other).aborted, false)
+    assert.throws(() => callbacks.signal(() => {}), TypeError)
+    assert.throws(() => callbacks.signal('x'), /not a callback a caller passed/)
+  })
+})
+
+describe('a call the manager refuses at once', () => {
+  test('becomes a rejected promise; the rest of the link is passed through as it is', async () => {
+    const sent: object[] = []
+    const link = {
+      welcome: { kind: 'app' },
+      call: (service: string, method: string, args?: readonly unknown[]) => {
+        if (method === 'boom') throw new TypeError('undefined cannot be represented as a serde_json::Value')
+        return Promise.resolve(`${service}.${method}(${JSON.stringify(args)})`)
+      },
+      onEvents: () => {},
+      pump: () => [{ type: 'x' }],
+      send: (frame: object) => void sent.push(frame),
+    }
+    const calls = rejectingCalls(link as never)
+    const refused = calls.call('settings', 'boom', ['id'])
+    assert.ok(refused instanceof Promise)
+    await assert.rejects(refused, /serde_json::Value/)
+    assert.equal(await calls.call('settings', 'enable', ['id', undefined]), 'settings.enable(["id"])')
+    const message = 'lock.unlock: argument 1 is undefined; leave it out or pass null'
+    await assert.rejects(calls.call('lock', 'unlock', [undefined, {}]), { name: 'TypeError', message })
+    assert.equal(calls.welcome, link.welcome)
+    assert.deepEqual(calls.pump(), [{ type: 'x' }])
+    calls.send!({ ready: true })
+    assert.deepEqual(sent, [{ ready: true }])
+    assert.equal(calls.connectBackend, undefined)
+  })
+})
+
+describe('arguments on their way to a native call', () => {
+  test('trailing undefined ones are left out and undefined fields of plain objects dropped, at any depth', () => {
+    assert.deepEqual(nativeArgs('s', 'm', ['a', undefined, undefined]), ['a'])
+    assert.deepEqual(nativeArgs('s', 'm', [undefined]), [])
+    assert.deepEqual(nativeArgs('s', 'm'), [])
+    assert.deepEqual(nativeArgs('s', 'm', [{ a: 1, b: undefined, c: { d: undefined, e: [{ f: undefined, g: null }] } }]), [{ a: 1, c: { e: [{ g: null }] } }])
+    const bytes = new Uint8Array([1])
+    assert.equal(nativeArgs('s', 'm', [bytes])[0], bytes)
+  })
+
+  test('an undefined in the middle, or in an array, is a TypeError naming the call and where', () => {
+    const message = 'lock.unlock: argument 2 is undefined; leave it out or pass null'
+    assert.throws(() => nativeArgs('lock', 'unlock', ['pw', undefined, 1]), { name: 'TypeError', message })
+    assert.throws(() => nativeArgs('s', 'm', [{ list: [1, undefined] }]), /s\.m: argument 1\.list\[1\] is undefined/)
+  })
+
+  test('a service answer is cleaned the same way, and an undefined it cannot drop names the call', () => {
+    const answer = () => 'desk.list: the answer'
+    assert.deepEqual(withoutUndefined({ desks: [{ id: 'a', note: undefined }], more: undefined }, answer), { desks: [{ id: 'a' }] })
+    assert.throws(() => withoutUndefined({ desks: [undefined] }, answer), /desk\.list: the answer\.desks\[0\] is undefined/)
+  })
+})
+
+describe('the window size the manager asks for', () => {
+  test('two whole numbers from 1 to 16384, rounded; anything else is no size, and the manifest size stands', () => {
+    assert.deepEqual(windowSize([640.4, 480.6]), [640, 481])
+    assert.deepEqual(windowSize([1, 16384]), [1, 16384])
+    for (const bad of [undefined, null, [640], [640, 480, 1], [0, 480], [640, 16385], ['640', 480], [Number.NaN, 480], { width: 640, height: 480 }]) {
+      assert.equal(windowSize(bad), null, JSON.stringify(bad))
+    }
+  })
+
+  test('the welcome outer size or size comes first, then the manifest size, else none (the window system default)', () => {
+    assert.deepEqual(windowGrant({ outerSize: [700, 532] }, [400, 300]), { outerSize: [700, 532] })
+    assert.deepEqual(windowGrant({ size: [640, 480] }, [400, 300]), { size: [640, 480] })
+    assert.deepEqual(windowGrant({ outerSize: [0, 1] as never, size: [640, 480] }, null), { size: [640, 480] })
+    assert.deepEqual(windowGrant(undefined, [400, 300]), { size: [400, 300] })
+    assert.deepEqual(windowGrant({}, null), {})
   })
 })
 

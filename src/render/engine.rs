@@ -397,7 +397,8 @@ impl Engine {
             .map(|(_, r)| *r)
             .reduce(|a, b| a.union(b))
             .map(Rect::from);
-        Panel { id, size, plane: damage.plane(commands, rects, scale, viewport), extent }
+        let reach = extent.map(|e| Rect { x: (rect.x0 + e.x) / scale, y: (rect.y0 + e.y) / scale, width: e.width / scale, height: e.height / scale });
+        Panel { id, size, plane: damage.plane(commands, rects, scale, viewport), extent, reach }
     }
 
     pub(crate) fn paint_frame(&mut self) -> Painted {
@@ -413,7 +414,7 @@ impl Engine {
         let plane = self.plane(commands, scale, viewport);
         let panels = panels.into_iter().map(|p| self.panel(p, scale)).collect();
         let framed = crate::log::now_ms();
-        Frame { plane, panels, size: (width, height), animating, commit, trace: self.trace.take().map(|t| crate::log::Trace { framed, ..t }) }
+        Frame { plane, panels, size: (width, height), scale, animating, commit, trace: self.trace.take().map(|t| crate::log::Trace { framed, ..t }) }
     }
 
     pub(crate) fn tree(&mut self) -> Tree<'_> {

@@ -11,7 +11,7 @@
 | `blitz` (子模块) | DioxusLabs/blitz main `fb297a38` 上接我们的提交: 只留 blitz-dom / blitz-paint / blitz-traits / stylo_taffy / debug_timer (`MIT OR Apache-2.0`) |
 
 blitz fork 和上游结构的不同: HTML 解析用 src/render 自己的 html5ever TreeSink; `build_inline_layout_into` 在 `layout/inline/build.rs`; `paint_scene`
-先录进 `acde-scene` 的 `Scene` 再回放 (没有 anyrender, 它的 SVG 画法成了 blitz-paint 的 `svg.rs`); blitz-dom 重新导出 `taffy`. 验证: 在
+先录进 `acde-scene` 的 `Scene` 再回放 (没有 anyrender, 它的 SVG 画法成了 blitz-paint 的 `svg.rs`); blitz-dom 重新导出 `taffy`, 以及 `style`、`style_dom`、`style_traits`、`parley`、`cssparser` (本仓库不写它们的版本, 经 `blitz_dom::` 用, 2026-11-21). 验证: 在
 `vendor/blitz` 里 `cargo clippy --workspace --all-targets`、`cargo check -p blitz-dom --no-default-features`、
 `cargo test -p blitz-dom -p blitz-paint`、`cargo clippy -p blitz-paint --all-targets --features scrollbars`; 再 `cargo test --release -p libacde --test 'render_*'`
 (加 `ACDE_PAINT_VERIFY=1` 再一遍).
