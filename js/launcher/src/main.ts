@@ -384,6 +384,8 @@ class Launcher {
         return this.#rpc!.call('window', 'minimize')
       case 'reload':
         return this.#reload(args[0])
+      case 'devreload':
+        return void this.#devReload(false)
       case 'capabilities':
         return this.#capabilities(method, args)
       case 'panel':

@@ -109,6 +109,8 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
    这些 session 的回复和通知都原样交给 `sink` (在页面线程上调用, `sink` 自己转到别的线程); 页面的上下文登记时带 auxData `{isDefault: true, type: "default", frameId: <web 名>}`,
    所以不带 `contextId` 的 `Runtime.evaluate` (DevTools 控制台默认这样发) 落在它上面. dev 模式下模块源码末尾加 `"\n;"` (`inspector::module_source`), 换源码时也加:
    V8 LiveEdit 的 diff 把文件末尾追加的代码当成没变. 改了模块顶层 (`BlockedByTopLevelEsModuleChange`)、函数在栈上、classic 脚本变了都整页重载.
+   退回整页重载时页面线程调 `page.devreload`, 单应用启动器在路由里 (`js/launcher/src/app/calls.ts`, 有没有管家都留在本进程) 接住走 `#devReload(false)`
+   (acdev#107: 原来这条没进路由, 报 unsupported 被吞掉, 页面停在旧代码).
    运行时自己的脚本 (`web.js`、`broker.js`) 在 DevTools 里是忽略列表里的脚本 (#184), 前端在控制台消息、异常和单步时跳过它们的帧, 位置落在页面代码上:
    dev 构建 (`scripts/bundle.mjs`) 给 `web.js.map` / `broker.js.map` 的每个源加 `ignoreList` / `x_google_ignoreList`; 没有自己 source map 的
    (正式构建) 在 dev 模式下由 `inspector/ignore.rs` 在源码末尾接一个 data: URL 的 source map, 整个文件映射到一个忽略列表里的源 `acde-runtime`.

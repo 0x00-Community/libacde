@@ -17,6 +17,8 @@ describe('the single-app launcher answers its window and page calls', () => {
     assert.equal(route('page', 'shown', [], alone), 'acknowledge')
     assert.equal(route('page', 'download', [], alone), 'unsupported')
     assert.equal(route('window', 'setTitle', ['x'], { ...alone, managed: true }), 'manager')
+    assert.equal(route('page', 'devreload', [], alone), 'devreload')
+    assert.equal(route('page', 'devreload', [], { ...alone, managed: true }), 'devreload')
   })
 
   test('menus go to the host window, and their shortcuts are bound and found', () => {

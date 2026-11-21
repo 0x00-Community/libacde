@@ -3,6 +3,7 @@ export type Route =
   | 'close'
   | 'minimize'
   | 'reload'
+  | 'devreload'
   | 'capabilities'
   | 'panel'
   | 'windows'
@@ -22,6 +23,7 @@ const LOCAL: Readonly<Record<string, Route>> = {
   'window.minimize': 'minimize',
   'window.requestState': 'minimize',
   'window.reload': 'reload',
+  'page.devreload': 'devreload',
   'capabilities.get': 'capabilities',
   'capabilities.list': 'capabilities',
 }
