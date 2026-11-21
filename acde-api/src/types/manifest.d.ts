@@ -48,6 +48,7 @@ export interface AppManifest {
   readonly backend?: AppBackend
   readonly optional?: readonly string[]
   readonly services?: readonly string[]
+  readonly sensitive?: boolean
 }
 
 export interface AppBackend {
