@@ -122,6 +122,14 @@
 - **DevTools** (`js/launcher/src/dev/devtools.ts` 的 `DevToolsEndpoint`, 工作项 12): 运行时的 `DevTools.open()` 开了端点 (设了 `ACDE_DEV` 时) 就每 250 毫秒
   把本页登记成 CDP 目标 (id 是 web 名, 列表没变不重登); `devtools` 请求回 `{port}`; 重载前调 `reloading(web)` 让连着的 DevTools 接上新页面;
   宿主窗口的 F12 (`devtools` 事件) 经 `Shell.devEvent` 发 `{type: 'event', event: 'devtools', web, app, window}`, 由 `acdev dev` 打开 DevTools.
+- **启动时交给页面的端口** (2026-11-21, 总仓 `.scratch/libacde/launch-port-design.md`; launcher `manager/pageport.ts`, page `launchport.ts`,
+  acde-dom `linePort`): 欢迎消息带 `port: {data}` 时 (由管家决定给谁、连到哪里; 目前是 acdes 的插件窗口, `data` 由开窗的一方给, 可为 null),
+  启动器每开一次页面 (含重载) 调一次 `native.Manager.connectBackend()`, 不传参数; 页面运行时用 `linePort` 造一个标准 `MessagePort`,
+  页面 `load` 之后的下一个任务在 `window` 上派发一次 `MessageEvent('message', {data, ports: [端口]})` (`source` 为 null, `origin` 为空串).
+  线路一行一个 JSON (UTF-8, `\n` 结尾, 单行最多 262144 字节): 页面发的经 rpc 帧 `{portline}` 到启动器写到连接上 (连上之前先排着),
+  连接来的按行切开以 `{type: 'portline', line}` 推给页面 (超长的行丢掉, 页面那端收到 `messageerror`). 页面关端口发 `{portclosed: true}`,
+  启动器关连接; 连接断了或被拒 (503 `service_not_running`、403、没有 `connectBackend` 时 501 `unsupported`, 都记一行日志) 推
+  `{type: 'portclosed'}`, 页面那端收到 `close`. 重载、退出时关掉旧连接. 页面一侧的约定见 `docs/web/web-apps.md`「启动时交给页面的端口」.
 - **应用后端** (`js/launcher/src/backend/backend.ts` 的 `AppBackend`, 工作项 13; 用户 2026-11-18 定由启动器起, 宿主和客户机同一份): 应用清单有 `backend`
   时随应用起, 地址 (`sockets` / `channel`) 每次开页面都并进 `WebInit`; `acdev dev` 的 `devreload` (非热替换) 和页面的 `window.reload` 都先停后端
   再起 (`devreload` 用重新找到的清单), 页面的请求在后端就绪前重试 10 秒; 启动器退出前停掉它并删本进程的 socket 目录. 起停、崩溃重起和日志见

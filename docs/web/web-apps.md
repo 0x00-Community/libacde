@@ -287,6 +287,15 @@
 - **MessageChannel / MessagePort** (acde-dom `core/message.ts`): 同一个页面里两端互发, `postMessage` 当场结构化克隆; 没有 `start()` 也没设
   `onmessage` 之前消息在收端排队, `start()` 后按顺序派发. 关闭 (2026-11-21, 全局行为变化, 照 HTML 规范和 Chrome 123 起的做法): 一端
   `close()` 后, 另一端在下一个任务里收到一次 `close` 事件 (`onclose` 也有), 之后两端互发都静默丢弃; 关的那一端自己不收 `close`, 再关一次什么也不做.
+- **启动时交给页面的端口** (2026-11-21; 运行时一侧见 `docs/runtime/layout.md` 同名一条): 管家要给页面一条通往别处的连接时 (如 Dopame 的
+  插件窗口), 页面在 `load` 事件之后的下一个任务里收到一次标准的 `message` 事件 (发在 `window` 上, `data` 由管家给, `ports[0]` 是一个
+  `MessagePort`, `source` 为 null). 页面的约定:
+  - 监听器要在 `load` 之前挂上 (同步脚本或模块顶层都行); 错过了就收不到, 不会补发, 一次页面加载只给一个端口; 重载后的新页面再给一个新的.
+  - 端口照标准用: `start()` 或设 `onmessage` 之前消息排队; `close()` 后对端断开; 对端断开 (或根本没连上) 时端口收到 `close`.
+  - 只走 JSON: `postMessage` 的值要是普通 JSON (对象、数组、字符串、有限数、布尔、null), 不是时当场抛 `DataCloneError`
+    (`this port carries JSON only (…)`); 编成 JSON 后超过 262144 字节也抛 `DataCloneError` (`message is N bytes, over the 262144-byte limit of this port`).
+    收到的消息不是 JSON 或超长时发 `messageerror`, 端口不关.
+  - 全局对象上没有任何私有字段, 也没有额外的 `acde:` 模块.
 - **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`)、从文件读的页面 (`PageSource.html`) 只认 `.html` 入口 (`.xhtml` 文件不按 XML 解析)、页面按响应的字符编码解码 (现在总按 UTF-8)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、`SharedWorker` 和 Service Worker、`crypto.subtle`、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
 - **指针锁定** (https://w3c.github.io/pointerlock/, acde-dom `dom/pointerlock.ts`, 2026-11-19): `Element.requestPointerLock(options?)` 返回 promise,
   `document.pointerLockElement` / `ShadowRoot.pointerLockElement` (和 `activeElement` 一样不往影子宿主换), `document.exitPointerLock()`,

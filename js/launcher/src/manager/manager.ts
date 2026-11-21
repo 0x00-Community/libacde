@@ -29,6 +29,7 @@ export interface Welcome {
   readonly modules?: readonly string[]
   readonly stateDir?: string
   readonly backend?: { readonly role: string; readonly up: boolean }
+  readonly port?: { readonly data: unknown }
   readonly session?: { readonly own: boolean }
   readonly lock?: boolean
   readonly instance?: number
