@@ -41,8 +41,9 @@
 
 - **有管家时** (会话里, 环境里有 `ACDE_MANAGER_FD` 且 `native.Manager` 在, acdebin-system 的管家, 总仓 `.scratch/system/issues/09-manager.md`,
   协议见 acdebin-system `docs/manager.md`): `native.Manager.connect()` 拿 welcome, 应用的清单、包目录、资源、等级 (`tier`)、授予 (`grants`)、
-  拉起时的请求 (`request`) 都取自它; 窗口大小按欢迎消息顶层的 `size` (`[宽, 高]`, 管家按 `apps.open` 的 `size` 给, 1–16384 的整数) → 清单 `size` →
-  窗口系统默认 (800x600) 取第一个有的 (`windowSize`, 形状不对的欢迎消息值不用); 桌面的页面是 `welcome.dir` 加 `welcome.desktop.entry`. 子进程的环境里不再带 `ACDE_MANAGER_FD`.
+  拉起时的请求 (`request`) 都取自它; 窗口大小按欢迎消息顶层的 `size` (`[宽, 高]`, 管家按 `apps.open` 的 `size` 给, 1–16384 的整数) 或 `outerSize` (含标题栏的外框, 逻辑像素, 和
+  `size` 二选一; 原样交给 `grant({outerSize})`, 窗口客户端扣标题栏; 只在欢迎消息这条内部路径上, 页面的 `apps.open` 没有这个选项) → 清单 `size` →
+  窗口系统默认 (800x600) 取第一个有的 (`windowGrant` 和 `windowSize`, 形状不对的欢迎消息值不用); 桌面的页面是 `welcome.dir` 加 `welcome.desktop.entry`. 子进程的环境里不再带 `ACDE_MANAGER_FD`.
   页面的调用除下面留在本进程的以外原样转给管家 (`manager.call`), 失败的 `Error` 带 `status`、`code` 抛回页面
   (`native.Manager.call` 当场抛的错, 如参数转不成 JSON, 经 `rejectingCalls` 也变成这次调用的失败, 不会让页面或服务一直等). 交给管家之前参数按 JS 习惯
   处理一次 (`nativeArgs`, 用户 2026-11-21 选 A): 末尾为 undefined 的参数去掉, 普通对象里值为 undefined 的字段逐层省略 (同 `JSON.stringify`), 中间位置
