@@ -161,22 +161,18 @@ pub struct Machine {
     pub can_hibernate: bool,
     pub can_hybrid: bool,
     pub can_then_hibernate: bool,
-    pub virtual_machine: bool,
 }
 
 impl Machine {
     pub fn probe(bus: Option<&zbus::blocking::Connection>) -> Self {
-        let virtual_machine = std::fs::read_to_string("/proc/cpuinfo")
-            .is_ok_and(|t| t.lines().any(|l| l.starts_with("flags") && l.split_whitespace().any(|f| f == "hypervisor")));
         match bus {
             Some(b) => Machine {
                 can_suspend: super::bus::can(b, "CanSuspend"),
                 can_hibernate: super::bus::can(b, "CanHibernate"),
                 can_hybrid: super::bus::can(b, "CanHybridSleep"),
                 can_then_hibernate: super::bus::can(b, "CanSuspendThenHibernate"),
-                virtual_machine,
             },
-            None => Machine { virtual_machine, ..Machine::default() },
+            None => Machine::default(),
         }
     }
 }
@@ -254,7 +250,6 @@ impl Settings {
         };
         let display = Some("Display");
         let suspend = Some("SuspendAndShutdown");
-        let auto_default = if m.virtual_machine || !m.can_suspend { Action::None } else { Action::Sleep };
         let action = |key: &str, default: Action, idle: bool| {
             self.get(g, suspend, key).and_then(Value::as_u64).and_then(Action::from_kde).filter(|a| !idle || a.idle()).unwrap_or(default)
         };
@@ -269,10 +264,10 @@ impl Settings {
             Group::LowBattery => 30,
         };
         Policy {
-            dim: self.flag(g, display, "DimDisplayWhenIdle", true).then(|| self.uint(g, display, "DimDisplayIdleTimeoutSec", dim)),
-            screen_off: self.flag(g, display, "TurnOffDisplayWhenIdle", true).then(|| self.uint(g, display, "TurnOffDisplayIdleTimeoutSec", off)),
-            lock_on_screen_off: self.flag(g, display, "LockBeforeTurnOffDisplay", true),
-            idle_action: action("AutoSuspendAction", auto_default, true),
+            dim: self.flag(g, display, "DimDisplayWhenIdle", false).then(|| self.uint(g, display, "DimDisplayIdleTimeoutSec", dim)),
+            screen_off: self.flag(g, display, "TurnOffDisplayWhenIdle", false).then(|| self.uint(g, display, "TurnOffDisplayIdleTimeoutSec", off)),
+            lock_on_screen_off: self.flag(g, display, "LockBeforeTurnOffDisplay", false),
+            idle_action: action("AutoSuspendAction", Action::None, true),
             idle_after: self.uint(g, suspend, "AutoSuspendIdleTimeoutSec", auto),
             lid: action("LidAction", if m.can_suspend { Action::Sleep } else { Action::ScreenOff }, false),
             lid_external: !self.flag(g, suspend, "InhibitLidActionWhenExternalMonitorPresent", true),
@@ -445,15 +440,30 @@ mod tests {
     }
 
     #[test]
-    fn defaults_are_plasmas() {
+    fn idle_does_nothing_by_default() {
         let s = fresh();
+        for g in Group::ALL {
+            let p = s.policy(g);
+            assert_eq!((p.dim, p.screen_off, p.lock_on_screen_off, p.idle_action), (None, None, false, Action::None), "{}", g.kde());
+            assert_eq!((p.js()["dim"].clone(), p.js()["screenOff"].clone(), p.js()["idleAction"].clone()), (Value::Null, Value::Null, json!("none")));
+        }
         let ac = s.policy(Group::Ac);
-        assert_eq!((ac.dim, ac.screen_off, ac.idle_action, ac.idle_after), (Some(300), Some(600), Action::Sleep, 900));
         assert_eq!((ac.lid, ac.button, ac.profile.as_deref()), (Action::Sleep, Action::Prompt, None));
-        let low = s.policy(Group::LowBattery);
-        assert_eq!((low.dim, low.screen_off, low.idle_after, low.profile.as_deref()), (Some(60), Some(120), 300, Some("power-saver")));
+        assert_eq!(s.policy(Group::LowBattery).profile.as_deref(), Some("power-saver"));
         let g = s.general();
         assert_eq!((g.low, g.critical, g.critical_action), (10, 5, Action::Shutdown));
+    }
+
+    #[test]
+    fn a_power_json_still_turns_idle_on() {
+        let mut s = fresh();
+        s.apply(&json!({ "ac": { "dim": 120, "screenOff": 600, "lockOnScreenOff": true, "idleAction": "sleep", "idleAfter": 1800 } })).unwrap();
+        let ac = s.policy(Group::Ac);
+        assert_eq!((ac.dim, ac.screen_off, ac.lock_on_screen_off, ac.idle_action, ac.idle_after), (Some(120), Some(600), true, Action::Sleep, 1800));
+        let battery = s.policy(Group::Battery);
+        assert_eq!((battery.dim, battery.screen_off, battery.idle_action), (None, None, Action::None));
+        let old = Settings { file: json!({ "AC": { "Display": { "TurnOffDisplayWhenIdle": true } } }), ..fresh() };
+        assert_eq!(old.policy(Group::Ac).screen_off, Some(600), "turned on without a time: the time Plasma uses");
     }
 
     #[test]
@@ -471,15 +481,15 @@ mod tests {
     }
 
     #[test]
-    fn locks_on_screen_off_unless_told_not_to() {
+    fn locks_on_screen_off_only_when_told_to() {
         let mut s = fresh();
-        assert!(Group::ALL.into_iter().all(|g| s.policy(g).lock_on_screen_off), "an old power.json without the key locks");
-        s.apply(&json!({ "battery": { "lockOnScreenOff": false } })).unwrap();
-        assert_eq!(s.file["Battery"]["Display"]["LockBeforeTurnOffDisplay"], json!(false));
-        assert!(!s.policy(Group::Battery).lock_on_screen_off);
-        assert!(s.policy(Group::Ac).lock_on_screen_off);
-        assert_eq!(s.policy(Group::Battery).js()["lockOnScreenOff"], json!(false));
+        assert!(Group::ALL.into_iter().all(|g| !s.policy(g).lock_on_screen_off), "a power.json without the key does not lock");
+        s.apply(&json!({ "battery": { "lockOnScreenOff": true } })).unwrap();
+        assert_eq!(s.file["Battery"]["Display"]["LockBeforeTurnOffDisplay"], json!(true));
+        assert!(s.policy(Group::Battery).lock_on_screen_off);
+        assert!(!s.policy(Group::Ac).lock_on_screen_off);
+        assert_eq!(s.policy(Group::Battery).js()["lockOnScreenOff"], json!(true));
         assert!(s.apply(&json!({ "ac": { "lockOnScreenOff": "yes" } })).is_err());
-        assert!(s.policy(Group::Ac).lock_on_screen_off);
+        assert!(!s.policy(Group::Ac).lock_on_screen_off);
     }
 }
