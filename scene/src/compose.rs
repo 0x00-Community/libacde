@@ -140,20 +140,26 @@ pub struct Part<C> {
     pub shadows: Vec<Shadow>,
     pub effect: Effect,
     pub bounds: Option<Px>,
+    pub areas: Vec<Px>,
 }
 
 impl<C> Part<C> {
     pub fn plain(content: C, bounds: Option<Px>) -> Self {
-        Self { content, backdrop: None, shadows: Vec::new(), effect: Effect::default(), bounds }
+        Self { content, backdrop: None, shadows: Vec::new(), effect: Effect::default(), bounds, areas: Vec::new() }
     }
 
     pub fn pieces(&self, targets: &[Px], full: Px) -> Vec<(Px, Px)> {
         let margin = self.effect.reach(&self.shadows);
+        let bounds = match &self.areas[..] {
+            [] => vec![self.bounds],
+            areas => areas.iter().map(|a| self.bounds.map_or(Some(*a), |b| b.intersection(*a))).filter(Option::is_some).collect(),
+        };
         targets
             .iter()
-            .filter_map(|t| {
-                let clip = self.bounds.map_or(Some(*t), |b| b.intersection(*t))?;
-                let drawn = self.bounds.map_or(Some(*t), |b| b.intersection(t.grown(margin)))?.intersection(full)?;
+            .flat_map(|t| bounds.iter().map(move |b| (t, *b)))
+            .filter_map(|(t, b)| {
+                let clip = b.map_or(Some(*t), |b| b.intersection(*t))?;
+                let drawn = b.map_or(Some(*t), |b| b.intersection(t.grown(margin)))?.intersection(full)?;
                 Some((drawn, clip))
             })
             .collect()
