@@ -388,7 +388,12 @@ export type LockError = Error & LockFailure
 
 export interface AcdeLock {
   user(): Promise<LockUser>
-  unlock(password: string): Promise<void>
+  unlock(password: string, options?: LockUnlockOptions): Promise<void>
+  cancel?(): Promise<void>
+}
+
+export interface LockUnlockOptions {
+  readonly remember?: 'once' | 'round' | 'scope' | 'until'
 }
 
 export interface InspectNode {

@@ -362,7 +362,7 @@ export class RemoteBridge {
       desktops: () => Rpc.calls(() => rpc, 'desktops', 'list', 'choose'),
     }
     if (init.lock) {
-      this.value['lock'] = Rpc.calls(() => rpc, 'lock', 'user', 'unlock')
+      this.value['lock'] = Rpc.calls(() => rpc, 'lock', 'user', 'unlock', 'cancel')
     } else if (init.kind === 'desktop') {
       const unlend = Rpc.calls(() => rpc, 'apps', 'unlend')
       this.value['apps'] = { ...apps, ...files, ...unlend, on: windows.notices.for('apps', ['changed']) }
