@@ -380,7 +380,7 @@ export interface LockUser {
   readonly confirm?: LockConfirm
 }
 
-export type LockRemember = 'once' | 'round' | 'scope' | 'until'
+export type LockRemember = 'once' | 'task' | 'scope' | 'until'
 
 export interface LockConfirm {
   readonly id: string

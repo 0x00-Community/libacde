@@ -69,7 +69,7 @@
   密码错)、`busy` (409, 上一次验证还没完)、`throttled` (429, 失败后的延迟期内, 另带 `retryAfter` 秒数); 这些字段由 rpc 原样带回页面
   (SDK 类型 `LockError`). 管家按调用方拒绝: 锁屏页只能调 `lock.*`、`window.ready`、`page.shown`.
   系统确认页 (2026-11-21, 管家以确认模式开同一个锁屏进程, 欢迎消息和 `lock.user()` 的应答多一项 `confirm`, 见 acdes `docs/manager.md`) 另有两处,
-  都只是加法: `lock.unlock(password, {remember?})` 的第二个参数 (`'once' | 'round' | 'scope' | 'until'`, 这次批准记多久, 原样转给管家;
+  都只是加法: `lock.unlock(password, {remember?})` 的第二个参数 (`'once' | 'task' | 'scope' | 'until'`, 这次批准记多久, 原样转给管家;
   确认页不要密码时 `password` 传空串), 和 `lock.cancel()` (拒绝, 管家立刻回成功, 随后会话进程让页面放开锁屏并退出). 页面胶水按原样转发参数,
   不看 `confirm` 的内容; 它的形状是 SDK 的 `LockConfirm` (`{id, agent, waiting: {title, detail, expires, password, judge, remember?: {may, default, max_days?},
   tries_left?}}`, `waiting` 里照系统总管协议用下划线名), 只在确认页里有, 锁屏页没有.
