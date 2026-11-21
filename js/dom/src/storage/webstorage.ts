@@ -1,4 +1,4 @@
-import { DOMException } from '../core/exception'
+import { QuotaExceededError } from '../core/exception'
 import { fire, type EventTarget } from '../core/event'
 import { tag } from '../core/host'
 import { useCookieJar } from '../core/backend'
@@ -73,7 +73,7 @@ export class Storage {
     if (arguments.length < 2) throw new TypeError(`Failed to execute 'setItem' on 'Storage': 2 arguments required, but only ${arguments.length} present.`)
     const k = `${key}`, v = `${value}`
     if (!this[AREA].set(k, v, env.url)) {
-      throw new DOMException(`Failed to execute 'setItem' on 'Storage': Setting the value of '${k}' exceeded the quota.`, 'QuotaExceededError')
+      throw new QuotaExceededError(`Failed to execute 'setItem' on 'Storage': Setting the value of '${k}' exceeded the quota.`)
     }
   }
   removeItem(key: string): void {

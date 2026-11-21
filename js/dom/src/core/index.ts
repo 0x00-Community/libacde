@@ -6,7 +6,7 @@ import { createConsole } from './console'
 import { Crypto } from './crypto'
 import { atob, btoa, TextDecoder, TextEncoder } from './encoding'
 import { CloseEvent, CustomEvent, ErrorEvent, Event, EventTarget, MessageEvent, ProgressEvent, PromiseRejectionEvent } from './event'
-import { DOMException } from './exception'
+import { DOMException, QuotaExceededError } from './exception'
 import { bindHost, globals, report } from './host'
 import { BroadcastChannel, MessageChannel, MessagePort, structuredClone } from './message'
 import { Performance, PerformanceEntry, PerformanceMark, PerformanceMeasure } from './performance'
@@ -30,7 +30,7 @@ export function installCore(global: typeof globalThis, native: HostNative, optio
     Crypto, Performance, PerformanceEntry, PerformanceMark, PerformanceMeasure,
     AbortController, AbortSignal,
     Event, EventTarget, CustomEvent, ErrorEvent, MessageEvent, ProgressEvent, CloseEvent, PromiseRejectionEvent,
-    DOMException,
+    DOMException, QuotaExceededError,
     Blob, File, FileReader,
     MessageChannel, MessagePort, BroadcastChannel,
   })

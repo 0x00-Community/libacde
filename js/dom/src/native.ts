@@ -160,6 +160,8 @@ export interface DomNative {
   sheetRule(id: number, index: number): string
   sheetInsertRule(id: number, rule: string, index: number): number
   sheetDeleteRule(id: number, index: number): void
+  sheetDisabled(id: number): boolean
+  setSheetDisabled(id: number, disabled: boolean): void
 
   scrollTo(id: number, left: number, top: number, smooth: boolean): void
   takeScrolled(): Uint32Array

@@ -657,6 +657,13 @@ export class MockDom implements DomNative {
   sheetDeleteRule(id: number, index: number): void {
     this._call(() => this._node(id).sheet.deleteRule(index))
   }
+  sheetDisabled(id: number): boolean {
+    return !!this._node(id).sheet?.disabled
+  }
+  setSheetDisabled(id: number, disabled: boolean): void {
+    const sheet = this._node(id).sheet
+    if (sheet) sheet.disabled = disabled
+  }
   matchMedia(query: string): boolean {
     const m = /^\s*\(\s*([a-z-]+)\s*:\s*([a-z0-9-]+)\s*\)\s*$/.exec(query)
     if (m && m[1]! in this.media) return this.media[m[1]!] === m[2]

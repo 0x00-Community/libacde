@@ -369,13 +369,64 @@ function simpleEvent<T extends Record<string, unknown>>(name: string, defaults: 
 export const HashChangeEvent = simpleEvent('HashChangeEvent', { oldURL: '', newURL: '' })
 export const PopStateEvent = simpleEvent('PopStateEvent', { state: null as unknown, hasUAVisualTransition: false })
 export const PageTransitionEvent = simpleEvent('PageTransitionEvent', { persisted: false })
-export const StorageEvent = simpleEvent('StorageEvent', {
-  key: null as string | null,
-  oldValue: null as string | null,
-  newValue: null as string | null,
-  url: '',
-  storageArea: null as unknown,
-})
+export interface StorageEventInit extends EventInit {
+  key?: string | null
+  oldValue?: string | null
+  newValue?: string | null
+  url?: string
+  storageArea?: unknown
+}
+
+export class StorageEvent extends BaseEvent {
+  #key: string | null = null
+  #oldValue: string | null = null
+  #newValue: string | null = null
+  #url = ''
+  #storageArea: unknown = null
+
+  constructor(type: string, init?: StorageEventInit | null) {
+    if (arguments.length === 0) throw new TypeError("Failed to construct 'StorageEvent': 1 argument required, but only 0 present.")
+    super(type, init)
+    this.#set(init?.key, init?.oldValue, init?.newValue, init?.url, init?.storageArea)
+  }
+
+  get key(): string | null {
+    return this.#key
+  }
+
+  get oldValue(): string | null {
+    return this.#oldValue
+  }
+
+  get newValue(): string | null {
+    return this.#newValue
+  }
+
+  get url(): string {
+    return this.#url
+  }
+
+  get storageArea(): unknown {
+    return this.#storageArea
+  }
+
+  initStorageEvent(type: string, bubbles?: boolean, cancelable?: boolean, key?: string | null, oldValue?: string | null, newValue?: string | null, url?: string, storageArea?: unknown): void {
+    if (arguments.length === 0) throw new TypeError("Failed to execute 'initStorageEvent' on 'StorageEvent': 1 argument required, but only 0 present.")
+    if (this.eventPhase !== 0) return
+    this.initEvent(type, !!bubbles, !!cancelable)
+    this.#set(key, oldValue, newValue, url, storageArea)
+  }
+
+  #set(key: unknown, oldValue: unknown, newValue: unknown, url: unknown, storageArea: unknown): void {
+    const text = (value: unknown) => (value === undefined || value === null ? null : String(value))
+    this.#key = text(key)
+    this.#oldValue = text(oldValue)
+    this.#newValue = text(newValue)
+    this.#url = url === undefined ? '' : String(url)
+    this.#storageArea = storageArea ?? null
+  }
+}
+tag(StorageEvent)
 export const TransitionEvent = simpleEvent('TransitionEvent', { propertyName: '', elapsedTime: 0, pseudoElement: '' })
 export const AnimationEvent = simpleEvent('AnimationEvent', { animationName: '', elapsedTime: 0, pseudoElement: '' })
 export const SubmitEvent = simpleEvent('SubmitEvent', { submitter: null as unknown })

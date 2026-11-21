@@ -694,6 +694,11 @@ natives! {
         let (id, index) = (id(scope, &args, 0), f(scope, &args, 1) as u32);
         dom.sheet_delete_rule(id, index)
     }
+    "sheetDisabled" => fn sheet_disabled(scope, args, dom) { let id = id(scope, &args, 0); dom.sheet_disabled(id) }
+    "setSheetDisabled" => fn set_sheet_disabled(scope, args, dom) {
+        let (id, disabled) = (id(scope, &args, 0), bind::arg_bool(scope, &args, 1));
+        dom.set_sheet_disabled(id, disabled)
+    }
     "scrollTo" => fn scroll_to(scope, args, dom) {
         let (id, left, top, smooth) = (id(scope, &args, 0), f(scope, &args, 1), f(scope, &args, 2), bind::arg_bool(scope, &args, 3));
         dom.scroll_to(id, left, top, smooth)

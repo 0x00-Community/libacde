@@ -38,7 +38,9 @@
     拿走的 `cssRules` 每次读都核对 id, link 换了表之后读到的是空 (不会读到后来那张表的规则), 往里 `insertRule` 只改它自己. 包里的文件、`data:`、`blob:`、同源后端和过了 CORS 检查的可读写. `replaceSync` / `replace` 只给
     `new CSSStyleSheet()` 造的表, `<style>` / `<link>` 的表是 `NotAllowedError`.
   - `<link>` / `<style>` 的 `media` 属性是表的 media list: 不匹配的表照取、照派 `load`、`sheet` 照有, 只是不生效; 改属性不重取.
-  - 没做: `window` 的 `load` 不等样式表和图片; `link.disabled`、备用样式表 (`title`)、`CSSImportRule.styleSheet`、`MediaList` 的成员 (只有
+  - `link.disabled` / `disabled` 属性停用 link 的表 (加载前就有属性的, 表一到就是停用的); `sheet.disabled` 读写 blitz 里那张表的 disabled 标志
+    (`sheetDisabled` / `setSheetDisabled`), 不改属性 (acdev#52).
+  - 没做: `window` 的 `load` 不等样式表和图片; 备用样式表 (`title`)、`CSSImportRule.styleSheet`、`MediaList` 的成员 (只有
     `mediaText` / `length`); `<img crossorigin>` 仍按 no-cors 取.
 - **本地资源的类型** (acde-dom `core/net/index.ts` `TYPES`): 应用包里的文件经 `fetch` / XHR 读到时按扩展名给 `Content-Type`, 只列页面加载要的类型
   (HTML、脚本、样式、JSON、wasm、字体、图片、音视频), 固定、和系统无关; 别的 (文稿、表格、压缩包、`.md` …) 是 `application/octet-stream` (#106).

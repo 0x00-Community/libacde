@@ -28,10 +28,46 @@ constants(DOMException, Object.fromEntries(('INDEX_SIZE DOMSTRING_SIZE HIERARCHY
   'NOT_SUPPORTED INUSE_ATTRIBUTE INVALID_STATE SYNTAX INVALID_MODIFICATION NAMESPACE INVALID_ACCESS VALIDATION TYPE_MISMATCH SECURITY NETWORK ABORT ' +
   'URL_MISMATCH QUOTA_EXCEEDED TIMEOUT INVALID_NODE_TYPE DATA_CLONE').split(' ').map((name, i) => [`${name}_ERR`, i + 1])))
 
+export interface QuotaExceededErrorOptions {
+  quota?: number
+  requested?: number
+}
+
+export class QuotaExceededError extends DOMException {
+  readonly #quota: number | null
+  readonly #requested: number | null
+
+  constructor(message = '', options: QuotaExceededErrorOptions | null = {}) {
+    super(message, 'QuotaExceededError')
+    const amount = (value: unknown, what: string): number | null => {
+      if (value === undefined) return null
+      const n = Number(value)
+      if (!Number.isFinite(n)) throw new TypeError(`Failed to construct 'QuotaExceededError': The provided ${what} value is non-finite.`)
+      if (n < 0) throw new RangeError(`Failed to construct 'QuotaExceededError': The ${what} value must be non-negative.`)
+      return n
+    }
+    this.#quota = amount(options?.quota, 'quota')
+    this.#requested = amount(options?.requested, 'requested')
+    if (this.#quota !== null && this.#requested !== null && this.#requested < this.#quota) {
+      throw new RangeError(`Failed to construct 'QuotaExceededError': The requested value must not be less than the quota.`)
+    }
+  }
+
+  get quota(): number | null {
+    return this.#quota
+  }
+
+  get requested(): number | null {
+    return this.#requested
+  }
+}
+tag(QuotaExceededError)
+
 const NATIVE = /^([A-Z][A-Za-z]*Error): ([\s\S]*)$/
 
 export function nativeException(message: string, fallback?: string): DOMException | null {
   const m = NATIVE.exec(message)
+  if (m && m[1] === 'QuotaExceededError') return new QuotaExceededError(m[2])
   if (m && (fallback || m[1]! in CODES)) return new DOMException(m[2], m[1])
   return fallback ? new DOMException(message, fallback) : null
 }

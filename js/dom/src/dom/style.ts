@@ -468,15 +468,24 @@ export class CSSStyleSheet implements RuleOwner {
   readonly #href: string | null = null
   readonly #opaque: boolean = false
   #list: CSSRuleList | null = null
-  disabled = false
+  #disabled = false
 
   constructor(options?: { media?: string; disabled?: boolean }, owner: Element | null = null) {
     this.#owner = owner
-    this.disabled = !!options?.disabled
+    if (!owner) this.#disabled = !!options?.disabled
     if (!owner || dom.localName(owner[ID]) !== 'link') return
     this.#serial = dom.sheetSerial(owner[ID])
     this.#href = dom.sheetUrl(owner[ID])
     this.#opaque = dom.sheetOpaque(owner[ID])
+  }
+
+  get disabled(): boolean {
+    return this.#owner ? dom.sheetDisabled(this.#owner[ID]) : this.#disabled
+  }
+  set disabled(value: boolean) {
+    if (!this.#owner) return void (this.#disabled = !!value)
+    dom.setSheetDisabled(this.#owner[ID], !!value)
+    changed()
   }
 
   get ownerNode(): Element | null {

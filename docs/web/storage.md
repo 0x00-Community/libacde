@@ -7,7 +7,8 @@
   WAL, 坏了挪成 `.bad-<毫秒>` 再从空的开始, 打不开就只在内存里, 都打 warn).
   - `localStorage`: 同一应用的所有窗口共用一份 (`LocalArea`, 内存里的表是准的, 改动由 `acde-storage` 线程按顺序批量写进
     `localstorage.sqlite3`); 键和值按 UTF-16 存 (单独的代理项原样保留); 配额 5 MiB, 按键和值的 UTF-16 码元数算, 超了 `setItem` 抛
-    `QuotaExceededError` 且不改; 别的窗口改了发 `storage` 事件 (`StorageEvent`, `url` 是改的那个页面当时的地址, `storageArea` 是
+    `QuotaExceededError` 且不改 (WebIDL 的 `QuotaExceededError` 类, `DOMException` 的子类, `quota` / `requested` 都是 null, acdev#62); 别的窗口改了发
+    `storage` 事件 (`StorageEvent`, 构造和 `initStorageEvent` 照 HTML, acdev#61; `url` 是改的那个页面当时的地址, `storageArea` 是
     `localStorage`), 改的窗口自己不收. 命名属性照 WebIDL: 原型上有的名字 (`key`、`length` …) 不当成条目, 赋值一律存. 老版本的
     `$XDG_CONFIG_HOME/acde/storage/app-<id>.json` / `<desktop>.json` 在第一次建库时导入, 改名成 `.json.imported` (只在没设 `ACDE_STORAGE` 时).
   - `sessionStorage`: 每个 web 自己的, 只在内存, 配额同上; `location.reload()` 重起 web, 不保留 (标准里同一个浏览上下文要保留, 是缺口).

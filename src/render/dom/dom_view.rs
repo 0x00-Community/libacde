@@ -440,6 +440,18 @@ impl Dom {
         })
     }
 
+    pub fn sheet_disabled(&self, id: u32) -> Result<bool> {
+        self.on(id, |e, node| e.doc.stylesheet_disabled(node))
+    }
+
+    pub fn set_sheet_disabled(&self, id: u32, disabled: bool) -> Result<()> {
+        self.write(|e| {
+            let node = e.n(id)?;
+            e.doc.set_stylesheet_disabled(node, disabled);
+            Ok(())
+        })
+    }
+
     pub fn sheet_delete_rule(&self, id: u32, index: u32) -> Result<()> {
         self.write(|e| {
             e.doc.stylesheet_delete_rule(e.n(id)?, &[], index as usize).map_err(|err| fail(err.dom_exception_name(), format!("cannot delete rule {index}")))
