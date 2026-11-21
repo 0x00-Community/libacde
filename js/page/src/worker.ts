@@ -200,7 +200,6 @@ export default async function boot(natives: WebNatives): Promise<void> {
     throw new Error(`${init.name} serves no ${service}.${method}`)
   })
   let devhot = (): void => {}
-  let panels: Pinned | null = null
   const managerPower = new WatchFeed()
   const fsRoots = new Notices()
   port.onMessage((message) => {
@@ -223,8 +222,6 @@ export default async function boot(natives: WebNatives): Promise<void> {
     }
     if (launched?.take(m)) return
     switch (m.type) {
-      case 'panelended':
-        return panels?.ended(Number((m as { id?: unknown }).id), (m as { why?: unknown }).why)
       case 'menukeys':
         web.menuKeys = Array.isArray((m as { keys?: unknown }).keys) ? ((m as { keys: unknown[] }).keys.map(String)) : []
         return
@@ -283,8 +280,8 @@ export default async function boot(natives: WebNatives): Promise<void> {
   if (init.kind === 'desktop') {
     web.onFirstFrame = () => void rpc.call('page', 'shown').catch(() => undefined)
     const pinned = new Pinned(rpc, surface, dom, page as never, init.anchors === true)
-    panels = pinned
     web.onPanelMove = (id, extent) => pinned.extend(id, extent)
+    web.onPanelEnded = (id, why) => pinned.ended(id, why)
     bridge.value['desktop'] = {
       ...(bridge.value['desktop'] as object),
       pin: (element: Element, options?: PinOptions) => pinned.pin(element, options),

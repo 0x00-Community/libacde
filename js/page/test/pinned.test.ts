@@ -159,7 +159,7 @@ test('closed: unpinned after unpin, parent-closed or refused when the window sys
   const handle = anchored.pinned.pin(anchored.element as unknown as Element, { anchor: ANCHOR })
   anchored.answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  anchored.pinned.ended(1048577, 'parent-closed')
+  anchored.pinned.ended(7, 'parent-closed')
   assert.equal(await handle.closed, 'parent-closed')
   assert.ok(anchored.calls.some((c) => c[0] === 'closePanel'))
   assert.deepEqual(anchored.calls.filter((c) => c[0] === 'rpc panel.close').at(-1), ['rpc panel.close', 1048577])

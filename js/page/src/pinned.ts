@@ -120,9 +120,9 @@ export class Pinned {
     return anchorOf(given)
   }
 
-  ended(window: number, why: unknown): void {
-    const panel = [...this.#panels.values()].find((p) => p.window === window)
-    if (panel) this.#unpin(panel, why === 'parent-closed' ? 'parent-closed' : 'refused')
+  ended(id: number, why: 'parent-closed' | 'refused'): void {
+    const panel = [...this.#panels.values()].find((p) => p.id === id)
+    if (panel) this.#unpin(panel, why)
   }
 
   static #exclusive(keyboard: unknown): boolean {
