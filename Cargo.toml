@@ -169,7 +169,7 @@ napi = []
 # render: blitz-dom's per-phase timings in the log
 phase-times = ["blitz-dom/log-phase-times"]
 # render: acss (our CSS engine, AC/acss) follows the DOM beside Stylo; ACSS_AUDIT=1 audits its element table, ACSS_SHADOW=1 compares computed values
-acss = ["blitz-dom/acss"]
+acss = ["blitz-dom/acss", "blitz-dom/writing-mode"]
 
 [build-dependencies]
 cbindgen = { version = "=0.29.4", default-features = false }
