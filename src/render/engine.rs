@@ -414,7 +414,7 @@ impl Engine {
         let plane = self.plane(commands, scale, viewport);
         let panels = panels.into_iter().map(|p| self.panel(p, scale)).collect();
         let framed = crate::log::now_ms();
-        Frame { plane, panels, size: (width, height), animating, commit, trace: self.trace.take().map(|t| crate::log::Trace { framed, ..t }) }
+        Frame { plane, panels, size: (width, height), scale, animating, commit, trace: self.trace.take().map(|t| crate::log::Trace { framed, ..t }) }
     }
 
     pub(crate) fn tree(&mut self) -> Tree<'_> {
