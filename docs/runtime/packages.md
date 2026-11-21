@@ -42,8 +42,11 @@
 不列 acdev 自己的、`Hidden` / `NoDisplay`、程序找不到的.
 
 **契约级别** (`apiLevel`): 每个包清单的 `acde` 字段带一个整数 `apiLevel`, 运行时的级别只在本仓库的 `acde-api/api-level` (只写一个数字) 定义 (acde-host 经
-`@acde/api/manifest` 读, `<运行时> --version` 编译时从这个文件读). 级别不同或不是正整数的包 (`Packages.refused`) 不进应用列表、
-桌面列表和打开方式, 启动它的应用报 `<id>: needs level N, runtime is level M` (409, `api_level`), 选它的桌面同样报错. 没有 `apiLevel` 的包
+`@acde/api/manifest` 读, `<运行时> --version` 编译时从这个文件读). **最低支持级别** (2026-11-21, 接口只加不改、各协议声明最低版本与当前版本):
+`acde-api/min-api-level` (同样只写一个数字, 1 ≤ 它 ≤ `api-level`, 现在也是 1), `@acde/api/manifest` 导出 `MIN_API_LEVEL`; 包的 `apiLevel` 在
+`MIN_API_LEVEL..=API_LEVEL` 里就收 (`Manifest.supports`), 否则 `Manifest.refusal` 报 `needs level N, runtime is level M` (两者相同时) 或
+`needs level N, runtime supports levels L–M`; acdes 的管家登记清单时按同一范围 (它编译时读这两个文件). 级别不在范围里或不是正整数的包 (`Packages.refused`) 不进应用列表、
+桌面列表和打开方式, 启动它的应用报上面那句 (409, `api_level`), 选它的桌面同样报错. 没有 `apiLevel` 的包
 (第 1 级之前构建的) 同样拒绝, 报 `Manifest.UNVERSIONED` (`no acde.apiLevel: ...; rebuild it with the current acdev (level 1)`), 要用现在的 acdev
 重新构建; 校验器也把它当错误. 第 0 级 (契约级别之前的扩展期形态) 已全部去掉. acde-host 自己的包不查.
 现在的契约是第 1 级.

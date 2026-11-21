@@ -26,6 +26,7 @@
   },
   "files": [
     "src",
-    "api-level"
+    "api-level",
+    "min-api-level"
   ]
 }

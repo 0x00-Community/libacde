@@ -24,7 +24,7 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 >   还是经 `rpc.ts` / `remote.ts` 调到 Broker (见 `docs/runtime/webs.md`「通信」); 服务的 `ctx.spawn` 起的进程不受清单约束.
 
 `web/` (acde-api、acde-dom、acde-host) 已于 91e7dd1e 删除 (CTO 决定). SDK 的替代品是 `acde-api/` 的 `@acde/api`, 只有类型声明
-(见 `docs/acde-api.md`). 契约级别只有一个来源: `acde-api/api-level` (只写一个数字的纯数据文件, 用户 2026-11-17 定), `src/host` 编译时
+(见 `docs/acde-api.md`). 契约级别只有一个来源: `acde-api/api-level` (只写一个数字的纯数据文件, 用户 2026-11-17 定; 最低支持级别在旁边的 `min-api-level`, 2026-11-21), `src/host` 编译时
 `include_str!` 读它, 清单规则 `manifest/level.ts` 也读它; 清单规则在 `manifest/`, 运行时的页面一侧和 acdev 的命令行共用. 网页接口层 (原 acde-dom)
 和页面胶水 (原 acde-host 的页面一侧) 在 `js/`, 作运行时内部组件嵌进二进制 (见 `docs/runtime/layout.md`「js」); 管理中枢 (broker.js) 没有取回.
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { API_LEVEL, Manifest, type PackageManifest } from '@acde/api/manifest'
+import { API_LEVEL, MIN_API_LEVEL, Manifest, type PackageManifest } from '@acde/api/manifest'
 
 const files = new Set(['desktop/index.html', 'desktop/lock.html'])
 
@@ -54,5 +54,19 @@ describe('the backend of a desktop', () => {
       { name: 'assistant', modules: [], backend: 'agent' },
       { name: 'files', modules: [] },
     ])
+  })
+})
+
+describe('the contract levels a runtime takes', () => {
+  test('every level from the lowest supported to the current one, and no other', () => {
+    assert.ok(MIN_API_LEVEL >= 1 && MIN_API_LEVEL <= API_LEVEL)
+    for (let level = MIN_API_LEVEL; level <= API_LEVEL; level++) {
+      assert.equal(Manifest.supports(level), true)
+      assert.equal(Manifest.refusal(level), null)
+    }
+    assert.equal(Manifest.supports(API_LEVEL + 1), false)
+    assert.equal(Manifest.supports(MIN_API_LEVEL - 1), false)
+    const runtime = MIN_API_LEVEL === API_LEVEL ? `is level ${API_LEVEL}` : `supports levels ${MIN_API_LEVEL}–${API_LEVEL}`
+    assert.equal(Manifest.refusal(API_LEVEL + 1), `needs level ${API_LEVEL + 1}, runtime ${runtime}`)
   })
 })

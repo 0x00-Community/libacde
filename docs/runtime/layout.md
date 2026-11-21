@@ -24,8 +24,8 @@
 `web/` 于 acdert 91e7dd1e 删除 (CTO 决定) 后, 网页接口层和页面胶水按 system 第一个里程碑 (gitea `AC/acdebin-system#15`, 工作项 05;
 用户 2026-11-17: "不出现 JS" 只针对 SDK) 从 git 历史 (91e7dd1e^) 取回, 放在 `js/`, 是运行时的内部组件: 不发布、不进 SDK,
 也不再有单独的 `web.js` 文件. `build.rs` 用 bun (`ACDEV_BUN`, 默认 `bun`) 把 `js/page/src/worker.ts` 打成一个 ES 模块
-(`$OUT_DIR/page.js`, 压缩空白和语法、保留名字), 契约级别取 `acde-api/api-level`、版本取包版本 (`ACDEV_API_LEVEL`、
-`ACDEV_RUNTIME_VERSION` 两个 define), `src/host/web.rs` 用 `include_str!` 嵌进二进制, web 线程从 `acde-runtime:/page.js` 加载它
+(`$OUT_DIR/page.js`, 压缩空白和语法、保留名字), 契约级别取 `acde-api/api-level`、最低支持级别取 `acde-api/min-api-level`、版本取包版本 (`ACDEV_API_LEVEL`、
+`ACDEV_MIN_API_LEVEL`、`ACDEV_RUNTIME_VERSION` 三个 define), `src/host/web.rs` 用 `include_str!` 嵌进二进制, web 线程从 `acde-runtime:/page.js` 加载它
 (`WebLoader` 认这个地址); 同样把 `js/page/src/webworker.ts` 打成 `webworker.js`, Web Worker 的线程从 `acde-runtime:/webworker.js` 加载它
 (它只引 acde-dom 的 `core/` 和 `worker/`, 不带 DOM). 所以构建运行时库要有 bun. 打包命令只在 `js/bundle.ts` 一处 (`bun bundle.ts [输出目录] [版本]`, 默认 `js/dist`, `build.rs` 也调它).
 调试版运行时设了 `ACDEV_JS_DIR` 时从那个目录读 `page.js`、`webworker.js`、`launcher.js`, 读不到才用内嵌的 (发布版只用内嵌的): 改 `js/` 后
