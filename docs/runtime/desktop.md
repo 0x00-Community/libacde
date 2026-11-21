@@ -189,6 +189,7 @@
 - 服务只用 `ServiceContext` 和标准接口, 外壳模块按清单的 `modules` 给. 服务的 `api` 是一组命名空间, 页面以 `acde:<命名空间>` 导入; 应用要在自己清单的
   `services` 里写服务名才能用.
 - 页面和服务的起停互不等待: 页面用 `acde:services` 跟上服务的出现和消失.
+- 页面传给服务的回调 (订阅等) 在页面释放或关掉时作废; 服务用 `ctx.releaseSignal(回调)` 拿一个 `AbortSignal`, 在它 `abort` 时清掉为这个回调留下的东西 (细节见 `docs/runtime/layout.md`「服务模式」).
 - 有角色的服务经 `ctx.backend.connect()` 连桌面后台, 连接由管家代办, 服务不碰后台的套接字和令牌; 后台在不在看 `ctx.backend.up` 和 `onChange` (细节见 `docs/runtime/layout.md`「连桌面后台」).
 
 ## 必须和可以

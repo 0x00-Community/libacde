@@ -6,7 +6,7 @@ import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/app/calls.ts'
 import { sessionOf, type Welcome } from '../src/manager/manager.ts'
 import { WindowSnapshots } from '../src/app/events.ts'
-import { backendUp, incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
+import { backendUp, Callbacks, incomingCall, released, ServiceHost, shapeOf, withCallbacks } from '../src/manager/service.ts'
 
 bindNatives({ host: {}, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
 
@@ -274,6 +274,31 @@ describe('the desktop backend reaches the service', () => {
     assert.equal(backendUp({ type: 'backend', up: 'yes' } as never), false)
     assert.equal(backendUp({ type: 'backend' } as never), false)
     assert.equal(backendUp({ type: 'release', up: true } as never), undefined)
+  })
+})
+
+describe('a service hears when a caller lets go of a callback', () => {
+  test('releaseSignal gives one AbortSignal per callback number; release aborts it and silences the callback', () => {
+    const callbacks = new Callbacks()
+    const sent: unknown[][] = []
+    const first = callbacks.make(7, (args) => void sent.push(args))
+    const again = callbacks.make(7, (args) => void sent.push(args))
+    const other = callbacks.make(8, () => {})
+    const signal = callbacks.signal(first)
+    assert.equal(callbacks.signal(again), signal)
+    assert.equal(signal.aborted, false)
+    let heard = 0
+    signal.addEventListener('abort', () => heard++)
+    first('a')
+    callbacks.release(7)
+    first('b')
+    assert.deepEqual(sent, [['a']])
+    assert.equal(heard, 1)
+    assert.equal(signal.aborted, true)
+    assert.equal(callbacks.signal(again).aborted, true)
+    assert.equal(callbacks.signal(other).aborted, false)
+    assert.throws(() => callbacks.signal(() => {}), TypeError)
+    assert.throws(() => callbacks.signal('x'), /not a callback a caller passed/)
   })
 })
 

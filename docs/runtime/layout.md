@@ -74,7 +74,9 @@
   服务拿不到 napi 导出本身, 2026-11-20 起没有 `native`) 调它的默认导出;
   起好后向管家发 `{ready: {provides: {命名空间: {methods, values, sync, callable}}}}` (形状同旧管理中枢). 管家转来的调用
   (`{type: 'call', id, service, method, args}`, `method` 为空串时调命名空间本身) 里的 `{__acdeFn: g}` 换成回调, 回调发
-  `{invoke: {fn: g, args}}`; 收到 `release` 后这个回调不再发. 应答 `{id, ok}` 或 `{id, error: {status, code, message}}`.
+  `{invoke: {fn: g, args}}`; 收到 `release` 后这个回调不再发. 服务代码要知道调用方放手了 (如关窗后清掉订阅) 时用
+  `ctx.releaseSignal(回调)` (2026-11-21): 给这个回调一个标准 `AbortSignal`, 同一个编号的回调共用一个, 收到它的 `release` (页面释放或断开时管家发)
+  就 abort, 已释放的直接给已 abort 的; 传的不是调用方给的回调时抛 `TypeError`. 应答 `{id, ok}` 或 `{id, error: {status, code, message}}`.
   `managerclosed` 时调 `close()`、停掉它起的子进程 (最多 3 秒) 后以 0 退出. 从开始答调用到 `managerclosed` 之间挂着一个计时器保活
   (`holdTheLoop`): 服务模块里没有别的挂起任务时, 事件循环也不会空了就结束 (2026-11-18 大联测里 5 个服务 ready 后十几秒内自己退出过). 需要 system 的 `native.Manager` 提供 `send(帧)`, 并把转来的调用和
   `release` 从 `pump()` 交出 (`{type: 'call', ...}`、`{type: 'release', fn}`, 也认不带 `type` 的原帧).
