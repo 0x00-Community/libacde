@@ -1,7 +1,7 @@
 use crate::gpu::{Glyph, PaintScene, Scene};
+use blitz_dom::parley::fontique::{Collection, CollectionOptions, SourceCache};
+use blitz_dom::parley::{FontContext, FontFamily, FontWeight, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use kurbo::{Affine, BezPath, Circle, Line, Rect, RoundedRect, Shape, Stroke, Vec2};
-use parley::fontique::{Collection, CollectionOptions, SourceCache};
-use parley::{FontContext, FontFamily, FontWeight, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use peniko::{Color, Fill};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -587,14 +587,14 @@ impl Decoration {
         builder.push_default(StyleProperty::FontSize(Self::FONT_SIZE));
         builder.push_default(StyleProperty::FontWeight(FontWeight::new(weight)));
         builder.push_default(StyleProperty::LineHeight(LineHeight::FontSizeRelative(1.0)));
-        builder.push_default(StyleProperty::Locale(parley::Language::parse("zh-Hans").ok()));
+        builder.push_default(StyleProperty::Locale(blitz_dom::parley::Language::parse("zh-Hans").ok()));
         let mut layout = builder.build(text);
         layout.break_all_lines(None);
         layout
     }
 }
 
-pub(crate) fn draw_line(scene: &mut Scene, line: &parley::Line<'_, ()>, transform: Affine, color: Color) {
+pub(crate) fn draw_line(scene: &mut Scene, line: &blitz_dom::parley::Line<'_, ()>, transform: Affine, color: Color) {
     for item in line.items() {
         let PositionedLayoutItem::GlyphRun(run) = item else { continue };
         let glyphs = run.positioned_glyphs().map(|g| Glyph { id: g.id as _, x: g.x, y: g.y });

@@ -906,7 +906,7 @@ impl Canvas {
         self.layered(bounds, |s| {
             Self::clipped(s, clip.as_ref(), |s| {
                 for item in line.items() {
-                    let parley::PositionedLayoutItem::GlyphRun(run) = item else { continue };
+                    let blitz_dom::parley::PositionedLayoutItem::GlyphRun(run) = item else { continue };
                     let glyphs = run.positioned_glyphs().map(|g| crate::gpu::Glyph { id: g.id as _, x: g.x, y: g.y });
                     let r = run.run();
                     let coords: &[i16] = bytemuck::cast_slice(r.normalized_coords());
@@ -955,10 +955,10 @@ impl Canvas {
         self.bitmap = Default::default();
     }
 
-    fn extents(line: &parley::Line<blitz_dom::node::TextBrush>) -> (f64, f64) {
+    fn extents(line: &blitz_dom::parley::Line<blitz_dom::node::TextBrush>) -> (f64, f64) {
         line.items()
             .filter_map(|item| match item {
-                parley::PositionedLayoutItem::GlyphRun(run) => Some(*run.run().font_metrics()),
+                blitz_dom::parley::PositionedLayoutItem::GlyphRun(run) => Some(*run.run().font_metrics()),
                 _ => None,
             })
             .fold((0.0, 0.0), |(a, d), m| (f64::max(a, m.ascent.into()), f64::max(d, m.descent.into())))

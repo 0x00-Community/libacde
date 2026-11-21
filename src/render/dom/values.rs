@@ -40,13 +40,16 @@ pub(super) fn ns_of(name: &QualName) -> Ns {
     }
 }
 
-pub(super) fn css_context(url: &style::stylesheets::UrlExtraData, rule: style::stylesheets::CssRuleType) -> style::parser::ParserContext<'_> {
-    style::parser::ParserContext::new(
-        style::stylesheets::Origin::Author,
+pub(super) fn css_context(
+    url: &blitz_dom::style::stylesheets::UrlExtraData,
+    rule: blitz_dom::style::stylesheets::CssRuleType,
+) -> blitz_dom::style::parser::ParserContext<'_> {
+    blitz_dom::style::parser::ParserContext::new(
+        blitz_dom::style::stylesheets::Origin::Author,
         url,
         Some(rule),
-        style_traits::ParsingMode::DEFAULT,
-        style::context::QuirksMode::NoQuirks,
+        blitz_dom::style_traits::ParsingMode::DEFAULT,
+        blitz_dom::style::context::QuirksMode::NoQuirks,
         Default::default(),
         None,
         None,

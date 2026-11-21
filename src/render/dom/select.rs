@@ -1,6 +1,6 @@
 use blitz_dom::node::{SelectItemKind, SelectPicker};
+use blitz_dom::style_dom::ElementState;
 use blitz_dom::{NodeId, local_name, ns};
-use style_dom::ElementState;
 
 use crate::render::engine::Engine;
 use crate::render::geometry::Geometry;
