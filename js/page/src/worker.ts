@@ -30,6 +30,7 @@ import { RemoteBridge, WindowList, WindowSelf } from './remote'
 import { Permits } from './broker/access/approval/permits'
 import type { Approval } from './broker/access/approval/permissions'
 import type { CapabilityStatus } from '@acde/api/manifest'
+import type { PinOptions } from '@acde/api'
 import { Rpc } from './rpc'
 import { OfficePage } from './office'
 import { readFileSync, readTextOr } from './sys/fs'
@@ -278,11 +279,12 @@ export default async function boot(natives: WebNatives): Promise<void> {
   }
   if (init.kind === 'desktop') {
     web.onFirstFrame = () => void rpc.call('page', 'shown').catch(() => undefined)
-    const pinned = new Pinned(rpc, surface, dom, page as never)
+    const pinned = new Pinned(rpc, surface, dom, page as never, init.anchors === true)
     web.onPanelMove = (id, extent) => pinned.extend(id, extent)
+    web.onPanelEnded = (id, why) => pinned.ended(id, why)
     bridge.value['desktop'] = {
       ...(bridge.value['desktop'] as object),
-      pin: (element: Element, options?: { margin?: number }) => pinned.pin(element, options),
+      pin: (element: Element, options?: PinOptions) => pinned.pin(element, options),
       ...Frame.grabs(surface),
     }
   }

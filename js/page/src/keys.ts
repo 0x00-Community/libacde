@@ -91,6 +91,7 @@ export class ShellInput {
       case 'frame': return { type: 'frame', time: raw.time ?? performance.now() }
       case 'close': return { type: 'close' }
       case 'panelmove': return { type: 'panelmove', id: raw.code ?? 0, x: raw.x ?? 0, y: raw.y ?? 0, width: raw.width ?? 0, height: raw.height ?? 0 }
+      case 'panelended': return { type: 'panelended', id: raw.code ?? 0, why: raw.key === 'parent-closed' ? 'parent-closed' : 'refused' }
       case 'exit': return { type: 'exit' }
       case 'resize': return { type: 'resize', width: raw.width ?? 0, height: raw.height ?? 0, scale: raw.scale ?? this.#scale }
       case 'dndenter': return { type: 'dndenter', target: this.#hitTest(raw.x ?? 0, raw.y ?? 0), x: raw.x ?? 0, y: raw.y ?? 0, mime: raw.mime ?? [] }

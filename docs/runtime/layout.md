@@ -102,7 +102,11 @@
 - **两种都留在本进程的调用** (`js/launcher/src/app/calls.ts` 的 `route`): `window.close` 和以自己窗口号调的 `windows.close` 关掉窗口 (结束页面线程,
   进程随之退出); `window.minimize`、`window.requestState('minimized')` 让页面自己最小化 (其余状态回 501); `window.reload([url])` 结束页面线程、
   对同一个窗口重新授予后再起 (url 须在 `http://acde.local/` 下); `capabilities.get/list` 按清单声明回 `available` / `not-declared`
-  (临时, 不看平台与逐次同意). 桌面另答 `panel.open/place/close` (钉住的面板, 同旧管理中枢) 和 `windows.*` (`close`、`kill`、`focus`、`hide`、
+  (临时, 不看平台与逐次同意). 桌面另答 `panel.open/place/anchor/close` (钉住的面板, 同旧管理中枢; 锚定弹出时 `open` 带第二个参数 `anchor`
+  `{window, x, y, width, height, edge, align, adjust, visible}` 交给窗口系统的 `grant({mode: 'pinned', rect, anchor})`, `anchor` 转 `reanchor(id, anchor)`;
+  父窗口关了或这次被拒时窗口客户端在桌面页的界面事件里发 `panelended` (`code` 是开面板时的面板号, `key` 是 `parent-closed` / `refused`,
+  同 `panelmove` 的路子, 不经启动器), 页面里的面板收尾并兑现 `closed`; 窗口系统的只读 `anchors` 为真时页面初始化数据带
+  `anchors: true`, 否则页面的 `pin` 带 `anchor` 抛 `NotSupportedError`) 和 `windows.*` (`close`、`kill`、`focus`、`hide`、
   `show`、`requestState`、`screenshot(path)` (PrintScreen 那条, 参数是路径)、`animate`、`stats`、`shortcut`、`unshortcut`、`place`、虚拟桌面的 `addDesk`、`removeDesk`、
   `showDesk`、`moveToDesk` 交给窗口系统对象的同名方法 (acdes 里是 `native.Windows.connect()`, acdev 宿主窗口里是 `native.Shell.broker()`; `animate`、`stats` 在 acdes 里不做事); `launch` 有管家时转给 `launch.start`;
   多屏方案 A 的副屏壁纸 `setWallpaper({color, image?})` 只给桌面页, 先查 `color` 是 `#rrggbb` / `#rrggbbaa` (否则 400 `bad_color`)、`image` 是绝对路径或 null

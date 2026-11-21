@@ -111,7 +111,7 @@
 
 ## 面板与占边
 
-`acde:desktop.pin(element, {margin?, reserve?, keyboard?})` → `PinnedPanel` (机制见 `docs/runtime/webs.md`「钉住的面板」):
+`acde:desktop.pin(element, {margin?, reserve?, keyboard?, anchor?})` → `PinnedPanel` (机制见 `docs/runtime/webs.md`「钉住的面板」):
 
 - 元素变成单独的面板, 盖在所有应用窗口上面, 但状态和 DOM 还在桌面页这一个文档里 (同一棵组件树, 同一份事件). 元素要是 stacking context,
   不带祖先的裁剪和透明度; 输入区域就是元素的盒子 (`pointer-events: none` 或不可见时为空), 元素变了运行时自动重量, `update()` 立即重量,
@@ -123,6 +123,16 @@
 - `keyboard`: `'on-demand'` (默认, 点到面板才拿键盘, 菜单栏、Dock) 或 `'exclusive'` (面板显示期间独占键盘, 收起后键盘回原窗口; 弹出菜单、确认卡这类
   用键盘打开、要马上接按键的). 面板拿到键盘之后, 按键交给桌面页的焦点元素: 面板打开时要把页面焦点放进面板.
 - 桌面页本身和 `on-demand` 面板一样: 点到才拿键盘.
+- **锚定弹出** (`anchor: {window, x, y, width?, height?, edge?, align?, adjust?}`, 2026-11-21, 总仓 `.scratch/system/anchored-popup.md`): 菜单、提示气泡、
+  下拉框这类跟着某扇窗里某个位置的面板, 不给屏幕坐标, 只说锚在窗口 `window` (`windows.list()` 的窗口号) 内容区的矩形 `(x, y, width, height)` 上
+  (那扇窗页面的 CSS 像素, 宽高缺省 0 即一个点); 合成器按真实窗框和缩放把面板放在它的 `edge` 边 (缺省 `bottom`), 沿边 `align` 对齐 (`start` /
+  `center` / `end`, 缺省 `start`), 放不下时 `adjust` 里的 `flip` 换到对边、`slide` 平移进屏幕 (缺省两个都要, 空数组都不要); 跟着父窗口移动和隐藏,
+  父窗口关了一起收起. 贴边按元素本身算 (运行时把元素在面板里的位置交给合成器), `margin` 留的阴影位置不让它偏. 页面里元素的位置不再决定屏幕位置,
+  元素仍要在桌面页可见范围里布局. 已钉住的用 `anchor(next)` 换锚点 (下拉框跟着输入框滚动). 不能和 `reserve` 同给, 也不能和
+  `keyboard: 'exclusive'` 同给 (`TypeError`; 菜单要键盘走 `requestGrab`). 窗口系统不会放锚定面板 (老 acdes、acdev 宿主窗口) 时 `pin` 当场抛
+  `NotSupportedError`, 桌面可以退回自己换算坐标.
+- **`closed`**: 每个面板都带的 Promise, 面板结束时兑现: `'unpinned'` (页面 `unpin()`)、`'parent-closed'` (锚定的父窗口关了, 运行时已收起面板,
+  页面只清自己的状态)、`'refused'` (窗口系统这次不让锚: 窗口不存在、会话锁着等, 或面板根本没开出来).
 - 面板里的 `backdrop-filter` 交给合成器模糊下面的窗口 (acdes: 每个面板只取最大的一块).
 - 全屏窗口盖住面板所在的边时, 面板仍在最上面: 要给全屏让路, 桌面自己把面板变透明、不接指针 (按前台窗口的 `state`).
 

@@ -5,7 +5,7 @@ import type { Rpc } from '../src/rpc.ts'
 
 type Call = readonly [string, ...unknown[]]
 
-function harness(opacity = '1') {
+function harness(opacity = '1', anchors = false) {
   const calls: Call[] = []
   const listeners = new Map<string, () => void>()
   let answer: { resolve: (value: unknown) => void; reject: (error: Error) => void } | null = null
@@ -51,7 +51,7 @@ function harness(opacity = '1') {
     reservePanel: (...args: unknown[]) => calls.push(['reservePanel', ...args]),
   }
   const dom = { setPanel: (...args: number[]) => calls.push(['setPanel', ...args]) }
-  const pinned = new Pinned(rpc, surface as never, dom, page as never)
+  const pinned = new Pinned(rpc, surface as never, dom, page as never, anchors)
   return { calls, listeners, style, element, pinned, page, answer: () => answer! }
 }
 
@@ -121,4 +121,50 @@ test('after the viewport shrinks, an extent drawn before it is dropped and the p
   element.getBoundingClientRect = () => ({ left: 200, top: 20, right: 300, bottom: 70, width: 100, height: 50 })
   handle.update()
   assert.deepEqual(calls.filter((c) => c[0] === 'placePanel').at(-1), ['placePanel', 7, 200, 20, 100, 50, 0, 0, 100, 50])
+})
+
+const ANCHOR = { window: 12, x: 40, y: 8 }
+const WIRE = { window: 12, x: 40, y: 8, width: 0, height: 0, edge: 'bottom', align: 'start', adjust: ['flip', 'slide'], visible: [0, 0, 100, 50] }
+
+test('anchor: without anchored panels in the window system pin throws NotSupportedError, with reserve or an exclusive keyboard TypeError', () => {
+  const plain = harness()
+  assert.throws(() => plain.pinned.pin(plain.element as unknown as Element, { anchor: ANCHOR }), { name: 'NotSupportedError' })
+  const { element, pinned, calls } = harness('1', true)
+  assert.throws(() => pinned.pin(element as unknown as Element, { anchor: ANCHOR, reserve: { edge: 'top' } }), TypeError)
+  assert.throws(() => pinned.pin(element as unknown as Element, { anchor: ANCHOR, keyboard: 'exclusive' }), TypeError)
+  assert.throws(() => pinned.pin(element as unknown as Element, { anchor: { ...ANCHOR, edge: 'middle' as never } }), /anchor.edge is one of/)
+  assert.throws(() => pinned.pin(element as unknown as Element, { anchor: { ...ANCHOR, window: 1.5 } }), /anchor.window/)
+  assert.deepEqual(calls, [])
+})
+
+test('anchor: the panel opens with the anchor filled in and the element box as what is visible; a new anchor goes to the window system', async () => {
+  const { calls, element, pinned, answer } = harness('1', true)
+  const handle = pinned.pin(element as unknown as Element, { anchor: ANCHOR })
+  assert.deepEqual(calls.find((c) => c[0] === 'rpc panel.open'), ['rpc panel.open', [10, 20, 100, 50], WIRE])
+  answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  assert.equal(calls.filter((c) => c[0] === 'rpc panel.anchor').length, 0)
+  handle.anchor!({ ...ANCHOR, edge: 'top', align: 'end', adjust: [] })
+  assert.deepEqual(calls.filter((c) => c[0] === 'rpc panel.anchor').at(-1), [
+    'rpc panel.anchor', 1048577, { ...WIRE, edge: 'top', align: 'end', adjust: [] },
+  ])
+})
+
+test('closed: unpinned after unpin, parent-closed or refused when the window system ends the panel, refused when it does not open', async () => {
+  const plain = harness()
+  const pinnedPlain = plain.pinned.pin(plain.element as unknown as Element)
+  pinnedPlain.unpin()
+  assert.equal(await pinnedPlain.closed, 'unpinned')
+  const anchored = harness('1', true)
+  const handle = anchored.pinned.pin(anchored.element as unknown as Element, { anchor: ANCHOR })
+  anchored.answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  anchored.pinned.ended(7, 'parent-closed')
+  assert.equal(await handle.closed, 'parent-closed')
+  assert.ok(anchored.calls.some((c) => c[0] === 'closePanel'))
+  assert.deepEqual(anchored.calls.filter((c) => c[0] === 'rpc panel.close').at(-1), ['rpc panel.close', 1048577])
+  const refused = harness('1', true)
+  const never = refused.pinned.pin(refused.element as unknown as Element, { anchor: ANCHOR })
+  refused.answer().reject(new Error('no'))
+  assert.equal(await never.closed, 'refused')
 })

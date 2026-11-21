@@ -37,6 +37,7 @@ export class Host {
   #move: RawShellEvent | null = null
   onActivation: (active: boolean) => void = () => {}
   onPanelMove: (id: number, extent: readonly [number, number, number, number]) => void = () => {}
+  onPanelEnded: (id: number, why: 'parent-closed' | 'refused') => void = () => {}
   onGrab: (event: WindowGrabEvent | WindowGrabLostEvent) => void = () => {}
   menuKeys: readonly string[] = []
   onMenuKey: (chord: string) => void = () => {}
@@ -121,6 +122,9 @@ export class Host {
         return this.#frame(event.time)
       case 'panelmove':
         return this.onPanelMove(event.id, [event.x, event.y, event.width, event.height])
+      case 'panelended':
+        this.onPanelEnded(event.id, event.why)
+        return
       case 'close':
       case 'exit':
         this.#closed = true

@@ -26,6 +26,7 @@ export interface WindowEvent {
 export type ShellEvent =
   | { type: 'frame'; time: number }
   | { type: 'panelmove'; id: number; x: number; y: number; width: number; height: number }
+  | { type: 'panelended'; id: number; why: 'parent-closed' | 'refused' }
   | { type: 'pointermove' | 'pointerdown' | 'pointerup'; target: number | null; x: number; y: number; button?: number; movement?: readonly [number, number]; modifiers?: Modifiers }
   | { type: 'pointerleave'; modifiers?: Modifiers }
   | { type: 'wheel'; target: number | null; x: number; y: number; deltaX: number; deltaY: number; modifiers?: Modifiers }
