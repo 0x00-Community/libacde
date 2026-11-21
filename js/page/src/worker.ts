@@ -1,5 +1,5 @@
 import { Notices } from './notices'
-import { install, installBackendTransport, observe } from '@acde/dom'
+import { install, installBackendTransport, linePort, observe } from '@acde/dom'
 import type { AudioNative, BackendTransport, CaptureNative, DeviceNative, DomNative, GpuNative, HostNative, StorageNative, WebglNative, WorkersNative } from '@acde/dom'
 import type { ServiceShape, WebInit } from './contract'
 import { BluetoothModule, type BluetoothNatives } from './bluetooth'
@@ -38,6 +38,7 @@ import { process } from './sys/process'
 import { StartupTimeline } from './timeline'
 import { WebAppPage } from './webapp'
 import { HostStrings } from './language'
+import { LaunchPort } from './launchport'
 import { SourceMaps } from './devlog'
 
 interface WebNatives extends Natives {
@@ -114,6 +115,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   }
   const permits = new Permits(init.tier?.approvals, init.app?.label ?? init.kind)
   const rpc = new Rpc((message) => port.post(message))
+  const launched = init.port ? new LaunchPort(init.port.data, linePort, (message) => port.post(message)) : null
   const access = {
     supported: (name: string) => init.tier?.capabilities?.statuses.find((s) => s.name === name)?.state !== 'unsupported',
     request: (name: string) => rpc.call('capabilities', 'request', [name]) as Promise<CapabilityStatus>,
@@ -217,6 +219,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
       approval?: Approval
       status?: CapabilityStatus
     }
+    if (launched?.take(m)) return
     switch (m.type) {
       case 'menukeys':
         web.menuKeys = Array.isArray((m as { keys?: unknown }).keys) ? ((m as { keys: unknown[] }).keys.map(String)) : []
@@ -364,6 +367,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
     }
   }
   await page.loadPage(html, fetched?.type)
+  launched?.hand(page.window as never)
   if (init.kind === 'window' && Frame.height(init.app) > 0) Frame.followScheme(page.window as never, surface, (run) => void setTimeout(run, 50))
   if (init.devState) {
     DevState.restore(page.window as never, init.devState as DevSnapshot, (restored, missed) =>

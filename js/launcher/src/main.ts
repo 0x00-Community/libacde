@@ -29,6 +29,7 @@ import { Inspect, type InspectHost, type InspectShell, type ShellWindow } from '
 import { GuestWindows } from './dev/guest'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
+import { PagePort } from './manager/pageport'
 
 interface Grant {
   readonly window: number
@@ -169,6 +170,7 @@ class Launcher {
   readonly #relay: DevRelay | null
   #devState: unknown = null
   readonly #backend: AppBackend | null
+  readonly #port: PagePort | null
 
   constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
     this.#shell = Launcher.shell(natives, session.label)
@@ -205,6 +207,8 @@ class Launcher {
       production: !process.env['ACDE_DEV'],
     }, process.env['ACDE_COLOR_SCHEME'] === 'dark')
     this.#backend = session.kind === 'app' && session.found?.app.backend ? new AppBackend(session.found) : null
+    const port = manager?.welcome.port
+    this.#port = port ? new PagePort(port.data ?? null, manager.connectBackend?.bind(manager), (line) => process.stderr.write(`acdev: ${line}\n`)) : null
   }
 
   static shell(natives: LauncherNatives, title: string): LauncherShell {
@@ -333,7 +337,8 @@ class Launcher {
     const lock = this.session.lock ? { lock: true } : {}
     const services = this.#services
     const dev = this.#dev.prepare(given.name, app)
-    const init: WebInit = { ...given, services, ...dev, ...this.#backend?.init(), session, ...lock, ...(state ? { devState: state } : {}) }
+    const extra = { ...this.#backend?.init(), ...this.#port?.init(), session, ...lock, ...(state ? { devState: state } : {}) }
+    const init: WebInit = { ...given, services, ...dev, ...extra }
     const rpc = new Rpc((message) => thread.post(message))
     rpc.serve((service, method, args) => this.#serve(service, method, args))
     const env = { ...Launcher.env(), ...(this.#shell.socketName && { WAYLAND_DISPLAY: this.#shell.socketName }) }
@@ -346,11 +351,13 @@ class Launcher {
     this.#rpc = rpc
     this.#thread = thread
     this.#init = init
+    this.#port?.open((message) => thread.post(message))
     if (this.#desktop) this.#catchUp(thread)
   }
 
   #fromPage(message: unknown, rpc: Rpc): void {
     if (this.#dev.take(message)) return
+    if (this.#port?.take(message)) return
     const chord = (message as { menukey?: unknown } | null)?.menukey
     if (typeof chord === 'string') return void this.#menuKey(chord)
     const call = message as { rpc?: string; id?: number; service?: string; method?: string; args?: unknown[] } | null
@@ -679,6 +686,7 @@ class Launcher {
       })
     }
     await this.#dev.settle(Launcher.DEV_SETTLE_MS)
+    this.#port?.close()
     await this.#backend?.close()
     return this.#ended
   }

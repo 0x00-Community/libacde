@@ -107,6 +107,91 @@ test('encoding, URL, structuredClone, crypto, atob, MessageChannel, AbortSignal.
   assert.deepEqual(web.host.logs, [[0, 'logged x 5 { k: [ 1 ] }'], [1, '<body>']])
 })
 
+test('MessagePort: closing one end fires close at the other, once; later messages are dropped; unstarted ports queue', async () => {
+  using web = await page()
+  const result = await web.run<Promise<string>>(`(async () => {
+    const out = []
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 5))
+    const channel = new MessageChannel()
+    let closes = 0, handler = 0
+    channel.port2.addEventListener('close', () => closes++)
+    channel.port2.onclose = () => handler++
+    channel.port1.close()
+    channel.port1.close()
+    await tick()
+    out.push(closes, handler, typeof channel.port1.onclose)
+    const quiet = new MessageChannel()
+    let heard = 0
+    quiet.port1.addEventListener('close', () => heard++)
+    quiet.port1.close()
+    await tick()
+    out.push(heard)
+    const queued = new MessageChannel()
+    const got = []
+    queued.port1.addEventListener('message', (e) => got.push(e.data))
+    queued.port2.postMessage('a'); queued.port2.postMessage('b')
+    await tick()
+    out.push(got.length)
+    queued.port1.start()
+    await tick()
+    out.push(got.join(''))
+    queued.port2.close()
+    queued.port2.postMessage('c')
+    await tick()
+    out.push(got.join(''))
+    return JSON.stringify(out)
+  })()`)
+  assert.deepEqual(JSON.parse(result), [1, 1, 'object', 0, 0, 'ab', 'ab'])
+})
+
+test('linePort: a MessagePort whose other end is lines of JSON, at most 256 KiB, with DataCloneError and messageerror', async () => {
+  using web = await page()
+  const result = await web.run<Promise<string>>(`(async () => {
+    const out = []
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 5))
+    const sent = []
+    let closed = 0
+    const line = __acdeDom.linePort({ send: (text) => sent.push(text), closed: () => closed++ })
+    const port = line.port
+    out.push(port instanceof MessagePort, __acdeDom.PORT_LIMIT)
+    port.postMessage({ a: [1, 'é', null, true] })
+    out.push(sent.join('|'))
+    const refused = (value) => { try { port.postMessage(value); return 'sent' } catch (e) { return e.name + ': ' + e.message } }
+    const loop = {}; loop.self = loop
+    out.push(refused(undefined), refused({ m: new Map() }), refused(NaN), refused(loop), refused(1n))
+    out.push(refused('x'.repeat(262144)), refused('x'.repeat(262142)))
+    const got = []
+    port.onmessage = (e) => got.push(JSON.stringify(e.data))
+    port.onmessageerror = () => got.push('error')
+    line.receive('{"b":2}')
+    line.receive('not json')
+    line.receive(null)
+    line.receive(JSON.stringify('y'.repeat(262143)))
+    line.receive('[3]')
+    await tick()
+    out.push(got.join('|'))
+    port.close()
+    await tick()
+    out.push(closed)
+    line.receive('[4]')
+    const other = __acdeDom.linePort({ send: () => {}, closed: () => {} })
+    let heard = 0
+    other.port.onclose = () => heard++
+    other.close()
+    await tick()
+    out.push(heard)
+    return JSON.stringify(out)
+  })()`)
+  const refusal = (why: string) => `DataCloneError: this port carries JSON only (${why})`
+  assert.deepEqual(JSON.parse(result), [
+    true, 262144, '{"a":[1,"é",null,true]}',
+    refusal('undefined values are not JSON'), refusal('Map values are not JSON'), refusal('NaN is not a JSON number'), refusal('it refers to itself'),
+    refusal('bigint values are not JSON'),
+    'DataCloneError: message is 262146 bytes, over the 262144-byte limit of this port', 'sent',
+    '{"b":2}|error|error|error|[3]', 1, 1,
+  ])
+})
+
 test('TextDecoder: the labels of the Encoding Standard, streaming any of them, RangeError for the rest', async () => {
   using web = await page()
   const result = web.run<string>(`(() => {
