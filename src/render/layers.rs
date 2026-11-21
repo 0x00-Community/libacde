@@ -31,6 +31,7 @@ impl Drawing {
 pub struct Layer {
     pub drawing: Drawing,
     pub bounds: Option<Rect>,
+    pub areas: Vec<Rect>,
     pub backdrop: Option<Backdrop>,
     pub filter: Option<LayerFilter>,
 }
@@ -316,7 +317,9 @@ impl<'a> Split<'a> {
         let (backdrop, filter) = (self.backdrop.take(), self.filter.take());
         if draws || backdrop.is_some() {
             let bounds = Damage::content_bounds(&kinds, &draw, self.viewport);
-            self.layers.push(Layer { drawing: Drawing { commands, tolerance: self.tolerance, draw }, bounds, backdrop, filter });
+            let spills = commands.iter().any(|(c, _)| matches!(c, RenderCommand::PushLayer(l) if l.blend.compose != peniko::Compose::SrcOver));
+            let areas = if spills { Vec::new() } else { Damage::content_areas(&kinds, &draw, self.viewport) };
+            self.layers.push(Layer { drawing: Drawing { commands, tolerance: self.tolerance, draw }, bounds, areas, backdrop, filter });
         }
     }
 

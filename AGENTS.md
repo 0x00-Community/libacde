@@ -28,6 +28,10 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 `include_str!` 读它, 清单规则 `manifest/level.ts` 也读它; 清单规则在 `manifest/`, 运行时的页面一侧和 acdev 的命令行共用. 网页接口层 (原 acde-dom)
 和页面胶水 (原 acde-host 的页面一侧) 在 `js/`, 作运行时内部组件嵌进二进制 (见 `docs/runtime/layout.md`「js」); 管理中枢 (broker.js) 没有取回.
 
+`acde:` 模块接口的版本化标准在 [AC/acde-RFC](http://gitea.dopamine/AC/acde-RFC) (并排检出 `../acde-RFC`): 每个版本 (`rfc/<x.y>/`, tag `<x.y>`)
+从 `acde-api/` 冻结一份声明, 配接口验证器和一致性测试 (`tests/<测试名>-<x.y>/index.js`); 0.1 冻结自 `acde-api` 09cf894. `acde-api/` 仍是正本,
+在这里改; RFC 只按版本收. 运行时是否符合某个版本, 以 acde-RFC 的 `runner/` 在运行时里跑的结果为准 (跑法见它的 README).
+
 ## 代码约定
 
 - 闭源 (用户定 2026-11-08): 自己的代码是专有的 (`LICENSE`), package.json 写 `"license": "UNLICENSED"`, Cargo.toml 不写 `license`.

@@ -15,6 +15,7 @@ const EXTENSIONS: [&std::ffi::CStr; 4] = [
 ];
 
 const SEMAPHORES: usize = 8;
+const WAITS: usize = 64;
 const VELLO_STORAGE_BUFFERS: u32 = 8;
 const VELLO_INVOCATIONS: u32 = 256;
 
@@ -48,6 +49,8 @@ pub struct Device {
     vello: Result<(), String>,
     semaphores: Vec<vk::Semaphore>,
     next: usize,
+    waits: Vec<vk::Semaphore>,
+    next_wait: usize,
 }
 
 impl Device {
@@ -116,9 +119,11 @@ impl Device {
 
     fn assemble(adapter: &wgpu::Adapter, (device, queue, tier): Opened, backend: Backend, vello: Result<(), String>) -> Self {
         let downlevel = adapter.get_downlevel_capabilities();
-        let mut opened = Self { device, queue, info: adapter.get_info(), backend, tier, downlevel, vello, semaphores: Vec::new(), next: 0 };
+        let mut opened =
+            Self { device, queue, info: adapter.get_info(), backend, tier, downlevel, vello, semaphores: Vec::new(), next: 0, waits: Vec::new(), next_wait: 0 };
         if backend == Backend::Vulkan {
             opened.semaphores = opened.create_semaphores();
+            opened.waits = opened.create_waits();
         }
         opened
     }
@@ -229,6 +234,37 @@ impl Device {
                 })
                 .collect()
         }
+    }
+
+    fn create_waits(&self) -> Vec<vk::Semaphore> {
+        unsafe {
+            let Some(hal_device) = self.device.as_hal::<Vk>() else { return Vec::new() };
+            let raw = hal_device.raw_device();
+            (0..WAITS).map_while(|_| raw.create_semaphore(&vk::SemaphoreCreateInfo::default(), None).ok()).collect()
+        }
+    }
+
+    pub fn wait_for(&mut self, sync_file: OwnedFd) -> Result<(), OwnedFd> {
+        let Some(&semaphore) = self.waits.get(self.next_wait) else { return Err(sync_file) };
+        let imported = unsafe {
+            let Some(hal_device) = self.device.as_hal::<Vk>() else { return Err(sync_file) };
+            let ext = ash::khr::external_semaphore_fd::Device::new(hal_device.shared_instance().raw_instance(), hal_device.raw_device());
+            let info = vk::ImportSemaphoreFdInfoKHR::default()
+                .semaphore(semaphore)
+                .flags(vk::SemaphoreImportFlags::TEMPORARY)
+                .handle_type(vk::ExternalSemaphoreHandleTypeFlags::SYNC_FD)
+                .fd(sync_file.as_raw_fd());
+            ext.import_semaphore_fd(&info).is_ok()
+        };
+        if !imported {
+            return Err(sync_file);
+        }
+        let _ = sync_file.into_raw_fd();
+        if let Some(queue) = unsafe { self.queue.as_hal::<Vk>() } {
+            queue.add_wait_semaphore(semaphore, None, vk::PipelineStageFlags::ALL_COMMANDS);
+        }
+        self.next_wait = (self.next_wait + 1) % self.waits.len();
+        Ok(())
     }
 
     pub fn arm(&mut self) -> Option<Fence> {

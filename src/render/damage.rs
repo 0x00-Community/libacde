@@ -10,6 +10,7 @@ use crate::render::layers::Split;
 use crate::render::{Drawing, Plane};
 
 const PAD: f64 = 2.0;
+const MAX_AREAS: usize = 64;
 
 #[derive(Default)]
 pub(crate) struct Damage {
@@ -358,6 +359,31 @@ impl Damage {
         Some(bounds.inflate(PAD, PAD).intersect(viewport))
     }
 
+    pub(crate) fn content_areas(kinds: &[Kind], draw: &[Rect], viewport: Rect) -> Vec<Rect> {
+        let viewport = viewport.expand();
+        let rects: Vec<Rect> = (Changed { kinds, draw, mask: None, layers: false })
+            .rects(viewport)
+            .into_iter()
+            .map(|r| r.inflate(PAD, PAD).expand().intersect(viewport))
+            .filter(|r| r.area() > 0.0)
+            .collect();
+        let mut areas: Vec<Rect> = Vec::new();
+        for r in &rects {
+            let mut left = vec![*r];
+            for a in &areas {
+                left = left.into_iter().flat_map(|piece| subtract(piece, *a)).collect();
+                if left.is_empty() {
+                    break;
+                }
+            }
+            areas.extend(left);
+            if areas.len() > MAX_AREAS {
+                return areas.into_iter().reduce(|x, y| x.union(y)).into_iter().collect();
+            }
+        }
+        areas
+    }
+
     pub(crate) fn painted_bounds(commands: &[RenderCommand], viewport: Rect) -> Option<Rect> {
         let kinds: Vec<Kind> = commands.iter().map(|c| Kind::of(c, Affine::IDENTITY)).collect();
         let draw: Vec<Rect> = commands.iter().map(|c| draw_bounds(c, Affine::IDENTITY)).collect();
@@ -431,6 +457,17 @@ impl Changed<'_> {
     }
 }
 
+fn subtract(r: Rect, cut: Rect) -> Vec<Rect> {
+    let i = r.intersect(cut);
+    if i.area() <= 0.0 {
+        return vec![r];
+    }
+    [Rect::new(r.x0, r.y0, r.x1, i.y0), Rect::new(r.x0, i.y1, r.x1, r.y1), Rect::new(r.x0, i.y0, i.x0, i.y1), Rect::new(i.x1, i.y0, r.x1, i.y1)]
+        .into_iter()
+        .filter(|p| p.area() > 0.0)
+        .collect()
+}
+
 pub(crate) fn draw_bounds(command: &RenderCommand, t: Affine) -> Rect {
     match command {
         RenderCommand::Fill(f) => (t * f.transform).transform_rect_bbox(f.shape.bounding_box()),
@@ -465,6 +502,26 @@ mod tests {
     fn square(x: f64, color: Color) -> RenderCommand {
         let shape = Rect::new(x, 10.0, x + 20.0, 30.0).to_path(0.1);
         RenderCommand::Fill(FillCommand { fill: Fill::NonZero, transform: Affine::IDENTITY, brush: Paint::Solid(color), brush_transform: None, shape })
+    }
+
+    #[test]
+    fn content_areas_cover_each_draw_once() {
+        let viewport = Rect::new(0.0, 0.0, 400.0, 300.0);
+        let draw = [Rect::new(10.0, 10.0, 110.0, 70.0), Rect::new(60.0, 40.0, 160.0, 100.0), Rect::new(300.0, 200.0, 350.0, 250.0)];
+        let areas = Damage::content_areas(&[Kind::Draw; 3], &draw, viewport);
+        for (i, a) in areas.iter().enumerate() {
+            assert_eq!(*a, a.expand(), "{a:?} is whole pixels");
+            for b in &areas[i + 1..] {
+                assert!(a.intersect(*b).area() <= 0.0, "{a:?} and {b:?} overlap");
+            }
+        }
+        let covered = |x: f64, y: f64| areas.iter().any(|a| a.contains(kurbo::Point::new(x, y)));
+        for r in draw.iter().map(|r| r.inflate(PAD, PAD)) {
+            assert!(covered(r.x0 + 0.5, r.y0 + 0.5) && covered(r.x1 - 0.5, r.y1 - 0.5), "{r:?} is covered");
+        }
+        let total: f64 = areas.iter().map(Rect::area).sum();
+        assert!(total < 104.0 * 64.0 * 2.0 + 54.0 * 54.0, "the overlap is not counted twice ({total})");
+        assert!(!covered(200.0, 150.0), "the gap between the draws stays out");
     }
 
     #[test]
