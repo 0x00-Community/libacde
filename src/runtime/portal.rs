@@ -35,23 +35,6 @@ pub struct Filter {
     pub mimes: Vec<String>,
 }
 
-#[derive(Deserialize, Default)]
-#[serde(default)]
-struct OpenOptions {
-    title: String,
-    multiple: bool,
-    directory: bool,
-    filters: Vec<Filter>,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(default)]
-struct SaveOptions {
-    title: String,
-    name: String,
-    filters: Vec<Filter>,
-}
-
 fn filters(list: &[Filter]) -> Vec<(String, Vec<(u32, String)>)> {
     list.iter()
         .map(|f| {
@@ -75,8 +58,7 @@ fn local_path(uri: &str) -> Option<String> {
     url::Url::parse(uri).ok()?.to_file_path().ok()?.into_os_string().into_string().ok()
 }
 
-#[napi]
-pub struct FileChooser {
+struct FileChooser {
     connection: Connection,
 }
 
@@ -142,30 +124,6 @@ pub fn open_files(title: &str, multiple: bool, directory: bool, filters: &[Filte
 
 pub fn save_file(title: &str, name: &str, filters: &[Filter]) -> std::result::Result<Option<String>, String> {
     asked(FileChooser::session()?.ask_save(title, name, filters))
-}
-
-#[napi]
-impl FileChooser {
-    #[napi(factory)]
-    pub async fn open() -> Result<Self> {
-        blocking(|| Connection::session().and_then(Self::on).map_err(|e| failure("portal_unavailable", &format!("no FileChooser portal: {e}")))).await
-    }
-
-    #[napi(
-        ts_args_type = "options: { title?: string; multiple?: boolean; directory?: boolean; filters?: { name: string; globs?: string[]; mimes?: string[] }[] }"
-    )]
-    pub async fn open_file(&self, options: serde_json::Value) -> Result<Option<Vec<String>>> {
-        let options: OpenOptions = serde_json::from_value(options).map_err(|e| failure("bad_options", &e.to_string()))?;
-        let chooser = Self { connection: self.connection.clone() };
-        blocking(move || chooser.ask_open(&options.title, options.multiple, options.directory, &options.filters).map_err(bus)).await
-    }
-
-    #[napi(ts_args_type = "options: { title?: string; name?: string; filters?: { name: string; globs?: string[]; mimes?: string[] }[] }")]
-    pub async fn save_file(&self, options: serde_json::Value) -> Result<Option<String>> {
-        let options: SaveOptions = serde_json::from_value(options).map_err(|e| failure("bad_options", &e.to_string()))?;
-        let chooser = Self { connection: self.connection.clone() };
-        blocking(move || chooser.ask_save(&options.title, &options.name, &options.filters).map_err(bus)).await
-    }
 }
 
 fn dark_scheme(value: &Variant<'_>) -> bool {

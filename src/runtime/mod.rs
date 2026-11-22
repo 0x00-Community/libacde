@@ -77,7 +77,7 @@ pub use network::{NetCall, Networks};
 #[cfg(target_os = "linux")]
 pub use office::{OfficeCall, OfficeService};
 #[cfg(target_os = "linux")]
-pub use portal::{Appearance, FileChooser, Filter as PortalFilter, choose_folder, open_files, save_file};
+pub use portal::{Appearance, Filter as PortalFilter, choose_folder, open_files, save_file};
 #[cfg(target_os = "linux")]
 pub use power::{Power, PowerCall, backlight_brightness};
 pub use proxy::backend_variables as backend_proxy_variables;
