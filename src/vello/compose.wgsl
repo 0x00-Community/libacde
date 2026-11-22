@@ -14,6 +14,7 @@ struct Params {
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var samp: sampler;
 @group(0) @binding(2) var<uniform> params: Params;
+@group(0) @binding(3) var<uniform> acde_glass_pieces: array<AcdeGlassPiece, ACDE_GLASS_MOST_PIECES>;
 
 struct VsOut {
     @builtin(position) pos: vec4<f32>,
@@ -113,6 +114,16 @@ fn fs_glass(in: VsOut) -> @location(0) vec4<f32> {
     let rgb = acde_glass_tone_darkened(straight, g2.y, params.color, shine, lens.z);
     let alpha = max(under.a, params.color.a) * inside;
     return vec4<f32>(rgb * alpha, alpha);
+}
+
+@fragment
+fn fs_glass_group(in: VsOut) -> @location(0) vec4<f32> {
+    let px = in.pos.xy;
+    let count = u32(params.shift.x);
+    let f = acde_glass_group_field(px, count, params.shift.y);
+    let at = px + acde_glass_group_offset(f);
+    let under = glass_under(at, acde_glass_group_lens(f, px, count, params.shift.y), f.look.lens.y, params.bias);
+    return acde_glass_group_shade(under, f);
 }
 
 @fragment

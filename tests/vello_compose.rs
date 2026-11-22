@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use acde::gpu::glass::group::{GlassGroup, Piece};
+use acde::gpu::glass::{Glass, Level, Role};
 use acde::gpu::{Backdrop, ColorMatrix, Effect, Gpu, Shadow, wgpu};
 use acde::vello::{Composer, Op};
 
@@ -248,4 +250,30 @@ fn a_shadow_from_the_blurred_canvas_matches_one_blurred_alone() {
     });
     let worst = alone.iter().zip(&shared).map(|(a, b)| a.iter().zip(b).map(|(x, y)| x.abs_diff(*y)).max().unwrap_or(0)).max().unwrap_or(0);
     assert!(worst <= 2, "the shadow differs by up to {worst}");
+}
+
+fn glass_over_stripes(bench: &mut Bench, backdrop: &Backdrop) -> Vec<[u8; 4]> {
+    let stripes: Vec<[u8; 4]> = (0..W * H).map(|i| if (i % W / 6).is_multiple_of(2) { LEFT } else { RIGHT }).collect();
+    bench.fill(&bench.canvas, &stripes);
+    bench.run(|c, e, canvas| c.backdrop(e, canvas, backdrop))
+}
+
+#[test]
+fn a_one_piece_glass_group_composes_like_the_single_glass_and_two_pieces_merge() {
+    let mut bench = Bench::new();
+    let glass = Glass::preset(Role::Regular, Level::Clear);
+    let rect = [16.0, 12.0, 40.0, 40.0];
+    let single = Backdrop { rect, radius: 20.0, glass: Some(glass), ..Backdrop::default() };
+    let mut one = GlassGroup::new(12.0);
+    assert!(one.push(Piece::of_rect(rect, 20.0, 2.0, glass)));
+    let grouped = Backdrop { group: Some(one), ..single };
+    let (alone, as_group) = (glass_over_stripes(&mut bench, &single), glass_over_stripes(&mut bench, &grouped));
+    let worst = alone.iter().zip(&as_group).map(|(a, b)| a.iter().zip(b).map(|(x, y)| x.abs_diff(*y)).max().unwrap_or(0)).max().unwrap_or(0);
+    assert!(worst <= 1, "a one-piece group differs from the single glass by up to {worst}");
+    let mut two = one;
+    assert!(two.push(Piece::of_rect([60.0, 12.0, 40.0, 40.0], 20.0, 2.0, glass)));
+    let pair = Backdrop { rect: [16.0, 12.0, 84.0, 40.0], group: Some(two), ..single };
+    let merged = glass_over_stripes(&mut bench, &pair);
+    let neck = (32 * W + 58) as usize;
+    assert_ne!(merged[neck], alone[neck], "the 4 px gap between the pieces is bridged by glass");
 }

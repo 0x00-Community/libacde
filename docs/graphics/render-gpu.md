@@ -94,6 +94,11 @@
   超过 16 块时多出的块各画各的, 记一次 warn. 只有一块的组不成组, 照单块画. 底图在第一块的位置取一次, 所以后面几块之前画的内容 (多半没有) 不会出现在玻璃里.
   前端把 `render::Backdrop` 换成合成用的 `gpu::Backdrop` 只调 `Backdrop::compose()` (宿主窗口再 `.moved((0.0, dy))`), 以后加字段两边不用改;
   自己造 `gpu::Backdrop` 的 (窗口毛玻璃) 写 `..Backdrop::default()` (默认指数 2、没有玻璃).
+  进程内合成画组 (`src/vello/compose.rs`, 2026-11-22): `Composer::backdrop` 见到非空的 `group` 走 `glass_group`: 取样区域是 `Backdrop.rect` (各块并集) 外扩
+  `GlassGroup::reach()`, 模糊层与颜色矩阵和单块同一段 (`glass_under`, 模糊层取第一块的玻璃), 再用 `fs_glass_group` 逐像素按组场着色. 全部管线共用一个
+  绑定布局: 绑定 3 是块数组 (`acde_glass_pieces`, 动态偏移的 uniform, 每组 `GlassGroup::to_uniform` 的 1792 字节一段), 不画组的绘制给偏移 0; 参数缓冲和块缓冲
+  是同一个 `Uniforms` (满了翻倍重建, 已录的绑定组仍指向旧缓冲, 旧缓冲先写好), 任一个重建都清掉绑定组缓存. 块数和间距放在 `Params.shift` (x 块数, y 间距),
+  `Params.bias` 是取样区域. 宿主窗口和会话里画页面都经这里, 所以两边跟着生效.
   (也给出窗口之间毛玻璃的取样外扩 `margin`): 偏移在约 0.5–1.3 之间连续调 (一层时从 0 起, 五层时最多到 2), 强度随 sigma 连续变,
   近似同 sigma 的高斯 (`SPREAD` 是 DX12 上量出的每档方差, `tests/vello_compose.rs` 按相位平均量边缘的展宽对照); sigma 小于约
   0.96 px 时一层不偏移, 再按 `mix` 和原图混合. sigma 为 0 不模糊 (drop-shadow、backdrop 只拷一份). shell 的 GLES 链不做 `mix`.
