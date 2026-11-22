@@ -41,7 +41,7 @@ fn acde_glass_corner_gradient(p: vec2<f32>, half: vec2<f32>, radius: f32, expone
 const ACDE_GLASS_LENS_REACH: f32 = 1.8;
 
 fn acde_glass_lens(n: vec2<f32>, d: f32, bevel: f32, lens: vec4<f32>) -> vec2<f32> {
-    let width = max(lens.w, 0.5);
+    let width = min(max(lens.w, 0.5), max(bevel, 0.5));
     let e = max(-d, 0.0);
     let deepest = max(min(lens.x, ACDE_GLASS_LENS_REACH * max(bevel, 1.0)), width);
     let rim = 1.0 - clamp(e / width, 0.0, 1.0);
