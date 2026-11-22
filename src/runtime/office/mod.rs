@@ -7,6 +7,7 @@ mod settings;
 mod tokens;
 
 use crate::runtime::failure::{Failure, Outcome};
+use crate::runtime::fs::LentFile;
 use crate::runtime::fs::path::NodePath;
 use crate::runtime::fs::workspace::FinderRoot;
 use crate::runtime::js::JsText;
@@ -98,18 +99,17 @@ impl Service {
         props["dir"] = if folder == "." { String::new() } else { folder }.into();
         props["file"] = file.view();
         if props["server"]["ok"] == true {
-            let session = self.sessions.open(&file.root.path, &file.path, file.modified_ms, file.size);
+            let session = self.sessions.open(&file.source.identity(&file.path)?, &file);
             props["editor"] = self.editor(&file, &session)?;
             props["status"] = session.locked().status();
         }
         Ok(())
     }
 
-    fn handed(&self, roots: &[FinderRoot], path: &str, writable: bool) -> Outcome<Value> {
+    fn lent(&self, roots: &[FinderRoot], file: Option<LentFile>) -> Outcome<Value> {
         let mut props = self.blank(roots, None);
-        let opened = OfficeFiles::file_in(OfficeFiles::handed(path.dirname()), path.basename())
-            .map(|file| if writable { file } else { OfficeFiles::read_only(file) })
-            .and_then(|file| self.show(&mut props, file));
+        let opened =
+            file.ok_or_else(|| Failure::http(404, "not a file lent to this app")).and_then(OfficeFiles::lent).and_then(|file| self.show(&mut props, file));
         match opened {
             Err(failure) if failure.status == 500 => Err(failure),
             Err(failure) => {
@@ -157,11 +157,8 @@ impl Service {
             return Err(Failure::http(503, error));
         }
         let base = &self.settings.bridge_url;
-        let (key, expected) = {
-            let s = session.locked();
-            (s.key.clone(), s.expected_ms)
-        };
-        let issue = |kind| credentials.tickets.issue(kind, &file.root.path, &file.path, &key, expected);
+        let key = session.locked().key.clone();
+        let issue = |kind| credentials.tickets.issue(kind, &key);
         let edit = file.editable;
         let mut editor = json!({
             "mode": if edit { "edit" } else { "view" },
@@ -207,6 +204,10 @@ impl Service {
         Ok(json!({"api": format!("{}/web-apps/apps/api/documents/api.js", self.settings.document_server), "key": key, "config": config}))
     }
 
+    fn session(&self, key: &str) -> Outcome<SessionRef> {
+        self.sessions.get(key).ok_or_else(|| Failure::http(404, "no open document with this key"))
+    }
+
     fn save_failure(failure: &Failure) -> String {
         if failure.status == 403 {
             return format!("这个工作区不能写：{}", failure.message);
@@ -247,7 +248,7 @@ impl Service {
             if !data.starts_with(b"PK\x03\x04") {
                 return Err(Failure::http(502, "Document Server returned something that is not an Office file"));
             }
-            let result = self.files.save(&s.root, &s.target, &data, s.expected_ms)?;
+            let result = OfficeFiles::save(&s.source, &s.target, &data, s.expected_ms)?;
             Self::saved(&mut s, result);
             Ok(())
         })();
@@ -276,8 +277,13 @@ impl Handlers for Bridged {
         let credentials = service.credentials()?;
         credentials.jwt.verify_header(authorization)?;
         let ticket = credentials.tickets.consume(ticket)?;
-        let file = service.files.file(&ticket.root, &ticket.path)?;
-        if file.modified_ms != ticket.mtime_ms {
+        let (source, path, expected_ms) = {
+            let s = service.session(&ticket.key)?;
+            let s = s.locked();
+            (s.source.clone(), s.target.clone(), s.expected_ms)
+        };
+        let file = OfficeFiles::open(source, &path)?;
+        if file.modified_ms != expected_ms {
             return Err(Failure::http(409, "the file changed after the editor was opened; reload the page"));
         }
         Ok((file.name.clone(), OfficeFiles::read(&file)?))
@@ -299,10 +305,10 @@ impl Handlers for Bridged {
         if payload.get("key").and_then(Value::as_str) != Some(ticket.key.as_str()) {
             return Err(Failure::token_refused("callback for another document"));
         }
-        let session = service.sessions.resume(&ticket.key, &ticket.root, &ticket.path, ticket.mtime_ms);
+        let session = service.session(&ticket.key)?;
         let status = payload.get("status").and_then(|s| s.as_f64().or_else(|| s.as_str()?.parse().ok())).unwrap_or(f64::NAN);
         let editors = payload.get("users").and_then(Value::as_array).map_or(0, Vec::len);
-        log::info!("callback status {status} for {} ({editors} editor(s))", ticket.path);
+        log::info!("callback status {status} for {} ({editors} editor(s))", session.locked().target);
         match status as i64 {
             1 => {
                 let mut s = session.locked();
@@ -356,7 +362,7 @@ fn fields<T: serde::de::DeserializeOwned>(body: Option<Value>) -> Outcome<T> {
 pub enum OfficeCall {
     Server,
     State { root: Option<String>, dir: Option<String>, path: Option<String> },
-    Open { path: String, writable: bool },
+    Lent { name: String },
     Status { key: String },
     Save { body: Option<Value> },
     New { body: Option<Value> },
@@ -400,17 +406,14 @@ impl Service {
         match call {
             OfficeCall::Server => Ok(self.status(true)),
             OfficeCall::State { root, dir, path } => self.props(&roots()?, root.as_deref(), dir.as_deref(), path.as_deref()),
-            OfficeCall::Open { path, writable } => self.handed(&roots()?, &path, writable),
-            OfficeCall::Status { key } => {
-                let session = self.sessions.get(&key).ok_or_else(|| Failure::http(404, "no open document with this key"))?;
-                Ok(session.locked().status())
-            }
+            OfficeCall::Lent { name } => self.lent(&roots()?, scope.and_then(|workspace| workspace.lent_file(&name))),
+            OfficeCall::Status { key } => Ok(self.session(&key)?.locked().status()),
             OfficeCall::Save { body } => {
                 let SaveBody { key } = fields(body)?;
                 if key.js_trim().is_empty() {
                     return Err(Failure::invalid("all fields must be non-empty strings"));
                 }
-                let session = self.sessions.get(&key).ok_or_else(|| Failure::http(404, "no open document with this key"))?;
+                let session = self.session(&key)?;
                 let credentials = self.credentials().map_err(|f| Failure::http(503, f.message))?;
                 let server = DocumentServer::new(&self.settings.document_server, Some(credentials), None);
                 let forced = key.clone();

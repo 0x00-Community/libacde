@@ -99,10 +99,7 @@ pub enum TicketKind {
 
 #[derive(Clone)]
 pub struct Ticket {
-    pub root: String,
-    pub path: String,
     pub key: String,
-    pub mtime_ms: i64,
     nonce: String,
     exp: f64,
 }
@@ -151,11 +148,10 @@ impl Tickets {
         }
     }
 
-    pub fn issue(&self, kind: TicketKind, root: &str, path: &str, key: &str, mtime_ms: i64) -> String {
+    pub fn issue(&self, kind: TicketKind, key: &str) -> String {
         let ttl = if kind == TicketKind::File { FILE_TTL_MS } else { CALLBACK_TTL_MS };
         let nonce = B64.encode(rand::random::<[u8; 9]>());
-        let body = json!({"root": root, "path": path, "key": key, "mtimeMs": mtime_ms, "kind": kind,
-            "exp": now_ms() + ttl, "nonce": nonce});
+        let body = json!({"key": key, "kind": kind, "exp": now_ms() + ttl, "nonce": nonce});
         let body = self.sealed(&body);
         format!("{body}.{}", signature(&self.key, &body))
     }
@@ -175,12 +171,10 @@ impl Tickets {
             return Err(Failure::token_refused("ticket expired"));
         }
         let text = |name: &str| value.get(name).and_then(Value::as_str).map(str::to_owned);
-        let (Some(root), Some(path), Some(key), Some(nonce), Some(mtime)) =
-            (text("root"), text("path"), text("key"), text("nonce"), value.get("mtimeMs").and_then(Value::as_f64))
-        else {
+        let (Some(key), Some(nonce)) = (text("key"), text("nonce")) else {
             return Err(Failure::token_refused("bad ticket"));
         };
-        Ok(Ticket { root, path, key, mtime_ms: mtime as i64, nonce, exp })
+        Ok(Ticket { key, nonce, exp })
     }
 
     pub fn consume(&self, token: &str) -> Outcome<Ticket> {
@@ -201,28 +195,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_page_cannot_read_where_a_ticket_points() {
+    fn the_page_cannot_read_the_key_in_a_ticket() {
         let tickets = Tickets::new("shared with Document Server");
-        let (root, path) = ("/home/someone/Documents", "Reports/q3 plan.docx");
         for kind in [TicketKind::File, TicketKind::Callback] {
-            let token = tickets.issue(kind, root, path, "doc-key", 42);
+            let token = tickets.issue(kind, "doc-key");
             let url = format!("http://127.0.0.1:1/office/file/{token}");
             for text in [token.clone(), url] {
                 let decoded: Vec<u8> = text.split(['.', '/']).filter_map(|part| B64.decode(part).ok()).flatten().collect();
-                for secret in [root, path, "/home", "Documents", "Reports", "q3 plan", "doc-key"] {
-                    assert!(!text.contains(secret), "{secret} in {text}");
-                    assert!(!decoded.windows(secret.len()).any(|w| w == secret.as_bytes()), "{secret} decodes out of {text}");
-                }
+                assert!(!text.contains("doc-key"), "{text}");
+                assert!(!decoded.windows(7).any(|w| w == b"doc-key"), "the key decodes out of {text}");
             }
-            let ticket = tickets.read(&token, kind).unwrap();
-            assert_eq!((ticket.root.as_str(), ticket.path.as_str(), ticket.key.as_str(), ticket.mtime_ms), (root, path, "doc-key", 42));
+            assert_eq!(tickets.read(&token, kind).unwrap().key, "doc-key");
         }
     }
 
     #[test]
     fn a_ticket_only_opens_with_its_secret_and_untouched() {
         let tickets = Tickets::new("one");
-        let token = tickets.issue(TicketKind::File, "/r", "a.xlsx", "k", 1);
+        let token = tickets.issue(TicketKind::File, "k");
         assert!(Tickets::new("two").read(&token, TicketKind::File).is_err());
         assert!(tickets.read(&token, TicketKind::Callback).is_err());
         let (body, signature) = token.split_once('.').unwrap();

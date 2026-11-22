@@ -102,7 +102,7 @@ acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边�
   按自己记的路径重新打开, 以目标应用自己的名字交过去 (见 acdes `docs/manager.md`「转交借来的东西」). 目标收到的请求带 `lend: [{name}]`, 条目和描述符在
   welcome 或 `request` 事件的 `lent` 里; 启动器 (`Lending.entered`) 取第一个名字, 和 openPath 交来的一样换成 `entry` 交给页面, 页面造出句柄.
   宿主窗口里没有管家, 单应用启动器不支持 `apps.open` (501), 也就没有转交.
-  借出的文件 (`lent-file:`) 还不能交给 `acde:office` 的 `state` (抛 `TypeError`, `pagecalls.ts` `lentKey`).
+  借出的文件 (`lent-file:`) 也能交给 `acde:office` 的 `state` (原生 `office.openLent(name)`, 见 `docs/runtime/architecture.md` 的 office 一段).
 
 工作区内的相对路径用 `/` 分隔. Windows 上拒绝反斜杠、数据流分隔符、保留设备名和以空格或点结尾的名称;
 判断解析后的路径是否在 root 内时按系统路径组件比较.

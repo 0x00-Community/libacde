@@ -96,6 +96,10 @@ impl FinderRoot {
         }
     }
 
+    pub(crate) fn identity(&self) -> io::Result<(u64, u64)> {
+        beneath::identity(&self.open()?)
+    }
+
     pub(crate) fn on_disk(&self) -> Option<&str> {
         self.held.is_none().then_some(self.path.as_str())
     }

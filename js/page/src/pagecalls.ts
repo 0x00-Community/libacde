@@ -14,10 +14,6 @@ export type LentEntry = LentFile & { readonly kind: Kind }
 const LENT = 'lent:'
 const LENT_FILE = 'lent-file:'
 
-export function lentKey(path: string): boolean {
-  return path.startsWith(LENT) || path.startsWith(LENT_FILE)
-}
-
 export interface HandOver {
   lent(entry: LentEntry): object | null
   dropped(uris: string | null): Promise<readonly Dropped[]>
@@ -88,20 +84,25 @@ export class PageCalls implements HandOver {
     return this.#page.handles.of({ name: entry.label || entry.name, path }, 'directory', mode)
   }
 
-  held(handle: unknown): { readonly path: string; readonly kind: Kind; readonly writable: boolean } | null {
+  handed(handle: unknown): Handed | null {
+    const given = this.#entry(handle)
+    if (!given) return null
+    return given.writable ? { name: given.name } : { name: given.name, writable: false }
+  }
+
+  lentFile(handle: unknown): string | null {
+    const given = this.#entry(handle)
+    return given?.kind === 'file' ? given.name : null
+  }
+
+  #entry(handle: unknown): { readonly name: string; readonly kind: Kind; readonly writable: boolean } | null {
     const picked = this.#page.handles.picked(handle)
     if (!picked) return null
     const file = picked.kind === 'file' && this.#files.has(picked.path)
-    const ok = this.#inFolder(picked.path) !== null || file
-    return ok ? { path: picked.path, kind: picked.kind, writable: picked.mode === 'readwrite' } : null
-  }
-
-  handed(handle: unknown): Handed | null {
-    const given = this.held(handle)
-    const prefix = given?.kind === 'file' ? LENT_FILE : LENT
-    const name = given?.path.startsWith(prefix) ? given.path.slice(prefix.length) : ''
-    if (!given || !name || name.includes('/')) return null
-    return given.writable ? { name } : { name, writable: false }
+    const prefix = picked.kind === 'file' ? LENT_FILE : LENT
+    const lent = file || (picked.kind === 'directory' && this.#folders.has(picked.path))
+    const name = lent && picked.path.startsWith(prefix) ? picked.path.slice(prefix.length) : ''
+    return name ? { name, kind: picked.kind, writable: picked.mode === 'readwrite' } : null
   }
 
   #lent(file: LentFile): Picked {

@@ -23,7 +23,7 @@ import { DevRoutes, type DevRoute } from './devroutes'
 import { DevState, type DevSnapshot } from './devstate'
 import { Level, Log } from './log'
 import { PageSource } from './page'
-import { lentKey, PageCalls, type FolderPicker } from './pagecalls'
+import { PageCalls, type FolderPicker } from './pagecalls'
 import { PageInspect } from './pageinspect'
 import { Pinned } from './pinned'
 import { RemoteBridge, WindowList, WindowSelf } from './remote'
@@ -331,19 +331,19 @@ export default async function boot(natives: WebNatives): Promise<void> {
   if (natives.display) checked('display', Watched.module('display', natives.display))
   if (natives.office) {
     const editorPage = async (setup: { api: string; config: unknown }, theme: 'light' | 'dark') => OfficePage.write(setup, theme)
-    const office = natives.office as { state(...args: unknown[]): Promise<unknown>; open(path: string, writable: boolean): Promise<unknown> }
+    const office = natives.office as { state(...args: unknown[]): Promise<unknown>; openLent(name: string): Promise<unknown> }
     const state = (root?: unknown, ...rest: unknown[]) => {
       if (root === undefined || root === null || typeof root === 'string') return office.state(root, ...rest)
-      const held = calls.held(root)
-      if (!held || held.kind !== 'file') return Promise.reject(new TypeError('acde:office state: not a file handle this page was given'))
-      if (lentKey(held.path)) return Promise.reject(new TypeError('acde:office state: a picked, dropped or lent file cannot be opened in office yet'))
-      return office.open(held.path, held.writable)
+      const name = calls.lentFile(root)
+      if (name === null) return Promise.reject(new TypeError('acde:office state: not a file handle this page was given (picked, dropped or handed to it)'))
+      return office.openLent(name)
     }
     const labelled = async (...args: Parameters<typeof state>) => {
       const result = (await state(...args)) as { roots?: unknown } | null
       return result && typeof result === 'object' && 'roots' in result ? { ...result, roots: HostStrings.roots(result.roots, language) } : result
     }
-    bridge.value['office'] = { ...natives.office, state: labelled, editorPage }
+    const { openLent: _openLent, ...exposed } = natives.office as Record<string, unknown>
+    bridge.value['office'] = { ...exposed, state: labelled, editorPage }
   }
   bridge.define(host)
   const app = self ? new WebAppPage(page, rpc, init.name) : null

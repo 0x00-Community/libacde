@@ -39,6 +39,14 @@ impl LentFile {
         Ok(Self { label, ..self })
     }
 
+    pub(crate) fn identity(&self) -> io::Result<(u64, u64)> {
+        save::identity(&self.file)
+    }
+
+    pub(crate) fn modified_ms(&self) -> io::Result<i64> {
+        Ok(self.file.metadata()?.modified_ms())
+    }
+
     pub(crate) fn writable(&self) -> Outcome<()> {
         match self.writable {
             true => Ok(()),
