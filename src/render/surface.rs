@@ -60,6 +60,42 @@ impl ClipboardEntry {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WindowShadow {
+    pub x: f64,
+    pub y: f64,
+    pub blur: f64,
+    pub spread: f64,
+    pub color: [u8; 4],
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct WindowLook {
+    pub radius: f64,
+    pub superellipse: f64,
+    pub focused: Vec<WindowShadow>,
+    pub unfocused: Vec<WindowShadow>,
+}
+
+impl WindowLook {
+    const LAYER: usize = 5;
+
+    pub fn from_numbers(numbers: &[f64]) -> Option<Self> {
+        let (&[radius, superellipse], rest) = numbers.split_first_chunk::<2>()?;
+        let (focused, rest) = Self::layers(rest)?;
+        let (unfocused, rest) = Self::layers(rest)?;
+        rest.is_empty().then_some(Self { radius, superellipse, focused, unfocused })
+    }
+
+    fn layers(numbers: &[f64]) -> Option<(Vec<WindowShadow>, &[f64])> {
+        let (&count, rest) = numbers.split_first()?;
+        let length = (count as usize).checked_mul(Self::LAYER).filter(|n| *n <= rest.len())?;
+        let (layers, rest) = rest.split_at(length);
+        let shadow = |l: &[f64]| WindowShadow { x: l[0], y: l[1], blur: l[2], spread: l[3], color: (l[4] as u32).to_be_bytes() };
+        Some((layers.chunks_exact(Self::LAYER).map(shadow).collect(), rest))
+    }
+}
+
 pub type ClipboardTypesReply = Box<dyn FnOnce(Vec<String>) + Send>;
 pub type ClipboardReadReply = Box<dyn FnOnce(Option<Vec<u8>>) + Send>;
 
@@ -85,11 +121,12 @@ pub enum SurfaceCommand {
     PageDark(bool),
     Title(String),
     ImeArea([f64; 4]),
+    WindowLook(Option<WindowLook>),
 }
 
 #[cfg(test)]
 mod tests {
-    use super::ClipboardEntry;
+    use super::{ClipboardEntry, WindowLook, WindowShadow};
 
     #[test]
     fn wayland_types_become_web_types_in_order_without_unknown_or_repeated_ones() {
@@ -97,5 +134,15 @@ mod tests {
         assert_eq!(ClipboardEntry::web_types(offered), ["image/png", "text/plain", "text/uri-list"]);
         assert_eq!(ClipboardEntry::wayland_mimes("text/plain"), ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING"]);
         assert!(ClipboardEntry::wayland_mimes("text/html").is_empty());
+    }
+
+    #[test]
+    fn a_window_look_comes_from_the_numbers_the_page_hands_over() {
+        let numbers = [12.0, 2.0, 1.0, 0.0, 8.0, 24.0, -4.0, f64::from(0x0000_0040u32), 0.0];
+        let look = WindowLook::from_numbers(&numbers).expect("a look");
+        let shadow = WindowShadow { x: 0.0, y: 8.0, blur: 24.0, spread: -4.0, color: [0, 0, 0, 0x40] };
+        assert_eq!(look, WindowLook { radius: 12.0, superellipse: 2.0, focused: vec![shadow], unfocused: Vec::new() });
+        assert_eq!(WindowLook::from_numbers(&numbers[..8]), None, "a layer cut short");
+        assert_eq!(WindowLook::from_numbers(&[1.0, 2.0, 0.0, 0.0, 7.0]), None, "numbers left over");
     }
 }

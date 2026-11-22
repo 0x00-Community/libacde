@@ -92,6 +92,7 @@ export interface NativeSurface {
   reservePanel?(id: number, edge: number, thickness: number): void
   setDoubleClick?(action: 'fill' | 'minimize' | 'none'): void
   setFrameTheme?(...args: number[]): void
+  setWindowLook?(...args: number[]): void
   setPageDark?(dark: boolean): void
 }
 

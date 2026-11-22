@@ -112,6 +112,7 @@ fn claim_surface(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, 
         "reservePanel" => reserve_panel,
         "setDoubleClick" => set_double_click,
         "setFrameTheme" => set_frame_theme,
+        "setWindowLook" => set_window_look,
         "setPageDark" => set_page_dark,
         "setClipboard" => set_clipboard,
         "clipboardTypes" => clipboard_types,
@@ -360,6 +361,18 @@ fn set_frame_theme(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments
         align: [None, Some(TitleAlign::Center), Some(TitleAlign::Start)].get(pick(scope, 18) as usize).copied().flatten(),
     };
     with_surface(scope, |surface| surface.set_frame_theme(theme));
+}
+
+fn set_window_look(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
+    let numbers: Vec<f64> = (0..args.length()).map(|i| bind::arg_f64(scope, &args, i)).collect();
+    let look = match numbers.is_empty() {
+        true => None,
+        false => match crate::render::WindowLook::from_numbers(&numbers) {
+            Some(look) => Some(look),
+            None => return bind::throw_type_error(scope, "setWindowLook: the numbers do not make a window look"),
+        },
+    };
+    with_surface(scope, |surface| surface.set_window_look(look));
 }
 
 fn set_page_dark(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {

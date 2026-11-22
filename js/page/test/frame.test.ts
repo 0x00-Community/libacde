@@ -41,6 +41,30 @@ describe('Frame.desktop', () => {
     assert.equal(calls[0]![0], 0x000000ff)
   })
 
+  test('setWindowLook hands the checked look to the runtime as numbers, null as none', () => {
+    const calls: number[][] = []
+    const desktop = Frame.desktop({ setWindowLook: (...args) => void calls.push(args) })
+    const layer = { x: 0, y: 8, blur: 24, spread: -4, color: '#00000040' }
+    desktop.setWindowLook({ corners: { radius: 12, shape: 'superellipse(2.5)' }, shadows: { focused: [layer], unfocused: [] } })
+    desktop.setWindowLook(null)
+    assert.deepEqual(calls, [[12, 2.5, 1, 0, 8, 24, -4, 0x00000040, 0], []])
+  })
+
+  test('a bad window look is a TypeError and changes nothing', () => {
+    const calls: number[][] = []
+    const desktop = Frame.desktop({ setWindowLook: (...args) => void calls.push(args) })
+    const corners = { radius: 12, shape: 'squircle' as const }
+    const layer = { x: 0, y: 0, blur: 4, spread: 0, color: '#000000ff' }
+    const bad = (look: unknown, pattern: RegExp) =>
+      assert.throws(() => desktop.setWindowLook(look as never), (e: Error) => e instanceof TypeError && pattern.test(e.message))
+    bad({ corners: { radius: 12, shape: 'superellipse(4)' }, shadows: { focused: [], unfocused: [] } }, /corners\.shape/)
+    bad({ corners, shadows: { focused: [layer, layer, layer, layer, layer], unfocused: [] } }, /at most 4/)
+    bad({ corners, shadows: { focused: [{ ...layer, color: 'black' }], unfocused: [] } }, /focused\[0\]\.color/)
+    bad({ corners, shadows: { focused: [{ ...layer, blur: -1 }], unfocused: [] } }, /blur/)
+    bad({ corners }, /shadows/)
+    assert.deepEqual(calls, [])
+  })
+
   test('an unknown action is a TypeError and changes nothing', () => {
     const calls: string[] = []
     const desktop = Frame.desktop({ setDoubleClick: (action) => void calls.push(action) })

@@ -42,7 +42,7 @@
 ## 结构
 
 `src/index.d.ts`、`src/app.d.ts`、`src/shell.d.ts` (入口); `src/modules/` (`declare module 'acde:…'`); `src/types/` (清单、配置、服务、能力、
-页面、事件、权限、office). 删除前是由 JS 常量推出来的两组类型, 现在直接写成字面量联合: `types/names.d.ts` (`IconName`、`ShellModule`,
+页面、事件、权限、office; 窗口外观 `WindowLook` 在子目录 `types/window-look/` (它用模块扩充给 `AcdeDesktop` 加 `setWindowLook`, `page.d.ts` 不动)). 删除前是由 JS 常量推出来的两组类型, 现在直接写成字面量联合: `types/names.d.ts` (`IconName`、`ShellModule`,
 原来是 `validate.ts` 里 `ICON_NAMES`、`SHELL_MODULES` 的元素类型)、`types/places.d.ts` (`SharedPlace`、`PlaceCapability`, 原来出自
 `runtime/places.js` 的 `SHARED_PLACES`); `types/modules.d.ts` 的 `AcdeModules` 原在 `runtime/load.d.ts`.
 
