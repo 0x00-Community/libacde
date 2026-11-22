@@ -1,4 +1,5 @@
 import type { FileFilter, LentFile } from '../../../page/src/sys/natives'
+import type { LentEntry } from './lending'
 import { HostStrings } from '../../../page/src/language'
 
 export interface PageCallsHost {
@@ -8,11 +9,12 @@ export interface PageCallsHost {
   saveFile(title: string, name: string, filters: readonly FileFilter[]): Promise<LentFile | null>
   folder(title: string, writable: boolean): Promise<{ readonly name: string; readonly label: string } | null>
   unlend(name: string): Promise<void>
+  dropped(uris: string): Promise<readonly LentEntry[] | null>
   notify?(title: string, body: string, subtitle: string): void
 }
 
 export class PageCalls {
-  static readonly METHODS: ReadonlySet<string> = new Set(['open', 'save', 'folder', 'unlend', 'notify'])
+  static readonly METHODS: ReadonlySet<string> = new Set(['open', 'save', 'folder', 'unlend', 'dropped', 'notify'])
   readonly #host: PageCallsHost
 
   constructor(host: PageCallsHost) {
@@ -23,6 +25,7 @@ export class PageCalls {
     const options = (args[0] ?? {}) as Record<string, unknown>
     if (method === 'notify') return this.#notify(options)
     if (method === 'unlend') return this.#host.unlend(PageCalls.#text(args[0], 200))
+    if (method === 'dropped') return this.#host.dropped(PageCalls.#text(options['uris'], 256 * 1024))
     if (method === 'folder') return this.#host.folder(PageCalls.#text(options['title'], 300), options['writable'] === true)
     const strings = HostStrings.of(this.#host.language())
     const filters = PageCalls.#filters(options['filters'])

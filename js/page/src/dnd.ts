@@ -1,7 +1,5 @@
 import type { WebInternals } from '@acde/dom'
-import type { HandOver } from './pagecalls'
-import { readFileSync, stat } from './sys/fs'
-import { basename } from './sys/path'
+import type { Dropped, HandOver } from './pagecalls'
 
 type PageWindow = Window & typeof globalThis
 
@@ -12,8 +10,6 @@ export type DragInput =
   | { type: 'dndleave' }
 
 export class DragDrop {
-  static readonly FILE_LIMIT = 64 * 1024 * 1024
-
   readonly #window: PageWindow
   readonly #page: WebInternals
   #mime: readonly string[] = []
@@ -38,11 +34,11 @@ export class DragDrop {
     return this.#page.input.elementAt(target, x, y, true) as unknown as Element
   }
 
-  #transfer(data: Readonly<Record<string, string>> | null, files: readonly string[] = []): DataTransfer {
+  #transfer(data: Readonly<Record<string, string>> | null, dropped: readonly Dropped[] = [], mime = this.#mime): DataTransfer {
     const transfer = new this.#window.DataTransfer() as unknown as DataTransfer
-    for (const [mime, text] of Object.entries(data ?? {})) transfer.setData(mime, text)
-    for (const path of files) this.#add(transfer, path)
-    const types = [...this.#mime, ...(this.#mime.includes('text/uri-list') ? ['Files'] : [])]
+    for (const [type, text] of Object.entries(data ?? {})) transfer.setData(type, text)
+    for (const { handle, file } of dropped) this.#page.handles.transfer(transfer, file, handle)
+    const types = [...mime, ...(mime.includes('text/uri-list') ? ['Files'] : [])]
     Object.defineProperty(transfer, 'types', { value: Object.freeze(types), configurable: true })
     transfer.effectAllowed = 'all'
     return transfer
@@ -82,26 +78,15 @@ export class DragDrop {
   }
 
   #drop(target: Element, x: number, y: number, data: Readonly<Record<string, string>>, files: readonly string[]): void {
-    if (this.#taken) DragDrop.fire(this.#window, target, 'drop', x, y, this.#transfer(data, files))
-    else if (target.isConnected) DragDrop.fire(this.#window, target, 'dragleave', x, y, this.#transfer(null))
+    const [taken, mime] = [this.#taken, this.#mime]
+    if (!taken && target.isConnected) DragDrop.fire(this.#window, target, 'dragleave', x, y, this.#transfer(null))
     this.#reset()
+    if (!taken) return
+    if (!files.length || !this.handOver) return void DragDrop.fire(this.#window, target, 'drop', x, y, this.#transfer(data, [], mime))
+    const { 'text/uri-list': uris, 'text/plain': _plain, ...rest } = data
+    void this.handOver.dropped(uris ?? null).then((dropped) => DragDrop.fire(this.#window, target, 'drop', x, y, this.#transfer(rest, dropped, mime)))
   }
 
-  #add(transfer: DataTransfer, path: string): void {
-    try {
-      const entry = stat(path)
-      if (!entry || entry.isSymbolicLink || !(entry.isFile || entry.isDirectory)) return
-      const handle = this.handOver?.handle(path, entry.isDirectory ? 'directory' : 'file', false) ?? null
-      const small = entry.isFile && entry.size <= DragDrop.FILE_LIMIT
-      const bytes = small ? (readFileSync(path) as Uint8Array<ArrayBuffer>) : null
-      const name = basename(path)
-      const type = entry.isFile ? this.#page.env.fileType(name) : ''
-      const file = bytes ? (new this.#window.File([bytes], name, { type, lastModified: entry.mtimeMs }) as unknown as File) : null
-      if (handle) this.#page.handles.transfer(transfer, file, handle)
-      else if (file) transfer.items.add(file)
-    } catch {
-    }
-  }
 }
 
 export interface DragIcon {

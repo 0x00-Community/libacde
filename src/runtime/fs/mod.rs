@@ -20,7 +20,7 @@ pub(crate) use beneath::escaped;
 use path::NodePath;
 #[cfg(windows)]
 use path::windows_directory;
-pub use picked::PickedFolders;
+pub use picked::{Dropped, PickedFolders};
 pub use ranged::{MAX_CHUNK, Opened, Range, Writes};
 use ranged::{OpenWrite, RangeOptions};
 pub use workspace::EntryKind;
@@ -402,6 +402,10 @@ impl Workspace {
 
     pub(crate) fn lent_file(&self, name: &str) -> Option<LentFile> {
         self.shared.lent_file(self.owner.as_deref()?, name)
+    }
+
+    pub(crate) fn owner(&self) -> Option<&str> {
+        self.owner.as_deref()
     }
 
     pub(crate) fn lent_root(&self, name: &str) -> Option<FinderRoot> {

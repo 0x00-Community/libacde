@@ -72,7 +72,13 @@ acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边�
   不经管家, 也不订 UDisks2 的 D-Bus 信号. 只在 Linux 上有; 别的平台 `roots()` 不列 U 盘.
 
 **拖放和打开请求的句柄** (#68): 用户交给应用的文件和文件夹是标准的 `FileSystemHandle`, 页面拿不到路径.
-- 系统拖放: `dnddrop` 的 `files` 里每个路径 (acde-host `dnd.ts` `DragDrop`, 链接和别的类型跳过): 不超过 64 MiB 的普通文件进 `dataTransfer.files` (内容在 drop 时读进来),
+- 系统拖放: `dnddrop` 带 `files` 时 (acde-host `dnd.ts` `DragDrop`), 放下的文件和文件夹先借给这个应用, 再派发 `drop` (放下因此是异步的, 目标和坐标先记下):
+  - 会话: 页面取 data 里的 `text/uri-list` 原串 (acdes `crates/window` 保留它), 经页面调用 `dropped({uris})` 到启动器 (`app/lending.ts` `dropped`),
+    启动器调管家 `fs.dropped({uris})`, 管家和合成器报的放下核对后回 `{files: Lent[]}` + `fds` (文件只读, 文件夹 `O_PATH`), 交 `sys.adoptLent`, 文件夹另发 `fsroots {added}`.
+  - 宿主窗口: 没有 `text/uri-list` (acdev hostwin 只给 `files`), 页面调 `natives.picker.dropped()` (src/host `picker.rs`): 只认 Rust 在 `webnative.rs` `pump`
+    里记下的这个页面最近一次 `dnddrop` 的 `files` (5 秒内, 取一次就清), 页面报的路径一概不收; 当场只读打开 (`PickedFolders::lend_dropped`) 并登记给本应用.
+  - 两种都回 `{name, label, kind, writable: false}`, 页面按名字造句柄 (`PageCalls.lent`), `text/uri-list` 和 `text/plain` 不进页面的 `DataTransfer`.
+  不超过 64 MiB 的普通文件进 `dataTransfer.files` (内容经 `natives.picker` 读进来),
   每个文件和文件夹在 `items` 里是 `kind: 'file'` 的一项, `getAsFileSystemHandle()` 给只读句柄 (`createWritable` / 新建 / 删除是 `NotAllowedError`,
   `queryPermission({mode: 'readwrite'})` 是 `prompt`). 和 Chromium 不同: 文件夹和超过 64 MiB 的文件不在 `files` 里, 那一项的 `getAsFile()` 是 null, 只能用句柄.
   页面自己的 `DataTransfer` 和页面发起的拖动 (没有 `files`) 的项没有句柄, `text/uri-list` 里的 `file:` 也不再变成 `File`.
@@ -81,14 +87,13 @@ acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边�
 - `File.type`: 拖放的 `File`、句柄的 `getFile()`、`<input type=file>` 和 `showOpenFilePicker` 的文件都按名字取类型, 和选应用用的同一套
   (`mimedb.ts` `FileTypes.byName`: Windows 是扩展名登记的 `Content Type`, 别处是 shared-mime-info 的 globs; 见 `docs/web/default-apps.md`「默认应用」的「文件的类型」),
   acde-host `PageCalls` 把它设成 acde-dom 的 `env.fileType`. 系统不知道的是空字符串, 同浏览器. 不按内容猜 (浏览器也只看名字).
-- 打开请求: `Opener` 给接收方的 `request` 带内部的 `entry: {path, kind, writable}` (要选中文件时是所在文件夹加 `file` 名字), 接收方的 web (`remote.ts`
+- 打开请求: 接收方的 `request` 带内部的 `entry: {name, kind, label, writable}` (见上「openPath 交来的文件」), 接收方的 web (`remote.ts`
   `WindowSelf`) 把它换成 `handle` 再交给页面, `entry` 不进页面. 来源可写 (`mode` 有属主写位; Windows 只读属性) 时句柄可写. `FileAccess.view` 是 `handle` 的
   应用 (第三方应用, 和只有 `fs: true` 的系统应用) 只拿 `{kind, handle, file?}`; 点名了公共位置的系统应用和没有 `fs` 的系统应用拿 `url` 加 `handle`;
   按路径的 `{root, path, file}` 加 `handle` 只给桌面页面.
 - 选择器: `showOpenFilePicker` 的文件一律只读; `showSaveFilePicker` 可写; `showDirectoryPicker` 照 `mode`.
-- 句柄怎么登记: 选择器选中的文件见「打开和保存文件」. 拖放和交来的文件记在这个页面的 `PageCalls` (整读整写走 acde-host `sys/fs`, 同时经 `natives.picker.allowFile` 记进
-  这个 web 的 `PickedFolders`, 只认这一个路径, 大文件的按需读和分块写走它), 文件夹经 `natives.picker.adopt` (src/host
-  `picker.rs` `adopt`) 进这个 web 的 `PickedFolders`, 读写和选的文件夹一样不出这个文件夹、不跟随链接. acde-dom 经 `WebInternals.handles` (`of` / `picked` /
+- 句柄怎么登记: 选中的、拖进来的、交来的文件和文件夹都是借出的条目 (键 `lent-file:<name>` / `lent:<name>`), 读写一律经 `natives.picker` 到这个 web 的
+  `PickedFolders`, 不出这个文件夹、不跟随链接; 页面不再有按路径的文件句柄 (`picker.adopt`、`picker.allowFile` 已删; `PickedFolders::add` 只留给 Rust 内部的私有文件夹 `opfs`). acde-dom 经 `WebInternals.handles` (`of` / `picked` /
   `transfer`) 造句柄、认句柄、往 `DataTransfer` 里放; 页面自己 `new FileSystemFileHandle(...)` 造不出能读的句柄 (`PageCalls` 只认登记过的路径).
 - 交出去: 应用的 `acde.apps.open({kind: 'open-file', handle})` (或 `open(appId, …)`) 在 web 里把 `handle` 换成 `held: {path, kind, writable}`, 只认这个页面登记过的句柄
   (否则 `TypeError`), 页面自己给的 `held` / `entry` 丢掉. Broker (`Opener.request`) 按 `held` 的路径打开, 交给系统默认程序时调用方的根加上这个文件所在的文件夹; 交出的是只读句柄时接收方也只拿到只读句柄.
@@ -174,7 +179,7 @@ Linux 用 `openat2(RESOLVE_BENEATH)`, 其他平台由 `cap-std` 模拟; root 内
 把文件夹复制进它自己, 是复制时遇到和新建的目标文件夹同一个 (unix dev + inode, Windows 卷序号 + 文件索引) 的子文件夹时停下.
 
 **拖放不再授权** (#69): 系统拖放只交给页面 `File` 和只读句柄, 不记一次性授权, 也不往 `text/uri-list` / `text/plain` 里放绝对路径;
-Linux 会话 (acdebin-system 的 `crates/window` `drop_performed`) 有本地文件时同样去掉这两项, 路径只经 `Event.files` 交给页面宿主.
+页面胶水造 `DataTransfer` 前去掉这两项 (会话里 acdes `crates/window` `drop_performed` 保留 `text/uri-list` 只为交给管家核对).
 
 **选文件夹和授权**: 标准的 `showDirectoryPicker(options?)` → `FileSystemDirectoryHandle` (acde-dom `dom/picker.ts`, 参数校验和错误照 Chromium,
 取消或没有选择器是 `AbortError`, `requestPermission` 不弹窗; handle 只活到页面结束). 选中的文件夹一律成为借出的根 (见「临时借出的根」),

@@ -1,8 +1,5 @@
-import { hostTime } from '@acde/dom'
 import type { WebInternals } from '@acde/dom'
 import type { Rpc } from './rpc'
-import { existsSync, readFileSync, stat, writeFileSync } from './sys/fs'
-import { basename } from './sys/path'
 import { Level, Log } from './log'
 import { FileTypes } from './mimedb'
 import { HostStrings } from './language'
@@ -22,8 +19,8 @@ export function lentKey(path: string): boolean {
 }
 
 export interface HandOver {
-  handle(path: string, kind: Kind, writable: boolean): object | null
   lent(entry: LentEntry): object | null
+  dropped(uris: string | null): Promise<readonly Dropped[]>
   held(handle: unknown): { readonly path: string; readonly kind: Kind } | null
 }
 
@@ -33,8 +30,7 @@ export interface FolderPicker {
   remove(dir: string, name: string, recursive: boolean): Promise<boolean>
   read(path: string): Promise<{ bytes: Uint8Array; lastModified: number } | null>
   write(path: string, bytes: Uint8Array): Promise<void>
-  adopt?(path: string): string
-  allowFile?(path: string, writable: boolean): void
+  dropped?(): Promise<LentEntry[]>
   readRange?(path: string, offset: number, length: number, version: string | null): Promise<FileRange | null>
   openWrite?(path: string, keepExistingData: boolean): Promise<{ id: string; size: number }>
   writeChunk?(id: string, offset: number, bytes: Uint8Array): Promise<void>
@@ -43,6 +39,7 @@ export interface FolderPicker {
   abortWrite?(id: string): Promise<void>
 }
 
+export type Dropped = { readonly handle: object; readonly file: File | null }
 type FileRange = { bytes: Uint8Array; size: number; lastModified: number; version: string }
 type Ranged = NonNullable<Chooser['ranged']>
 
@@ -63,7 +60,6 @@ export class PageCalls implements HandOver {
   readonly #rpc: Rpc
   readonly #name: string
   readonly #page: WebInternals
-  readonly #granted = new Set<string>()
   readonly #folders = new Set<string>()
   readonly #files = new Set<string>()
   readonly #setup: FolderSetup
@@ -82,20 +78,6 @@ export class PageCalls implements HandOver {
     page.env.notify = setup.notify ? notify : null
   }
 
-  handle(path: string, kind: Kind, writable: boolean): object | null {
-    const picker = this.#setup.picker
-    if (kind === 'file') return this.#page.handles.of(this.#grant(path), 'file', writable ? 'readwrite' : 'read')
-    if (!picker?.adopt) return null
-    try {
-      const adopted = picker.adopt(path)
-      this.#folders.add(adopted)
-      return this.#page.handles.of({ name: basename(adopted) || adopted, path: adopted }, 'directory', writable ? 'readwrite' : 'read')
-    } catch (error) {
-      this.#log(`handing over ${kind}: ${(error as Error).message}`)
-      return null
-    }
-  }
-
   lent(entry: LentEntry): object | null {
     const mode = entry.writable ? 'readwrite' : 'read'
     if (entry.kind === 'file') return this.#page.handles.of(this.#lent(entry), 'file', mode)
@@ -107,17 +89,9 @@ export class PageCalls implements HandOver {
   held(handle: unknown): { readonly path: string; readonly kind: Kind; readonly writable: boolean } | null {
     const picked = this.#page.handles.picked(handle)
     if (!picked) return null
-    const file = picked.kind === 'file' && (this.#granted.has(picked.path) || this.#files.has(picked.path))
+    const file = picked.kind === 'file' && this.#files.has(picked.path)
     const ok = this.#inFolder(picked.path) !== null || file
     return ok ? { path: picked.path, kind: picked.kind, writable: picked.mode === 'readwrite' } : null
-  }
-
-  #grant(path: string): Picked {
-    this.#granted.add(path)
-    const mode = stat(path)?.mode ?? 0o666
-    const writable = (mode & 0o200) !== 0
-    this.#setup.picker?.allowFile?.(path, writable)
-    return { name: basename(path), path, writable }
   }
 
   #lent(file: LentFile): Picked {
@@ -126,13 +100,44 @@ export class PageCalls implements HandOver {
     return { name: file.label || file.name, path, writable: file.writable }
   }
 
+  async dropped(uris: string | null): Promise<readonly Dropped[]> {
+    const dropped: Dropped[] = []
+    for (const entry of await this.#droppedEntries(uris)) {
+      const handle = this.lent(entry)
+      if (handle) dropped.push({ handle, file: entry.kind === 'file' ? await this.#small(entry) : null })
+    }
+    return dropped
+  }
+
+  async #droppedEntries(uris: string | null): Promise<readonly LentEntry[]> {
+    try {
+      if (uris) return ((await this.#rpc.call('page', 'dropped', [{ uris }])) as LentEntry[] | null) ?? []
+      return (await this.#setup.picker?.dropped?.()) ?? []
+    } catch (error) {
+      this.#log(`drop: ${(error as Error).message}`)
+      return []
+    }
+  }
+
+  async #small(entry: LentEntry): Promise<File | null> {
+    const picker = this.#setup.picker
+    const path = `${LENT_FILE}${entry.name}`
+    const head = await picker?.readRange?.(path, 0, 0, null)
+    if (!picker || !head || head.size > WHOLE_LIMIT) return null
+    const read = await picker.read(path)
+    if (!read) return null
+    const window = this.#page.window as unknown as { File: typeof File }
+    const name = entry.label || entry.name
+    return new window.File([read.bytes as Uint8Array<ArrayBuffer>], name, { type: this.#page.env.fileType(name), lastModified: read.lastModified })
+  }
+
   #lentFile(path: string): FolderPicker | null {
     return this.#files.has(path) ? this.#setup.picker : null
   }
 
   #ranged(): Ranged | undefined {
     const picker = this.#setup.picker
-    if (!picker?.allowFile || !picker.readRange || !picker.openWrite || !picker.writeChunk) return undefined
+    if (!picker?.readRange || !picker.openWrite || !picker.writeChunk) return undefined
     if (!picker.truncateWrite || !picker.commitWrite || !picker.abortWrite) return undefined
     const { readRange, openWrite, writeChunk, truncateWrite, commitWrite, abortWrite } = picker
     return {
@@ -155,10 +160,6 @@ export class PageCalls implements HandOver {
   }
 
   #chooser(): Chooser {
-    const check = (file: Picked): string => {
-      if (!this.#granted.has(file.path)) throw new Error('not a file the user picked')
-      return file.path
-    }
     const picker = this.#setup.picker
     const inFolder = (path: string): FolderPicker | null => this.#inFolder(path)
     const reach = (path: string): FolderPicker | null => this.#inFolder(path) ?? this.#lentFile(path)
@@ -210,16 +211,13 @@ export class PageCalls implements HandOver {
       remove: (dir, name, recursive) => folder(dir).remove(dir.path, name, recursive),
       read: async (file) => {
         const from = reach(file.path)
-        if (from) return from.read(file.path)
-        const path = check(file)
-        if (!existsSync(path)) return null
-        const bytes = readFileSync(path)
-        return { bytes, lastModified: stat(path)?.mtimeMs ?? hostTime.wallNow() }
+        if (!from) throw new Error('not a file or folder this page was given')
+        return from.read(file.path)
       },
       write: async (file, bytes) => {
         const to = reach(file.path)
-        if (to) return to.write(file.path, bytes)
-        writeFileSync(check(file), bytes)
+        if (!to) throw new Error('not a file or folder this page was given')
+        return to.write(file.path, bytes)
       },
       ranged: this.#ranged(),
     }

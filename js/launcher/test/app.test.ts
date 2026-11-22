@@ -67,6 +67,7 @@ describe('the single-app launcher answers its window and page calls', () => {
         return { name: 'work', label: 'Notes' }
       },
       unlend: async () => undefined,
+      dropped: async () => null,
     })
     assert.deepEqual(await pages.call('open', [{ multiple: true, filters: [{ name: 'Books', globs: ['*.epub'] }] }]), [book])
     assert.deepEqual(await pages.call('save', [{ name: 'notes.md' }]), out)

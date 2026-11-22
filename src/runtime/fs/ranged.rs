@@ -555,25 +555,4 @@ mod tests {
         assert_eq!(parts(&dir), 0);
         _ = std::fs::remove_dir_all(dir);
     }
-
-    #[test]
-    fn a_picked_file_alone_is_reachable() {
-        let (dir, _) = scratch();
-        std::fs::write(dir.join("one.bin"), b"one").unwrap();
-        std::fs::write(dir.join("other.bin"), b"other").unwrap();
-        let folders = super::super::PickedFolders::default();
-        let one = dir.join("one.bin").to_string_lossy().into_owned();
-        let other = dir.join("other.bin").to_string_lossy().into_owned();
-        assert_eq!(folders.read_range(&one, Some(0), Some(3), None).err().map(|e| e.code), Some("EACCES"));
-        folders.allow_file(&one, false);
-        assert_eq!(folders.read_range(&one, Some(1), Some(5), None).unwrap().unwrap().data, b"ne");
-        assert_eq!(folders.read_range(&other, Some(0), Some(3), None).err().map(|e| e.code), Some("EACCES"));
-        assert_eq!(folders.open_write(&one, false).err().map(|e| e.code), Some("EACCES"));
-        folders.allow_file(&one, true);
-        let opened = folders.open_write(&one, true).unwrap();
-        folders.write_chunk(&opened.id, Some(3), b"!").unwrap();
-        folders.commit_write(&opened.id).unwrap();
-        assert_eq!(std::fs::read(dir.join("one.bin")).unwrap(), b"one!");
-        _ = std::fs::remove_dir_all(dir);
-    }
 }

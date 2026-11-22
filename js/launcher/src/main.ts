@@ -193,6 +193,7 @@ class Launcher {
       saveFile: (title: string, name: string, filters: readonly FileFilter[]) => this.#lending.saveFile(title, name, filters),
       folder: (title: string, writable: boolean) => this.#lending.folder(title, writable),
       unlend: (name: string) => this.#lending.revoke(name),
+      dropped: (uris: string) => this.#lending.dropped(uris),
       ...(this.#shell.notify && { notify: (title: string, body: string, subtitle: string) => this.#shell.notify!(title, body, subtitle) }),
     })
     const relay = managerRelay(manager)

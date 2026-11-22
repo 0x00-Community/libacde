@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use crate::model::{FileFilter, OpenRequest, SaveRequest};
-use crate::runtime::{EntryKind, FsError, LentFile, LentRoot, Opened, PickedFolders, Range, Workspace};
+use crate::runtime::{Dropped, EntryKind, FsError, LentFile, LentRoot, Opened, PickedFolders, Range, Workspace};
 
 use crate::host::{bind, offload};
 
@@ -17,6 +17,7 @@ enum Reply {
     Read(Option<(Vec<u8>, i64)>),
     Range(Option<Range>),
     Opened(Opened),
+    Dropped(Vec<Dropped>),
     Done,
 }
 
@@ -28,8 +29,15 @@ impl Picker {
     }
 }
 
+const DROP_KEPT: std::time::Duration = std::time::Duration::from_secs(5);
+
 thread_local! {
     static PICKER: RefCell<Option<Picker>> = const { RefCell::new(None) };
+    static DROPPED: RefCell<Option<(Vec<String>, std::time::Instant)>> = const { RefCell::new(None) };
+}
+
+pub fn note_drop(files: &[String]) {
+    DROPPED.with(|dropped| *dropped.borrow_mut() = Some((files.to_vec(), std::time::Instant::now())));
 }
 
 pub fn adopt(path: &str) -> Result<String, String> {
@@ -46,14 +54,13 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>, picker:
         "remove" => remove,
         "read" => read,
         "write" => write,
-        "adopt" => adopt_folder,
-        "allowFile" => allow_file,
         "readRange" => read_range,
         "openWrite" => open_write,
         "writeChunk" => write_chunk,
         "truncateWrite" => truncate_write,
         "commitWrite" => commit_write,
         "abortWrite" => abort_write,
+        "dropped" => dropped,
     );
     bind::set(scope, natives, "picker", object.into());
 }
@@ -63,13 +70,6 @@ fn run(scope: &mut v8::PinScope, rv: &mut v8::ReturnValue, work: impl FnOnce(Pic
         return bind::throw_error(scope, "picker: not given to this web");
     };
     offload::run(scope, rv, "acde-picker", move || work(picker), settle);
-}
-
-fn adopt_folder(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
-    match adopt(&bind::arg_string(scope, &args, 0)) {
-        Ok(path) => rv.set(bind::string(scope, &path).into()),
-        Err(message) => bind::throw_error(scope, &message),
-    }
 }
 
 fn kind(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Option<EntryKind> {
@@ -118,15 +118,6 @@ fn count(scope: &mut v8::PinScope, args: &v8::FunctionCallbackArguments, i: i32)
     (n.is_finite() && n >= 0.0 && n.fract() == 0.0 && n <= 9_007_199_254_740_991.0).then_some(n as u64)
 }
 
-fn allow_file(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
-    let path = bind::arg_string(scope, &args, 0);
-    let writable = bind::arg_bool(scope, &args, 1);
-    match PICKER.with(|p| p.borrow().clone()) {
-        Some(picker) => picker.folders.allow_file(&path, writable),
-        None => bind::throw_error(scope, "this web has no file handles"),
-    }
-}
-
 fn read_range(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     let path = bind::arg_string(scope, &args, 0);
     let (offset, length) = (count(scope, &args, 1), count(scope, &args, 2));
@@ -169,6 +160,12 @@ fn commit_write(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
     });
 }
 
+fn dropped(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let taken = DROPPED.with(|dropped| dropped.borrow_mut().take());
+    let files = taken.filter(|(_, at)| at.elapsed() < DROP_KEPT).map(|(files, _)| files).unwrap_or_default();
+    run(scope, &mut rv, move |picker| Ok(Reply::Dropped(picker.folders.lend_dropped(&files))));
+}
+
 fn abort_write(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     let id = bind::arg_string(scope, &args, 0);
     run(scope, &mut rv, move |picker| {
@@ -188,6 +185,14 @@ fn settle(scope: &mut v8::PinScope, resolver: v8::Local<v8::PromiseResolver>, an
         Ok(Reply::Kind(Some(kind))) => bind::string(scope, kind.as_str()).into(),
         Ok(Reply::Removed(removed)) => v8::Boolean::new(scope, removed).into(),
         Ok(Reply::Done) => v8::undefined(scope).into(),
+        Ok(Reply::Dropped(dropped)) => {
+            let list = v8::Array::new(scope, 0);
+            for Dropped { name, label, kind } in dropped {
+                let entry = crate::js_object!(scope, {"name" => name, "label" => label, "kind" => kind.as_str(), "writable" => false});
+                list.set_index(scope, list.length(), entry.into());
+            }
+            list.into()
+        }
         Ok(Reply::Entries(children)) => {
             let list = v8::Array::new(scope, 0);
             for (name, kind) in children.into_iter().filter(|(_, kind)| matches!(kind, EntryKind::File | EntryKind::Directory)) {

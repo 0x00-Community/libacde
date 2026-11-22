@@ -16,8 +16,8 @@ export type Route =
   | 'unsupported'
 
 const ACKNOWLEDGED = new Set(['window.ready', 'page.shown'])
-const PAGE = new Set(['open', 'save', 'folder', 'unlend', 'notify'])
-const PICKERS = new Set(['open', 'save', 'folder', 'unlend'])
+const PAGE = new Set(['open', 'save', 'folder', 'unlend', 'dropped', 'notify'])
+const PICKERS = new Set(['open', 'save', 'folder', 'unlend', 'dropped'])
 const LOCAL: Readonly<Record<string, Route>> = {
   'window.close': 'close',
   'window.minimize': 'minimize',

@@ -2,6 +2,7 @@ import type { FileFilter, Lent, LentFile } from '../../../page/src/sys/natives'
 import { sys } from '../../../page/src/sys/natives'
 import type { ManagerLink } from '../manager/manager'
 
+export type LentEntry = Pick<Lent, 'name' | 'label' | 'kind' | 'writable'>
 export type Adopted = { readonly folders: readonly string[]; readonly files: readonly string[] }
 type Request = Record<string, unknown>
 type Answer = { readonly fds?: unknown }
@@ -75,6 +76,16 @@ export class Lending {
     if (!manager) return (await sys().pickSave?.(app, title, name, filters)) ?? null
     const lent = (await manager.call('fs', 'pick', [{ kind: 'save', title, name, filters }])) as (Lent & Answer) | null
     return lent ? (this.#files([lent], lent.fds)[0] ?? null) : null
+  }
+
+  async dropped(uris: string): Promise<readonly LentEntry[] | null> {
+    const manager = this.#host.manager
+    if (!manager || !uris) return null
+    const given = (await manager.call('fs', 'dropped', [{ uris }])) as ({ files?: unknown } & Answer) | null
+    const entries = Lending.#entries(given?.files)
+    const { folders, files } = this.lend(entries, given?.fds)
+    const taken = entries.filter((entry) => folders.includes(entry.name) || files.includes(entry.name))
+    return taken.length ? taken.map(({ name, label, kind, writable }) => ({ name, label: label || name, kind, writable })) : null
   }
 
   request(event: Readonly<Record<string, unknown>>): Request | null {

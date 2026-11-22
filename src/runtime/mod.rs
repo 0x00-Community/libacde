@@ -65,7 +65,7 @@ pub use fcitx::{Fcitx, ImeController, ImeEntry, ImeGroup, ime_apply, ime_catalog
 pub use fetch::{Deliver, Dial, Event as FetchEvent, FetchClient};
 #[cfg(unix)]
 pub use fs::hand_fds;
-pub use fs::{EntryKind, Files, Finder, FsCall, FsError, FsReply, LentFile, LentRoot, MAX_CHUNK, Opened, PickedFolders, Range, Workspace};
+pub use fs::{Dropped, EntryKind, Files, Finder, FsCall, FsError, FsReply, LentFile, LentRoot, MAX_CHUNK, Opened, PickedFolders, Range, Workspace};
 #[cfg(target_os = "linux")]
 pub use greetd::{GreetUser, Greetd};
 #[cfg(target_os = "linux")]
