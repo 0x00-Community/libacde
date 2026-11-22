@@ -114,7 +114,9 @@ export class Pinned {
 
   #anchor(given: PinAnchor): Anchor {
     if (!this.#anchors) {
-      const Exception = this.#page.window.DOMException ?? DOMException
+      // globalThis.DOMException, not the bare name: a free `DOMException` in the bundle makes bun rename the DOM
+      // layer's class to DOMException2, and --keep-names does not keep the name, so the page's DOMException.name breaks.
+      const Exception = this.#page.window.DOMException ?? globalThis.DOMException
       throw new Exception('pin: this window system places no anchored panels', 'NotSupportedError')
     }
     return anchorOf(given)
