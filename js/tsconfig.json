@@ -10,6 +10,7 @@
     "noImplicitOverride": true,
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
     "noEmit": true,
     "skipLibCheck": true,
     "types": ["node"],

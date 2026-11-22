@@ -1,4 +1,7 @@
-export type IconName =
+export type IconName = string
+
+/** @deprecated Dopame's old icon names; write the freedesktop name instead (legacy-icons.json maps each one) */
+export type LegacyIconName =
   | 'files'
   | 'browser'
   | 'editor'
