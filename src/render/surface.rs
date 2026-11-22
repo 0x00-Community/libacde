@@ -100,6 +100,60 @@ impl WindowLook {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct WindowMaterial {
+    pub name: String,
+    pub role: acde_scene::glass::Role,
+    pub group: Option<String>,
+    pub spacing: f32,
+    pub overrides: Vec<f32>,
+    pub titlebar: bool,
+}
+
+impl WindowMaterial {
+    const SPACING: f32 = 10.0;
+    const MOST_SPACING: f64 = 256.0;
+
+    pub fn from_options(name: &str, options: &serde_json::Value) -> Result<Self, String> {
+        use acde_scene::material::Material;
+        if !name.is_empty() && !Material::valid(name) {
+            return Err(format!("setMaterial: {name:?} is not a material name ([a-z0-9._-], at most 64 bytes)"));
+        }
+        let field = |key: &str| options.get(key).filter(|v| !v.is_null());
+        let text = |key: &str| field(key).map(|v| v.as_str().ok_or_else(|| format!("setMaterial: {key} is a string")).map(str::to_owned)).transpose();
+        let role = match text("role")?.as_deref() {
+            None => acde_scene::glass::Role::Regular,
+            Some(given) => acde_scene::glass::Role::parse(given).ok_or_else(|| format!("setMaterial: role {given:?} is regular or clear"))?,
+        };
+        let group = text("group")?;
+        if let Some(group) = group.as_deref().filter(|g| !Material::valid(g)) {
+            return Err(format!("setMaterial: group {group:?} is [a-z0-9._-], at most 64 bytes"));
+        }
+        let spacing = match field("spacing") {
+            None => Self::SPACING,
+            Some(v) => v.as_f64().filter(|s| (0.0..=Self::MOST_SPACING).contains(s)).ok_or("setMaterial: spacing is 0 to 256 logical pixels")? as f32,
+        };
+        let titlebar = match text("region")?.as_deref() {
+            None | Some("window") => false,
+            Some("titlebar") => true,
+            Some(given) => return Err(format!("setMaterial: region {given:?} is window or titlebar")),
+        };
+        let overrides = match field("overrides") {
+            None => Vec::new(),
+            Some(serde_json::Value::Object(map)) => {
+                let mut pairs = Vec::with_capacity(map.len());
+                for (key, value) in map {
+                    pairs.push((key.as_str(), value.as_str().ok_or_else(|| format!("setMaterial: overrides.{key} is a string (CSS)"))?));
+                }
+                acde_scene::material::overrides(pairs, |warning| log::warn!("setMaterial: {warning}"))
+            }
+            Some(_) => return Err("setMaterial: overrides maps parameter names to CSS strings".into()),
+        };
+        let material = Material::resolve(name, |warning| log::warn!("setMaterial: {warning}"));
+        Ok(Self { name: material.name().to_owned(), role, group, spacing, overrides, titlebar })
+    }
+}
+
 pub type ClipboardTypesReply = Box<dyn FnOnce(Vec<String>) + Send>;
 pub type ClipboardReadReply = Box<dyn FnOnce(Option<Vec<u8>>) + Send>;
 
@@ -126,6 +180,7 @@ pub enum SurfaceCommand {
     Title(String),
     ImeArea([f64; 4]),
     WindowLook(Option<WindowLook>),
+    Material(WindowMaterial),
 }
 
 #[cfg(test)]

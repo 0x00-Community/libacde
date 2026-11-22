@@ -97,6 +97,57 @@ impl Material {
     }
 }
 
+const OVERRIDES: [(&str, &[usize]); 10] = [
+    ("refraction", &[0, 1, 2, 3]),
+    ("blur", &[4, 5, 6, 7, 8, 9, 10, 11, 12, 13]),
+    ("bleed", &[14, 15, 16]),
+    ("highlight", &[17, 18, 29]),
+    ("white-point", &[19]),
+    ("smoothing", &[20]),
+    ("tint", &[21, 22, 23, 24]),
+    ("lens", &[28, 25, 30, 26]),
+    ("darken", &[27]),
+    ("outline", &[31, 32, 33, 34, 35, 36]),
+];
+
+pub fn overrides<'a>(given: impl IntoIterator<Item = (&'a str, &'a str)>, warn: impl Fn(String)) -> Vec<f32> {
+    let mut out = Vec::new();
+    for (key, text) in given {
+        let Some((_, slots)) = OVERRIDES.iter().find(|(name, _)| *name == key) else {
+            let known: Vec<&str> = OVERRIDES.iter().map(|(name, _)| *name).collect();
+            warn(format!("overrides: no parameter called {key:?} ({})", known.join(", ")));
+            continue;
+        };
+        let Some(floats) = parsed(key, text, &warn) else { continue };
+        out.resize(floats.len(), f32::NAN);
+        let words = text.split_whitespace().count();
+        let given = match key {
+            "highlight" => &slots[..if words == 2 { 2 } else { 3 }],
+            "lens" => &slots[..words.clamp(2, 4)],
+            _ => slots,
+        };
+        for &slot in given {
+            out[slot] = floats[slot];
+        }
+    }
+    out
+}
+
+fn parsed(key: &str, text: &str, warn: &impl Fn(String)) -> Option<Vec<f32>> {
+    let failed = std::cell::Cell::new(false);
+    let property = |name: &str| match name.strip_prefix("acde-glass") {
+        Some("") => Some("regular".to_owned()),
+        Some(rest) if rest.strip_prefix('-') == Some(key) => Some(text.to_owned()),
+        _ => None,
+    };
+    let glass = Glass::from_properties_at(Level::Clear, property, |message| {
+        failed.set(true);
+        warn(message);
+    })?;
+    let bytes = glass.to_wire();
+    (!failed.get()).then(|| bytes.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect())
+}
+
 impl Glass {
     pub fn blur(level: Level, dark: bool) -> Self {
         let (layers, tint) = match level {
@@ -175,6 +226,22 @@ mod tests {
         assert_eq!(Material::lookup("blur").unwrap().glass(Role::Regular, reduced).unwrap().tint[3], 1.0);
         let glass = Material::lookup("glass").unwrap().glass(Role::Clear, reduced).unwrap();
         assert_eq!(glass, Glass::preset_in(Role::Clear, Level::Opaque, false));
+    }
+
+    #[test]
+    fn css_overrides_become_wire_slots_and_leave_the_rest_alone() {
+        let warnings = Mutex::new(Vec::new());
+        let given = [("outline", "none"), ("blur", "3px 1"), ("highlight", "90deg 0.2"), ("tint", "nonsense"), ("shine", "1")];
+        let floats = overrides(given, |w| warnings.lock().unwrap().push(w));
+        assert_eq!(warnings.lock().unwrap().len(), 2, "the bad tint and the unknown name");
+        let base = Glass::preset(Role::Regular, Level::Medium);
+        let glass = Glass::with_overrides(&base, &floats);
+        assert_eq!(glass.outline.width, 0.0);
+        assert_eq!((glass.blur[0].radius, glass.blur[1].radius), (3.0, 0.0));
+        assert_eq!(glass.highlight.width, base.highlight.width, "two words keep the width");
+        assert!((glass.highlight.amount - 0.2).abs() < 1e-6);
+        assert_eq!((glass.tint, glass.lens, glass.refraction), (base.tint, base.lens, base.refraction));
+        assert!(overrides([], |w| panic!("{w}")).is_empty());
     }
 
     #[test]

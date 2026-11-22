@@ -78,6 +78,10 @@
   `glass(role, preference)` 按档位、深浅、减少透明度取参数 (结构复用 `Glass`; 减少透明度时 blur 着色不透明度为 1, glass 是 `Opaque` 档),
   `with_overrides(role, preference, overrides)` 再经 `Glass::with_overrides` 盖分项 (线上格式, NaN 不覆盖), blur 和 glass 同一个入口.
   blur 各档: 通透 6/12 px、着色 0.15, 适中 10/20/32 px、0.35, 着色 16/32/48 px、0.6, 不透明 24/48 px、1; 浅色着 (0.97, 0.97, 0.98), 深色着 (0.11, 0.11, 0.12), 和 `Glass::opaque` 同色.
+  窗口级材质经 surface 交给宿主 (`SurfaceCommand::Material(WindowMaterial)`, `src/render/surface.rs`; 页面 `acde.window.setMaterial` → 原生 `setMaterial(name, options)` →
+  `WindowMaterial::from_options`): `name` 是 `Material::resolve` 之后实际生效的名字 (`none` 即取消), `role`、`group` (已查格式)、`spacing` (缺省 10, 0–256)、`titlebar`
+  (只铺标题栏, 高度由宿主按窗框定), `overrides` 已由 `acde_scene::material::overrides` 从"参数名 → CSS 写法"换成线上格式 (NaN 不覆盖; 两词的 highlight 不盖宽度, lens 只盖给了的几项;
+  写错的项 warn 后不盖). 会话里 acdes 把 `glass` 交给 `add_glass_area_role`, 其余交给 `set_window_material(name, height, overrides)`; C 接口暂不转发 (`ffi.rs` 丢掉).
   玻璃组 (融合, 2026-11-22, 总仓 `.scratch/libacde/glass-merge-plan.md`; `acde_scene::glass::group`): `GlassGroup` 是最多 `MOST_PIECES` (16) 块
   `Piece {center, half, radius, exponent, glass}` 加间距 `spacing`, 满了 `push` 回 false (调用方让多出的块不参加融合, 各画各的, 记一次 warn).
   各块的距离场按 Inigo Quilez 的多项式平滑最小值合成 (https://iquilezles.org/articles/smin/ , `h = clamp(0.5 + 0.5 (d − dᵢ) / k)`,
