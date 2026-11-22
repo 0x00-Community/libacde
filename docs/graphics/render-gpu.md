@@ -52,6 +52,11 @@
   (也给出窗口之间毛玻璃的取样外扩 `margin`): 偏移在约 0.5–1.3 之间连续调 (一层时从 0 起, 五层时最多到 2), 强度随 sigma 连续变,
   近似同 sigma 的高斯 (`SPREAD` 是 DX12 上量出的每档方差, `tests/vello_compose.rs` 按相位平均量边缘的展宽对照); sigma 小于约
   0.96 px 时一层不偏移, 再按 `mix` 和原图混合. sigma 为 0 不模糊 (drop-shadow、backdrop 只拷一份). shell 的 GLES 链不做 `mix`.
+- 动画曲线 (`acde_scene::motion`, 2026-11-22, 总仓 `.scratch/system/window-motion.md`): 合成器的窗口动画只用这一份. 两档 `Preset`: `Standard` 是临界阻尼的弹簧
+  (响应 0.35 秒, 不过冲, 约 0.51 秒落到 0.1% 内, `Curve::length`), `Reduced` 是 0.15 秒线性淡入淡出且不缩放、不位移 (`moves()` 为假); 桌面只能选档, 不能给数值.
+  `Ease` 是 CSS 的五个缓动关键字 (`linear`、`ease`、`ease-in`、`ease-out`、`ease-in-out`, 三次贝塞尔按 x 二分求 y), `acde:windows.animate` 的 `easing` 用它;
+  两者的线上编号 (`to_wire` / `from_wire`) 供 acdes 的合成器协议用. `Curve::css(n)` 把曲线按 n 段采样成 CSS 的 `linear(…)` 缓动, 时长取 `length()`:
+  页面要和合成器的动画同步时 (桌面切换时滑动桌面层) 从 `acde:desktop` 拿这两个值, 不在页面里另存一份 (用户 2026-11-22 选 B).
 - `Dom::capture(id, scale)`: 单独录一个元素 (拖动图标), 单边超过 2048 缩小; JS 拿 `picture` 编号 (`dom.rs`, 每个 web 留最后一个).
 - canvas 2D (acde-dom `dom/canvas.ts` 编成命令流, `Dom::canvas`): 要像素的都在 GPU 上 (render `gpu.rs`, 用 `acde::gpu::Gpu::publish` 登记的设备):
   超过 20000 条命令 (`ACDE_CANVAS_MAX_COMMANDS`) 画成纹理再接着记, canvas 当图片源是 `GpuImage`, `shadowBlur` 用 `blur.wgsl`,
