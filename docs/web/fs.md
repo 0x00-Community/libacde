@@ -23,12 +23,17 @@ acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边�
 
 **临时借出的根** (daily-desktop 12, 用户 2026-11-18 定方案 A, 名字 `lent`; 2026-11-22 起改传目录描述符, 路径不出管家, 见总仓
 `.scratch/system/fs-lend-fd.md`): 管家可给应用的某一次拉起借出文件夹.
-- 借出条目: `{name, label, kind: 'directory' | 'file', writable, fd}`, `fd` 是同一帧 `fds` (描述符整数数组) 里的下标.
+- 借出条目: `{name, label, kind: 'directory' | 'file', writable, fd}`, `fd` 是同一帧 `fds` 里的下标.
   描述符由管家打开 (文件夹 `O_PATH | O_DIRECTORY | O_CLOEXEC`), 经管家通道 `SCM_RIGHTS` 附在帧上.
+- JS 见不到描述符号: 应用进程里的管家客户端 (acdes `crates/manager/src/client.rs`) 收到帧上的描述符, 交给 `acde::runtime::hand_fds`
+  (`fs/access/handed.rs`, 由 acdes 的 main.rs 经 `acde_manager::client::hand_fds_with` 登记) 收进进程内的登记表, 换回随机令牌 (uuid 字符串);
+  JS 拿到的 `fds` 是这些令牌 (`string[]`). 令牌只出现在启动器的 JS 里: 管家客户端只装在启动器 isolate 的 natives 上,
+  页面 isolate 收不到管家帧. 收令牌的 `sys.adoptRoots` (连同 `sys.pickFolder`、`sys.unlendRoot`) 也只装在启动器的 `sys` 上 (src/host `sys.rs` 的 `launcher`),
+  页面 isolate 的 `sys` (`sys::object`) 没有这几个方法. 登记表里放了 60 秒还没人领的描述符, 在下一次 `hand_fds` 时关掉并记一行 warn.
 - 拉起时: welcome 的 `lent` + `fds`, 启动器在起页面线程前交给 `sys.adoptRoots(应用编号, lent, fds)`.
 - 运行中: 管家推 `{type: 'lend', ...条目, fds}`, 启动器收下后给页面发 `fsroots {added}`; 带借出的打开请求是 `{type: 'request', request, lent, fds}`,
   启动器收下再把请求交给页面 (`window.request`), 请求里补 `root: <第一个收下的 name>`.
-- `sys.adoptRoots` (src/host `web.rs`, 只在 unix 上有) 先把 `fds` 里每个描述符都收成自己的 (`OwnedFd`, 0 到 2 和重复的不收),
+- `sys.adoptRoots` (src/host `web.rs`, 只在 unix 上有) 先按 `fds` 里的令牌从登记表取走这一帧的全部描述符 (不认识的令牌得不到描述符),
   再把 `kind: 'directory'` 的条目连同它的描述符登记 (`LentRoot::from_fd`, 句柄是 `cap_std::fs::Dir`), 回登记上的 `name`;
   没被条目用到的、`kind: 'file'` 的、登记被拒的描述符随即关掉.
 - 登记的根放在进程内 (`fs/mod.rs` 的 `Shared.lent`, 按应用编号), 同一应用同名的后来的替换先前的, 进程结束就没了, 不记进批准.

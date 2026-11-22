@@ -223,12 +223,9 @@ struct Lent {
 }
 
 #[cfg(unix)]
-fn owned_fds(given: Option<serde_json::Value>) -> Vec<Option<std::os::fd::OwnedFd>> {
-    use std::os::fd::FromRawFd;
-    let numbers: Vec<i64> = given.and_then(|value| serde_json::from_value(value).ok()).unwrap_or_default();
-    let mut seen = std::collections::HashSet::new();
-    let owned = |fd: i64| i32::try_from(fd).ok().filter(|fd| *fd > 2 && seen.insert(*fd)).map(|fd| unsafe { std::os::fd::OwnedFd::from_raw_fd(fd) });
-    numbers.into_iter().map(owned).collect()
+fn handed(given: Option<serde_json::Value>) -> Vec<Option<std::os::fd::OwnedFd>> {
+    let tokens: Vec<String> = given.and_then(|value| serde_json::from_value(value).ok()).unwrap_or_default();
+    crate::runtime::fs::claim_handed(&tokens)
 }
 
 pub(crate) fn lend(owner: &str, root: crate::runtime::LentRoot) -> Result<String, crate::runtime::FsError> {
@@ -249,7 +246,7 @@ fn adopt(owner: &str, lent: Lent, fds: &mut [Option<std::os::fd::OwnedFd>]) -> O
 pub fn adopt_roots(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     use bind::IntoJs;
     let mut given = bind::Args { scope: &mut *scope, args: &args };
-    let (owner, lent, mut fds) = (given.string(0), given.json(1), owned_fds(given.json(2)));
+    let (owner, lent, mut fds) = (given.string(0), given.json(1), handed(given.json(2)));
     let lent: Vec<Lent> = lent.and_then(|value| serde_json::from_value(value).ok()).unwrap_or_default();
     let names: Vec<String> = lent.into_iter().filter_map(|lent| adopt(&owner, lent, &mut fds)).collect();
     rv.set(names.js(scope));

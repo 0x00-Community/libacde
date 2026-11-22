@@ -36,7 +36,7 @@ export interface Welcome {
   readonly lock?: boolean
   readonly instance?: number
   readonly lent?: readonly Lent[]
-  readonly fds?: readonly number[]
+  readonly fds?: readonly string[]
 }
 
 export function windowSize(given: unknown): readonly [number, number] | null {

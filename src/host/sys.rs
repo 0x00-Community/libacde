@@ -148,6 +148,17 @@ impl Loader for FileLoader {
     }
 }
 
+fn launcher<'s>(scope: &mut v8::PinScope<'s, '_>, argv: &[String]) -> v8::Local<'s, v8::Object> {
+    let obj = object(scope, argv);
+    crate::methods!(scope, obj,
+        "unlendRoot" => crate::host::web::unlend_root,
+        "pickFolder" => crate::host::picker::pick_folder,
+    );
+    #[cfg(unix)]
+    bind::method(scope, obj, "adoptRoots", crate::host::web::adopt_roots);
+    obj
+}
+
 pub fn object<'s>(scope: &mut v8::PinScope<'s, '_>, argv: &[String]) -> v8::Local<'s, v8::Object> {
     let obj = v8::Object::new(scope);
     crate::methods!(scope, obj,
@@ -174,11 +185,7 @@ pub fn object<'s>(scope: &mut v8::PinScope<'s, '_>, argv: &[String]) -> v8::Loca
         "run" => run,
         "onSignal" => on_signal,
         "spawnWeb" => crate::host::web::spawn_web,
-        "unlendRoot" => crate::host::web::unlend_root,
-        "pickFolder" => crate::host::picker::pick_folder,
     );
-    #[cfg(unix)]
-    bind::method(scope, obj, "adoptRoots", crate::host::web::adopt_roots);
     #[cfg(target_os = "linux")]
     crate::methods!(scope, obj,
         "openOffice" => crate::host::web::open_office,
@@ -626,7 +633,7 @@ pub fn start(entry: Entry, args: &[String], platform: crate::host::platform::Sha
     let mut runtime = rt::Runtime::new(None, "broker", platform);
     crate::host::modules::set_loader(Rc::new(FileLoader));
     runtime.task(|scope| {
-        let mut fields: Vec<(&str, v8::Local<v8::Value>)> = vec![("host", crate::host::host::object(scope).into()), ("sys", object(scope, args).into())];
+        let mut fields: Vec<(&str, v8::Local<v8::Value>)> = vec![("host", crate::host::host::object(scope).into()), ("sys", launcher(scope, args).into())];
         let napi = crate::host::napi::exports(scope);
         let native = crate::host::rt::current().platform().exports(scope, napi);
         fields.push(("native", native));

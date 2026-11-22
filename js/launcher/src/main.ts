@@ -685,7 +685,7 @@ class Launcher {
   }
 
   #adopt(lent: unknown, fds: unknown): string[] {
-    const given = Array.isArray(fds) ? fds.filter((fd): fd is number => Number.isInteger(fd)) : []
+    const given = Array.isArray(fds) ? fds.filter((fd): fd is string => typeof fd === 'string') : []
     if (!given.length) return []
     return sys().adoptRoots?.(this.session.found?.app.id ?? '', Array.isArray(lent) ? lent : [], given) ?? []
   }

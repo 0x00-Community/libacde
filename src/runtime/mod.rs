@@ -63,6 +63,8 @@ pub use devtools::{GUEST_KEY, dev_mode, managed};
 #[cfg(target_os = "linux")]
 pub use fcitx::{Fcitx, ImeController, ImeEntry, ImeGroup, ime_apply, ime_catalog, ime_state};
 pub use fetch::{Deliver, Dial, Event as FetchEvent, FetchClient};
+#[cfg(unix)]
+pub use fs::hand_fds;
 pub use fs::{EntryKind, Files, Finder, FsCall, FsError, FsReply, LentRoot, MAX_CHUNK, Opened, PickedFolders, Range, Workspace};
 #[cfg(target_os = "linux")]
 pub use greetd::{GreetUser, Greetd};

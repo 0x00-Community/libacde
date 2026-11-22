@@ -9,6 +9,10 @@ mod save;
 pub(crate) mod workspace;
 
 pub use access::files::{Files, LentRoot};
+#[cfg(unix)]
+pub(crate) use access::handed::claim as claim_handed;
+#[cfg(unix)]
+pub use access::handed::hand_fds;
 use access::{admit, cache::RootCache, folder::valid_owner};
 pub(crate) use beneath::escaped;
 #[cfg(not(windows))]
