@@ -327,6 +327,25 @@ mod tests {
     }
 
     #[test]
+    fn overlapping_pieces_have_no_alpha_or_highlight_on_their_old_edges() {
+        let glass = Glass {
+            highlight: super::super::Highlight { angle: 90f32.to_radians(), amount: 0.8, width: 4.0 },
+            lens: super::super::Lens::default(),
+            tint: [1.0, 1.0, 1.0, 0.0],
+            white_point: 0.0,
+            ..regular()
+        };
+        let pair = group(12.0, &[Piece::of_rect([10.0, 10.0, 60.0, 40.0], 20.0, 2.0, glass), Piece::of_rect([50.0, 10.0, 60.0, 40.0], 20.0, 2.0, glass)]);
+        let source = Pixels { width: 120, height: 60, data: vec![0xff40_4040; 120 * 60] };
+        let out = pair.paint_cpu(&source);
+        let pixel = |x: usize, y: usize| channels(out.data[y * 120 + x]);
+        for x in [49, 50, 69, 70] {
+            assert_eq!(pixel(x, 30), [255, 64, 64, 64], "the old edge at x={x} stays plain and opaque");
+        }
+        assert!(pixel(107, 30)[1] > 64, "the new outside edge catches the light");
+    }
+
+    #[test]
     fn an_empty_group_paints_nothing_and_moves_with_its_pieces() {
         let source = ground(8, 8);
         assert!(GlassGroup::new(4.0).paint_cpu(&source).data.iter().all(|&p| channels(p)[0] == 0));

@@ -1,8 +1,8 @@
 use super::{Bleed, BlurLayer, Glass, Highlight, LAYERS, Lens, Refraction};
 
 const HIGHLIGHT_DEGREES: f32 = 330.0;
-const HIGHLIGHT_AMOUNT: f32 = 0.2;
-const HIGHLIGHT_WIDTH: f32 = 1.5;
+const HIGHLIGHT_AMOUNT: f32 = 0.45;
+const HIGHLIGHT_WIDTH: f32 = 4.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Role {
@@ -161,7 +161,7 @@ mod tests {
             ("acde-glass-lens", "60px 256px 0.05"),
             ("acde-glass-blur", "0px 1"),
             ("acde-glass-bleed", "0 0 0"),
-            ("acde-glass-highlight", "330deg 0.2 1.5px"),
+            ("acde-glass-highlight", "330deg 0.45 4px"),
             ("acde-glass-darken", "0.05"),
             ("acde-glass-white-point", "0"),
             ("acde-glass-smoothing", "0.35"),

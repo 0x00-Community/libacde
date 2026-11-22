@@ -57,7 +57,7 @@
   `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 不模糊、不染色、不渗出, 乘暗 0.05, 透镜强度 60 px、宽度 256 px (着色器限到半短边, 即整块凸透镜)、色散 0.05 (边缘彩边约 3 px), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3)、`Tinted`
   (着色, 2, regular-2)、`Opaque` (减少透明度, 3: 重模糊加接近不透明的着色, `Glass::opaque(dark)` 按深浅给色, 预设取浅色). 名字和线上值都在 `Level`
   (`parse` / `from_wire` / `to_wire`, 照 `motion::Preset`), 认不得的线上值当通透. regular 取当前档, clear 再通透一档 (`Level::clearer`, 到通透为止,
-  不透明不变). 高光各档一律 `330deg 0.2 1.5px` (用户 2026-11-22 定, 细边). `Glass::from_properties_at(level, …)` 按档位取预设再盖分项;
+  不透明不变). 高光各档一律 `330deg 0.45 4px` (用户 2026-11-23 在调参页定). `Glass::from_properties_at(level, …)` 按档位取预设再盖分项;
   `from_properties` 是默认档 (通透).
   玻璃组 (融合, 2026-11-22, 总仓 `.scratch/libacde/glass-merge-plan.md`; `acde_scene::glass::group`): `GlassGroup` 是最多 `MOST_PIECES` (16) 块
   `Piece {center, half, radius, exponent, glass}` 加间距 `spacing`, 满了 `push` 回 false (调用方让多出的块不参加融合, 各画各的, 记一次 warn).
@@ -65,7 +65,9 @@
   `d = mix(d, dᵢ, h) − k h (1 − h)`, k 是间距): 只在两块的距离差小于 k 处起作用, 所以间隙不小于 k 时各块的轮廓原样不动, 小于 k 时开始鼓出,
   小于 k/2 时连成一片. 各块的参数 (除模糊层以外的全部玻璃参数) 按同一权重 h 混合, 做法同 www 的 `public/landing/proto/h/liquid.js` (它又参照
   Liquid Glass Studio, MIT, https://github.com/iyinchao/liquid-glass-studio ; 只借思路, 没有拷代码). 法线: 一块的组用单块玻璃原来的法线 (中心指向该点, 按半宽归一), 结果和单块玻璃逐位相同; 两块及以上的组在整个融合形状上都用合成场的梯度
-  (中心差分, 步长 0.5 px), 所以高光、边缘折射和透镜沿融合后的整体外轮廓, 不会留在各块原来的位置. `merging = max 4h(1 − h)` 仍记录接触程度供调试, 不再混合法线. 回归测试 (`group.rs` 的回归测试对照 `cpu::paint`).
+  (中心差分, 步长 0.5 px), 所以高光、边缘折射和透镜沿融合后的整体外轮廓, 不会留在各块原来的位置. `fs_glass_group` 的透明度、平滑边、高光与透镜全部只读
+  `acde_glass_group_field` 的合成场 d 和组梯度, 不再读单块的距离或角形; 两块相交后, 重叠内部原边界处保持不透明且没有亮线, 新外边界才有高光 (CPU 回归测试).
+  `merging = max 4h(1 − h)` 仍记录接触程度供调试, 不再混合法线. 一块的组回归测试继续对照 `cpu::paint`.
   模糊层全组一份, 取第一块的. WGSL (`group::WGSL`, 要先拼 `corner::WGSL` 和 `glass::WGSL`) 只引用一个模块级数组 `acde_glass_pieces`,
   由使用方自己声明绑定: `var<uniform> acde_glass_pieces: array<AcdeGlassPiece, 16>`; 每块 7 个 vec4 (112 字节, `to_uniform` 给出整块 1792 字节):
   `shape` (中心、半宽高)、`corner` (半径、指数)、`refraction`、`bleed` (渗出三项加高光角度)、`look` (高光强度、白点、平滑、高光宽度)、`tint`、`lens` (透镜强度、色散、乘暗、透镜宽度). 用 uniform 定长数组
