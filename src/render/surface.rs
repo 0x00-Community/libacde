@@ -79,6 +79,7 @@ pub struct WindowLook {
 
 impl WindowLook {
     const LAYER: usize = 5;
+    const MOST_LAYERS: usize = 4;
 
     pub fn from_numbers(numbers: &[f64]) -> Option<Self> {
         let (&[radius, superellipse], rest) = numbers.split_first_chunk::<2>()?;
@@ -89,7 +90,8 @@ impl WindowLook {
 
     fn layers(numbers: &[f64]) -> Option<(Vec<WindowShadow>, &[f64])> {
         let (&count, rest) = numbers.split_first()?;
-        let length = (count as usize).checked_mul(Self::LAYER).filter(|n| *n <= rest.len())?;
+        let count = Some(count as usize).filter(|n| *n <= Self::MOST_LAYERS)?;
+        let length = count.checked_mul(Self::LAYER).filter(|n| *n <= rest.len())?;
         let (layers, rest) = rest.split_at(length);
         let shadow = |l: &[f64]| WindowShadow { x: l[0], y: l[1], blur: l[2], spread: l[3], color: (l[4] as u32).to_be_bytes() };
         Some((layers.chunks_exact(Self::LAYER).map(shadow).collect(), rest))
@@ -144,5 +146,7 @@ mod tests {
         assert_eq!(look, WindowLook { radius: 12.0, superellipse: 2.0, focused: vec![shadow], unfocused: Vec::new() });
         assert_eq!(WindowLook::from_numbers(&numbers[..8]), None, "a layer cut short");
         assert_eq!(WindowLook::from_numbers(&[1.0, 2.0, 0.0, 0.0, 7.0]), None, "numbers left over");
+        let five: Vec<f64> = [12.0, 2.0, 5.0].into_iter().chain([0.0; 25]).chain([0.0]).collect();
+        assert_eq!(WindowLook::from_numbers(&five), None, "more than four layers");
     }
 }
