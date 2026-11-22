@@ -28,7 +28,7 @@
   `- button "Save" [pressed] [w1.52]` (角色是 ARIA 名, 状态见上), 后面跟括号里的说明 (`(empty)`、`(N more outside the visible area; …)`、
   `(too many elements, …)`); `find` 只给名字或值含这段文字的元素和祖先, 一个都没有时最后一行是 `(no element contains "…"…)`; `diff`
   只给变了的行 (`+` / `~` / `-` 后跟节点行, `(no changes)`), 变化超过六成整个重列 (`(many changes, listing everything)`), 窗口表没变时
-  第一行是 `(windows unchanged)` 且只列有树的窗口. act / run / open / query 的文字和错误也是英文. `act(ref, action, arg)` → `{ok, text}`: 做完等页面安静
+  第一行是 `(windows unchanged)` 且只列有树的窗口. act / run / open / query 的文字和错误也是英文. `act(ref, action, arg)` → `{ok, text, windows?, expanded?}` (做完了就带 `windows` (同快照的 `windows`) 与 `expanded` (文字末尾附的那份快照里列了树的窗口引用), 让调用方知道这次看到了哪些窗口, 如 acdes 管家据此给 `origin`; 一步都没做成时没有; `run`、`open` 同): 做完等页面安静
   (200 ms 没有 DOM 变化, 最多 3 秒; 原生窗口 0.4 秒), 窗口表或焦点变了先等新焦点窗口安静. `run(steps)` 依次做, 失败就停. 动作: click /
   double / right / hover / scroll 按 `point` 的屏幕坐标经 `Shell.inject` 发 (被盖住时先提前目标窗口; 桌面钉住的面板盖着的地方只算被更上层的钉住窗口挡住, #111); type / settext 走 web 的 `type`;
   key (`"ctrl+a backspace"`, acde-host `keys.ts` 的 `chordCodes`) 先 focus 再注入: 空格分开的每段先全部解析, 有认不出的就整串不发并报出这些段;
