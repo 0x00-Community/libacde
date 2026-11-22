@@ -3,11 +3,15 @@ import type { AcdeOffice } from './office'
 import type { AcdePermissions } from './permissions'
 import type { SharedPlace } from './places'
 import type { AcdeTerminals } from './terminal/index'
+import type { AcdeLock } from './lock/index'
+import type { AcdeSession } from './session/index'
 
 export type * from './events'
 export type * from './office'
 export type * from './permissions'
 export type * from './terminal/index'
+export type * from './lock/index'
+export type * from './session/index'
 
 export interface FinderRoot {
   id: string
@@ -357,57 +361,6 @@ export interface DesktopInfo {
 export interface AcdeDesktops {
   list(): Promise<{ desktops: DesktopInfo[]; current: string }>
   choose(id: string, remember?: boolean): Promise<void>
-}
-
-export interface AcdeSession {
-  own(): boolean
-  lock(): Promise<void>
-  logout(): Promise<void>
-  reboot(): Promise<void>
-  poweroff(): Promise<void>
-  setLanguage(tag: string): Promise<void>
-}
-
-export interface LockUser {
-  readonly name: string
-  readonly fullName: string
-  readonly avatar: string | null
-  readonly confirm?: LockConfirm
-}
-
-export type LockRemember = 'once' | 'task' | 'scope' | 'until'
-
-export interface LockConfirm {
-  readonly id: string
-  readonly agent: boolean
-  readonly waiting: LockWaiting
-}
-
-export interface LockWaiting {
-  readonly title: string
-  readonly detail: string
-  readonly expires: string
-  readonly password: boolean
-  readonly judge: 'supervisor' | 'user'
-  readonly remember?: { readonly may: readonly LockRemember[]; readonly default: LockRemember; readonly max_days?: number }
-  readonly tries_left?: number
-}
-
-export type LockFailure =
-  | { readonly code: 'auth'; readonly status: 403 }
-  | { readonly code: 'busy'; readonly status: 409 }
-  | { readonly code: 'throttled'; readonly status: 429; readonly retryAfter: number }
-
-export type LockError = Error & LockFailure
-
-export interface AcdeLock {
-  user(): Promise<LockUser>
-  unlock(password: string, options?: LockUnlockOptions): Promise<void>
-  cancel?(): Promise<void>
-}
-
-export interface LockUnlockOptions {
-  readonly remember?: LockRemember
 }
 
 export interface InspectNode {
