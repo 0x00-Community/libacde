@@ -1,3 +1,4 @@
+pub mod blur;
 mod compose;
 pub mod corner;
 mod filter;
