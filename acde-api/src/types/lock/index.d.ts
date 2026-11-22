@@ -37,6 +37,7 @@ export interface AcdeLock {
   unlock(password: string, options?: LockUnlockOptions): Promise<void>
   cancel?(): Promise<void>
   status?(): Promise<LockStatus>
+  answer?(reply: { readonly allow: boolean }): Promise<void>
 }
 
 export interface LockUnlockOptions {

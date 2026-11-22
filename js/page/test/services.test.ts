@@ -89,11 +89,13 @@ test('an app page gets them only when its tier lists them', () => {
 test('the lock page gets acde:lock and no shell modules; user and unlock go out over rpc', () => {
   const { bridge, sent } = bridged({ kind: 'desktop', lock: true })
   assert.deepEqual(Object.keys(bridge.value).sort(), ['lock', 'services'])
-  const lock = bridge.value['lock'] as { user(): Promise<unknown>; unlock(password: string): Promise<unknown> }
+  type Lock = { user(): Promise<unknown>; unlock(password: string): Promise<unknown>; answer(reply: { allow: boolean }): Promise<unknown> }
+  const lock = bridge.value['lock'] as Lock
   void lock.user()
   void lock.unlock('secret')
+  void lock.answer({ allow: true })
   const calls = sent.map((m) => { const c = m as { service: string; method: string; args: unknown[] }; return [c.service, c.method, c.args] })
-  assert.deepEqual(calls, [['lock', 'user', []], ['lock', 'unlock', ['secret']]])
+  assert.deepEqual(calls, [['lock', 'user', []], ['lock', 'unlock', ['secret']], ['lock', 'answer', [{ allow: true }]]])
 })
 
 test('session.lock goes out over rpc like the other session calls', () => {
