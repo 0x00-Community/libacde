@@ -19,3 +19,7 @@
   页面因此直接以 `NotSupportedError` 拒绝, 不会发出 `PointerLock` (`Outgoing::of` 遇到也丢掉).
 - 导出表: `build.rs` 从 `src/ffi.rs` 收 `acde_*`, so 只导出它们 (Linux `--exclude-libs,ALL` + 版本脚本, macOS `-exported_symbols_list`, MSVC `.def`);
   V8 / napi / temporal 等依赖的符号都不导出 (napi 模块的 napi_* 只给静态链接的内置模块用, 不 dlopen 外部 .node).
+- Windows 上 N-API 的导出 (2026-11-22): 链进 libacde 的可执行文件 (acdev) 要导出 `napi_*` / `node_api_*`, napi-rs 在 MSVC 上总是经 `GetProcAddress`
+  从本进程找这些函数 (`napi-sys` 的 `setup`), 找不到就 `LoadLibraryExW failed` 并在启动时 panic. `build.rs` 从 `src/napi/*.rs` 收 `#[napi_sym]` /
+  `#[unsafe(no_mangle)]` 的函数和带 `#[napi_sym]` 的宏 (`napi_is!` 等) 列出的名字, 写进 `OUT_DIR/napi.def`, 经 `links = "acde"` 的元数据交给依赖方
+  (`DEP_ACDE_NAPI_DEF`); acdev 的 `build.rs` 拿它加 `/DEF:`. 9605b20 并成一个包时丢了原来 `crates/host/build.rs` 的这一步, Windows 运行时从那时起启动即崩.

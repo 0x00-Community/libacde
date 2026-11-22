@@ -23,6 +23,8 @@ version.workspace = true
 edition.workspace = true
 repository.workspace = true
 publish = ["ac"]
+# links: build.rs hands dependents the napi export list (DEP_ACDE_NAPI_DEF) for the executable that links this library on Windows
+links = "acde"
 # the package is the library: its sources, the header, the Wayland protocols, the page files build.rs bundles from js/ with
 # manifest/, and the contract level src/host reads from acde-api/api-level
 include = [

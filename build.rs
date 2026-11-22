@@ -47,6 +47,9 @@ fn main() {
         .map(|rest| rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect())
         .collect();
     Linker::current().exports(&names, &out);
+    if matches!(Linker::current(), Linker::Msvc) {
+        napi_exports(&dir, &out);
+    }
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         println!("cargo:rustc-link-arg=-Wl,-undefined,dynamic_lookup");
     }
@@ -70,4 +73,79 @@ fn bundle_js(dir: &Path, out: &Path) {
         .status()
         .unwrap_or_else(|e| panic!("{bun}: {e}; bundling js/ needs bun (set ACDEV_BUN to its path)"));
     assert!(status.success(), "{bun} js/bundle.ts failed ({status})");
+}
+
+fn napi_exports(dir: &Path, out: &Path) {
+    let sources = dir.join("src/napi");
+    println!("cargo:rerun-if-changed={}", sources.display());
+    let texts: Vec<String> = std::fs::read_dir(&sources)
+        .expect("src/napi")
+        .map(|entry| entry.expect("src/napi entry").path())
+        .filter(|path| path.extension().is_some_and(|e| e == "rs"))
+        .map(|path| std::fs::read_to_string(&path).expect("src/napi source"))
+        .collect();
+    let mut names: Vec<String> = texts.iter().flat_map(|text| napi_names(text, &napi_makers(&texts))).collect();
+    names.sort();
+    names.dedup();
+    let def = out.join("napi.def");
+    std::fs::write(&def, format!("EXPORTS\n{}\n", names.iter().map(|n| format!("  {n}")).collect::<Vec<_>>().join("\n"))).expect("napi.def");
+    println!("cargo::metadata=napi_def={}", def.display());
+}
+
+fn ident(text: &str) -> String {
+    text.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect()
+}
+
+fn napi_makers(texts: &[String]) -> Vec<String> {
+    let mut makers = Vec::new();
+    for text in texts {
+        let mut maker: Option<String> = None;
+        for line in text.lines() {
+            if let Some(rest) = line.strip_prefix("macro_rules! ") {
+                maker = Some(ident(rest));
+            } else if line.trim() == "#[napi_sym]" {
+                makers.extend(maker.take());
+            } else if line == "}" {
+                maker = None;
+            }
+        }
+    }
+    makers
+}
+
+fn napi_names(text: &str, makers: &[String]) -> Vec<String> {
+    let mut names = Vec::new();
+    let (mut exported, mut block) = (false, false);
+    for line in text.lines() {
+        if block {
+            if line == "}" {
+                block = false;
+            } else if let Some(entry) = line.strip_prefix("    ").filter(|e| !e.starts_with(' ')) {
+                let name = ident(entry);
+                if name.starts_with("napi_") || name.starts_with("node_api_") {
+                    names.push(name);
+                }
+            }
+            continue;
+        }
+        if line.strip_suffix("! {").is_some_and(|called| makers.iter().any(|m| m == called)) {
+            block = true;
+            continue;
+        }
+        let line = line.trim();
+        if line == "#[napi_sym]" || line == "#[unsafe(no_mangle)]" {
+            exported = true;
+            continue;
+        }
+        if !exported || line.starts_with("#[") {
+            continue;
+        }
+        exported = false;
+        let Some((_, rest)) = line.split_once("fn ") else { continue };
+        let name = ident(rest);
+        if !name.is_empty() && !name.starts_with('$') {
+            names.push(name);
+        }
+    }
+    names
 }
