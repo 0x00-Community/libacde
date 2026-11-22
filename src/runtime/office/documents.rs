@@ -1,17 +1,11 @@
 use super::blank::BlankKind;
-use crate::runtime::failure::{Failure, Outcome};
+use crate::runtime::failure::{Errno, Failure, Outcome};
 use crate::runtime::fs::Shared as Finder;
 use crate::runtime::fs::path::NodePath;
-use crate::runtime::fs::workspace::{EntryKind, FinderRoot, ModifiedMs, WorkspaceFs};
-use rustix::fs::OFlags;
+use crate::runtime::fs::workspace::{Create, EntryKind, FinderEntry, FinderRoot, ModifiedMs, WorkspaceFs, WriteOptions};
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::{
-    fs::{self, OpenOptions},
-    io::Write,
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 pub const MAX_DOCUMENT_BYTES: u64 = 64 * 1024 * 1024;
 const EDITABLE: [(&str, &str); 3] = [("docx", "word"), ("xlsx", "cell"), ("pptx", "slide")];
@@ -87,13 +81,10 @@ impl OfficeFiles {
     }
 
     pub fn file_in(root: FinderRoot, relative: &str) -> Outcome<OfficeFile> {
-        let resolved = WorkspaceFs::resolve(&root, relative, true)?;
-        let info = fs::metadata(&resolved.real)?;
-        if !info.is_file() {
-            return Err(Failure::invalid("not a regular file"));
-        }
-        let ext = Self::extension(&resolved.absolute);
-        let Some(document_type) = Self::document_type(&resolved.absolute) else {
+        let (path, _, info) = WorkspaceFs::opened(&root, relative)?;
+        let name = path.basename().to_owned();
+        let ext = Self::extension(&name);
+        let Some(document_type) = Self::document_type(&name) else {
             let supported: Vec<&str> = EDITABLE.iter().chain(VIEWABLE.iter()).map(|(e, _)| *e).collect();
             let shown = if ext.is_empty() { "?" } else { &ext };
             return Err(Failure::invalid(format!(".{shown} files do not open in Office; supported: {}", supported.join(", "))));
@@ -103,8 +94,8 @@ impl OfficeFiles {
         }
         let reason = (!EDITABLE.iter().any(|(e, _)| *e == ext)).then(|| format!(".{ext} 只能查看；要编辑请另存为 docx、xlsx 或 pptx。"));
         Ok(OfficeFile {
-            path: resolved.relative,
-            name: resolved.absolute.basename().to_owned(),
+            path,
+            name,
             ext,
             document_type,
             size: info.len(),
@@ -138,19 +129,17 @@ impl OfficeFiles {
         Ok((listing.path, entries, listing.truncated))
     }
 
-    fn write_new(path: &str, data: &[u8], mode: u32, exact: bool) -> std::io::Result<()> {
-        let mut file = OpenOptions::new().write(true).create_new(true).custom_flags(OFlags::NOFOLLOW.bits() as i32).mode(mode).open(path)?;
-        let written = (|| {
-            if exact {
-                file.set_permissions(fs::Permissions::from_mode(mode))?;
+    fn write_free(root: &FinderRoot, path: &str, data: &[u8]) -> Outcome<(String, FinderEntry)> {
+        let fresh = WriteOptions { create: Create::New, ..WriteOptions::default() };
+        for index in 1..1000 {
+            let candidate = WorkspaceFs::numbered(path, index);
+            match WorkspaceFs::write_file_in(root, &candidate, data, &fresh) {
+                Ok(entry) => return Ok((candidate, entry)),
+                Err(failure) if failure.errno == Errno::Exist => continue,
+                Err(failure) => return Err(failure),
             }
-            file.write_all(data)?;
-            file.sync_all()
-        })();
-        if written.is_err() {
-            let _ = fs::remove_file(path);
         }
-        written
+        Err(Failure::http(409, "too many files with this name"))
     }
 
     pub fn create(root: &FinderRoot, directory: &str, kind: BlankKind, name: Option<&str>) -> Outcome<String> {
@@ -163,60 +152,25 @@ impl OfficeFiles {
         if base.is_empty() || base.contains(['/', '\\', '\0']) || base.starts_with('.') {
             return Err(Failure::invalid("invalid file name"));
         }
-        let folder = WorkspaceFs::resolve(root, directory, true)?;
-        if !fs::metadata(&folder.real)?.is_dir() {
-            return Err(Failure::invalid("not a directory"));
-        }
-        let data = kind.create();
+        let folder = WorkspaceFs::inner(directory)?;
         let name = format!("{base}.{ext}");
-        for index in 1..1000 {
-            let candidate = folder.relative.join(&WorkspaceFs::numbered(&name, index));
-            let target = WorkspaceFs::resolve(root, &candidate, false)?;
-            match Self::write_new(&target.absolute, &data, 0o644, false) {
-                Ok(()) => return Ok(candidate),
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(error) => return Err(error.into()),
-            }
-        }
-        Err(Failure::http(409, "too many files with this name"))
-    }
-
-    fn unique_path(&self, root: &FinderRoot, path: &str) -> Outcome<String> {
-        for index in 1..1000 {
-            let candidate = WorkspaceFs::numbered(path, index);
-            let target = WorkspaceFs::resolve(root, &candidate, false)?;
-            if fs::symlink_metadata(&target.absolute).is_err() {
-                return Ok(candidate);
-            }
-        }
-        Err(Failure::http(409, "too many conflict copies"))
+        let path = if folder.is_empty() { name } else { format!("{folder}/{name}") };
+        Ok(Self::write_free(root, &path, &kind.create())?.0)
     }
 
     pub fn save(&self, root_path: &str, relative: &str, data: &[u8], expected_ms: i64) -> Outcome<SaveResult> {
         let root = WorkspaceFs::granted(root_path);
-        let target = WorkspaceFs::resolve(&root, relative, false)?;
-        let current = fs::symlink_metadata(&target.absolute).ok();
-        if current.as_ref().is_some_and(|c| !c.is_file()) {
-            return Err(Failure::http(409, "the path is no longer a regular file"));
+        let relative = WorkspaceFs::inner(relative)?;
+        let unchanged = WriteOptions { create: Create::Never, if_modified_ms: Some(expected_ms as f64), ..WriteOptions::default() };
+        match WorkspaceFs::write_file_in(&root, &relative, data, &unchanged) {
+            Ok(entry) => return Ok(SaveResult { path: relative, modified_ms: entry.modified_ms, conflict: false }),
+            Err(failure) if failure.errno == Errno::Conflict => {}
+            Err(failure) => return Err(failure),
         }
-        if let Some(current) = current.filter(|c| c.modified_ms() == expected_ms) {
-            let suffix: String = rand::random::<[u8; 6]>().iter().map(|b| format!("{b:02x}")).collect();
-            let temporary = target.absolute.dirname().join(&format!(".{}.{suffix}.office-tmp", target.absolute.basename()));
-            use std::os::unix::fs::MetadataExt;
-            Self::write_new(&temporary, data, current.mode() & 0o777, true)?;
-            if let Err(error) = fs::rename(&temporary, &target.absolute) {
-                let _ = fs::remove_file(&temporary);
-                return Err(error.into());
-            }
-            let modified_ms = fs::metadata(&target.absolute)?.modified_ms();
-            return Ok(SaveResult { path: target.relative, modified_ms, conflict: false });
-        }
-        let ext = target.relative.extname();
-        let copy = format!("{} (冲突副本 {}){ext}", &target.relative[..target.relative.len() - ext.len()], Self::stamp());
-        let copy = self.unique_path(&root, &copy)?;
-        Self::write_new(&WorkspaceFs::resolve(&root, &copy, false)?.absolute, data, 0o644, false)?;
-        let modified_ms = fs::metadata(&WorkspaceFs::resolve(&root, &copy, true)?.real)?.modified_ms();
-        Ok(SaveResult { path: copy, modified_ms, conflict: true })
+        let ext = relative.extname();
+        let copy = format!("{} (冲突副本 {}){ext}", &relative[..relative.len() - ext.len()], Self::stamp());
+        let (path, entry) = Self::write_free(&root, &copy, data)?;
+        Ok(SaveResult { path, modified_ms: entry.modified_ms, conflict: true })
     }
 }
 
@@ -224,6 +178,7 @@ impl OfficeFiles {
 mod tests {
     use super::*;
     use crate::runtime::fs::{Files, Workspace};
+    use std::fs;
 
     #[test]
     fn level_1_roots_open_and_create_documents_and_handed_files_hide_their_path() {

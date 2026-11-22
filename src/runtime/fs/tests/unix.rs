@@ -164,9 +164,11 @@ fn mkdir_recursive() {
     fs::write(s.at("x/file"), "").unwrap();
     assert_eq!(code(WorkspaceFs::mkdir_in(&s.root, "x/file", &recursive)), (409, "EEXIST"));
     assert_eq!(code(WorkspaceFs::mkdir_in(&s.root, "x/file/deeper", &recursive)), (400, "EINVAL"));
-    symlink(s.at("x"), s.at("inside")).unwrap();
+    symlink("x", s.at("inside")).unwrap();
     WorkspaceFs::mkdir_in(&s.root, "inside/w", &recursive).unwrap();
     assert!(Path::new(&s.at("x/w")).is_dir());
+    symlink(s.at("x"), s.at("absolute")).unwrap();
+    assert_eq!(code(WorkspaceFs::mkdir_in(&s.root, "absolute/v", &recursive)), (400, "EINVAL"));
     symlink(&s.dir, s.at("away")).unwrap();
     assert_eq!(code(WorkspaceFs::mkdir_in(&s.root, "away/w", &recursive)), (400, "EINVAL"));
     assert!(!Path::new(&s.dir.join("w")).exists());

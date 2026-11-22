@@ -10,6 +10,7 @@ pub(crate) mod workspace;
 
 pub use access::files::{Files, GrantedFolder, LentRoot};
 use access::{admit, cache::RootCache, grants::Grants};
+pub(crate) use beneath::escaped;
 #[cfg(not(windows))]
 use path::NodePath;
 #[cfg(windows)]
@@ -311,7 +312,7 @@ impl Shared {
     }
 
     fn open_path(&self, workspace: &FinderRoot, path: &str) -> Outcome<Value> {
-        let resolved = WorkspaceFs::resolve(workspace, path, true)?;
+        let resolved = WorkspaceFs::resolve(workspace, path)?;
         if resolved.relative.is_empty() {
             return Err(Failure::invalid("a folder cannot be opened in the browser"));
         }

@@ -1,5 +1,5 @@
-use super::beneath::Dir;
-use std::fs::{File, Metadata, OpenOptions};
+use super::beneath::{self, Dir};
+use std::fs::{File, Metadata};
 use std::io::{self, ErrorKind, Write};
 
 pub(crate) fn version(file: &File) -> io::Result<String> {
@@ -11,18 +11,42 @@ pub(crate) fn version(file: &File) -> io::Result<String> {
     }
     #[cfg(windows)]
     {
-        use std::os::windows::io::AsRawHandle;
-        use windows_sys::Win32::Storage::FileSystem::{BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle};
-        let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
-        if unsafe { GetFileInformationByHandle(file.as_raw_handle() as _, &mut info) } == 0 {
-            return Err(io::Error::last_os_error());
-        }
-        let join = |high: u32, low: u32| (u64::from(high) << 32) | u64::from(low);
+        let info = by_handle(file)?;
         let size = join(info.nFileSizeHigh, info.nFileSizeLow);
         let written = join(info.ftLastWriteTime.dwHighDateTime, info.ftLastWriteTime.dwLowDateTime);
         let index = join(info.nFileIndexHigh, info.nFileIndexLow);
         Ok(format!("{size}-{written}-{}.{index}", info.dwVolumeSerialNumber))
     }
+}
+
+pub(crate) fn identity(file: &File) -> io::Result<(u64, u64)> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let info = file.metadata()?;
+        Ok((info.dev(), info.ino()))
+    }
+    #[cfg(windows)]
+    {
+        let info = by_handle(file)?;
+        Ok((u64::from(info.dwVolumeSerialNumber), join(info.nFileIndexHigh, info.nFileIndexLow)))
+    }
+}
+
+#[cfg(windows)]
+fn by_handle(file: &File) -> io::Result<windows_sys::Win32::Storage::FileSystem::BY_HANDLE_FILE_INFORMATION> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle};
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    match unsafe { GetFileInformationByHandle(file.as_raw_handle() as _, &mut info) } {
+        0 => Err(io::Error::last_os_error()),
+        _ => Ok(info),
+    }
+}
+
+#[cfg(windows)]
+fn join(high: u32, low: u32) -> u64 {
+    (u64::from(high) << 32) | u64::from(low)
 }
 
 pub(crate) enum Saved {
@@ -32,7 +56,7 @@ pub(crate) enum Saved {
 
 pub(crate) fn save(dir: &Dir, name: &str, data: &[u8], mut original: File, info: &Metadata) -> io::Result<Saved> {
     let temp = format!(".{name}.{}.acde-save", uuid::Uuid::new_v4().simple());
-    let mut file = match super::workspace::WorkspaceFs::no_follow(OpenOptions::new().write(true).create_new(true), dir.child(&temp), false) {
+    let mut file = match beneath::create_new(dir, &temp) {
         Ok(file) => file,
         Err(error) if error.kind() == ErrorKind::PermissionDenied => {
             original.set_len(0)?;
@@ -47,7 +71,7 @@ pub(crate) fn save(dir: &Dir, name: &str, data: &[u8], mut original: File, info:
     drop(file);
     let replaced = written.and_then(|()| replace(dir, &temp, name));
     if let Err(error) = replaced {
-        _ = std::fs::remove_file(dir.child(&temp));
+        _ = dir.remove_file(&temp);
         return Err(error);
     }
     Ok(Saved::Replaced)
@@ -62,27 +86,27 @@ pub(super) fn keep(file: &File, info: &Metadata) -> io::Result<()> {
 }
 
 #[cfg(windows)]
-pub(super) fn keep(_: &File, _: &Metadata) -> io::Result<()> {
-    Ok(())
-}
-
-#[cfg(unix)]
-pub(super) fn replace(dir: &Dir, temp: &str, name: &str) -> io::Result<()> {
-    std::fs::rename(dir.child(temp), dir.child(name))?;
-    File::open(dir.path())?.sync_all()
-}
-
-#[cfg(windows)]
-pub(super) fn replace(dir: &Dir, temp: &str, name: &str) -> io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::{REPLACEFILE_IGNORE_MERGE_ERRORS, ReplaceFileW};
-    let wide = |name: &str| dir.child(name).as_os_str().encode_wide().chain(Some(0)).collect::<Vec<u16>>();
-    let (target, source) = (wide(name), wide(temp));
-    let flags = REPLACEFILE_IGNORE_MERGE_ERRORS;
-    match unsafe { ReplaceFileW(target.as_ptr(), source.as_ptr(), std::ptr::null(), flags, std::ptr::null(), std::ptr::null()) } {
+pub(super) fn keep(file: &File, info: &Metadata) -> io::Result<()> {
+    use std::os::windows::fs::MetadataExt;
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{FILE_BASIC_INFO, FileBasicInfo, SetFileInformationByHandle};
+    let basic = FILE_BASIC_INFO {
+        CreationTime: info.creation_time() as i64,
+        LastAccessTime: 0,
+        LastWriteTime: 0,
+        ChangeTime: 0,
+        FileAttributes: info.file_attributes(),
+    };
+    let size = std::mem::size_of::<FILE_BASIC_INFO>() as u32;
+    match unsafe { SetFileInformationByHandle(file.as_raw_handle() as _, FileBasicInfo, (&raw const basic).cast(), size) } {
         0 => Err(io::Error::last_os_error()),
         _ => Ok(()),
     }
+}
+
+pub(super) fn replace(dir: &Dir, temp: &str, name: &str) -> io::Result<()> {
+    dir.rename(temp, dir, name)?;
+    beneath::sync(dir)
 }
 
 #[cfg(not(test))]

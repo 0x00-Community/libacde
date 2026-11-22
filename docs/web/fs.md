@@ -1,7 +1,7 @@
 # 文件 (`acde:fs`)
 
 页面的 `acde:fs` 是 src/host `fs.rs` 绑的 `natives.fs`, 实现在 runtime `fs/` (`Workspace` → `WorkspaceFs`), 类型 acde-api `AcdeFs`.
-第一个参数是 root (`roots()` 里某项的 `id`; 下面按路径的根 `id` 就是 `path`), 第二个是相对路径: 绝对路径、`..` 出 root、经符号链接出 root 都拒绝 (`WorkspaceFs::resolve`),
+第一个参数是 root (`roots()` 里某项的 `id`; 下面按路径的根 `id` 就是 `path`), 第二个是相对路径: 绝对路径、`..` 出 root、经符号链接出 root 都拒绝 (见下「在 root 之下打开」),
 root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOWNLOAD_DIR` 或 `~/Downloads`, 存在时)、`~/agentos-work` (存在时), 加上用户授给
 这个应用的文件夹. 根列表每个 web 缓存 (#143, runtime `fs/access/cache.rs` `RootCache`, 存在 `Workspace` 上): `roots()` 每次重建并刷新缓存; 别的调用用缓存,
 授权变了 (任何应用的授予或撤销, `Grants::changes`) 或超过 2 秒就重建; 调用点名的根 (`FsCall::targets`) 在缓存里找不到时, 先重建再执行;
@@ -11,7 +11,8 @@ root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOW
 **应用的根** (#66; runtime `fs/access/files.rs` `Files`, Broker `broker/access/files.ts` `FileAccess`): 所有应用 (系统应用也是) 的 root 是不透明的标识, 不是路径:
 `private` (本应用的私有数据文件夹 `$XDG_DATA_HOME/acde/files/<应用 id>`, 没设时 `$HOME/.local/share/...`, 第一次用时建), 公共位置名 (SDK `SHARED_PLACES`:
 `desktop`、`documents`、`downloads`、`music`、`pictures`、`videos`, 按 XDG 用户目录 `XDG_<名>_DIR` / `user-dirs.dirs`; Windows 没设时用对应的已知文件夹
-`SHGetKnownFolderPath`, `path.rs` `known_folder`), 选择的文件夹是 `folder-<路径 SHA-256 前 16 位十六进制>` 的令牌. `fs: true` 只给 `private` 和用户选给它的文件夹;
+`SHGetKnownFolderPath`, `path.rs` `known_folder`; 解析在 `fs/workspace/userdirs.rs`, 测试里用 `ACDE_TEST_KNOWN_<名>` 代替已知文件夹;
+acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边要同时改另一边), 选择的文件夹是 `folder-<路径 SHA-256 前 16 位十六进制>` 的令牌. `fs: true` 只给 `private` 和用户选给它的文件夹;
 公共位置要在 `fs.roots` 里点名 (校验器: 不是这六个名字就是错误, `agentos-work` 不算;
 末段是位置名的路径如 `~/Downloads` 提示改写位置名, 别的提示用户选的文件夹) 并经批准 (见 `docs/runtime/webs.md`「批准」). `roots()` 回
 `{id, label, source: 'private' | 'place' | 'granted', mode, reason, exists, place?}`, 只有点名了公共位置的系统应用另带 `path`; 别的应用拿不到绝对路径,
@@ -96,7 +97,7 @@ Windows 的 `XDG_DESKTOP_DIR` 和 `XDG_DOWNLOAD_DIR` 支持盘符绝对路径及
 | `EIO` | 500 | 别的 (细节进日志) |
 
 `code` 由造 `Failure` 的地方定 (`exists` / `conflict` / `with`), 否则按 status; io 错误按 `io::ErrorKind` 映射 (unix 上另认 ELOOP).
-系统拒绝 (Windows 的拒绝 ACE、只读属性) 在写入、新建、mkdir、copy、rename、删除和解析路径 (`WorkspaceFs::resolve` 取 realpath) 时都是 403 `EACCES`;
+系统拒绝 (Windows 的拒绝 ACE、只读属性) 在写入、新建、mkdir、copy、rename、删除和打开路径时都是 403 `EACCES`;
 拒绝 `W` 也拒绝了 `SYNCHRONIZE`, 连打开文件夹都失败, 所以那个文件夹的列出也是 403. 父目录不存在仍是 400 `EINVAL`. 只有
 `acde:fs` 是这个形状; napi `Finder.locate` 的 message 照旧是失败的 JSON.
 
@@ -108,13 +109,13 @@ Windows 的 `XDG_DESKTOP_DIR` 和 `XDG_DOWNLOAD_DIR` 支持盘符绝对路径及
 - `download(root, path)` → `{name, contentType, data: Uint8Array}`: runtime 只回名字和内容 (`FsReply::File`), `contentType` 由 web 侧 `fsmodule.ts` `FsModule.typed`
   (`worker.ts` 把 `natives.fs` 包上它再交出去) 按名字从 `FileTypes.system().byName` 取, 和 `File.type` 同一个库 (见 `docs/web/default-apps.md`「默认应用」的「文件的类型」:
   `.md` 是 `text/markdown`); 系统不认识的名字是 `application/octet-stream`.
-- `stat(root, path)` → `FinderEntry & {path}` (lstat; 普通文件多带 `version`).
+- `stat(root, path)` → `FinderEntry & {path}` (lstat; 普通文件多带 `version`; 悬空的链接也照样报告是链接, 不是 404).
 - `readText` → `{text, modifiedMs, size, version}` (最多 64 MiB, BOM 原样留), `readBytes` → `{data: Uint8Array, modifiedMs, size, version}`.
   `version` 是不透明字符串 (`fs/save.rs`: 大小、完整修改时间、文件编号 (unix dev + inode, Windows 卷序号 + 文件索引)), 只用来比相等,
   不保证跨机器、跨平台可比; 同一毫秒里的两次写、FAT 的 2 秒精度、改系统时间都分得开.
 - `writeFile(root, path, data, {create: 'always' | 'new' | 'never', ifModifiedMs, ifVersion, mkdirs})` → `FinderEntry` (带写后的 `version`):
-  替换已有文件是先在同一文件夹写临时文件 (`.<名字>.<uuid>.acde-save`), fsync, 再原子替换 (unix `rename` 后 fsync 文件夹, 保留权限、尽量保留属主;
-  Windows `ReplaceFileW`, 保留属性和 ACL), 中途出错原文件不动、临时文件删掉; 文件夹不让新建文件 (建临时文件 `EACCES`) 时退回在原文件上截断写入,
+  替换已有文件是先在同一文件夹写临时文件 (`.<名字>.<uuid>.acde-save`), fsync, 再原子替换 (在文件夹句柄下改名覆盖; unix 之后 fsync 文件夹, 保留权限、尽量保留属主;
+  Windows 先把原文件的属性 (隐藏、只读等) 和创建时间抄到临时文件上, 原文件单独设的 ACL 不保留, 临时文件按文件夹继承), 中途出错原文件不动、临时文件删掉; 文件夹不让新建文件 (建临时文件 `EACCES`) 时退回在原文件上截断写入,
   结果带 `inPlace: true`, 这时没有崩溃安全. 新文件直接写 (0644). `ifModifiedMs` (毫秒) 和 `ifVersion` 任一对不上都是 409 `ECONFLICT`, 不能和
   `create: 'new'` 一起用 (`EINVAL`). 目录句柄的 `createWritable().close()` 同样原子替换. 选项对象经 JSON 交给 runtime, 类型不对 `EINVAL`.
 - `mkdir(root, path, {recursive})`: recursive 从 root 起逐级建, 已是文件夹算成功.
@@ -129,7 +130,7 @@ Windows 的 `XDG_DESKTOP_DIR` 和 `XDG_DOWNLOAD_DIR` 支持盘符绝对路径及
 (`structuredClone` / `postMessage`、`fetch` / XHR 的请求体、表单的 multipart、`blob:` URL、IndexedDB、WebSocket 发送) 是 `NotReadableError`, `FileReader` 照常.
 `createWritable()` 开一个写入 (`keepExistingData` 先把原内容复制进去), `write` 按位置写进同一文件夹的临时文件 (`.<名字>.<uuid>.acde-part`,
 每块最多 16 MiB, 大的数据和按需读的 `Blob` 分块写), `seek` 只移位置, `truncate` 截断或补零, `close()` 提交: fsync 后和 `writeFile` 一样原子替换
-(unix 保留权限和属主, Windows `ReplaceFileW`; 原来没有这个文件时不覆盖地改名), `abort()` 删掉临时文件. 写的位置超过当前长度时中间补零, 同
+(unix 保留权限和属主, Windows 保留属性和创建时间; 原来没有这个文件时不覆盖地改名), `abort()` 删掉临时文件. 写的位置超过当前长度时中间补零, 同
 `FileSystemWritableFileStream.write({position})`. 文件夹不让建临时文件时是 `EACCES`, 不退回原地写. 同一个流的操作按调用顺序排队, 一次失败后流的操作都 reject.
 
 `acde:fs` 的底层调用 (根和路径的规则同上): `readRange(root, path, offset, length, {ifVersion}?)` → `{data, offset, size, modifiedMs, version}`
@@ -141,11 +142,14 @@ Windows 的 `XDG_DESKTOP_DIR` 和 `XDG_DOWNLOAD_DIR` 支持盘符绝对路径及
 10 分钟没有操作的写入自动放弃 (`acde-fs-writes` 线程每 30 秒查一次; 之后用这个 `id` 是 `EINVAL`); web 结束 (关页面、崩溃) 时放弃它全部的写入;
 进程被杀留下的 `.acde-part` 在下次在同一文件夹开写入时删掉超过 20 分钟没改的. 写入的调用和 `writeFile` 一样进这个 web 的改动队列, `readRange` 走读的线程池.
 
-打开文件一律不跟随符号链接 (unix `O_NOFOLLOW | O_NONBLOCK`, 不会卡在 FIFO 上; Windows `FILE_FLAG_OPEN_REPARSE_POINT` 再查是不是链接).
-读写、建、删、改名都先打开父文件夹 (`fs/beneath.rs` `Dir`) 再对其中的名字操作, 检查和使用之间换掉中间文件夹也出不了 root: Linux `openat2`
-(`RESOLVE_BENEATH`, root 内的链接照常可走, 出 root 是 `EXDEV` → `EINVAL`), 之后经 `/proc/self/fd/<fd>/<名字>` 和 `renameat2(RENAME_NOREPLACE)`;
-Windows 打开父文件夹 (不给 `FILE_SHARE_DELETE`, 开着时改不了名、删不掉), 用 `GetFinalPathNameByHandleW` 查最终路径在 root 里 (不分大小写), 改名用不带
-`MOVEFILE_REPLACE_EXISTING` 的 `MoveFileExW`; 其他 unix (macOS) 还是先 `canonicalize` 再按路径用 (没验证). 改名不会覆盖同时出现的同名项 (`EEXIST`).
+**在 root 之下打开** (`fs/beneath.rs`, 依赖 `cap-std` / `cap-fs-ext`): 每个调用先拿 root 的目录句柄 (`FinderRoot::open`; 按路径的根每次
+`Dir::open_ambient_dir` 打开), 之后读写、列出、建、删、改名都相对这个句柄, 不再拼绝对路径, 各平台只有这一份代码. 中间的文件夹在句柄之下逐级解析:
+Linux 用 `openat2(RESOLVE_BENEATH)`, 其他平台由 `cap-std` 模拟; root 内的相对链接照常可走, 绝对链接 (哪怕指回 root 里) 和走出 root 的 `..`
+都算出 root, 是 400 `EINVAL` (`cap-std` 的出界错误在 `Failure` 的 io 映射里认出来, `fs::escaped`). 检查和使用之间换掉中间文件夹也出不了 root.
+打开文件一律不跟随最后一级的链接 (`FollowSymlinks::No`; unix 另加 `O_NONBLOCK`, 不会卡在 FIFO 上; Windows 打开后再查是不是链接).
+改名不覆盖同时出现的同名项 (`EEXIST`): Linux、macOS 用 `renameat2(RENAME_NOREPLACE)` (对两个文件夹句柄), Windows 用不带
+`MOVEFILE_REPLACE_EXISTING` 的 `MoveFileExW` (路径取自文件夹句柄的 `GetFinalPathNameByHandleW`). 剩余空间按句柄查 (unix `fstatvfs`).
+把文件夹复制进它自己, 是复制时遇到和新建的目标文件夹同一个 (unix dev + inode, Windows 卷序号 + 文件索引) 的子文件夹时停下.
 
 **拖放不再授权** (#69): 系统拖放只交给页面 `File` 和只读句柄, 不记一次性授权, 也不往 `text/uri-list` / `text/plain` 里放绝对路径;
 Linux 会话 (acdebin-system 的 `crates/window` `drop_performed`) 有本地文件时同样去掉这两项, 路径只经 `Event.files` 交给页面宿主.
