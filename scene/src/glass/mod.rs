@@ -445,13 +445,17 @@ mod tests {
     }
 
     #[test]
-    fn the_cpu_glass_covers_the_area_and_leaves_the_far_corner_out() {
-        let margin = 4;
-        let source = Pixels { width: 40, height: 30, data: vec![0xff20_4080; 40 * 30] };
+    fn the_cpu_glass_covers_the_area_bleeds_near_it_and_leaves_the_far_corner_out() {
+        let glass = Glass::preset("regular").unwrap();
+        let margin = 24;
+        assert!(margin as f32 > glass.bleed.radius, "the margin reaches past the bleed");
+        let (width, height) = (80, 70);
+        let source = Pixels { width, height, data: vec![0xff20_4080; width * height] };
         let corners = Corners { radius: 8.0, exponent: 4.0 };
-        let out = cpu::paint(&source, margin, corners, &Glass::preset("regular").unwrap());
-        assert_eq!((out.width, out.height), (40, 30));
-        assert_eq!(channels(out.data[15 * 40 + 20])[0], 255);
+        let out = cpu::paint(&source, margin, corners, &glass);
+        assert_eq!((out.width, out.height), (width, height));
+        assert_eq!(channels(out.data[35 * width + 40])[0], 255);
+        assert!(channels(out.data[35 * width + margin - 4])[0] > 0, "the bleed shows 4 px outside the edge");
         assert_eq!(channels(out.data[0])[0], 0);
     }
 }
