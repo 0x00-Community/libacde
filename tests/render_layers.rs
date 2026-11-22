@@ -236,3 +236,31 @@ fn a_named_glass_leaving_its_group_shrinks_away_over_frames() {
     let d = settled.plane.damage;
     assert!(d.x <= 86.0 && d.x + d.width >= 146.0, "the frame that drops the ghost repaints where it was: {d:?}");
 }
+
+#[test]
+fn a_union_groups_a_circle_and_different_sized_pills_across_dom_branches() {
+    let page = Page::new(1.0);
+    let mut nodes = Vec::new();
+    for (wrapper_left, glass) in [
+        ("0px", "left: 20px; top: 20px; width: 120px; height: 60px; border-radius: 30px"),
+        ("10px", "left: 146px; top: 34px; width: 50px; height: 32px; border-radius: 16px"),
+        ("20px", "left: 202px; top: 35px; width: 30px; height: 30px; border-radius: 50%"),
+    ] {
+        let wrapper = page.doc.create_element("section").unwrap();
+        page.doc.set_attribute(wrapper, "style", &format!("position: absolute; left: {wrapper_left}")).unwrap();
+        page.doc.append_child(page.body, wrapper).unwrap();
+        let id = page.doc.create_element("div").unwrap();
+        page.doc.set_attribute(id, "class", "pill").unwrap();
+        page.doc.set_attribute(id, "style", &format!("{glass}; --acde-glass-union: tuner")).unwrap();
+        page.doc.append_child(wrapper, id).unwrap();
+        nodes.push(id);
+    }
+    let frame = page.frame();
+    let groups: Vec<_> = frame.plane.layers.iter().filter_map(|l| l.backdrop.as_ref()?.group()).collect();
+    assert_eq!(groups.len(), 1);
+    let pieces = groups[0].pieces();
+    assert_eq!(pieces.len(), 3);
+    assert_eq!(pieces.iter().map(|p| p.half).collect::<Vec<_>>(), [[60.0, 30.0], [25.0, 16.0], [15.0, 15.0]]);
+    assert_eq!(pieces.iter().map(|p| p.radius).collect::<Vec<_>>(), [30.0, 16.0, 15.0]);
+    assert_eq!(nodes.len(), 3);
+}
