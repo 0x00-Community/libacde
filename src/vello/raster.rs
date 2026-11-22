@@ -107,6 +107,9 @@ impl Raster {
 
     pub fn idle(&mut self) {
         self.composer.trim();
+        if let Err(e) = self.vello.trim() {
+            log::warn!("web layer: dropping vello's buffers: {e}");
+        }
     }
 
     pub fn draw<C: Content>(&mut self, passes: Vec<Pass<C>>, images: &mut Overrides, lock: Option<&Shared>) -> Result<Submitted, String> {

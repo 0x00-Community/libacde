@@ -236,15 +236,23 @@ pub struct Overrides {
     set: Arc<ImageSet>,
     seen: HashMap<u64, (u64, u32, u32)>,
     copying: Vec<(Arc<GpuImage>, u64)>,
+    build: u64,
 }
 
 impl From<Arc<ImageSet>> for Overrides {
     fn from(set: Arc<ImageSet>) -> Self {
-        Self { set, seen: HashMap::new(), copying: Vec::new() }
+        Self { set, seen: HashMap::new(), copying: Vec::new(), build: 0 }
     }
 }
 
 impl Overrides {
+    pub(super) fn follow(&mut self, build: u64) {
+        if self.build != build {
+            self.seen.clear();
+            self.build = build;
+        }
+    }
+
     pub fn apply(&mut self, vello: &mut vello::Renderer, scene: &Scene) {
         if self.set.is_empty() {
             return;
@@ -432,6 +440,10 @@ impl Offscreen {
         }
         self.compute(include_str!("matrix.wgsl"), "color_matrix", &[(src, &out, bytes)]);
         GpuImage::new(out, &self.shared.images)
+    }
+
+    pub fn trim(&mut self) -> Result<bool, String> {
+        self.vello.trim()
     }
 
     pub fn rasterize(&mut self, scene: Scene, (width, height): (u32, u32)) -> Vec<u8> {

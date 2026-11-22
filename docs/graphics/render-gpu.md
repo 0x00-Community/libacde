@@ -259,7 +259,7 @@
 - 原生应用经 linux-dmabuf v4 零拷贝, 全屏且格式合适时直扫; pre-commit 钩子等 syncobj acquire point 或 dmabuf 的读 fence. 缺口: presentation
   不是硬件时间戳, 没有 tearing-control 和 VRR.
 - 网页图层 (会话): vello 画进 web 自己 GBM 分配的 linear dmabuf. 交上去时不等 GPU 画完: 光栅线程的 sync_file 作为写 fence 挂到画布 dma-buf 上 (隐式同步, `DMA_BUF_IOCTL_IMPORT_SYNC_FILE`) 就 commit, 合成器在 GPU 上等它 (`Device::wait_for`: sync_file 临时导入 64 个二值信号量里的一个, 挂进下一次提交的等待; 导入失败把 fd 退回, 调用方在 CPU 上等), CPU 读画布时内核在 `DMA_BUF_IOCTL_SYNC` 里等; 挂不上 fence 的内核上照旧等 sync_file 落定再 commit. 以前每帧都等 GPU 画完才 commit, 页面这一帧的 GPU 时间整段压在帧循环里 (.243 Xe3 1080p 压力页约 4 ms). 光栅化线程 `acde-web` 一次一帧, CPU 编码和 GPU 执行
-  重叠, 挪窗口不重新光栅化, 闲 2 秒放掉中间纹理. 一帧里所有窗口、所有图层按损伤区切出的块 (`Part::pieces`) 排进一张图集
+  重叠, 挪窗口不重新光栅化, 闲 2 秒 (`Raster::idle`) 放掉中间纹理和 vello 的中间缓冲 (见下「vello 的中间缓冲」). 一帧里所有窗口、所有图层按损伤区切出的块 (`Part::pieces`) 排进一张图集
   (`Raster` 的 `Atlas`, 架子式摆放, 先排高的; 宽高取这一帧最大的画布、至少 4096, 不超过设备的 2D 纹理上限; 放不下时退回按顺序分批), 整张图集
   一次 `Vello::render_clipped` (每块裁在自己的格子里), 再按原顺序在同一个编码器里清区、背景模糊、阴影、贴回画布 (`Composer` 的 `at` 是块在图集里
   的位置; 同一画布上连续的无阴影无滤镜块并成一个渲染通道); 只在编码器里有读图集的操作时才在 vello 之前提交一次. 原来每块一次 vello 渲染加两次提交,
@@ -273,6 +273,20 @@
   页面画布、阴影、截图用的进程级 `Offscreen` (src/render `gpu.rs`, 进程里第一个光栅化线程起来时 (`Once`, 进程里可能有多个 `Raster`) 在 `acde-warm` 线程里 `gpu::warm()`, 日志 `offscreen vello warm-up`),
   不再等第一个用到画布或阴影的窗口打开时才编, 编的时候还拿着全进程一把 `Offscreen` 锁. 宿主窗口 (Windows、macOS、Linux 宿主) 同样在
   `hostwin/src/app.rs` 的 `run` 里 `Gpu::publish` 之后起 `acde-warm` 线程预编这套 `Offscreen` 着色器.
+- **vello 的中间缓冲** (闲时放掉): vello 0.12 每次画都按写死的大小 (`vello_encoding` `BufferSizes::new`, 和场景、目标尺寸无关) 从 renderer 自己的缓冲池
+  取 bump 分配的中间缓冲: lines、segments 各 48 MiB, ptcl 32 MiB, tiles、seg_counts 各 16 MiB, blend_spill 4 MiB, bin_data 1 MiB, 共 165 MiB; 画完放回池里,
+  池只增不减, vello 没有放掉它的接口. 场景里有图片时 renderer 还留着图片图集 (从 1024² 起翻倍, 页面上有铺满窗口的 WebGPU canvas 时 4096², 64 MiB).
+  统一内存的机器上这些都是进程的物理内存 (macOS `footprint` 的 `Owned physical footprint (unmapped) (graphics)`). 进程里每个画过的 renderer 各留一份:
+  出帧的 (宿主窗口每个 web 一个 `Presenter`; 会话每个 web 进程一个 `Raster`, `Raster::new` 预热时就画一次) 和进程级 `Offscreen` (canvas 当图片源、
+  `getImageData`、`putImageData`、`shadowBlur`、`ctx.filter`、`capture` 用到它). `Vello::trim` 重建 renderer (同一设备、同样的建管线线程数; 着色器走驱动缓存,
+  M4 上 5–16 ms) 再 `poll` 一次, 旧的缓冲池和图集随旧 renderer 放掉; 上次建好以来没画过就不重建 (回 `false`), 建不出来时留着旧的 (回错误).
+  每个 `Vello` 建出来有个进程内唯一的编号, `Overrides` 记着给哪个编号登记过 GPU 图片 (`follow`), 换了就清掉重登 (不然新 renderer 把 GPU 图片当成
+  没有字节的普通图片). 闲时调它的: 宿主窗口的出帧线程, 最后一次画出新内容 2 秒后 (acdev `docs/hostwin.md`); 会话的 `Raster::idle` (acdes 光栅化线程
+  闲 2 秒时调); 进程级 `Offscreen` 由 `acde-offscreen-trim` 线程在最后一次离屏绘制 2 秒后做 (`gpu::Offscreen::trim`, 拿着 `Offscreen` 锁, 这十几毫秒里
+  画布绘制要等), 设备丢了时不做. 代价在闲下来之后的第一帧: 重新分配并清零这些缓冲 (`tests/vello_trim.rs` 打出时间, M4 1280×800 含 GPU 执行: 平时 1.4–1.7 ms, 重建后第一次
+  8.2–8.5 ms); 一直在画的窗口不受影响.
+  宿主窗口 (M4, 1323×808@2x, 空闲 30 s) 进程的 GPU 部分: 只有文字的页面 239.6 → 53.3 MiB, 用了离屏画布 (`putImageData` / `getImageData`) 409.0 → 53.6 MiB,
+  铺满窗口的 WebGPU canvas 336.1 → 89.4 MiB; 剩下的是窗口大小的页面纹理、草稿和合成器画布.
 - 帧预算: 120 fps 下每帧 8 ms. 盯 acde-dom `test/cost.test.ts` / `test/caches.test.ts`、shell / DomNative 的 `stats`、`drive.sh perf`; 提交里写测到的数.
 - WebGPU (`navigator.gpu`, Linux 和 macOS; Windows 上还关着 (没编过也没跑过, 见 acdev #56)): src/host `webgpu/`, 跑在光栅化线程的设备上; 回调由 `acde-gpu-poll` 线程非阻塞轮询 (每帧路径上不用
   `poll(Wait)`, 它拿着 snatch 读锁会卡住别的线程的提交). WebGL 也只经 wgpu, 见 `docs/graphics/webgl.md`.

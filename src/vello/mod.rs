@@ -107,6 +107,10 @@ impl crate::gpu::Offscreen for Offscreen {
         self.clear_stale(&mut scene);
         self.0.rasterize(scene, size)
     }
+
+    fn trim(&mut self) -> Result<bool, String> {
+        self.0.trim()
+    }
 }
 
 pub struct VelloCompositor;

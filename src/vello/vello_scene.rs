@@ -1,9 +1,14 @@
+use std::num::NonZeroUsize;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 
 use super::{Overrides, Shared};
 use crate::gpu::{Filter, Glyph, NormalizedCoord, PaintRef, PaintScene, Scene};
 use kurbo::{Affine, Rect, Shape, Stroke, Vec2};
 use peniko::{BlendMode, BrushRef, Color, Fill, FontData, StyleRef};
+
+static BUILDS: AtomicU64 = AtomicU64::new(1);
 
 struct VelloScene<'s>(&'s mut vello::Scene);
 
@@ -12,6 +17,9 @@ pub struct Vello {
     queue: wgpu::Queue,
     renderer: vello::Renderer,
     scene: vello::Scene,
+    threads: Option<NonZeroUsize>,
+    build: u64,
+    rendered: bool,
 }
 
 impl Vello {
@@ -49,14 +57,26 @@ impl Vello {
     }
 
     pub fn on_this_thread(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<Self, String> {
-        Self::with_threads(device, queue, std::num::NonZeroUsize::new(1))
+        Self::with_threads(device, queue, NonZeroUsize::new(1))
     }
 
-    fn with_threads(device: &wgpu::Device, queue: &wgpu::Queue, threads: Option<std::num::NonZeroUsize>) -> Result<Self, String> {
+    fn with_threads(device: &wgpu::Device, queue: &wgpu::Queue, threads: Option<NonZeroUsize>) -> Result<Self, String> {
         let options =
             vello::RendererOptions { use_cpu: false, antialiasing_support: vello::AaSupport::area_only(), num_init_threads: threads, pipeline_cache: None };
         let renderer = vello::Renderer::new(device, options).map_err(|e| format!("vello: {e}"))?;
-        Ok(Self { device: device.clone(), queue: queue.clone(), renderer, scene: vello::Scene::new() })
+        let build = BUILDS.fetch_add(1, Ordering::Relaxed);
+        Ok(Self { device: device.clone(), queue: queue.clone(), renderer, scene: vello::Scene::new(), threads, build, rendered: false })
+    }
+
+    pub fn trim(&mut self) -> Result<bool, String> {
+        if !self.rendered {
+            return Ok(false);
+        }
+        let started = Instant::now();
+        *self = Self::with_threads(&self.device, &self.queue, self.threads)?;
+        let _ = self.device.poll(wgpu::PollType::Poll);
+        log::debug!(target: "perf::raster", "vello trim ms={:.3}", started.elapsed().as_secs_f64() * 1000.0);
+        Ok(true)
     }
 
     pub fn render(
@@ -80,6 +100,7 @@ impl Vello {
         base: Color,
         lock: Option<&Shared>,
     ) -> Result<(), String> {
+        overrides.follow(self.build);
         overrides.forget(&mut self.renderer);
         self.scene.reset();
         for (scene, place, clip) in scenes {
@@ -95,6 +116,7 @@ impl Vello {
         let clear = peniko::Gradient::new_linear((0.0, 0.0), (1.0, 0.0)).with_stops([Color::TRANSPARENT, Color::TRANSPARENT]);
         self.scene.fill(Fill::NonZero, Affine::IDENTITY, &clear, None, &Rect::new(0.0, 0.0, 1.0, 1.0));
         let params = vello::RenderParams { base_color: base, width, height, antialiasing_method: vello::AaConfig::Area };
+        self.rendered = true;
         let rendered = {
             let _lock = lock.map(Shared::submit_lock);
             self.renderer.render_to_texture(&self.device, &self.queue, &self.scene, target, &params)
