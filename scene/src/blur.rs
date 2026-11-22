@@ -29,10 +29,14 @@ pub fn frost(source: &Pixels, filter: Filter) -> Pixels {
     out
 }
 
-pub fn blur(source: &Pixels, sigma: f64) -> Pixels {
+pub fn steps(sigma: f64) -> (usize, [usize; 3]) {
     let shrink = ((sigma / SIGMA_PER_SHRINK) as usize).clamp(1, MOST_SHRINK);
+    (shrink, boxes(sigma / shrink as f64))
+}
+
+pub fn blur(source: &Pixels, sigma: f64) -> Pixels {
+    let (shrink, sizes) = steps(sigma);
     let mut small = shrunk(source, shrink);
-    let sizes = boxes(sigma / shrink as f64);
     let mut spare = vec![0u32; small.data.len()];
     for size in sizes {
         let radius = size / 2;
