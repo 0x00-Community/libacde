@@ -172,3 +172,16 @@ test('rules keep their identity across inserts, and @media / @supports are group
     untouched: 'a { color: blue } b {}',
   }, 'a group held across a rewrite of its sheet changes only itself')
 })
+
+test('a link put in by innerHTML and never touched by script still fires load and error, as in a browser', async () => {
+  using web = await page('<!doctype html><html><head></head><body></body></html>')
+  web.run(`globalThis.seen = []
+    for (const type of ['load', 'error']) document.addEventListener(type, (e) => seen.push(type + ' ' + e.target.id), true)
+    document.head.innerHTML = '<link id="ok" rel="stylesheet" href="/ok.css"><link id="bad" rel="stylesheet" href="/missing.css">'`)
+  const root = web.dom.document()
+  web.dom._sheet(web.dom.querySelector(root, '#ok'), 1)
+  web.dom._sheet(web.dom.querySelector(root, '#bad'), 2)
+  web.frame()
+  assert.deepEqual(web.json('seen'), ['load ok', 'error bad'])
+})
+

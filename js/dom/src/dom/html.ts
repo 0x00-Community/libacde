@@ -5,7 +5,10 @@ import { URL } from '../core/url'
 import { NONE, NodeType, Ns } from '../native'
 import { ACTIVATION, activation, MouseEvent, ToggleEvent } from './events'
 import { customClass, customName } from './custom'
-import { ATTRIBUTE_CHANGED, BODY_WINDOW_TYPES, dataset, Element, flags, HANDLER_TYPES, LOCAL, NS, pendingElement, reflectsWindow, setAttribute, setWindowHandler, tokenList, windowHandlerOf, type DOMStringMap, type DOMTokenList } from './element'
+import {
+  ATTRIBUTE_CHANGED, BODY_WINDOW_TYPES, dataset, Element, HANDLER_TYPES, LOCAL, NS, pendingElement, reflectsWindow, setAttribute, setWindowHandler,
+  tokenList, windowHandlerOf, type DOMStringMap, type DOMTokenList,
+} from './element'
 import { loads, resolveUrl } from './env'
 import { focus, focusable, setFocus } from './focus'
 import { metricGetters, metricsOf } from './layout'
@@ -645,8 +648,7 @@ export class HTMLLinkElement extends HTMLElement {
 export function deliverSheet(id: number): void {
   const state = dom.sheetState(id)
   if (state !== SheetState.Loaded && state !== SheetState.Failed) return
-  let link = existing(id) as HTMLLinkElement | undefined
-  if (!link && flags.inlineHandlers && (dom.hasAttribute(id, 'onload') || dom.hasAttribute(id, 'onerror'))) link = wrap<HTMLLinkElement>(id)!
+  const link = (existing(id) as HTMLLinkElement | undefined) ?? wrap<HTMLLinkElement>(id)
   if (!link) return
   fire(link, new Event(state === SheetState.Loaded ? 'load' : 'error'))
 }
