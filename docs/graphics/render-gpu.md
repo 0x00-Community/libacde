@@ -54,7 +54,7 @@
   着色、平滑边缘和渗出; 着色器拼的是 acde-scene 的 `corner::WGSL` 和 `glass::WGSL`, 和合成器同一份函数. 参数经 `Params`: 矩阵前三列放折射、渗出与高光、
   白点与平滑, `bias` 是取样区域, `color` 是着色.
   预设表 (通透度档位, 2026-11-22, 总仓 `.scratch/libacde/glass-transparency-plan.md`; `glass/preset.rs`, 参数表只此一份): `Glass::preset(Role, Level)`,
-  `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 不模糊、不染色、不渗出, 乘暗 0.05, 透镜强度 60 px、宽度 256 px (着色器限到半短边, 即整块凸透镜)、色散 0.01 (用户 2026-11-23 在调参页定), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3)、`Tinted`
+  `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 不模糊、不染色、不渗出, 乘暗 0.05, 透镜强度 60、宽度 256 px (着色器限到半短边, 即整块凸透镜)、色散 0.01 (用户 2026-11-23 在调参页定), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3)、`Tinted`
   (着色, 2, regular-2)、`Opaque` (减少透明度, 3: 重模糊加接近不透明的着色, `Glass::opaque(dark)` 按深浅给色, 预设取浅色). 名字和线上值都在 `Level`
   (`parse` / `from_wire` / `to_wire`, 照 `motion::Preset`), 认不得的线上值当通透. regular 取当前档, clear 再通透一档 (`Level::clearer`, 到通透为止,
   不透明不变). 高光各档一律 `330deg 0.45 4px` (用户 2026-11-23 在调参页定). `Glass::from_properties_at(level, …)` 按档位取预设再盖分项;
@@ -81,15 +81,17 @@
   https://github.com/ShengzhiWu/liquid-glass , 演示 https://shengzhiwu.github.io/liquid-glass ; 只借做法, 没有拷代码): 中间不模糊、不加白, 颜色只乘
   `1 − darken` (它是 0.95); 边缘那圈"发光"不是高光, 是只在很窄一圈边缘的强折射把背后亮的颜色挤成一条细线 (它的放大按场值 `exp(−20·(sum − 0.7))`,
   离阈值一点就几乎为 0); 红绿蓝分三次取样出彩边 (它是 485 / 500 / 515, 即绿色上下各 3%). 我们在距离场上做: e 是到边缘的距离, w 是宽度,
-  源深度是 `g(e) = e + a·e·(1 − e/w)`, `a = 0.9·(1 − exp(−strength/w))`, 其中 w 不大于半短边, e 在 0..w 内; 位移是 `−n·(g−e)`,
-  e 超过 w 严格为 0. 这是保序的压缩映射: `g′(e) = 1 + a·(1 − 2e/w) ≥ 1 − a > 0.1`, 不会对折、上下翻转或旋转背景; strength 为 0 时 g=e
-  (严格恒等), strength 约 1px 时最大位移小于 0.25px、连续且很轻, 大强度渐近到 0.9 的最大压缩而不会越界. 这个约束照镜头畸变映射的通行条件
+  带内归一化 `t = e/w` (w 不大于半短边), 源深度 `g = w·f(t)`, `f(t) = t + s·(1 − (1 − t)^q − t)`; 强度 `k = strength/100` (0–100, 超出夹住),
+  `s = 0.95k`, `q = 1 + 20k`. f(0)=0, f(1)=1, 位移 `−n·(g−e)`, e 超过 w 严格为 0. `f′(t) = 1 − s + s·q·(1 − t)^(q−1) ≥ 1 − s ≥ 0.05`,
+  所以源坐标始终严格单调, 不会翻转或旋转背景 (用户明确不要参考那样越过中心的倒像). 边缘压缩比 `f′(0) = 1 + s(q − 1)`, 最大 20 时约 20; 中心附近
+  `f′(1) = 1 − s`, 最大强度时放大约 20 倍. strength 0 严格恒等, 1 时最大位移小于 0.25 px. 映射的单调条件照镜头畸变映射的通行做法
   (OpenLensIO https://ris-pub.smpte.org/res/OpenLensIO_v0_9_0.pdf ; 多项式径向映射 https://salivity.github.io/glsl/article/glsl-lens-distortion-with-polynomial-radial-warps ).
-  `Lens::source_depth` 是 CPU 同公式, 单测覆盖 strength 0、1 和多个大值、不同宽度与半短边, 在整个区间采样 1000 段断言严格递增;
+  `Lens::source_depth` 是 CPU 同公式, 单测覆盖强度 0、1、40、60、99、100 及超出值, 多种宽度与半短边, 每种采样 1000 段断言严格递增, 并断言最大强度时边缘
+  压缩比大于 15、全程导数不小于 0.05、中心恒定;
   n 取距离场的梯度 (中心差分 0.5 px; 单块是 `acde_glass_corner_gradient`, 组是合成场的梯度), 在直边上垂直于边、在圆角上沿径向. 不用"中心指向该点"
   那个法线: 它在长条中段是斜的, 第一版 (496fbc2) 用它加上宽衰减, 把中间的字和色块拉成波浪、出重影. 位移朝里取样, 相当于凸透镜放大. 色散: 红、蓝分别取
   `(1 ∓ dispersion)` 倍的位移 (`compose.wgsl` `glass_under`). 它的元球是硬阈值, 我们照旧用平滑边缘抗锯齿. 写法: `--acde-glass-lens: <强度> <宽度> [<色散>]`
-  (强度、宽度是长度, 随缩放; 不写色散沿用预设), `--acde-glass-darken: <数>`. 强度为 0 时三次取样落在同一点, 结果和没有透镜时逐位相同. 页面合成
+  (强度是 0–100 的百分比, 可带 `%`, 不随缩放; 宽度是长度, 随缩放; 不写色散沿用预设; 2026-11-23 改, 原来强度是 px), `--acde-glass-darken: <数>`. 强度为 0 时三次取样落在同一点, 结果和没有透镜时逐位相同. 页面合成
   (`fs_glass`, 参数放 `Params.matrix` 第四列: 强度、色散、乘暗、宽度) 与组的 WGSL (`acde_glass_lens`、`acde_glass_group_lens`、`acde_glass_tone_darkened`)
   同一套函数; 组只在边缘一圈内求梯度.
   CPU 版只做乘暗, 不做透镜.

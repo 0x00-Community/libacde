@@ -53,13 +53,16 @@ pub struct Lens {
 }
 
 impl Lens {
-    const MOST_COMPRESSION: f64 = 0.9;
+    pub const MOST_STRENGTH: f32 = 100.0;
+    const MOST_PULL: f64 = 0.95;
+    const MOST_STEEPNESS: f64 = 20.0;
 
     pub fn source_depth(self, depth: f64, half_short_side: f64) -> f64 {
         let width = f64::from(self.width).max(0.5).min(half_short_side.max(0.5));
-        let e = depth.clamp(0.0, width);
-        let amount = Self::MOST_COMPRESSION * (1.0 - (-f64::from(self.strength.max(0.0)) / width).exp());
-        depth + amount * e * (1.0 - e / width)
+        let t = (depth / width).clamp(0.0, 1.0);
+        let k = f64::from(self.strength.clamp(0.0, Self::MOST_STRENGTH) / Self::MOST_STRENGTH);
+        let (pull, power) = (Self::MOST_PULL * k, 1.0 + Self::MOST_STEEPNESS * k);
+        depth + width * pull * (1.0 - (1.0 - t).powf(power) - t)
     }
 }
 
@@ -105,8 +108,8 @@ impl Glass {
         });
         read("acde-glass-lens", &mut |g, t| {
             g.lens = match *t.split_whitespace().collect::<Vec<_>>() {
-                [strength, width] => Lens { strength: px(strength)?, width: px(width)?, ..g.lens },
-                [strength, width, dispersion] => Lens { strength: px(strength)?, width: px(width)?, dispersion: number(dispersion)? },
+                [strength, width] => Lens { strength: percent(strength)?, width: px(width)?, ..g.lens },
+                [strength, width, dispersion] => Lens { strength: percent(strength)?, width: px(width)?, dispersion: number(dispersion)? },
                 _ => return None,
             };
             Some(())
@@ -177,7 +180,11 @@ impl Glass {
             white_point: unit(self.white_point),
             smoothing: unit(self.smoothing),
             tint: self.tint.map(unit),
-            lens: Lens { strength: length(self.lens.strength), width: length(self.lens.width), dispersion: unit(self.lens.dispersion) },
+            lens: Lens {
+                strength: if self.lens.strength.is_finite() { self.lens.strength.clamp(0.0, Lens::MOST_STRENGTH) } else { 0.0 },
+                width: length(self.lens.width),
+                dispersion: unit(self.lens.dispersion),
+            },
             darken: unit(self.darken),
         }
     }
@@ -189,7 +196,6 @@ impl Glass {
         g.refraction.outer_height *= f;
         g.blur.iter_mut().for_each(|l| l.radius *= f);
         g.bleed.radius *= f;
-        g.lens.strength *= f;
         g.lens.width *= f;
         g.highlight.width *= f;
         g
@@ -291,6 +297,10 @@ fn px(text: &str) -> Option<f32> {
         "0" => Some(0.0),
         _ => number(text.strip_suffix("px")?),
     }
+}
+
+fn percent(text: &str) -> Option<f32> {
+    number(text.strip_suffix('%').unwrap_or(text))
 }
 
 fn degrees(text: &str) -> Option<f32> {
@@ -534,19 +544,19 @@ mod tests {
 
     #[test]
     fn the_lens_has_its_own_property_and_an_older_wire_has_none() {
-        let given = [("acde-glass", "regular"), ("acde-glass-lens", "24px 6px 0.04"), ("acde-glass-darken", "0.05")];
+        let given = [("acde-glass", "regular"), ("acde-glass-lens", "24 6px 0.04"), ("acde-glass-darken", "0.05")];
         let glass = Glass::from_properties_at(Level::Tinted, properties(&given), |w| panic!("{w}")).unwrap();
         assert_eq!(glass.lens, Lens { strength: 24.0, width: 6.0, dispersion: 0.04 });
         assert_eq!(glass.darken, 0.05);
-        assert_eq!((glass.scaled(2.0).lens.strength, glass.scaled(2.0).lens.width), (48.0, 12.0));
+        assert_eq!((glass.scaled(2.0).lens.strength, glass.scaled(2.0).lens.width), (24.0, 12.0));
         let older = &glass.to_wire()[..25 * 4];
         assert_eq!((Glass::from_wire(older).lens, Glass::from_wire(older).darken), (Lens::default(), 0.0));
         let clear = Glass::preset(Role::Clear, Level::Clear);
-        let without_dispersion = [("acde-glass", "clear"), ("acde-glass-lens", "9px 4px")];
+        let without_dispersion = [("acde-glass", "clear"), ("acde-glass-lens", "9% 4px")];
         let read = Glass::from_properties(properties(&without_dispersion), |w| panic!("{w}")).unwrap();
         assert_eq!(read.lens, Lens { strength: 9.0, width: 4.0, dispersion: clear.lens.dispersion });
         let warned = std::cell::Cell::new(0);
-        let bad = [("acde-glass", "clear"), ("acde-glass-lens", "9px 4em"), ("acde-glass-refraction", "0.4 10px 0.1 8px 9px")];
+        let bad = [("acde-glass", "clear"), ("acde-glass-lens", "9 4em"), ("acde-glass-refraction", "0.4 10px 0.1 8px 9px")];
         let read = Glass::from_properties(properties(&bad), |_| warned.set(warned.get() + 1)).unwrap();
         assert_eq!((read.refraction, read.lens, warned.get()), (clear.refraction, clear.lens, 2));
     }
@@ -565,7 +575,7 @@ mod tests {
     fn the_lens_source_mapping_never_folds_over() {
         for half in [8.0, 40.0, 120.0] {
             for width in [1.0, 4.0, 20.0, 256.0] {
-                for strength in [0.0, 1.0, 40.0, 60.0, 800.0] {
+                for strength in [0.0, 1.0, 40.0, 60.0, 99.0, 100.0, 800.0] {
                     let lens = Lens { strength, width, dispersion: 0.05 };
                     let mut last = lens.source_depth(0.0, half);
                     for i in 1..=1000 {
@@ -583,7 +593,12 @@ mod tests {
         }
         let light = Lens { strength: 1.0, width: 256.0, dispersion: 0.05 };
         let most = (0..=1000).map(|i| i as f64 / 20.0).map(|e| light.source_depth(e, 50.0) - e).fold(0.0, f64::max);
-        assert!(most < 0.25, "one-pixel strength stays light: {most}");
+        assert!(most < 0.25, "strength 1 stays light: {most}");
+        let strongest = Lens { strength: 100.0, width: 50.0, dispersion: 0.01 };
+        let slope = |e: f64| (strongest.source_depth(e + 1e-4, 50.0) - strongest.source_depth(e, 50.0)) / 1e-4;
+        assert!(slope(0.0) > 15.0, "the rim squeezes hard at full strength: {}", slope(0.0));
+        assert!((0..1000).map(|i| slope(i as f64 / 20.0)).all(|d| d >= 0.05 - 1e-6), "the mapping never flattens past 0.05");
+        assert_eq!(strongest.source_depth(50.0, 50.0), 50.0, "the centre maps to itself");
     }
 
     #[test]

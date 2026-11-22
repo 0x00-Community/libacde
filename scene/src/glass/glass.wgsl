@@ -38,13 +38,17 @@ fn acde_glass_corner_gradient(p: vec2<f32>, half: vec2<f32>, radius: f32, expone
     return g / max(length(g), 0.000001);
 }
 
-const ACDE_GLASS_LENS_MOST_SLOPE: f32 = 0.9;
+const ACDE_GLASS_LENS_MOST_STRENGTH: f32 = 100.0;
+const ACDE_GLASS_LENS_MOST_PULL: f32 = 0.95;
+const ACDE_GLASS_LENS_MOST_STEEPNESS: f32 = 20.0;
 
 fn acde_glass_lens(n: vec2<f32>, d: f32, bevel: f32, lens: vec4<f32>) -> vec2<f32> {
     let width = min(max(lens.w, 0.5), max(bevel, 0.5));
-    let e = clamp(-d, 0.0, width);
-    let amount = ACDE_GLASS_LENS_MOST_SLOPE * (1.0 - exp(-max(lens.x, 0.0) / width));
-    let shift = amount * e * (1.0 - e / width);
+    let t = clamp(-d / width, 0.0, 1.0);
+    let k = clamp(lens.x, 0.0, ACDE_GLASS_LENS_MOST_STRENGTH) / ACDE_GLASS_LENS_MOST_STRENGTH;
+    let pull = ACDE_GLASS_LENS_MOST_PULL * k;
+    let power = 1.0 + ACDE_GLASS_LENS_MOST_STEEPNESS * k;
+    let shift = width * pull * (1.0 - pow(1.0 - t, power) - t);
     return select(-n * shift, vec2<f32>(0.0), d > 0.0 || -d >= width || lens.x <= 0.0);
 }
 

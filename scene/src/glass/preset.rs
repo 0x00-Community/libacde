@@ -158,7 +158,7 @@ mod tests {
         let sample = [
             ("acde-glass", "clear"),
             ("acde-glass-refraction", "0 18px 0 0"),
-            ("acde-glass-lens", "60px 256px 0.01"),
+            ("acde-glass-lens", "60 256px 0.01"),
             ("acde-glass-blur", "0px 1"),
             ("acde-glass-bleed", "0 0 0"),
             ("acde-glass-highlight", "330deg 0.45 4px"),
