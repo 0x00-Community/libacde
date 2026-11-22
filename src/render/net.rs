@@ -72,7 +72,9 @@ impl LocalNet {
 
     fn path(&self, url: &Url) -> Option<PathBuf> {
         if url.scheme() == "file" {
-            return url.to_file_path().ok();
+            let path = url.to_file_path().ok()?;
+            let lent = self.resources.iter().flat_map(|r| r.dirs.iter().map(PathBuf::from));
+            return lent.chain(icon_dirs()).find_map(|d| within(&d, &path));
         }
         if url.origin() != self.base.origin() {
             return None;
@@ -85,6 +87,16 @@ impl LocalNet {
         }
         resource.dirs.iter().find_map(|d| within(Path::new(d), &Path::new(d).join(rest)))
     }
+}
+
+fn icon_dirs() -> Vec<PathBuf> {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let data_home = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).or_else(|| home.as_ref().map(|h| h.join(".local/share")));
+    let data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+    let shares = data_home.into_iter().chain(data_dirs.split(':').filter(|d| !d.is_empty()).map(PathBuf::from));
+    let mut dirs: Vec<PathBuf> = shares.flat_map(|s| [s.join("icons"), s.join("pixmaps")]).collect();
+    dirs.extend(home.map(|h| h.join(".icons")));
+    dirs
 }
 
 fn within(dir: &Path, path: &Path) -> Option<PathBuf> {
@@ -186,6 +198,20 @@ mod tests {
         assert!(net.path(&url("http://acde.local/media/ok.png")).is_some());
         assert!(net.path(&url("http://acde.local/media/../outside/secret")).is_none());
         assert!(net.path(&url("http://other.example/media/ok.png")).is_none());
+    }
+
+    #[test]
+    fn a_file_url_reads_only_lent_folders_and_icon_folders() {
+        let scratch = Scratch::new("file");
+        let net = scratch.net();
+        let file = |path: &Path| Url::from_file_path(path).unwrap();
+        assert!(net.path(&file(&scratch.0.join("lent/ok.png"))).is_some());
+        assert!(net.path(&file(&scratch.0.join("outside/secret"))).is_none());
+        assert!(net.path(&url("file:///etc/passwd")).is_none());
+        let icon = icon_dirs().into_iter().filter_map(|d| std::fs::read_dir(d).ok()).flatten().flatten().map(|e| e.path()).find(|p| p.is_file());
+        if let Some(icon) = icon {
+            assert!(net.path(&file(&icon)).is_some(), "an icon under an icon folder: {}", icon.display());
+        }
     }
 
     #[cfg(unix)]
