@@ -589,6 +589,9 @@ export class MockDom implements DomNative {
     this.supported.push(['condition', condition])
     return /display:\s*grid/.test(condition)
   }
+  cssPropertySupported(name: string): boolean {
+    return ['color', 'float', 'font-size', 'display', '-webkit-box-orient'].includes(name)
+  }
   cssSupportsDeclaration(property: string, value: string): boolean {
     this.supported.push([property, value])
     return property === 'display' && value === 'grid'

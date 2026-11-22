@@ -185,3 +185,10 @@ test('a link put in by innerHTML and never touched by script still fires load an
   assert.deepEqual(web.json('seen'), ['load ok', 'error bad'])
 })
 
+test('a CSSStyleDeclaration has the camel-cased, webkit-cased and dashed attributes of the properties the engine has', async () => {
+  using web = await page('<!doctype html><html><body><div id=t></div></body></html>')
+  const has = web.json<boolean[]>(`(() => { const s = document.getElementById('t').style
+    return ['fontSize', 'font-size', 'cssFloat', 'WebkitBoxOrient', 'webkitBoxOrient', '-webkit-box-orient',
+      'MozAnimation', 'mozAnimation', '-moz-animation', 'FontSize', 'Font-size', 'notAProperty', '--x', 'setProperty'].map((k) => k in s) })()`)
+  assert.deepEqual(has, [true, true, true, true, true, true, false, false, false, false, false, false, false, true])
+})

@@ -178,6 +178,12 @@ impl Dom {
         self.read(|e| Ok(e.doc.css_supports_condition(condition)))
     }
 
+    /// Whether the engine has the CSS property `name` (not a custom property): the attributes a
+    /// `CSSStyleDeclaration` exposes
+    pub fn css_property_supported(&self, name: &str) -> bool {
+        blitz_dom::css_property_is_supported(name)
+    }
+
     pub fn css_supports_declaration(&self, property: &str, value: &str) -> Result<bool> {
         self.read(|e| Ok(e.doc.css_supports_declaration(property, value)))
     }

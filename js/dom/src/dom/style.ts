@@ -65,7 +65,26 @@ function parseDeclarations(text: string): Declarations {
   return declarations
 }
 
+// The property a CSSStyleDeclaration attribute name stands for (cssom-1: the camel-cased
+// attribute, the webkit-cased one of a -webkit- property, the dashed one), or null
+function attributeProperty(key: string): string | null {
+  if (key === 'cssFloat') return 'float'
+  if (key.includes('-')) return key.startsWith('--') || key !== key.toLowerCase() ? null : key
+  if (!/^[A-Za-z][A-Za-z0-9]*$/.test(key)) return null
+  const dashed = key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
+  // `WebkitBoxOrient` (a leading capital is the property's leading dash), `webkitBoxOrient`
+  if (dashed.startsWith('-')) return dashed
+  if (dashed.startsWith('webkit-')) return `-${dashed}`
+  return dashed
+}
+
 const handler: ProxyHandler<CSSStyleDeclaration> = {
+  has(target, key) {
+    if (typeof key === 'symbol' || Reflect.has(target, key)) return Reflect.has(target, key)
+    if (/^\d+$/.test(key)) return Number(key) < target.length
+    const name = attributeProperty(key)
+    return name !== null && dom.cssPropertySupported(name)
+  },
   get(target, key) {
     if (typeof key === 'symbol' || key in target) return Reflect.get(target, key)
     if (/^\d+$/.test(key)) return target.item(Number(key))

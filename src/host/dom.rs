@@ -644,6 +644,10 @@ natives! {
         text!(condition = scope, args, 0);
         dom.css_supports(&condition)
     }
+    "cssPropertySupported" => fn css_property_supported(scope, args, dom) {
+        text!(name = scope, args, 0);
+        Ok(dom.css_property_supported(&name))
+    }
     "cssSupportsDeclaration" => fn css_supports_declaration(scope, args, dom) {
         text!(property = scope, args, 0); text!(value = scope, args, 1);
         dom.css_supports_declaration(&property, &value)
