@@ -1,20 +1,21 @@
-import type { NativeFileChooser } from '../../../page/src/native'
+import type { FileFilter, LentFile } from '../../../page/src/sys/natives'
+import type { LentEntry } from './lending'
 import { HostStrings } from '../../../page/src/language'
-import { Level, Log } from '../../../page/src/log'
 
 export interface PageCallsHost {
   readonly label: string
   readonly language: () => string | undefined
-  chooser(): Promise<NativeFileChooser> | null
+  openFiles(title: string, multiple: boolean, filters: readonly FileFilter[]): Promise<readonly LentFile[] | null>
+  saveFile(title: string, name: string, filters: readonly FileFilter[]): Promise<LentFile | null>
+  folder(title: string, writable: boolean): Promise<{ readonly name: string; readonly label: string } | null>
+  unlend(name: string): Promise<void>
+  dropped(uris: string): Promise<readonly LentEntry[] | null>
   notify?(title: string, body: string, subtitle: string): void
 }
 
-type Filter = { name: string; globs: string[]; mimes: string[] }
-
 export class PageCalls {
-  static readonly METHODS: ReadonlySet<string> = new Set(['open', 'save', 'notify'])
+  static readonly METHODS: ReadonlySet<string> = new Set(['open', 'save', 'folder', 'unlend', 'dropped', 'notify'])
   readonly #host: PageCallsHost
-  #chooser: Promise<NativeFileChooser | null> | null = null
 
   constructor(host: PageCallsHost) {
     this.#host = host
@@ -23,15 +24,13 @@ export class PageCalls {
   async call(method: string, args: readonly unknown[]): Promise<unknown> {
     const options = (args[0] ?? {}) as Record<string, unknown>
     if (method === 'notify') return this.#notify(options)
-    const chooser = await this.#fileChooser()
-    if (!chooser) return null
+    if (method === 'unlend') return this.#host.unlend(PageCalls.#text(args[0], 200))
+    if (method === 'dropped') return this.#host.dropped(PageCalls.#text(options['uris'], 256 * 1024))
+    if (method === 'folder') return this.#host.folder(PageCalls.#text(options['title'], 300), options['writable'] === true)
     const strings = HostStrings.of(this.#host.language())
     const filters = PageCalls.#filters(options['filters'])
-    if (method === 'open') {
-      const title = `${this.#host.label}: ${strings.open}`
-      return chooser.openFile({ title, multiple: options['multiple'] === true, directory: options['directory'] === true, filters })
-    }
-    return chooser.saveFile({ title: `${this.#host.label}: ${strings.save}`, name: PageCalls.#text(options['name'], 255), filters })
+    if (method === 'open') return this.#host.openFiles(`${this.#host.label}: ${strings.open}`, options['multiple'] === true, filters)
+    return this.#host.saveFile(`${this.#host.label}: ${strings.save}`, PageCalls.#text(options['name'], 255), filters)
   }
 
   #notify(options: Record<string, unknown>): boolean {
@@ -40,25 +39,11 @@ export class PageCalls {
     return true
   }
 
-  #fileChooser(): Promise<NativeFileChooser | null> {
-    this.#chooser ??= (async () => {
-      try {
-        const opened = this.#host.chooser()
-        if (!opened) throw new Error('this platform has none')
-        return await opened
-      } catch (error) {
-        Log.write(Level.Warn, 'acde_host', `no file chooser (${(error as Error).message}): open and save pickers are cancelled`)
-        return null
-      }
-    })()
-    return this.#chooser
-  }
-
   static #text(value: unknown, max: number): string {
     return (typeof value === 'string' ? value : value === undefined || value === null ? '' : String(value)).slice(0, max)
   }
 
-  static #filters(value: unknown): Filter[] {
+  static #filters(value: unknown): FileFilter[] {
     const list = Array.isArray(value) ? value.slice(0, 32) : []
     return list.map((f: { name?: unknown; globs?: unknown; mimes?: unknown }) => ({
       name: PageCalls.#text(f?.name, 200),

@@ -130,7 +130,6 @@ export interface Native {
   Finder?: new () => object
   Ime?: new (callback: (event: ImeEvent) => void) => NativeIme
   Appearance?: { open(): Promise<NativeAppearance> }
-  FileChooser?: { open(): Promise<NativeFileChooser> }
   Greetd?: NativeGreetd
   Accessibility?: { open(): Promise<NativeAccessibility> }
   DesktopBus?: {
@@ -142,13 +141,6 @@ export interface Native {
 interface NativeAppearance {
   dark(): Promise<boolean>
   watch(callback: (dark: boolean) => void): void
-}
-
-type FileFilter = { name: string; globs: string[]; mimes: string[] }
-
-export interface NativeFileChooser {
-  openFile(options: { title: string; multiple: boolean; directory: boolean; filters: FileFilter[] }): Promise<string[] | null>
-  saveFile(options: { title: string; name: string; filters: FileFilter[] }): Promise<string | null>
 }
 
 export interface GreetUser {

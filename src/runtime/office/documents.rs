@@ -1,25 +1,48 @@
 use super::blank::BlankKind;
-use crate::runtime::failure::{Failure, Outcome};
+use crate::runtime::failure::{Errno, Failure, Outcome};
+use crate::runtime::fs::LentFile;
 use crate::runtime::fs::Shared as Finder;
 use crate::runtime::fs::path::NodePath;
-use crate::runtime::fs::workspace::{EntryKind, FinderRoot, ModifiedMs, WorkspaceFs};
-use rustix::fs::OFlags;
+use crate::runtime::fs::workspace::{Create, EntryKind, FinderEntry, FinderRoot, ModifiedMs, WorkspaceFs, WriteOptions};
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::{
-    fs::{self, OpenOptions},
-    io::Write,
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 pub const MAX_DOCUMENT_BYTES: u64 = 64 * 1024 * 1024;
 const EDITABLE: [(&str, &str); 3] = [("docx", "word"), ("xlsx", "cell"), ("pptx", "slide")];
 const VIEWABLE: [(&str, &str); 8] =
     [("doc", "word"), ("odt", "word"), ("rtf", "word"), ("xls", "cell"), ("ods", "cell"), ("ppt", "slide"), ("odp", "slide"), ("pdf", "pdf")];
 
+#[derive(Clone)]
+pub enum Source {
+    Root { owner: String, root: FinderRoot },
+    Lent { owner: String, file: LentFile },
+}
+
+impl Source {
+    pub fn identity(&self, path: &str) -> Outcome<String> {
+        Ok(match self {
+            Source::Root { root, .. } => {
+                let (device, inode) = root.identity()?;
+                format!("root {device}:{inode}\0{path}")
+            }
+            Source::Lent { owner, file } => {
+                let (device, inode) = file.identity()?;
+                format!("lent {owner} {device}:{inode} {}", if file.writable { "rw" } else { "r" })
+            }
+        })
+    }
+
+    fn shown(&self) -> (&str, &str) {
+        match self {
+            Source::Root { root, .. } => (&root.id, &root.label),
+            Source::Lent { .. } => ("", ""),
+        }
+    }
+}
+
 pub struct OfficeFile {
-    pub root: FinderRoot,
+    pub source: Source,
     pub path: String,
     pub name: String,
     pub ext: String,
@@ -32,7 +55,8 @@ pub struct OfficeFile {
 
 impl OfficeFile {
     pub fn view(&self) -> Value {
-        json!({"root": self.root.id, "rootLabel": self.root.label, "path": self.path, "name": self.name, "ext": self.ext,
+        let (root, label) = self.source.shown();
+        json!({"root": root, "rootLabel": label, "path": self.path, "name": self.name, "ext": self.ext,
             "documentType": self.document_type, "size": self.size, "modifiedMs": self.modified_ms, "editable": self.editable,
             "readOnlyReason": self.read_only_reason})
     }
@@ -70,15 +94,7 @@ impl OfficeFiles {
         EDITABLE.iter().chain(VIEWABLE.iter()).find(|(e, _)| *e == ext).map(|(_, t)| (*t).to_owned())
     }
 
-    pub fn handed(dir: &str) -> FinderRoot {
-        FinderRoot { id: String::new(), shown: None, label: String::new(), ..WorkspaceFs::granted(dir) }
-    }
-
-    pub fn file(&self, root_path: &str, relative: &str) -> Outcome<OfficeFile> {
-        Self::file_in(WorkspaceFs::granted(root_path), relative)
-    }
-
-    pub fn read_only(mut file: OfficeFile) -> OfficeFile {
+    fn read_only(mut file: OfficeFile) -> OfficeFile {
         if file.editable {
             file.editable = false;
             file.read_only_reason = Some("交来的文件只能查看。".into());
@@ -86,37 +102,48 @@ impl OfficeFiles {
         file
     }
 
-    pub fn file_in(root: FinderRoot, relative: &str) -> Outcome<OfficeFile> {
-        let resolved = WorkspaceFs::resolve(&root, relative, true)?;
-        let info = fs::metadata(&resolved.real)?;
-        if !info.is_file() {
-            return Err(Failure::invalid("not a regular file"));
+    pub fn open(source: Source, path: &str) -> Outcome<OfficeFile> {
+        match &source {
+            Source::Root { root, .. } => {
+                let (path, _, info) = WorkspaceFs::opened(root, path)?;
+                Self::described(source, path, info.len(), info.modified_ms())
+            }
+            Source::Lent { file, .. } => {
+                let (info, label, writable) = (file.file.metadata()?, file.label.clone(), file.writable);
+                let described = Self::described(source, label, info.len(), info.modified_ms())?;
+                Ok(if writable { described } else { Self::read_only(described) })
+            }
         }
-        let ext = Self::extension(&resolved.absolute);
-        let Some(document_type) = Self::document_type(&resolved.absolute) else {
+    }
+
+    fn described(source: Source, path: String, size: u64, modified_ms: i64) -> Outcome<OfficeFile> {
+        let name = path.basename().to_owned();
+        let ext = Self::extension(&name);
+        let Some(document_type) = Self::document_type(&name) else {
             let supported: Vec<&str> = EDITABLE.iter().chain(VIEWABLE.iter()).map(|(e, _)| *e).collect();
             let shown = if ext.is_empty() { "?" } else { &ext };
             return Err(Failure::invalid(format!(".{shown} files do not open in Office; supported: {}", supported.join(", "))));
         };
-        if info.len() > MAX_DOCUMENT_BYTES {
+        if size > MAX_DOCUMENT_BYTES {
             return Err(Failure::http(413, "file exceeds 64 MiB"));
         }
         let reason = (!EDITABLE.iter().any(|(e, _)| *e == ext)).then(|| format!(".{ext} 只能查看；要编辑请另存为 docx、xlsx 或 pptx。"));
-        Ok(OfficeFile {
-            path: resolved.relative,
-            name: resolved.absolute.basename().to_owned(),
-            ext,
-            document_type,
-            size: info.len(),
-            modified_ms: info.modified_ms(),
-            editable: reason.is_none(),
-            read_only_reason: reason,
-            root,
-        })
+        Ok(OfficeFile { source, path, name, ext, document_type, size, modified_ms, editable: reason.is_none(), read_only_reason: reason })
     }
 
-    pub fn read(file: &OfficeFile) -> Outcome<Vec<u8>> {
-        Ok(WorkspaceFs::raw_in(&file.root, &file.path)?.1)
+    pub fn read(&self, file: &OfficeFile) -> Outcome<Vec<u8>> {
+        match &file.source {
+            Source::Root { root, .. } => Ok(WorkspaceFs::raw_in(root, &file.path)?.1),
+            Source::Lent { owner, file: lent } => Ok(self.live(owner, lent)?.read()?.data),
+        }
+    }
+
+    fn live<'a>(&self, owner: &str, file: &'a LentFile) -> Outcome<&'a LentFile> {
+        if self.0.lent_file(owner, &file.name).is_some_and(|known| Arc::ptr_eq(&known.file, &file.file)) {
+            return Ok(file);
+        }
+        log::warn!("office: {} was taken back from {owner}; not reading or writing it any more", file.label);
+        Err(Failure::http(410, format!("{} 已被收回", file.label)))
     }
 
     pub fn list_in(&self, root: FinderRoot, relative: &str) -> Outcome<(String, Vec<OfficeEntry>, bool)> {
@@ -138,19 +165,17 @@ impl OfficeFiles {
         Ok((listing.path, entries, listing.truncated))
     }
 
-    fn write_new(path: &str, data: &[u8], mode: u32, exact: bool) -> std::io::Result<()> {
-        let mut file = OpenOptions::new().write(true).create_new(true).custom_flags(OFlags::NOFOLLOW.bits() as i32).mode(mode).open(path)?;
-        let written = (|| {
-            if exact {
-                file.set_permissions(fs::Permissions::from_mode(mode))?;
+    fn write_free(root: &FinderRoot, path: &str, data: &[u8]) -> Outcome<(String, FinderEntry)> {
+        let fresh = WriteOptions { create: Create::New, ..WriteOptions::default() };
+        for index in 1..1000 {
+            let candidate = WorkspaceFs::numbered(path, index);
+            match WorkspaceFs::write_file_in(root, &candidate, data, &fresh) {
+                Ok(entry) => return Ok((candidate, entry)),
+                Err(failure) if failure.errno == Errno::Exist => continue,
+                Err(failure) => return Err(failure),
             }
-            file.write_all(data)?;
-            file.sync_all()
-        })();
-        if written.is_err() {
-            let _ = fs::remove_file(path);
         }
-        written
+        Err(Failure::http(409, "too many files with this name"))
     }
 
     pub fn create(root: &FinderRoot, directory: &str, kind: BlankKind, name: Option<&str>) -> Outcome<String> {
@@ -163,60 +188,39 @@ impl OfficeFiles {
         if base.is_empty() || base.contains(['/', '\\', '\0']) || base.starts_with('.') {
             return Err(Failure::invalid("invalid file name"));
         }
-        let folder = WorkspaceFs::resolve(root, directory, true)?;
-        if !fs::metadata(&folder.real)?.is_dir() {
-            return Err(Failure::invalid("not a directory"));
-        }
-        let data = kind.create();
+        let folder = WorkspaceFs::inner(directory)?;
         let name = format!("{base}.{ext}");
-        for index in 1..1000 {
-            let candidate = folder.relative.join(&WorkspaceFs::numbered(&name, index));
-            let target = WorkspaceFs::resolve(root, &candidate, false)?;
-            match Self::write_new(&target.absolute, &data, 0o644, false) {
-                Ok(()) => return Ok(candidate),
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(error) => return Err(error.into()),
-            }
-        }
-        Err(Failure::http(409, "too many files with this name"))
+        let path = if folder.is_empty() { name } else { format!("{folder}/{name}") };
+        Ok(Self::write_free(root, &path, &kind.create())?.0)
     }
 
-    fn unique_path(&self, root: &FinderRoot, path: &str) -> Outcome<String> {
-        for index in 1..1000 {
-            let candidate = WorkspaceFs::numbered(path, index);
-            let target = WorkspaceFs::resolve(root, &candidate, false)?;
-            if fs::symlink_metadata(&target.absolute).is_err() {
-                return Ok(candidate);
-            }
+    pub fn save(&self, source: &Source, relative: &str, data: &[u8], expected_ms: i64) -> Outcome<SaveResult> {
+        match source {
+            Source::Root { root, .. } => Self::save_in(root, relative, data, expected_ms),
+            Source::Lent { owner, file } => Self::save_lent(self.live(owner, file)?, data, expected_ms),
         }
-        Err(Failure::http(409, "too many conflict copies"))
     }
 
-    pub fn save(&self, root_path: &str, relative: &str, data: &[u8], expected_ms: i64) -> Outcome<SaveResult> {
-        let root = WorkspaceFs::granted(root_path);
-        let target = WorkspaceFs::resolve(&root, relative, false)?;
-        let current = fs::symlink_metadata(&target.absolute).ok();
-        if current.as_ref().is_some_and(|c| !c.is_file()) {
-            return Err(Failure::http(409, "the path is no longer a regular file"));
+    fn save_lent(file: &LentFile, data: &[u8], expected_ms: i64) -> Outcome<SaveResult> {
+        if file.modified_ms()? != expected_ms {
+            return Err(Failure::conflict(format!("{} 在打开后被别处改过，没有覆盖它；修改仍留在编辑器里", file.label)));
         }
-        if let Some(current) = current.filter(|c| c.modified_ms() == expected_ms) {
-            let suffix: String = rand::random::<[u8; 6]>().iter().map(|b| format!("{b:02x}")).collect();
-            let temporary = target.absolute.dirname().join(&format!(".{}.{suffix}.office-tmp", target.absolute.basename()));
-            use std::os::unix::fs::MetadataExt;
-            Self::write_new(&temporary, data, current.mode() & 0o777, true)?;
-            if let Err(error) = fs::rename(&temporary, &target.absolute) {
-                let _ = fs::remove_file(&temporary);
-                return Err(error.into());
-            }
-            let modified_ms = fs::metadata(&target.absolute)?.modified_ms();
-            return Ok(SaveResult { path: target.relative, modified_ms, conflict: false });
+        file.write(data)?;
+        Ok(SaveResult { path: file.label.clone(), modified_ms: file.modified_ms()?, conflict: false })
+    }
+
+    fn save_in(root: &FinderRoot, relative: &str, data: &[u8], expected_ms: i64) -> Outcome<SaveResult> {
+        let relative = WorkspaceFs::inner(relative)?;
+        let unchanged = WriteOptions { create: Create::Never, if_modified_ms: Some(expected_ms as f64), ..WriteOptions::default() };
+        match WorkspaceFs::write_file_in(root, &relative, data, &unchanged) {
+            Ok(entry) => return Ok(SaveResult { path: relative, modified_ms: entry.modified_ms, conflict: false }),
+            Err(failure) if failure.errno == Errno::Conflict => {}
+            Err(failure) => return Err(failure),
         }
-        let ext = target.relative.extname();
-        let copy = format!("{} (冲突副本 {}){ext}", &target.relative[..target.relative.len() - ext.len()], Self::stamp());
-        let copy = self.unique_path(&root, &copy)?;
-        Self::write_new(&WorkspaceFs::resolve(&root, &copy, false)?.absolute, data, 0o644, false)?;
-        let modified_ms = fs::metadata(&WorkspaceFs::resolve(&root, &copy, true)?.real)?.modified_ms();
-        Ok(SaveResult { path: copy, modified_ms, conflict: true })
+        let ext = relative.extname();
+        let copy = format!("{} (冲突副本 {}){ext}", &relative[..relative.len() - ext.len()], Self::stamp());
+        let (path, entry) = Self::write_free(root, &copy, data)?;
+        Ok(SaveResult { path, modified_ms: entry.modified_ms, conflict: true })
     }
 }
 
@@ -224,35 +228,68 @@ impl OfficeFiles {
 mod tests {
     use super::*;
     use crate::runtime::fs::{Files, Workspace};
+    use std::fs;
 
-    #[test]
-    fn level_1_roots_open_and_create_documents_and_handed_files_hide_their_path() {
-        let home = std::env::temp_dir().join(format!("acde-office-roots-{}", std::process::id()));
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let home = std::env::temp_dir().join(format!("acde-office-{name}-{}", std::process::id()));
         _ = fs::remove_dir_all(&home);
         fs::create_dir_all(home.join("Documents")).unwrap();
+        home
+    }
+
+    fn lent(all: &Workspace, path: &std::path::Path, writable: bool) -> Source {
+        let name = all.lend_file("writer", LentFile::open(&path.to_string_lossy(), writable).unwrap()).unwrap();
+        Source::Lent { owner: "writer".into(), file: all.shared_fs().lent_file("writer", &name).unwrap() }
+    }
+
+    #[test]
+    fn level_1_roots_open_and_create_documents_and_lent_files_hide_their_path() {
+        let home = scratch("roots");
         let text = home.to_string_lossy().into_owned();
-        let app = Workspace::at(&text).files(Files::new(&["documents".to_owned()], false), "writer");
-        let roots = app.finder_roots().unwrap();
+        let all = Workspace::at(&text);
+        let roots = all.files(Files::new(&["documents".to_owned()], false), "writer").finder_roots().unwrap();
         assert_eq!(roots.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["private", "documents"]);
         assert!(!serde_json::to_string(&roots).unwrap().contains(&text), "roots carry no paths");
         for root in &roots {
             let path = OfficeFiles::create(root, "", BlankKind::Docx, Some("report")).unwrap();
             assert_eq!(path, "report.docx");
             assert_eq!(OfficeFiles::create(root, "", BlankKind::Docx, Some("report")).unwrap(), "report 2.docx");
-            let file = OfficeFiles::file_in(root.clone(), &path).unwrap();
+            let file = OfficeFiles::open(Source::Root { owner: "writer".into(), root: root.clone() }, &path).unwrap();
             assert!(file.editable);
             assert_eq!(file.view()["root"], root.id.as_str());
             assert!(!file.view().to_string().contains(&text), "{}", file.view());
         }
         assert!(OfficeFiles::create(&roots[1], "../..", BlankKind::Docx, None).is_err());
-        let documents = home.join("Documents").to_string_lossy().into_owned();
-        let handed = OfficeFiles::file_in(OfficeFiles::handed(&documents), "report.docx").unwrap();
-        assert_eq!(handed.view()["root"], "");
-        assert!(!handed.view().to_string().contains(&text), "{}", handed.view());
-        assert!(handed.editable);
-        let read_only = OfficeFiles::read_only(handed);
+        let report = home.join("Documents/report.docx");
+        let file = OfficeFiles::open(lent(&all, &report, true), "").unwrap();
+        assert_eq!((file.view()["root"].as_str(), file.path.as_str()), (Some(""), "report.docx"));
+        assert!(!file.view().to_string().contains(&text), "{}", file.view());
+        assert!(file.editable);
+        let read_only = OfficeFiles::open(lent(&all, &report, false), "").unwrap();
         assert!(!read_only.editable && read_only.read_only_reason.is_some());
-        assert!(OfficeFiles::file_in(OfficeFiles::handed(&documents), "../Documents/report.docx").is_err());
+        _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_lent_file_is_saved_in_place_only_while_unchanged_and_still_lent() {
+        let home = scratch("lent");
+        let path = home.join("Documents/plan.docx");
+        fs::write(&path, b"first").unwrap();
+        let all = Workspace::at(&home.to_string_lossy());
+        let files = OfficeFiles(all.shared_fs());
+        let file = OfficeFiles::open(lent(&all, &path, true), "").unwrap();
+        let saved = files.save(&file.source, &file.path, b"second", file.modified_ms).unwrap();
+        assert!(!saved.conflict);
+        assert_eq!(fs::read(&path).unwrap(), b"second");
+        let stale = files.save(&file.source, &file.path, b"third", saved.modified_ms - 1).err().map(|failure| failure.errno);
+        assert_eq!(stale, Some(Errno::Conflict));
+        assert_eq!(file.source.identity("").unwrap(), file.source.identity("other").unwrap());
+        let Source::Lent { file: taken, .. } = &file.source else { unreachable!() };
+        assert!(all.unlend("writer", &taken.name));
+        let refused = files.save(&file.source, &file.path, b"fourth", saved.modified_ms).err().map(|failure| failure.status);
+        assert_eq!(refused, Some(410));
+        assert!(files.read(&file).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"second");
         _ = fs::remove_dir_all(&home);
     }
 }

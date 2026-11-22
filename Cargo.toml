@@ -91,6 +91,9 @@ async-io = "=2.6.0"
 uuid = { version = "=1.29.3", features = ["v4"] }
 icu_collator = "=2.4.0"
 icu_locale_core = "=2.4.0"
+# fs: everything under a root opens beneath the root's directory handle (openat2 on Linux, emulated elsewhere)
+cap-std = "=4.0.3"
+cap-fs-ext = "=4.0.3"
 url = "=2.5.9"
 sha2 = "=0.11.1"
 hmac = "=0.13.0"

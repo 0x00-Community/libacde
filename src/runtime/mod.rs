@@ -63,7 +63,9 @@ pub use devtools::{GUEST_KEY, dev_mode, managed};
 #[cfg(target_os = "linux")]
 pub use fcitx::{Fcitx, ImeController, ImeEntry, ImeGroup, ime_apply, ime_catalog, ime_state};
 pub use fetch::{Deliver, Dial, Event as FetchEvent, FetchClient};
-pub use fs::{EntryKind, Files, Finder, FsCall, FsError, FsReply, LentRoot, MAX_CHUNK, Opened, PickedFolders, Range, Workspace};
+#[cfg(unix)]
+pub use fs::hand_fds;
+pub use fs::{Dropped, EntryKind, Files, Finder, FsCall, FsError, FsReply, LentFile, LentRoot, MAX_CHUNK, Opened, PickedFolders, Range, Workspace};
 #[cfg(target_os = "linux")]
 pub use greetd::{GreetUser, Greetd};
 #[cfg(target_os = "linux")]
@@ -75,7 +77,7 @@ pub use network::{NetCall, Networks};
 #[cfg(target_os = "linux")]
 pub use office::{OfficeCall, OfficeService};
 #[cfg(target_os = "linux")]
-pub use portal::{Appearance, FileChooser, Filter as PortalFilter, choose_folder, open_files, save_file};
+pub use portal::{Appearance, Filter as PortalFilter, choose_folder, open_files, save_file};
 #[cfg(target_os = "linux")]
 pub use power::{Power, PowerCall, backlight_brightness};
 pub use proxy::backend_variables as backend_proxy_variables;
@@ -116,24 +118,6 @@ fn state_file(name: &str) -> Option<std::path::PathBuf> {
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| std::path::Path::new(&home).join(".local/state")))?;
     Some(state.join("acde").join(name))
-}
-
-fn write_state(path: &std::path::Path, bytes: &[u8], mode: u32) -> std::io::Result<()> {
-    use std::io::Write;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    cfg_select! {
-        unix => { std::os::unix::fs::OpenOptionsExt::mode(&mut options, mode); }
-        _ => { _ = mode; }
-    }
-    let mut out = options.open(&tmp)?;
-    out.write_all(bytes)?;
-    out.sync_all()?;
-    std::fs::rename(tmp, path)
 }
 
 async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {

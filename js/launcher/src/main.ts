@@ -1,6 +1,6 @@
 import { installCore } from '@acde/dom/core'
 import type { WebInit } from '../../page/src/contract'
-import type { WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
+import type { FileFilter, Lent, WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
 import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
 import { readDirOr, readTextOr } from '../../page/src/sys/fs'
 import { screenshotFile, xdgHome } from '../../page/src/sys/os'
@@ -13,12 +13,11 @@ import { AppLookup, DesktopLookup, desktopInit, webInit, type Found, type Place 
 import { FakeLock } from './app/lock'
 import { AppMenus } from './app/menus'
 import { PageCalls } from './app/page'
+import { Lending } from './app/lending'
 import type { WireMenu } from '../../page/src/contract'
-import type { NativeFileChooser } from '../../page/src/native'
 import { API_LEVEL } from '@acde/api/manifest'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported, wallpaperOf } from './app/calls'
-import type { LentRoot } from '@acde/api'
 import { rejectingCalls, sessionOf, windowGrant, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
 import { WindowSnapshots, type ShellEvent } from './app/events'
 import { ServiceHost } from './manager/service'
@@ -86,7 +85,6 @@ interface LauncherNatives extends Natives {
     readonly Shell?: { broker(options?: { title?: string }): LauncherShell }
     readonly Manager?: { connect(): ManagerLink }
     readonly DevTools?: NativeDevTools
-    readonly FileChooser?: { open(): Promise<NativeFileChooser> }
     readonly Appearance?: AppearancePortal
   }
 }
@@ -171,6 +169,7 @@ class Launcher {
   #title: string
   readonly #menus: AppMenus
   readonly #pages: PageCalls
+  readonly #lending: Lending
   readonly #devtools: DevToolsEndpoint
   #inspect: Inspect | null = null
   readonly #guest: GuestWindows | null
@@ -188,11 +187,15 @@ class Launcher {
     this.#title = session.label
     const menuKeys = manager ? (keys: readonly string[]) => this.#thread?.post({ type: 'menukeys', keys }) : null
     this.#menus = new AppMenus(this.#shell, () => this.#window, menuKeys)
-    const chooser = natives.native.FileChooser
+    this.#lending = new Lending({ manager, app: () => this.session.found?.app.id, post: (message) => this.#thread?.post(message) })
     this.#pages = new PageCalls({
       label: session.label,
       language: () => SessionLanguage.of(process.env, sys().languages()).language,
-      chooser: () => chooser?.open() ?? null,
+      openFiles: (title: string, multiple: boolean, filters: readonly FileFilter[]) => this.#lending.openFiles(title, multiple, filters),
+      saveFile: (title: string, name: string, filters: readonly FileFilter[]) => this.#lending.saveFile(title, name, filters),
+      folder: (title: string, writable: boolean) => this.#lending.folder(title, writable),
+      unlend: (name: string) => this.#lending.revoke(name),
+      dropped: (uris: string) => this.#lending.dropped(uris),
       ...(this.#shell.notify && { notify: (title: string, body: string, subtitle: string) => this.#shell.notify!(title, body, subtitle) }),
     })
     const relay = managerRelay(manager)
@@ -299,9 +302,12 @@ class Launcher {
     const grant = this.#grant()
     this.#window = grant.window
     const { session } = this
+    const welcome = this.manager?.welcome
+    const adopted = this.#lending.adopt(welcome?.lent, welcome?.fds)
+    const request = Lending.entered(session.request, welcome?.lent, adopted)
     const init = this.#desktop
       ? desktopInit(session.page!, session.resources, grant.token, this.#place(), session.tier!, session.services)
-      : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request: session.request, services: session.services }, grant.window)
+      : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request, services: session.services }, grant.window)
     this.#backend?.start()
     if (session.grants?.office) Launcher.#openOffice()
     if (this.#desktop && this.manager && session.grants?.devices) sys().startDevices?.()
@@ -661,7 +667,8 @@ class Launcher {
       else if (event.type === 'devreload') void this.#devReload(event['hot'] === true)
       else if (event.type === 'invoke') this.#thread?.post({ rpc: 'invoke', fn: event['fn'], args: event['args'] ?? [] })
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
-      else if (event.type === 'unlend' && !this.#desktop) this.#unlend(String(event['name'] ?? ''))
+      else if (event.type === 'lend' && !this.#desktop) this.#lending.lend([event as unknown as Lent], event['fds'])
+      else if (event.type === 'unlend' && !this.#desktop) this.#lending.unlend(String(event['name'] ?? ''))
       else if (event.type === 'visibility' && !this.#desktop) void this.#rpc?.call('window', 'visible', [event['visible'] === true]).catch(() => undefined)
       else if (event.type === 'menuinvoke' && !this.#desktop) void this.#rpc?.call('window', 'menu', [event['menu'], event['item']]).catch(() => undefined)
       else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event as ShellEvent))
@@ -673,24 +680,8 @@ class Launcher {
     this.#thread?.post({ type: 'services', services: this.#services })
   }
 
-  #unlend(name: string): void {
-    const app = this.session.found?.app.id
-    if (!app || !name || !sys().unlendRoot?.(app, name)) return
-    this.#thread?.post({ type: 'fsroots', removed: [name] })
-  }
-
   #deliver(event: ManagerEvent): void {
-    const request = event['request'] as Record<string, unknown> | undefined
-    const lend = event['lend'] as LentRoot | undefined
-    let root: string | undefined
-    if (lend) {
-      try {
-        root = sys().lendRoot?.(this.session.found!.app.id, lend)
-      } catch (error) {
-        process.stderr.write(`acdev: the lent folder ${lend.dir}: ${(error as Error).message}\n`)
-      }
-    }
-    const handed = root === undefined ? request : { ...request, root }
+    const handed = this.#lending.request(event)
     void this.#rpc?.call('window', 'request', [handed]).catch(() => undefined)
   }
 

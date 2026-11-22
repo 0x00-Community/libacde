@@ -14,7 +14,7 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>, office:
     crate::methods!(scope, object,
         "server" => server,
         "state" => state,
-        "open" => open,
+        "openLent" => open_lent,
         "status" => status,
         "save" => save,
         "new" => create,
@@ -39,10 +39,9 @@ fn state(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: 
     send(scope, &mut rv, OfficeCall::State { root, dir, path });
 }
 
-fn open(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
-    let path = bind::arg_string(scope, &args, 0);
-    let writable = bind::arg_bool(scope, &args, 1);
-    send(scope, &mut rv, OfficeCall::Open { path, writable });
+fn open_lent(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let name = bind::arg_string(scope, &args, 0);
+    send(scope, &mut rv, OfficeCall::Lent { name });
 }
 
 fn status(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {

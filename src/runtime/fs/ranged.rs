@@ -1,14 +1,15 @@
-use super::beneath::{self, Dir};
+use super::access::lent::LentFile;
+use super::beneath::{self, Dir, OpenOptions};
 use super::path::NodePath;
 use super::save;
-use super::workspace::{Create, FinderEntry, FinderRoot, ModifiedMs, Resolved, WorkspaceFs};
+use super::workspace::{Create, FinderEntry, FinderRoot, ModifiedMs, WorkspaceFs};
 use crate::runtime::failure::{Failure, Outcome};
 use crate::runtime::sync::Locked;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::{File, Metadata, OpenOptions};
+use std::fs::{File, Metadata};
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
@@ -73,43 +74,65 @@ impl WorkspaceFs {
     }
 }
 
-struct Session {
+struct Beneath {
     dir: Dir,
     name: String,
-    absolute: String,
     temp: String,
-    file: File,
     create: Create,
     expected: Option<String>,
     original: Option<Metadata>,
+}
+
+enum Target {
+    Beneath(Beneath),
+    Lent { into: LentFile, scratch: PathBuf },
+}
+
+struct Session {
+    target: Target,
+    file: File,
     used: Instant,
 }
 
 impl Session {
     fn discard(self) {
-        let temp = self.dir.child(&self.temp);
         drop(self.file);
-        _ = std::fs::remove_file(temp);
+        match self.target {
+            Target::Beneath(beneath) => _ = beneath.dir.remove_file(&beneath.temp),
+            Target::Lent { scratch, .. } => _ = std::fs::remove_file(scratch),
+        }
     }
 
-    fn commit(self) -> Outcome<FinderEntry> {
-        let Session { dir, name, absolute, temp, file, create, expected, original, .. } = self;
+    fn commit(self) -> Outcome<Option<FinderEntry>> {
+        match self.target {
+            Target::Beneath(beneath) => beneath.commit(self.file).map(Some),
+            Target::Lent { into, scratch } => {
+                let mut file = self.file;
+                let poured = into.pour(&mut file);
+                drop(file);
+                _ = std::fs::remove_file(scratch);
+                Ok(poured.map(|()| None)?)
+            }
+        }
+    }
+}
+
+impl Beneath {
+    fn commit(self, file: File) -> Outcome<FinderEntry> {
+        let Beneath { dir, name, temp, create, expected, original } = self;
         let finished = original.as_ref().map_or(Ok(()), |info| save::keep(&file, info)).and_then(|()| file.sync_all());
         drop(file);
         let placed = finished.map_err(Failure::from).and_then(|()| place(&dir, &name, &temp, create, expected.as_deref()));
         if let Err(failure) = placed {
-            _ = std::fs::remove_file(dir.child(&temp));
+            _ = dir.remove_file(&temp);
             return Err(failure);
         }
-        let mut entry = FinderEntry::read(&absolute, absolute.basename())?;
-        let file = WorkspaceFs::no_follow(OpenOptions::new().read(true), dir.child(&name), true)?;
-        entry.version = Some(save::version(&file)?);
-        Ok(entry)
+        WorkspaceFs::versioned(&dir, &name)
     }
 }
 
 fn place(dir: &Dir, name: &str, temp: &str, create: Create, expected: Option<&str>) -> Outcome<()> {
-    match WorkspaceFs::no_follow(OpenOptions::new().read(true), dir.child(name), true) {
+    match beneath::read(dir, name, true) {
         Ok(current) => {
             if create == Create::New {
                 return Err(Failure::exists("file already exists"));
@@ -131,9 +154,7 @@ fn place(dir: &Dir, name: &str, temp: &str, create: Create, expected: Option<&st
                 ErrorKind::AlreadyExists => Failure::exists("file already exists"),
                 _ => error.into(),
             })?;
-            #[cfg(unix)]
-            File::open(dir.path())?.sync_all()?;
-            Ok(())
+            Ok(beneath::sync(dir)?)
         }
         Err(error) => Err(error.into()),
     }
@@ -181,20 +202,12 @@ impl Writes {
         if options.create == Create::New && (options.if_version.is_some() || options.keep_existing_data) {
             return Err(Failure::invalid("ifVersion and keepExistingData cannot go with create: 'new'"));
         }
-        let mut open = self.open.locked();
-        open.expire();
-        if open.sessions.len() >= MAX_OPEN {
-            return Err(Failure::invalid(format!("at most {MAX_OPEN} writes may be open at once; commit or abort one first")));
-        }
+        let mut open = self.admitted()?;
         if options.mkdirs && options.create != Create::Never {
-            let parent = WorkspaceFs::clean(relative)?.dirname().to_owned();
-            if parent != "." {
-                WorkspaceFs::make_dirs(root, &parent)?;
-            }
+            WorkspaceFs::make_dirs(root, WorkspaceFs::clean(relative)?.dirname())?;
         }
-        let Resolved { absolute, relative, .. } = WorkspaceFs::resolve(root, relative, false)?;
-        let (dir, name) = WorkspaceFs::parent(root, &relative)?;
-        let original = match WorkspaceFs::no_follow(OpenOptions::new().read(true), dir.child(&name), true) {
+        let (dir, name) = WorkspaceFs::target(root, relative)?;
+        let original = match beneath::read(&dir, &name, true) {
             Ok(file) => {
                 let info = file.metadata()?;
                 if !info.is_file() {
@@ -222,7 +235,7 @@ impl Writes {
         };
         sweep(&dir);
         let temp = format!(".{name}.{}{PART}", uuid::Uuid::new_v4().simple());
-        let mut file = WorkspaceFs::no_follow(OpenOptions::new().read(true).write(true).create_new(true), dir.child(&temp), false)?;
+        let mut file = beneath::open_file(&dir, &temp, OpenOptions::new().read(true).write(true).create_new(true), false)?;
         let copied = match (&original, options.keep_existing_data) {
             (Some((source, info)), true) => room(&dir, info.len()).and_then(|()| Ok(std::io::copy(&mut &*source, &mut file)?)),
             _ => Ok(0),
@@ -231,20 +244,53 @@ impl Writes {
             Ok(size) => size,
             Err(failure) => {
                 drop(file);
-                _ = std::fs::remove_file(dir.child(&temp));
+                _ = dir.remove_file(&temp);
                 return Err(failure);
             }
         };
+        let original = original.map(|(_, info)| info);
+        let target = Target::Beneath(Beneath { dir, name, temp, create: options.create, expected, original });
+        Ok(Opened { id: self.insert(&mut open, target, file), size })
+    }
+
+    pub fn open_lent(&self, into: &LentFile, keep_existing_data: bool) -> Outcome<Opened> {
+        into.writable()?;
+        let mut open = self.admitted()?;
+        let scratch = std::env::temp_dir().join(format!(".acde-lent-{}{PART}", uuid::Uuid::new_v4().simple()));
+        let mut file = std::fs::OpenOptions::new().read(true).write(true).create_new(true).open(&scratch)?;
+        let copied = match keep_existing_data {
+            true => into.copy_into(&mut file),
+            false => Ok(0),
+        };
+        let size = match copied {
+            Ok(size) => size,
+            Err(error) => {
+                drop(file);
+                _ = std::fs::remove_file(&scratch);
+                return Err(error.into());
+            }
+        };
+        Ok(Opened { id: self.insert(&mut open, Target::Lent { into: into.clone(), scratch }, file), size })
+    }
+
+    fn admitted(&self) -> Outcome<std::sync::MutexGuard<'_, Open>> {
+        let mut open = self.open.locked();
+        open.expire();
+        if open.sessions.len() >= MAX_OPEN {
+            return Err(Failure::invalid(format!("at most {MAX_OPEN} writes may be open at once; commit or abort one first")));
+        }
+        Ok(open)
+    }
+
+    fn insert(&self, open: &mut Open, target: Target, file: File) -> String {
         open.next += 1;
         let id = format!("write-{}", open.next);
-        let original = original.map(|(_, info)| info);
-        let session = Session { dir, name, absolute, temp, file, create: options.create, expected, original, used: Instant::now() };
-        open.sessions.insert(id.clone(), session);
+        open.sessions.insert(id.clone(), Session { target, file, used: Instant::now() });
         if !open.watched {
             open.watched = true;
             watch(&self.open);
         }
-        Ok(Opened { id, size })
+        id
     }
 
     pub fn chunk(&self, id: &str, offset: Option<u64>, data: &[u8]) -> Outcome<()> {
@@ -272,7 +318,7 @@ impl Writes {
         Ok(())
     }
 
-    pub fn commit(&self, id: &str) -> Outcome<FinderEntry> {
+    pub fn commit(&self, id: &str) -> Outcome<Option<FinderEntry>> {
         let session = self.take(id)?;
         session.commit()
     }
@@ -297,29 +343,31 @@ impl Writes {
 fn grow(session: &Session, end: u64) -> Outcome<()> {
     let size = session.file.metadata()?.len();
     if end > size {
-        room(&session.dir, end - size)?;
+        if let Target::Beneath(beneath) = &session.target {
+            room(&beneath.dir, end - size)?;
+        }
     }
     Ok(())
 }
 
 fn room(dir: &Dir, more: u64) -> Outcome<()> {
-    match free(dir.path()) {
+    match free(dir) {
         Some(free) if free < more.saturating_add(RESERVE) => Err(Failure::http(507, "not enough disk space for this write")),
         _ => Ok(()),
     }
 }
 
 #[cfg(unix)]
-fn free(path: &Path) -> Option<u64> {
-    let info = rustix::fs::statvfs(path).ok()?;
+fn free(dir: &Dir) -> Option<u64> {
+    let info = rustix::fs::fstatvfs(dir).ok()?;
     Some(info.f_bavail.saturating_mul(info.f_frsize))
 }
 
 #[cfg(windows)]
-fn free(path: &Path) -> Option<u64> {
+fn free(dir: &Dir) -> Option<u64> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
-    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let wide: Vec<u16> = beneath::final_path(dir).ok()?.as_os_str().encode_wide().chain(Some(0)).collect();
     let mut available = 0u64;
     match unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut available, std::ptr::null_mut(), std::ptr::null_mut()) } {
         0 => None,
@@ -328,16 +376,16 @@ fn free(path: &Path) -> Option<u64> {
 }
 
 fn sweep(dir: &Dir) {
-    let Ok(entries) = std::fs::read_dir(dir.path()) else { return };
+    let Ok(entries) = dir.entries() else { return };
     for entry in entries.flatten() {
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
         if !name.starts_with('.') || !name.ends_with(PART) {
             continue;
         }
-        let age = entry.metadata().ok().and_then(|info| info.modified().ok()).and_then(|time| time.elapsed().ok());
+        let age = entry.metadata().ok().and_then(|info| info.modified().ok()).and_then(|time| time.into_std().elapsed().ok());
         if age.is_some_and(|age| age > IDLE * 2) {
-            _ = std::fs::remove_file(entry.path());
+            _ = dir.remove_file(name);
         }
     }
 }
@@ -381,11 +429,11 @@ mod tests {
         static NEXT: AtomicU32 = AtomicU32::new(0);
         let dir = std::env::temp_dir().join(format!("acde-ranged-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
         std::fs::create_dir_all(&dir).unwrap();
-        let root = WorkspaceFs::granted(dir.to_str().unwrap());
+        let root = WorkspaceFs::folder(dir.to_str().unwrap());
         (dir, root)
     }
 
-    fn parts(dir: &Path) -> usize {
+    fn parts(dir: &std::path::Path) -> usize {
         std::fs::read_dir(dir).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(PART)).count()
     }
 
@@ -423,7 +471,7 @@ mod tests {
         writes.chunk(&opened.id, Some(0), b"he").unwrap();
         assert_eq!(std::fs::read(dir.join("a.txt")).unwrap(), b"old contents");
         assert_eq!(parts(&dir), 1);
-        let entry = writes.commit(&opened.id).unwrap();
+        let entry = writes.commit(&opened.id).unwrap().unwrap();
         assert_eq!(std::fs::read(dir.join("a.txt")).unwrap(), b"he\0\0tail");
         assert!(entry.version.is_some());
         assert_eq!(parts(&dir), 0);
@@ -501,31 +549,10 @@ mod tests {
         assert_eq!(code(writes.open_in(&root, "missing.txt", &never)), "ENOENT");
         assert_eq!(code(writes.chunk(&opened[1].id, Some(0), &vec![0; MAX_CHUNK as usize + 1])), "EFBIG");
         assert_eq!(code(writes.open_in(&root, "../out.txt", &OpenWrite::default())), "EINVAL");
-        let read_only = WorkspaceFs::granted(dir.to_str().unwrap()).access(false);
+        let read_only = WorkspaceFs::folder(dir.to_str().unwrap()).access(false);
         assert_eq!(code(writes.open_in(&read_only, "a.txt", &OpenWrite::default())), "EACCES");
         drop(writes);
         assert_eq!(parts(&dir), 0);
-        _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn a_picked_file_alone_is_reachable() {
-        let (dir, _) = scratch();
-        std::fs::write(dir.join("one.bin"), b"one").unwrap();
-        std::fs::write(dir.join("other.bin"), b"other").unwrap();
-        let folders = super::super::PickedFolders::default();
-        let one = dir.join("one.bin").to_string_lossy().into_owned();
-        let other = dir.join("other.bin").to_string_lossy().into_owned();
-        assert_eq!(folders.read_range(&one, Some(0), Some(3), None).err().map(|e| e.code), Some("EACCES"));
-        folders.allow_file(&one, false);
-        assert_eq!(folders.read_range(&one, Some(1), Some(5), None).unwrap().unwrap().data, b"ne");
-        assert_eq!(folders.read_range(&other, Some(0), Some(3), None).err().map(|e| e.code), Some("EACCES"));
-        assert_eq!(folders.open_write(&one, false).err().map(|e| e.code), Some("EACCES"));
-        folders.allow_file(&one, true);
-        let opened = folders.open_write(&one, true).unwrap();
-        folders.write_chunk(&opened.id, Some(3), b"!").unwrap();
-        folders.commit_write(&opened.id).unwrap();
-        assert_eq!(std::fs::read(dir.join("one.bin")).unwrap(), b"one!");
         _ = std::fs::remove_dir_all(dir);
     }
 }

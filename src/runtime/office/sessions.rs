@@ -1,3 +1,5 @@
+use super::documents::{OfficeFile, Source};
+use super::tokens::Origin;
 use crate::runtime::sync::Locked;
 use base64::Engine;
 use serde_json::{Value, json};
@@ -23,7 +25,8 @@ pub enum SaveState {
 
 pub struct Session {
     pub key: String,
-    pub root: String,
+    pub id: String,
+    pub source: Source,
     pub path: String,
     pub state: SaveState,
     pub saved_at: Option<i64>,
@@ -43,6 +46,13 @@ impl Session {
     pub fn touch(&mut self) {
         self.touched = Instant::now();
     }
+
+    pub fn origin(&self) -> Option<Origin> {
+        match &self.source {
+            Source::Root { owner, root } => Some(Origin { owner: owner.clone(), root: root.id.clone(), path: self.target.clone(), mtime_ms: self.expected_ms }),
+            Source::Lent { .. } => None,
+        }
+    }
 }
 
 pub type Shared = Arc<Mutex<Session>>;
@@ -59,12 +69,8 @@ pub struct EditSessions {
 }
 
 impl EditSessions {
-    fn id(root: &str, path: &str) -> String {
-        format!("{root}\0{path}")
-    }
-
-    fn key(root: &str, path: &str, modified_ms: i64, size: u64) -> String {
-        let digest = Sha256::digest(format!("{root}\0{path}\0{modified_ms}\0{size}").as_bytes());
+    fn key(id: &str, modified_ms: i64, size: u64) -> String {
+        let digest = Sha256::digest(format!("{id}\0{modified_ms}\0{size}").as_bytes());
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(digest)[..32].to_owned()
     }
 
@@ -72,10 +78,11 @@ impl EditSessions {
         self.inner.locked()
     }
 
-    fn fresh(key: String, root: &str, path: &str, expected_ms: i64) -> Shared {
+    fn fresh(key: String, id: &str, source: Source, path: &str, expected_ms: i64) -> Shared {
         Arc::new(Mutex::new(Session {
             key,
-            root: root.to_owned(),
+            id: id.to_owned(),
+            source,
             path: path.to_owned(),
             state: SaveState::Open,
             saved_at: None,
@@ -88,26 +95,25 @@ impl EditSessions {
         }))
     }
 
-    pub fn open(&self, root: &str, path: &str, modified_ms: i64, size: u64) -> Shared {
+    pub fn open(&self, id: &str, file: &OfficeFile) -> Shared {
         let mut inner = self.inner();
         let cutoff = Instant::now() - IDLE;
         let stale: Vec<String> = inner.by_key.iter().filter(|(_, s)| s.locked().touched < cutoff).map(|(k, _)| k.clone()).collect();
         for key in stale {
             if let Some(session) = inner.by_key.remove(&key) {
-                let id = Self::id(&session.locked().root, &session.locked().path);
+                let id = session.locked().id.clone();
                 if inner.live.get(&id) == Some(&key) {
                     inner.live.remove(&id);
                 }
             }
         }
-        let id = Self::id(root, path);
-        let current = inner.live.get(&id).and_then(|key| inner.by_key.get(key)).cloned();
+        let current = inner.live.get(id).and_then(|key| inner.by_key.get(key)).cloned();
         if let Some(current) = current.filter(|s| s.locked().state != SaveState::Closed) {
             current.locked().touch();
             return current;
         }
-        let key = Self::key(root, path, modified_ms, size);
-        let session = inner.by_key.get(&key).cloned().unwrap_or_else(|| Self::fresh(key.clone(), root, path, modified_ms));
+        let key = Self::key(id, file.modified_ms, file.size);
+        let session = inner.by_key.get(&key).cloned().unwrap_or_else(|| Self::fresh(key.clone(), id, file.source.clone(), &file.path, file.modified_ms));
         {
             let mut s = session.locked();
             s.state = SaveState::Open;
@@ -115,7 +121,7 @@ impl EditSessions {
             s.touch();
         }
         inner.by_key.insert(key.clone(), Arc::clone(&session));
-        inner.live.insert(id, key);
+        inner.live.insert(id.to_owned(), key);
         session
     }
 
@@ -123,14 +129,14 @@ impl EditSessions {
         self.inner().by_key.get(key).cloned()
     }
 
-    pub fn resume(&self, key: &str, root: &str, path: &str, expected_ms: i64) -> Shared {
+    pub fn resume(&self, key: &str, id: &str, source: Source, origin: &Origin) -> Shared {
         let mut inner = self.inner();
         if let Some(session) = inner.by_key.get(key) {
             return Arc::clone(session);
         }
-        let session = Self::fresh(key.to_owned(), root, path, expected_ms);
+        let session = Self::fresh(key.to_owned(), id, source, &origin.path, origin.mtime_ms);
         inner.by_key.insert(key.to_owned(), Arc::clone(&session));
-        inner.live.insert(Self::id(root, path), key.to_owned());
+        inner.live.insert(id.to_owned(), key.to_owned());
         session
     }
 
@@ -140,10 +146,9 @@ impl EditSessions {
         }
         session.editors = 0;
         session.touch();
-        let id = Self::id(&session.root, &session.path);
         let mut inner = self.inner();
-        if inner.live.get(&id) == Some(&session.key) {
-            inner.live.remove(&id);
+        if inner.live.get(&session.id) == Some(&session.key) {
+            inner.live.remove(&session.id);
         }
     }
 }

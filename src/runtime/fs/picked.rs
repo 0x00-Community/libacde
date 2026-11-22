@@ -1,4 +1,5 @@
 use super::FsError;
+use super::access::lent::LentFile;
 #[cfg(not(windows))]
 use super::path::NodePath;
 use super::path::same_folder;
@@ -10,49 +11,65 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Default)]
 pub struct PickedFolders {
+    lent: Option<super::Workspace>,
     roots: Arc<Mutex<Vec<FinderRoot>>>,
-    files: Arc<Mutex<Vec<(String, bool)>>>,
     writes: Writes,
 }
 
 type Picked<T> = std::result::Result<T, FsError>;
 
+pub struct Dropped {
+    pub name: String,
+    pub label: String,
+    pub kind: EntryKind,
+}
+
+const LENT: &str = "lent:";
+const LENT_FILE: &str = "lent-file:";
+
 impl PickedFolders {
+    pub fn lent_from(workspace: Option<super::Workspace>) -> Self {
+        Self { lent: workspace, ..Self::default() }
+    }
+
     pub fn add(&self, path: &str) -> Picked<String> {
-        let path = super::access::grants::folder(path, "picked")?;
+        let path = super::access::folder::existing(path, "picked")?;
         let mut roots = self.roots.locked();
         if let Some(known) = roots.iter().find(|root| same_folder(&root.path, &path)) {
             return Ok(known.path.clone());
         }
-        roots.push(WorkspaceFs::granted(&path));
+        roots.push(WorkspaceFs::folder(&path));
         Ok(path)
     }
 
-    pub fn allow_file(&self, path: &str, writable: bool) {
-        let mut files = self.files.locked();
-        match files.iter_mut().find(|(known, _)| same_folder(known, path)) {
-            Some(known) => known.1 = writable,
-            None => files.push((path.to_owned(), writable)),
-        }
+    pub fn lend_dropped(&self, paths: &[String]) -> Vec<Dropped> {
+        let Some(workspace) = &self.lent else { return Vec::new() };
+        let Some(owner) = workspace.owner() else { return Vec::new() };
+        paths
+            .iter()
+            .filter_map(|path| lend_one(workspace, owner, path).inspect_err(|error| log::warn!("{owner}: a dropped item is not lent: {error}")).ok()?)
+            .collect()
+    }
+
+    fn lent_file(&self, path: &str) -> Option<Picked<LentFile>> {
+        let name = path.strip_prefix(LENT_FILE)?;
+        let file = self.lent.as_ref().and_then(|workspace| workspace.lent_file(name));
+        Some(file.ok_or_else(|| Failure::http(403, "not a file lent to this app").into()))
     }
 
     fn locate(&self, path: &str) -> Outcome<(FinderRoot, String)> {
+        if let Some(key) = path.strip_prefix(LENT) {
+            let (name, relative) = key.split_once('/').unwrap_or((key, ""));
+            let root = self.lent.as_ref().and_then(|workspace| workspace.lent_root(name));
+            return root.map(|root| (root, relative.to_owned())).ok_or_else(|| Failure::http(403, "not a folder lent to this app"));
+        }
         let inside = self
             .roots
             .locked()
             .iter()
             .filter_map(|root| within(path, &root.path).map(|relative| (root.clone(), relative)))
             .max_by_key(|(root, _)| root.path.len());
-        if let Some(found) = inside {
-            return Ok(found);
-        }
-        let files = self.files.locked();
-        let picked = files.iter().find(|(known, _)| same_folder(known, path)).and_then(|(known, writable)| {
-            let known = std::path::Path::new(known);
-            let (parent, name) = (known.parent()?.to_str()?, known.file_name()?.to_str()?);
-            Some((WorkspaceFs::granted(parent).access(*writable), name.to_owned()))
-        });
-        picked.ok_or_else(|| Failure::http(403, "not inside a folder the user picked"))
+        inside.ok_or_else(|| Failure::http(403, "not inside a folder the user picked"))
     }
 
     pub fn entries(&self, dir: &str) -> Picked<Vec<(String, EntryKind)>> {
@@ -71,6 +88,9 @@ impl PickedFolders {
     }
 
     pub fn read(&self, path: &str) -> Picked<Option<Contents>> {
+        if let Some(file) = self.lent_file(path) {
+            return Ok(Some(file?.read()?));
+        }
         let (root, relative) = self.locate(path)?;
         match WorkspaceFs::read_bytes_in(&root, &relative) {
             Ok(contents) => Ok(Some(contents)),
@@ -80,14 +100,21 @@ impl PickedFolders {
     }
 
     pub fn write(&self, path: &str, data: &[u8]) -> Picked<()> {
+        if let Some(file) = self.lent_file(path) {
+            return Ok(file?.write(data)?);
+        }
         let (root, relative) = self.locate(path)?;
         WorkspaceFs::write_file_in(&root, &relative, data, &WriteOptions::default())?;
         Ok(())
     }
 
     pub fn read_range(&self, path: &str, offset: Option<u64>, length: Option<u64>, version: Option<String>) -> Picked<Option<Range>> {
+        let options = RangeOptions { if_version: version };
+        if let Some(file) = self.lent_file(path) {
+            return Ok(Some(file?.read_range(offset, length, &options)?));
+        }
         let (root, relative) = self.locate(path)?;
-        match WorkspaceFs::read_range_in(&root, &relative, offset, length, &RangeOptions { if_version: version }) {
+        match WorkspaceFs::read_range_in(&root, &relative, offset, length, &options) {
             Ok(range) => Ok(Some(range)),
             Err(failure) if failure.errno == Errno::Noent => Ok(None),
             Err(failure) => Err(failure.into()),
@@ -95,6 +122,9 @@ impl PickedFolders {
     }
 
     pub fn open_write(&self, path: &str, keep_existing_data: bool) -> Picked<Opened> {
+        if let Some(file) = self.lent_file(path) {
+            return Ok(self.writes.open_lent(&file?, keep_existing_data)?);
+        }
         let (root, relative) = self.locate(path)?;
         Ok(self.writes.open_in(&root, &relative, &OpenWrite { keep_existing_data, ..OpenWrite::default() })?)
     }
@@ -115,6 +145,22 @@ impl PickedFolders {
     pub fn abort_write(&self, id: &str) -> Picked<()> {
         Ok(self.writes.abort(id)?)
     }
+}
+
+fn lend_one(workspace: &super::Workspace, owner: &str, path: &str) -> Result<Option<Dropped>, String> {
+    let info = std::fs::symlink_metadata(path).map_err(|error| format!("{path}: {error}"))?;
+    let label = std::path::Path::new(path).file_name().map_or_else(|| path.to_owned(), |name| name.to_string_lossy().into_owned());
+    let failed = |error: std::io::Error| format!("{path}: {error}");
+    let refused = |failure: Failure| failure.message;
+    let (name, kind) = if info.is_dir() {
+        let root = super::LentRoot::open(label.clone(), false, path).map_err(failed)?;
+        (workspace.lend(owner, root).map_err(refused)?, EntryKind::Directory)
+    } else if info.is_file() {
+        (workspace.lend_file(owner, LentFile::open(path, false).map_err(failed)?).map_err(refused)?, EntryKind::File)
+    } else {
+        return Ok(None);
+    };
+    Ok(Some(Dropped { name, label, kind }))
 }
 
 #[cfg(windows)]
@@ -208,6 +254,69 @@ mod tests {
         assert!(!folders.remove(&picked, "sub", true).unwrap());
         assert_eq!(code(folders.child(&picked, "..", None)), "EINVAL");
         assert_eq!(code(folders.child(&picked, "a/b", None)), "EINVAL");
+        _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_lent_key_reaches_the_folder_lent_to_this_app_only() {
+        let base = scratch();
+        let picked = base.join("picked");
+        std::fs::write(Path::new(&picked).join("a.txt"), b"a").unwrap();
+        let all = crate::runtime::fs::Workspace::at(&base);
+        let root = crate::runtime::LentRoot::open("Picked".into(), false, &picked).unwrap();
+        assert_eq!(all.lend("viewer", root).unwrap(), "work");
+        let folders = PickedFolders::lent_from(Some(all.files(crate::runtime::Files::new(&[], false), "viewer")));
+        assert_eq!(folders.read("lent:work/a.txt").unwrap().unwrap().data, b"a");
+        assert_eq!(folders.entries("lent:work").unwrap(), [("a.txt".to_string(), EntryKind::File)]);
+        assert_eq!(code(folders.write("lent:work/b.txt", b"b")), "EACCES");
+        assert_eq!(code(folders.read("lent:work/../x")), "EINVAL");
+        assert_eq!(code(folders.read("lent:other/a.txt")), "EACCES");
+        let stranger = PickedFolders::lent_from(Some(all.files(crate::runtime::Files::new(&[], false), "stranger")));
+        assert_eq!(code(stranger.read("lent:work/a.txt")), "EACCES");
+        assert_eq!(code(PickedFolders::default().read("lent:work/a.txt")), "EACCES");
+        _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_lent_file_is_reached_by_its_name_and_written_on_commit() {
+        let base = scratch();
+        let path = base.join("note.txt");
+        std::fs::write(&path, b"old").unwrap();
+        let all = crate::runtime::fs::Workspace::at(&base);
+        assert_eq!(all.lend_file("viewer", LentFile::open(&path, true).unwrap()).unwrap(), "file");
+        assert_eq!(all.lend_file("viewer", LentFile::open(&path, false).unwrap()).unwrap(), "file-2");
+        let folders = PickedFolders::lent_from(Some(all.files(crate::runtime::Files::new(&[], false), "viewer")));
+        assert_eq!(folders.read("lent-file:file").unwrap().unwrap().data, b"old");
+        let opened = folders.open_write("lent-file:file", true).unwrap();
+        assert_eq!(opened.size, 3);
+        folders.truncate_write(&opened.id, Some(1)).unwrap();
+        folders.write_chunk(&opened.id, Some(1), b"k").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"old");
+        folders.commit_write(&opened.id).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"ok");
+        assert_eq!(code(folders.write("lent-file:file-2", b"x")), "EACCES");
+        assert_eq!(code(folders.open_write("lent-file:file-2", false)), "EACCES");
+        let stranger = PickedFolders::lent_from(Some(all.files(crate::runtime::Files::new(&[], false), "stranger")));
+        assert_eq!(code(stranger.read("lent-file:file")), "EACCES");
+        assert!(all.unlend("viewer", "file"));
+        assert_eq!(code(folders.read("lent-file:file")), "EACCES");
+        _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn dropped_items_are_lent_read_only_to_this_app() {
+        let base = scratch();
+        let picked = base.join("picked");
+        std::fs::write(Path::new(&picked).join("a.txt"), b"a").unwrap();
+        let all = crate::runtime::fs::Workspace::at(&base);
+        let folders = PickedFolders::lent_from(Some(all.files(crate::runtime::Files::new(&[], false), "viewer")));
+        let dropped = folders.lend_dropped(&[picked.clone(), picked.join("a.txt"), base.join("gone")]);
+        let names: Vec<(&str, EntryKind)> = dropped.iter().map(|item| (item.name.as_str(), item.kind)).collect();
+        assert_eq!(names, [("work", EntryKind::Directory), ("file", EntryKind::File)]);
+        assert_eq!(folders.read("lent:work/a.txt").unwrap().unwrap().data, b"a");
+        assert_eq!(folders.read("lent-file:file").unwrap().unwrap().data, b"a");
+        assert_eq!(code(folders.write("lent-file:file", b"x")), "EACCES");
+        assert!(PickedFolders::default().lend_dropped(&[picked]).is_empty());
         _ = std::fs::remove_dir_all(base);
     }
 

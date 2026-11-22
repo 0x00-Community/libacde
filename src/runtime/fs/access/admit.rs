@@ -4,7 +4,7 @@ use std::path::Path;
 
 pub(in crate::runtime::fs) fn real_inside(allowed: &[FinderRoot], path: &str) -> Outcome<String> {
     let real = std::fs::canonicalize(path)?;
-    let inside = allowed.iter().any(|root| std::fs::canonicalize(&root.path).is_ok_and(|top| real.starts_with(&top)));
+    let inside = allowed.iter().filter_map(FinderRoot::on_disk).any(|top| std::fs::canonicalize(top).is_ok_and(|top| real.starts_with(&top)));
     if !inside {
         return Err(Failure::http(403, "not inside a folder the caller may open"));
     }

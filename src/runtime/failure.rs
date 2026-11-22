@@ -105,6 +105,7 @@ impl From<io::Error> for Failure {
     fn from(error: io::Error) -> Self {
         use io::ErrorKind as Kind;
         let mapped = match error.kind() {
+            _ if crate::runtime::fs::escaped(&error) => (400, "path leaves the folder through a link"),
             Kind::NotFound => (404, "no such file or directory"),
             Kind::PermissionDenied => (403, "permission denied"),
             Kind::AlreadyExists => (409, "already exists"),

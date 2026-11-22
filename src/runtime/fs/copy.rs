@@ -1,93 +1,88 @@
-use super::path::NodePath;
-use super::workspace::{FinderEntry, FinderRoot, Resolved, WorkspaceFs};
+use super::beneath::{self, Dir};
+use super::workspace::{FinderEntry, FinderRoot, WorkspaceFs};
 use crate::runtime::failure::{Failure, Outcome};
 use serde_json::Value;
-use std::fs::{self, OpenOptions};
 use std::io::ErrorKind;
-use std::path::Path;
 
 pub(super) fn copy(from: &FinderRoot, path: &str, to: &FinderRoot, dir: &str) -> Outcome<Value> {
     to.writable()?;
-    let source = WorkspaceFs::resolve(from, path, true)?;
-    if source.relative.is_empty() {
+    let source = WorkspaceFs::inner(path)?;
+    if source.is_empty() {
         return Err(Failure::invalid("a root itself cannot be copied; copy what is in it"));
     }
-    let target = WorkspaceFs::resolve(to, dir, true)?;
-    if !fs::metadata(&target.real)?.is_dir() {
-        return Err(Failure::invalid("the target is not a directory"));
-    }
-    let name = source.absolute.basename().to_owned();
-    let entry = if is_link(Path::new(&source.absolute))? {
+    let (parent, name) = WorkspaceFs::parent(from, &source)?;
+    let relative = WorkspaceFs::inner(dir)?;
+    let target = WorkspaceFs::dir(to, &relative)?;
+    let kind = parent.symlink_metadata(&name)?.file_type();
+    let entry = if kind.is_symlink() {
         return Err(Failure::invalid("links are not copied"));
-    } else if fs::symlink_metadata(&source.absolute)?.is_dir() {
-        if Path::new(&target.real).starts_with(&source.real) {
-            return Err(Failure::invalid("a folder cannot be copied into itself"));
-        }
-        scan(Path::new(&source.absolute))?;
-        folder(&source, &target, &name)?
+    } else if kind.is_dir() {
+        let folder_dir = beneath::open_dir(&parent, &name)?;
+        scan(&folder_dir, &source)?;
+        folder(&folder_dir, &target, &name)?
     } else {
-        let file = WorkspaceFs::no_follow(OpenOptions::new().read(true), &source.absolute, true)?;
-        WorkspaceFs::copy_into(to, dir, &name, file)?
+        WorkspaceFs::copy_into(to, &relative, &name, beneath::read(&parent, &name, true)?)?
     };
-    let relative = if target.relative.is_empty() { entry.name.clone() } else { target.relative.join(&entry.name) };
+    let relative = if relative.is_empty() { entry.name.clone() } else { format!("{relative}/{}", entry.name) };
     let mut value = serde_json::to_value(entry).map_err(Failure::internal)?;
     value["path"] = Value::String(relative);
     Ok(value)
 }
 
-fn is_link(path: &Path) -> Outcome<bool> {
-    Ok(fs::symlink_metadata(path)?.file_type().is_symlink())
-}
-
-fn scan(dir: &Path) -> Outcome<()> {
-    for entry in fs::read_dir(dir)? {
-        let path = entry?.path();
-        let kind = fs::symlink_metadata(&path)?.file_type();
+fn scan(dir: &Dir, at: &str) -> Outcome<()> {
+    for entry in dir.entries()? {
+        let entry = entry?;
+        let path = format!("{at}/{}", entry.file_name().to_string_lossy());
+        let kind = entry.file_type()?;
         if kind.is_symlink() {
-            return Err(Failure::invalid(format!("{} is a link; folders with links are not copied", path.display())));
+            return Err(Failure::invalid(format!("{path} is a link; folders with links are not copied")));
         }
         if kind.is_dir() {
-            scan(&path)?;
+            scan(&entry.open_dir()?, &path)?;
         } else if !kind.is_file() {
-            return Err(Failure::invalid(format!("{} is not a regular file or folder", path.display())));
+            return Err(Failure::invalid(format!("{path} is not a regular file or folder")));
         }
     }
     Ok(())
 }
 
-fn folder(source: &Resolved, target: &Resolved, name: &str) -> Outcome<FinderEntry> {
+fn folder(source: &Dir, target: &Dir, name: &str) -> Outcome<FinderEntry> {
     for n in 1..10_000 {
         let candidate = WorkspaceFs::numbered(name, n);
-        let made = target.absolute.join(&candidate);
-        match fs::create_dir(&made) {
+        match target.create_dir(&candidate) {
             Ok(()) => {}
             Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(error.into()),
         }
-        if let Err(failure) = tree(Path::new(&source.absolute), Path::new(&made)) {
-            _ = fs::remove_dir_all(&made);
+        let copied = target.open_dir(&candidate).map_err(Failure::from).and_then(|made| tree(source, &made, beneath::identity(&made)?));
+        if let Err(failure) = copied {
+            _ = target.remove_dir_all(&candidate);
             return Err(failure);
         }
-        return FinderEntry::read(&made, &candidate);
+        return FinderEntry::read(target, &candidate);
     }
     Err(Failure::exists("no free name for the copy"))
 }
 
-fn tree(from: &Path, to: &Path) -> Outcome<()> {
-    for entry in fs::read_dir(from)? {
+fn tree(from: &Dir, to: &Dir, made: (u64, u64)) -> Outcome<()> {
+    for entry in from.entries()? {
         let entry = entry?;
-        let (path, made) = (entry.path(), to.join(entry.file_name()));
-        let kind = fs::symlink_metadata(&path)?.file_type();
+        let name = entry.file_name();
+        let kind = entry.file_type()?;
         if kind.is_symlink() {
-            return Err(Failure::invalid(format!("{} became a link while it was copied", path.display())));
+            return Err(Failure::invalid(format!("{} became a link while it was copied", name.to_string_lossy())));
         }
         if kind.is_dir() {
-            fs::create_dir(&made)?;
-            tree(&path, &made)?;
+            let inner = entry.open_dir()?;
+            if beneath::identity(&inner)? == made {
+                return Err(Failure::invalid("a folder cannot be copied into itself"));
+            }
+            to.create_dir(&name)?;
+            tree(&inner, &to.open_dir(&name)?, made)?;
             continue;
         }
-        let mut reader = WorkspaceFs::no_follow(OpenOptions::new().read(true), &path, true)?;
-        let mut writer = WorkspaceFs::no_follow(OpenOptions::new().write(true).create_new(true), &made, false)?;
+        let mut reader = beneath::read(from, &name, true)?;
+        let mut writer = beneath::create_new(to, &name)?;
         std::io::copy(&mut reader, &mut writer)?;
         writer.sync_all()?;
     }
@@ -238,9 +233,8 @@ mod tests {
         std::fs::write(home.0.join("Documents").join("a.txt"), "a").unwrap();
         let all = Workspace::at(&home.0.to_string_lossy());
         let documents = home.0.join("Documents").to_string_lossy().into_owned();
-        let grant = all.scoped(Some(vec![]), Some("legacy"));
-        let root = grant.grant(&documents).unwrap();
-        let app = all.scoped(Some(vec![]), Some("legacy"));
+        let root = documents.clone();
+        let app = all.scoped(Some(vec![documents]), Some("legacy"));
         assert_eq!(copy(&app, (&root, "a.txt"), (&root, ""))["name"], "a 2.txt");
         let desktop = home.0.join("Desktop").to_string_lossy().into_owned();
         assert_eq!(copy(&app, (&root, "a.txt"), (&desktop, ""))["code"], "EACCES");

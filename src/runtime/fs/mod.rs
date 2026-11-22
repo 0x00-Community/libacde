@@ -8,13 +8,19 @@ pub(crate) mod removable;
 mod save;
 pub(crate) mod workspace;
 
-pub use access::files::{Files, GrantedFolder, LentRoot};
-use access::{admit, cache::RootCache, grants::Grants};
+pub use access::files::{Files, LentRoot};
+#[cfg(unix)]
+pub(crate) use access::handed::claim as claim_handed;
+#[cfg(unix)]
+pub use access::handed::hand_fds;
+pub use access::lent::LentFile;
+use access::{admit, cache::RootCache, folder::valid_owner};
+pub(crate) use beneath::escaped;
 #[cfg(not(windows))]
 use path::NodePath;
 #[cfg(windows)]
 use path::windows_directory;
-pub use picked::PickedFolders;
+pub use picked::{Dropped, PickedFolders};
 pub use ranged::{MAX_CHUNK, Opened, Range, Writes};
 use ranged::{OpenWrite, RangeOptions};
 pub use workspace::EntryKind;
@@ -26,7 +32,8 @@ use napi::Result;
 use napi_derive::napi;
 use serde::Serialize;
 use serde_json::Value;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 trait IntoJson {
     fn json(self) -> Outcome<Value>;
@@ -39,8 +46,19 @@ impl<T: Serialize> IntoJson for Outcome<T> {
 
 pub(crate) struct Shared {
     pub(crate) fs: WorkspaceFs,
-    grants: Arc<Grants>,
     lent: std::sync::Mutex<std::collections::HashMap<String, Vec<LentRoot>>>,
+    files: std::sync::Mutex<std::collections::HashMap<String, Vec<LentFile>>>,
+    lendings: AtomicU64,
+}
+
+fn fresh_name(stem: &str, taken: impl Fn(&str) -> bool) -> String {
+    (1..).map(|n| if n == 1 { stem.to_owned() } else { format!("{stem}-{n}") }).find(|name| !taken(name)).unwrap_or_default()
+}
+
+fn forget<T>(known: &mut Vec<T>, gone: impl Fn(&T) -> bool) -> bool {
+    let before = known.len();
+    known.retain(|item| !gone(item));
+    before != known.len()
 }
 
 #[derive(Clone, Copy)]
@@ -50,19 +68,13 @@ enum View<'a> {
 }
 
 impl Shared {
-    fn roots(&self, owner: Option<&str>) -> Outcome<Vec<FinderRoot>> {
-        let mut roots = self.fs.roots()?;
-        for granted in owner.map(|owner| self.grants.folders(owner)).unwrap_or_default() {
-            if !roots.iter().any(|root| root.path == granted.path) {
-                roots.push(WorkspaceFs::granted(&granted.path).access(granted.writable));
-            }
-        }
-        Ok(roots)
-    }
-
     fn files_roots(&self, owner: Option<&str>, files: &Files) -> Outcome<Vec<FinderRoot>> {
         let owner = owner.ok_or_else(|| Failure::invalid("private folders belong to an app"))?;
-        files.roots(&self.fs, owner, self.lent_to(owner), self.grants.folders(owner))
+        files.roots(&self.fs, owner, self.lent_to(owner))
+    }
+
+    fn changes(&self) -> u64 {
+        self.lendings.load(Ordering::Relaxed)
     }
 
     fn lent_to(&self, owner: &str) -> Vec<LentRoot> {
@@ -70,29 +82,60 @@ impl Shared {
     }
 
     fn lend(&self, owner: &str, root: LentRoot) -> Outcome<String> {
-        if !Grants::valid_owner(owner) {
+        if !valid_owner(owner) {
             return Err(Failure::invalid("folders are lent to an app"));
         }
-        let root = root.checked()?;
-        let name = root.name.clone();
         let mut lent = self.lent.lock().unwrap_or_else(|e| e.into_inner());
         let roots = lent.entry(owner.to_owned()).or_default();
+        let root = match root.name.is_empty() {
+            true => LentRoot { name: fresh_name("work", |name| roots.iter().any(|root| root.name == name)), ..root },
+            false => root,
+        }
+        .checked()?;
+        let name = root.name.clone();
         roots.retain(|known| known.name != name);
         roots.push(root);
+        self.lendings.fetch_add(1, Ordering::Relaxed);
         Ok(name)
     }
 
+    fn lend_file(&self, owner: &str, file: LentFile) -> Outcome<String> {
+        if !valid_owner(owner) {
+            return Err(Failure::invalid("files are lent to an app"));
+        }
+        let mut lent = self.files.lock().unwrap_or_else(|e| e.into_inner());
+        let files = lent.entry(owner.to_owned()).or_default();
+        let file = match file.name.is_empty() {
+            true => LentFile { name: fresh_name("file", |name| files.iter().any(|file| file.name == name)), ..file },
+            false => file,
+        }
+        .checked()?;
+        let name = file.name.clone();
+        files.retain(|known| known.name != name);
+        files.push(file);
+        Ok(name)
+    }
+
+    pub(crate) fn lent_file(&self, owner: &str, name: &str) -> Option<LentFile> {
+        let lent = self.files.lock().unwrap_or_else(|e| e.into_inner());
+        lent.get(owner)?.iter().find(|file| file.name == name).cloned()
+    }
+
     fn unlend(&self, owner: &str, name: &str) -> bool {
+        let mut files = self.files.lock().unwrap_or_else(|e| e.into_inner());
+        let file = files.get_mut(owner).is_some_and(|files| forget(files, |file| file.name == name));
+        drop(files);
         let mut lent = self.lent.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(roots) = lent.get_mut(owner) else { return false };
-        let before = roots.len();
-        roots.retain(|known| known.name != name);
-        before != roots.len()
+        let root = lent.get_mut(owner).is_some_and(|roots| forget(roots, |root| root.name == name));
+        self.lendings.fetch_add(1, Ordering::Relaxed);
+        file || root
     }
 
     fn root_in(roots: &[FinderRoot], view: View, id: &str) -> Outcome<FinderRoot> {
         match view {
-            View::All(_) => roots.iter().find(|root| root.path == id || root.id == id).cloned().ok_or_else(|| Failure::invalid("not a Runtime workspace")),
+            View::All(_) => {
+                roots.iter().find(|root| root.on_disk() == Some(id) || root.id == id).cloned().ok_or_else(|| Failure::invalid("not a Runtime workspace"))
+            }
             View::Files(_) => Files::find(roots.iter().filter(|root| root.id == id).cloned().collect(), id),
         }
     }
@@ -117,7 +160,6 @@ pub enum FsCall {
     ReadText { root: String, path: String },
     ReadBytes { root: String, path: String },
     WriteFile { root: String, path: String, data: Option<Vec<u8>>, options: Option<Value> },
-    Revoke { root: String },
     Copy { from_root: String, from_path: String, to_root: String, to_dir: String },
     Rename { root: String, from: String, to: String },
     Delete { root: String, path: String },
@@ -173,7 +215,6 @@ impl FsCall {
     fn targets(&self) -> impl Iterator<Item = &str> {
         let other = match self {
             Self::Copy { to_root, .. } => Some(to_root.as_str()),
-            Self::Revoke { root } => Some(root.as_str()),
             _ => None,
         };
         self.scope().into_iter().chain(other)
@@ -181,7 +222,7 @@ impl FsCall {
 
     fn scope(&self) -> Option<&str> {
         match self {
-            Self::Roots | Self::Locate { .. } | Self::Revoke { .. } => None,
+            Self::Roots | Self::Locate { .. } => None,
             Self::WriteChunk { .. } | Self::TruncateWrite { .. } | Self::CommitWrite { .. } | Self::AbortWrite { .. } => None,
             Self::List { root, .. }
             | Self::Preview { root, .. }
@@ -202,17 +243,11 @@ impl FsCall {
 }
 
 impl Shared {
-    fn new() -> Self {
-        static GRANTS: OnceLock<Arc<Grants>> = OnceLock::new();
-        Self { fs: WorkspaceFs::new(), grants: Arc::clone(GRANTS.get_or_init(|| Arc::new(Grants::from_env()))), lent: Default::default() }
+    fn on(fs: WorkspaceFs) -> Self {
+        Self { fs, lent: Default::default(), files: Default::default(), lendings: AtomicU64::new(0) }
     }
 
-    #[cfg(test)]
-    fn with(grants: Grants) -> Self {
-        Self { fs: WorkspaceFs::new(), grants: Arc::new(grants), lent: Default::default() }
-    }
-
-    fn call(&self, call: &FsCall, owner: Option<&str>, view: View, roots: &[FinderRoot], writes: &Writes) -> Outcome<FsReply> {
+    fn call(&self, call: &FsCall, view: View, roots: &[FinderRoot], writes: &Writes) -> Outcome<FsReply> {
         let json = |value: Outcome<Value>| value.map(FsReply::Json);
         let root = |id: &str| Self::root_in(roots, view, id);
         match call {
@@ -262,15 +297,6 @@ impl Shared {
                 WorkspaceFs::remove_in(&root(at)?, path)?;
                 json(Ok(serde_json::json!({"status": "deleted", "path": path})))
             }
-            FsCall::Revoke { root: at } => {
-                let path = match view {
-                    View::Files(_) => Some(root(at)?).filter(|root| matches!(root.source, workspace::RootSource::Granted)).map(|root| root.path),
-                    View::All(_) => Some(at.clone()),
-                };
-                let path = path.ok_or_else(|| Failure::invalid(format!("{at} is not a folder the user picked")))?;
-                self.grants.remove(owner.unwrap_or_default(), &path)?;
-                Ok(FsReply::Done)
-            }
         }
     }
 
@@ -300,18 +326,16 @@ impl Shared {
         #[cfg(not(windows))]
         let relative = |root: &str| clean.within(root).map(|path| path.trim_start_matches('/').to_owned());
         let roots = Self::allowed(roots, view);
-        let (root, relative) =
-            roots.iter().filter_map(|root| relative(&root.path).map(|path| (root, path))).max_by_key(|(root, _)| root.path.len()).ok_or_else(
-                || match view {
-                    View::All(None) => Failure::http(404, "not inside any workspace the Finder lists"),
-                    _ => Failure::http(403, "not inside a workspace allowed for this app"),
-                },
-            )?;
-        Ok(serde_json::json!({"root": root.id, "path": relative}))
+        let within = |root: &FinderRoot| root.on_disk().and_then(|path| relative(path).map(|inside| (root.id.clone(), path.len(), inside)));
+        let (root, _, relative) = roots.iter().filter_map(within).max_by_key(|(_, length, _)| *length).ok_or_else(|| match view {
+            View::All(None) => Failure::http(404, "not inside any workspace the Finder lists"),
+            _ => Failure::http(403, "not inside a workspace allowed for this app"),
+        })?;
+        Ok(serde_json::json!({"root": root, "path": relative}))
     }
 
     fn open_path(&self, workspace: &FinderRoot, path: &str) -> Outcome<Value> {
-        let resolved = WorkspaceFs::resolve(workspace, path, true)?;
+        let resolved = WorkspaceFs::resolve(workspace, path)?;
         if resolved.relative.is_empty() {
             return Err(Failure::invalid("a folder cannot be opened in the browser"));
         }
@@ -347,7 +371,7 @@ pub struct Workspace {
 impl Workspace {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self::on(Arc::new(Shared::new()))
+        Self::on(Arc::new(Shared::on(WorkspaceFs::new())))
     }
 
     fn on(shared: Arc<Shared>) -> Self {
@@ -356,11 +380,11 @@ impl Workspace {
 
     #[cfg(test)]
     pub(crate) fn at(home: &str) -> Self {
-        Self::on(Arc::new(Shared { fs: WorkspaceFs::at(home), grants: Arc::new(Grants::new(None)), lent: Default::default() }))
+        Self::on(Arc::new(Shared::on(WorkspaceFs::at(home))))
     }
 
     pub fn scoped(&self, roots: Option<Vec<String>>, owner: Option<&str>) -> Self {
-        let owner = owner.filter(|owner| Grants::valid_owner(owner)).map(Into::into);
+        let owner = owner.filter(|owner| valid_owner(owner)).map(Into::into);
         Self { roots: roots.map(Into::into), owner, ..Self::on(Arc::clone(&self.shared)) }
     }
 
@@ -372,14 +396,31 @@ impl Workspace {
         self.shared.unlend(owner, name)
     }
 
+    pub(crate) fn lend_file(&self, owner: &str, file: LentFile) -> Outcome<String> {
+        self.shared.lend_file(owner, file)
+    }
+
+    pub(crate) fn lent_file(&self, name: &str) -> Option<LentFile> {
+        self.shared.lent_file(self.owner.as_deref()?, name)
+    }
+
+    pub(crate) fn owner(&self) -> Option<&str> {
+        self.owner.as_deref()
+    }
+
+    pub(crate) fn lent_root(&self, name: &str) -> Option<FinderRoot> {
+        let owner = self.owner.as_deref()?;
+        self.shared.lent_to(owner).iter().find(|root| root.name == name).map(LentRoot::root)
+    }
+
     pub fn files(&self, files: Files, owner: &str) -> Self {
-        let owner = Some(owner).filter(|owner| Grants::valid_owner(owner)).map(Into::into);
+        let owner = Some(owner).filter(|owner| valid_owner(owner)).map(Into::into);
         Self { roots: Some(Arc::from([])), owner, files: Some(Arc::new(files)), ..Self::on(Arc::clone(&self.shared)) }
     }
 
     fn allows(&self, root: &str) -> bool {
         let Some(roots) = &self.roots else { return true };
-        roots.iter().any(|r| r == root) || self.owner.as_deref().is_some_and(|owner| self.shared.grants.of(owner).iter().any(|r| r == root))
+        roots.iter().any(|r| r == root)
     }
 
     pub(crate) fn admit(&self, path: &str) -> Outcome<String> {
@@ -388,26 +429,15 @@ impl Workspace {
 
     pub(crate) fn admit_with(&self, path: &str, handed: &[String]) -> Outcome<String> {
         let mut roots = self.finder_roots()?;
-        roots.extend(handed.iter().map(|dir| WorkspaceFs::granted(dir)));
+        roots.extend(handed.iter().map(|dir| WorkspaceFs::folder(dir)));
         admit::real_inside(&roots, path)
-    }
-
-    pub fn grant(&self, path: &str) -> std::result::Result<String, FsError> {
-        self.grant_as(path, true)
-    }
-
-    pub fn grant_as(&self, path: &str, writable: bool) -> std::result::Result<String, FsError> {
-        let Some(owner) = self.owner.as_deref() else {
-            return Err(Failure::invalid("folders are granted to an app").into());
-        };
-        Ok(self.shared.grants.add(owner, path, writable)?)
     }
 
     fn fresh_roots(&self) -> Outcome<Vec<FinderRoot>> {
         let owner = self.owner.as_deref();
         match &self.files {
             Some(files) => self.shared.files_roots(owner, files),
-            None => self.shared.roots(owner),
+            None => self.shared.fs.roots(),
         }
     }
 
@@ -433,27 +463,27 @@ impl Workspace {
             }
         };
         if !call.uses_roots() {
-            return Ok(self.shared.call(&call, owner, view, &[], &self.writes)?);
+            return Ok(self.shared.call(&call, view, &[], &self.writes)?);
         }
-        let grants = self.shared.grants.changes();
+        let grants = self.shared.changes();
         let mut roots = match call {
             FsCall::Roots => self.cache.keep(grants, self.fresh_roots()?),
             _ => self.cache.get(grants, || self.fresh_roots())?,
         };
         if call.targets().any(|id| Shared::root_in(&roots, view, id).is_err()) {
-            let grants = self.shared.grants.changes();
+            let grants = self.shared.changes();
             roots = self.cache.keep(grants, self.fresh_roots()?);
         }
-        match self.shared.call(&call, owner, view, &roots, &self.writes) {
+        match self.shared.call(&call, view, &roots, &self.writes) {
             Err(failure) if call.reads() => {
-                let missing = roots.iter().any(|root| root.exists && !std::path::Path::new(&root.path).is_dir());
-                let grants = self.shared.grants.changes();
+                let missing = roots.iter().any(|root| root.exists && root.on_disk().is_some_and(|path| !std::path::Path::new(path).is_dir()));
+                let grants = self.shared.changes();
                 let fresh = self.fresh_roots()?;
                 if !missing && fresh == roots {
                     return Err(failure.into());
                 }
                 let fresh = self.cache.keep(grants, fresh);
-                Ok(self.shared.call(&call, owner, view, &fresh, &self.writes)?)
+                Ok(self.shared.call(&call, view, &fresh, &self.writes)?)
             }
             reply => Ok(reply?),
         }
@@ -489,25 +519,13 @@ impl Finder {
     #[napi(constructor)]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self { shared: Arc::new(Shared::new()) }
+        Self { shared: Arc::new(Shared::on(WorkspaceFs::new())) }
     }
 
     #[napi]
     pub async fn locate(&self, path: String) -> Result<Value> {
         let shared = Arc::clone(&self.shared);
-        blocking(move || Ok(Shared::locate(&shared.roots(None)?, &path, View::All(None))?)).await
-    }
-
-    #[napi]
-    pub fn folders(&self, owner: String) -> Vec<GrantedFolder> {
-        self.shared.grants.of(&owner).iter().map(|path| Files::folder(path)).collect()
-    }
-
-    #[napi]
-    pub fn revoke_folder(&self, owner: String, id: String) -> Result<bool> {
-        let Some(path) = self.shared.grants.of(&owner).into_iter().find(|path| Files::token(path) == id) else { return Ok(false) };
-        self.shared.grants.remove(&owner, &path)?;
-        Ok(true)
+        blocking(move || Ok(Shared::locate(&shared.fs.roots()?, &path, View::All(None))?)).await
     }
 
     #[napi]
@@ -543,76 +561,43 @@ mod tests {
         }
     }
 
-    #[test]
-    fn picked_folders_are_listed_by_token_and_revoked_for_every_web() {
-        let base = std::env::temp_dir().join(format!("acde-folders-{}", std::process::id()));
-        let picked = base.join("Picked");
-        std::fs::create_dir_all(&picked).unwrap();
-        let finder = Finder { shared: Arc::new(Shared::with(Grants::new(None))) };
-        let web = Workspace::on(Arc::clone(&finder.shared)).files(Files::new(&[], false), "vault");
-        let path = web.grant(picked.to_str().unwrap()).unwrap();
-        let token = Files::token(&path);
-        let ids = |workspace: &Workspace| {
-            json(workspace.call(FsCall::Roots)).as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap().to_owned()).collect::<Vec<_>>()
-        };
-        assert!(ids(&web).contains(&token));
-        assert_eq!(finder.folders("vault".into()), [GrantedFolder { id: token.clone(), label: "Picked".into(), exists: true }]);
-        assert!(finder.folders("other".into()).is_empty());
-        assert!(!finder.revoke_folder("vault".into(), "folder-0000000000000000".into()).unwrap());
-        assert!(finder.revoke_folder("vault".into(), token.clone()).unwrap());
-        assert!(!ids(&web).contains(&token));
-        assert_eq!(json(web.call(FsCall::List { root: token, path: None, hidden: None }))["code"], "EACCES");
-        assert!(finder.folders("vault".into()).is_empty());
-        _ = std::fs::remove_dir_all(base);
-    }
-
-    #[test]
-    fn a_read_only_pick_is_listed_and_revoked_like_other_picks() {
-        let base = std::env::temp_dir().join(format!("acde-folders-read-{}", std::process::id()));
-        let picked = base.join("Shown");
-        std::fs::create_dir_all(&picked).unwrap();
-        let finder = Finder { shared: Arc::new(Shared::with(Grants::new(None))) };
-        let web = Workspace::on(Arc::clone(&finder.shared)).files(Files::new(&[], false), "viewer");
-        let token = Files::token(&web.grant_as(picked.to_str().unwrap(), false).unwrap());
-        assert_eq!(finder.folders("viewer".into()), [GrantedFolder { id: token.clone(), label: "Shown".into(), exists: true }]);
-        assert!(finder.revoke_folder("viewer".into(), token.clone()).unwrap());
-        assert_eq!(json(web.call(FsCall::List { root: token, path: None, hidden: None }))["code"], "EACCES");
-        assert!(finder.folders("viewer".into()).is_empty());
-        _ = std::fs::remove_dir_all(base);
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let base = std::env::temp_dir().join(format!("acde-{name}-{}", std::process::id()));
+        _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("Desktop")).unwrap();
+        base
     }
 
     #[test]
     fn locate_returns_a_path_relative_to_an_allowed_root() {
-        let base = std::env::temp_dir().join(format!("acde-locate-{}", std::process::id()));
-        let root = base.join("Notes");
+        let base = scratch("locate");
+        let root = base.join("Desktop");
         let file = root.join("folder").join("entry.txt");
-        let sibling = base.join("Notes Other").join("entry.txt");
+        let sibling = base.join("Desktop Other").join("entry.txt");
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         std::fs::create_dir_all(sibling.parent().unwrap()).unwrap();
         std::fs::write(&file, "inside").unwrap();
         std::fs::write(&sibling, "outside").unwrap();
-        let all = Workspace::on(Arc::new(Shared::with(Grants::new(None))));
-        let scoped = all.scoped(Some(vec![]), Some("locate-probe"));
-        let owner = all.scoped(None, Some("locate-probe"));
+        let all = Workspace::at(&base.to_string_lossy());
+        let root = root.to_string_lossy().into_owned();
+        let scoped = all.scoped(Some(vec![root.clone()]), Some("locate-probe"));
         let other = all.scoped(Some(vec![]), Some("other"));
-        let root = scoped.grant(root.to_str().unwrap()).unwrap();
         let locate = |workspace: &Workspace, path: &str| json(workspace.call(FsCall::Locate { path: path.to_owned() }));
         let expected = serde_json::json!({"root": root, "path": "folder/entry.txt"});
-        assert_eq!(locate(&owner, file.to_str().unwrap()), expected);
         assert_eq!(locate(&scoped, file.to_str().unwrap()), expected);
         assert_eq!(locate(&scoped, &format!("{root}/folder/entry.txt")), expected);
         assert_eq!(locate(&scoped, &root), serde_json::json!({"root": root, "path": ""}));
         assert_eq!(locate(&scoped, sibling.to_str().unwrap())["code"], "EACCES");
-        assert_eq!(locate(&scoped, &format!("{root}/../Notes Other/entry.txt"))["code"], "EACCES");
+        assert_eq!(locate(&scoped, &format!("{root}/../Desktop Other/entry.txt"))["code"], "EACCES");
         assert_eq!(locate(&other, file.to_str().unwrap())["code"], "EACCES");
-        assert_eq!(locate(&owner, "relative/entry.txt")["code"], "EINVAL");
+        assert_eq!(locate(&scoped, "relative/entry.txt")["code"], "EINVAL");
         _ = std::fs::remove_dir_all(base);
     }
 
     #[cfg(windows)]
     #[test]
     fn locate_matches_windows_roots_ignoring_case_and_separators() {
-        let base = std::env::temp_dir().join(format!("acde-locate-case-{}", std::process::id()));
+        let base = scratch("locate-case");
         let root = base.join("Desktop");
         let file = root.join("Folder").join("Entry.txt");
         let sibling = base.join("Desktop2").join("entry.txt");
@@ -620,9 +605,8 @@ mod tests {
         std::fs::create_dir_all(sibling.parent().unwrap()).unwrap();
         std::fs::write(&file, "inside").unwrap();
         std::fs::write(&sibling, "outside").unwrap();
-        let all = Workspace::on(Arc::new(Shared::with(Grants::new(None))));
-        let scoped = all.scoped(Some(vec![]), Some("locate-case"));
-        let root = scoped.grant(root.to_str().unwrap()).unwrap();
+        let root = root.to_string_lossy().into_owned();
+        let scoped = Workspace::at(&base.to_string_lossy()).scoped(Some(vec![root.clone()]), Some("locate-case"));
         let locate = |path: &str| json(scoped.call(FsCall::Locate { path: path.to_owned() }));
         let found = |path: &str| serde_json::json!({"root": root, "path": path});
         let file = file.to_str().unwrap();
@@ -637,16 +621,14 @@ mod tests {
 
     #[test]
     fn a_hand_off_stays_inside_the_callers_roots() {
-        let base = std::env::temp_dir().join(format!("acde-admit-{}", std::process::id()));
-        let root = base.join("Root");
+        let base = scratch("admit");
+        let root = base.join("Desktop");
         let outside = base.join("Outside");
-        std::fs::create_dir_all(&root).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
         std::fs::write(root.join("in.pdf"), "in").unwrap();
         std::fs::write(outside.join("out.pdf"), "out").unwrap();
-        let all = Workspace::on(Arc::new(Shared::with(Grants::new(None))));
-        let with = all.scoped(Some(vec![]), Some("admit-with"));
-        with.grant(root.to_str().unwrap()).unwrap();
+        let all = Workspace::at(&base.to_string_lossy());
+        let with = all.scoped(Some(vec![root.to_string_lossy().into_owned()]), Some("admit-with"));
         let without = all.scoped(Some(vec![]), Some("admit-without"));
         let every_root = all.scoped(None, Some("admit-with"));
         let inside = root.join("in.pdf");
@@ -675,14 +657,12 @@ mod tests {
 
     #[test]
     fn listings_leave_hidden_entries_out_unless_asked() {
-        let base = std::env::temp_dir().join(format!("acde-hidden-{}", std::process::id()));
-        std::fs::create_dir_all(&base).unwrap();
-        std::fs::write(base.join("seen.txt"), "a").unwrap();
-        std::fs::write(base.join(".dot"), "b").unwrap();
-        let root = base.to_string_lossy().into_owned();
-        let all = Workspace::on(Arc::new(Shared::with(Grants::new(None))));
-        let app = all.scoped(Some(vec![]), Some("lister"));
-        app.grant(&root).unwrap();
+        let base = scratch("hidden");
+        let desktop = base.join("Desktop");
+        std::fs::write(desktop.join("seen.txt"), "a").unwrap();
+        std::fs::write(desktop.join(".dot"), "b").unwrap();
+        let root = desktop.to_string_lossy().into_owned();
+        let app = Workspace::at(&base.to_string_lossy()).scoped(Some(vec![root.clone()]), Some("lister"));
         let names = |hidden: Option<bool>| {
             let listed = json(app.call(FsCall::List { root: root.clone(), path: None, hidden }));
             listed["entries"].as_array().unwrap().iter().map(|e| e["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>()
@@ -694,45 +674,10 @@ mod tests {
     }
 
     #[test]
-    fn a_granted_folder_is_a_root_of_its_app_only() {
-        let base = std::env::temp_dir().join(format!("acde-granted-{}", std::process::id()));
-        let picked = base.join("Notes");
-        std::fs::create_dir_all(&picked).unwrap();
-        std::fs::write(picked.join("a.md"), "# a").unwrap();
-        let picked = picked.to_string_lossy().into_owned();
-        let all = Workspace::on(Arc::new(Shared::with(Grants::new(None))));
-        let limited = all.scoped(Some(vec![]), Some("vault"));
-        let other = all.scoped(None, Some("other"));
-        let list = |workspace: &Workspace| json(workspace.call(FsCall::List { root: picked.clone(), path: None, hidden: None }));
-        assert_eq!(list(&limited)["code"], "EACCES");
-        assert_eq!(json(limited.call(FsCall::Roots)), serde_json::json!([]));
-        assert_eq!(limited.grant(&picked).unwrap(), picked);
-        assert_eq!(all.grant(&picked).unwrap_err().code, "EINVAL");
-        let roots = json(limited.call(FsCall::Roots));
-        assert_eq!(
-            roots,
-            serde_json::json!([{
-                "id": picked, "path": picked, "label": "Notes", "source": "granted", "mode": "writable",
-                "reason": null, "exists": true
-            }])
-        );
-        assert_eq!(list(&limited)["entries"][0]["name"], "a.md");
-        assert_eq!(list(&other)["code"], "EINVAL");
-        assert!(json(other.call(FsCall::Roots)).as_array().unwrap().iter().all(|root| root["source"] != "granted"));
-        assert_eq!(json(other.call(FsCall::Revoke { root: picked.clone() }))["code"], "ENOENT");
-        assert!(matches!(limited.call(FsCall::Revoke { root: picked.clone() }), Ok(FsReply::Done)));
-        assert_eq!(list(&limited)["code"], "EACCES");
-        assert_eq!(json(all.call(FsCall::Revoke { root: picked.clone() }))["code"], "EINVAL");
-        _ = std::fs::remove_dir_all(base);
-    }
-
-    #[test]
     fn a_root_that_appears_or_goes_away_is_seen_by_the_next_call() {
         use crate::runtime::fs::path::NodePath;
         use std::path::Path;
-        let base = std::env::temp_dir().join(format!("acde-root-cache-{}", std::process::id()));
-        _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(&base).unwrap();
+        let base = scratch("root-cache");
         let home = base.to_string_lossy().into_owned();
         let web = Workspace::at(&home).scoped(None, Some("cached"));
         let list = |root: &str| json(web.call(FsCall::List { root: root.to_owned(), path: None, hidden: None }));
@@ -747,11 +692,22 @@ mod tests {
         assert!(Path::new(&desktop).is_dir());
         std::fs::remove_dir_all(&downloads).unwrap();
         assert_eq!(list(&downloads)["code"], "EINVAL");
-        std::fs::create_dir_all(base.join("Picked")).unwrap();
-        let picked = web.grant(&base.join("Picked").to_string_lossy()).unwrap();
-        assert_eq!(list(&picked)["entries"], serde_json::json!([]));
-        assert!(matches!(web.call(FsCall::Revoke { root: picked.clone() }), Ok(FsReply::Done)));
-        assert_eq!(list(&picked)["code"], "EINVAL");
+        _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_lent_root_is_seen_and_gone_at_once() {
+        let base = scratch("lent-cache");
+        let work = base.join("Work");
+        std::fs::create_dir_all(&work).unwrap();
+        let all = Workspace::at(&base.to_string_lossy());
+        let app = all.files(Files::new(&[], false), "cached");
+        let list = || json(app.call(FsCall::List { root: "work".into(), path: None, hidden: None }));
+        assert_eq!(list()["code"], "EACCES");
+        all.lend("cached", LentRoot::open("Work".into(), true, &work.to_string_lossy()).unwrap()).unwrap();
+        assert_eq!(list()["entries"], serde_json::json!([]));
+        assert!(all.unlend("cached", "work"));
+        assert_eq!(list()["code"], "EACCES");
         _ = std::fs::remove_dir_all(base);
     }
 }

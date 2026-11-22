@@ -1,5 +1,4 @@
 import type { HostNative } from '@acde/dom'
-import type { LentRoot } from '@acde/api'
 import type { StoragePlace } from '../contract'
 
 export interface FileStat {
@@ -58,7 +57,10 @@ interface SysNative {
   stopBackend?(pid: number, ms: number): boolean
   write?(pid: number, text: string): boolean
   endInput?(pid: number): void
-  lendRoot?(app: string, root: LentRoot): string
+  adoptLent?(app: string, lent: readonly Lent[], fds: readonly string[]): { readonly folders: string[]; readonly files: string[] }
+  pickFolder?(app: string, title: string, writable: boolean): Promise<{ readonly name: string; readonly label: string } | null>
+  pickFiles?(app: string, title: string, multiple: boolean, filters: readonly FileFilter[]): Promise<{ readonly files: LentFile[] } | null>
+  pickSave?(app: string, title: string, name: string, filters: readonly FileFilter[]): Promise<LentFile | null>
   unlendRoot?(app: string, name: string): boolean
   spawnWeb(
     name: string,
@@ -77,9 +79,29 @@ interface SysNative {
   contentType?(extension: string): string | null
 }
 
+export interface Lent {
+  readonly name: string
+  readonly label: string
+  readonly kind: 'directory' | 'file'
+  readonly writable: boolean
+  readonly fd: number
+}
+
+export interface LentFile {
+  readonly name: string
+  readonly label: string
+  readonly writable: boolean
+}
+
+export interface FileFilter {
+  readonly name: string
+  readonly globs: readonly string[]
+  readonly mimes: readonly string[]
+}
+
 export interface WebGrants {
   readonly app: string | null
-  readonly fs: true | string[] | { readonly places: string[]; readonly paths: boolean; readonly roots?: readonly LentRoot[] } | null
+  readonly fs: true | string[] | { readonly places: string[]; readonly paths: boolean } | null
   readonly terminal: boolean
   readonly network: boolean
   readonly system: boolean
