@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::render::{Dom, NONE};
 
@@ -31,11 +31,10 @@ impl Assets {
         }
         let path = parsed.path();
         let (name, dirs) = self.0.iter().filter_map(|r| Some((path.strip_prefix(r.prefix.as_str())?, &r.dirs))).min_by_key(|(name, _)| name.len())?;
-        let name = percent(name);
-        if name.is_empty() || name.ends_with(".map") != map || name.split('/').any(|seg| seg.is_empty() || seg.starts_with('.')) {
+        if name.ends_with(".map") != map {
             return None;
         }
-        dirs.iter().map(|dir| Path::new(dir).join(&name)).find(|file| file.is_file())
+        crate::render::resource_file(dirs, name)
     }
 }
 
@@ -61,25 +60,6 @@ pub fn read_asset(url: &str) -> Option<Vec<u8>> {
 
 pub fn read_source_map(url: &str) -> Option<Vec<u8>> {
     std::fs::read(ASSETS.with(|a| a.borrow().file(url, true))?).ok()
-}
-
-fn percent(text: &str) -> String {
-    let bytes = text.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%'
-            && i + 2 < bytes.len()
-            && let Some(byte) = text.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok())
-        {
-            out.push(byte);
-            i += 3;
-            continue;
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 pub struct WebLoader;
