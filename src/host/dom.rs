@@ -786,3 +786,7 @@ natives! {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/assets.rs"]
+mod tests;
