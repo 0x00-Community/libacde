@@ -141,3 +141,24 @@ crate; `acde:` 模块、`@acde/api`、`acde_*` 协议、`ACDE_*` 环境变量、
   保存记为失败 (410, 日志写明已被收回).
 - **还没做的**: 窗口 / 应用 / 会话表还在 Broker 的 JS 里 (`acde:windows` / `acde:apps` / `acde:window` / `acde:session` 经 RPC);
   桌面包服务的调用经 Broker; 外部内存 (ArrayBuffer、文档、GPU 缓冲) 不按 isolate 记账.
+
+## 大块内存 (macOS)
+
+macOS 26 的系统分配器 (xzone malloc) 把释放掉的大块 (1 MiB 以上) 留在进程里, 不还给系统: `vmmap` 里是 `MALLOC_LARGE (empty)`, 脏页,
+算进 footprint, 空闲多久都在, `malloc_zone_pressure_relief` 也放不掉 (实测 0 字节). 页面 ⇄ 后端的请求体、响应体每次都是新的 1–7 MiB 块,
+大小一轮换, 每种大小各留一批, 开发进程跑久了多出几百 MB. 所以 macOS 上 ≥ 1 MiB 的块不经 malloc, 直接向 Mach VM 要, 释放时立刻还
+(`src/memory.rs`, 只在 macOS 编译):
+
+- **Rust 全局分配器** `acde::memory::Alloc`: libacde 只提供, 由前端设成 `#[global_allocator]` (acdev 的 `src/main.rs` 在 macOS 上设; Linux 的 acdev
+  用 jemalloc, acdes 自己选). 小于 1 MiB 或对齐大于 4 KiB 的交给 `std::alloc::System`; 其余按 16 KiB 取整 `mach_vm_allocate`, 释放用
+  `mach_vm_deallocate`. 两边都是大块的 `realloc`: 变小还掉尾巴; 变大先在原块后面接着要 (`VM_FLAGS_FIXED`, 那里已有映射时失败而不覆盖),
+  接不上再搬. 跨过 1 MiB 的 `realloc` 是分配、拷贝、释放. 分配和释放按同一个 `Layout` 判断走哪条路, 两边一致.
+- **V8 的 ArrayBuffer 分配器**: `host/rt.rs` 建 isolate 时设 `array_buffer_allocator(memory::array_buffers())` (`v8::new_rust_allocator`).
+  ≥ 1 MiB 的 backing store 同样走 Mach VM (新映射的页本来就是 0, 满足 `Allocate` 要清零), 小的照 V8 默认分配器用 `calloc` / `malloc` / `free`.
+  V8 释放时传回分配时的长度 (`BackingStore` 析构用 `byte_length_`; 可变长 ArrayBuffer 和 wasm 内存走 V8 自己的页分配器, 不经这里), 所以按长度判断.
+- `vmmap` 里这两类分别是 `Memory Tag 241` (Rust) 和 `Memory Tag 242` (ArrayBuffer) (`VM_MAKE_TAG`; `man mmap` 建议应用用 240–255).
+- 代价: 大块每次重新映射, 第一次写要缺页清零. 微基准 (Apple M4, 单线程): 1.2–7 MiB 的 `vec![x; n]` 写满再放, 每块 52 → 210 µs; 按 64 KiB
+  追加到 6 MiB 的 `Vec` 因为能原地变大反而快 (510–573 → 339–458 µs); 小块 (16–2048 字节)、`Vec` 增长到 128 KiB、10 万项的
+  `HashMap<String, Vec<u8>>` 在噪声内不变. 8 线程同时做大块时慢得更多 (同一张 VM 表上的锁); 运行时里这种大块只在页面 ⇄ 后端的数据通道上,
+  那里一次 4 MiB 的请求要几毫秒.
+- 别的平台不变: Linux、Windows 的 V8 用默认分配器.

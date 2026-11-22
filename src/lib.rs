@@ -6,6 +6,8 @@ pub mod icons;
 mod host;
 pub mod log;
 pub mod media;
+#[cfg(target_os = "macos")]
+pub mod memory;
 pub mod model;
 pub mod napi;
 pub mod render;

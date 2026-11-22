@@ -159,6 +159,8 @@ objc2-av-foundation = { version = "=0.3.2", default-features = false, features =
 objc2-core-media = { version = "=0.3.2", default-features = false, features = ["std", "objc2-core-video", "CMBase", "CMBlockBuffer", "CMFormatDescription", "CMSampleBuffer", "CMTime", "CMTimeRange"] }
 objc2-core-video = { version = "=0.3.2", default-features = false, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
 objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["std", "CFBase", "CFDictionary", "CFNumber", "CFString"] }
+# src/memory.rs: large blocks straight from the Mach VM
+mach2 = "=0.6.0"
 
 [dev-dependencies]
 env_logger = "=0.11.12"

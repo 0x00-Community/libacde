@@ -212,6 +212,10 @@ impl Runtime {
     ) -> Self {
         crate::host::engine::init();
         let mut params = v8::CreateParams::default();
+        #[cfg(target_os = "macos")]
+        {
+            params = params.array_buffer_allocator(crate::memory::array_buffers());
+        }
         if let Some(mb) = heap_mb {
             params = params.heap_limits(0, mb * 1024 * 1024);
         }
