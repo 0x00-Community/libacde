@@ -201,7 +201,7 @@ mod tests {
             assert_eq!(Glass::preset(Role::Regular, level).highlight, highlight());
             assert_eq!(Level::from_wire(level.to_wire()), level);
         }
-        let preference = |level: u32, reduced_transparency: bool| super::super::Preference { level, reduced_transparency };
+        let preference = |level: u32, reduced_transparency: bool| super::super::Preference { level, reduced_transparency, dark: false };
         assert_eq!(Level::of(preference(2, false)), Level::Tinted);
         assert_eq!(Level::of(preference(1, true)), Level::Opaque);
         assert_eq!(Level::parse("tinted"), Some(Level::Tinted));
