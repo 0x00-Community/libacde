@@ -6,15 +6,16 @@ static PREFERENCE: AtomicU32 = AtomicU32::new(0);
 pub struct Preference {
     pub level: u32,
     pub reduced_transparency: bool,
+    pub dark: bool,
 }
 
 impl Preference {
     fn to_bits(self) -> u32 {
-        self.level.min(u32::MAX >> 1) << 1 | u32::from(self.reduced_transparency)
+        self.level.min(u32::MAX >> 2) << 2 | u32::from(self.dark) << 1 | u32::from(self.reduced_transparency)
     }
 
     fn from_bits(bits: u32) -> Self {
-        Self { level: bits >> 1, reduced_transparency: bits & 1 == 1 }
+        Self { level: bits >> 2, reduced_transparency: bits & 1 == 1, dark: bits & 2 == 2 }
     }
 }
 
@@ -32,7 +33,7 @@ mod tests {
 
     #[test]
     fn the_preference_round_trips_and_says_when_it_changed() {
-        let given = Preference { level: 2, reduced_transparency: true };
+        let given = Preference { level: 2, reduced_transparency: true, dark: true };
         assert_eq!(Preference::from_bits(given.to_bits()), given);
         assert_eq!(Preference::from_bits(Preference::default().to_bits()), Preference::default());
     }

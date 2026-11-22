@@ -45,7 +45,7 @@ impl Dom {
     }
 
     pub fn set_glass(&self, level: u32, reduced_transparency: bool) {
-        _ = self.update(|e| e.set_glass(acde_scene::glass::Preference { level, reduced_transparency }));
+        _ = self.update(|e| e.set_glass(acde_scene::glass::Preference { level, reduced_transparency, dark: false }));
     }
 
     pub fn node_type(&self, id: u32) -> Result<NodeType> {
