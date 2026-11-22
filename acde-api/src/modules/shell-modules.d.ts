@@ -14,6 +14,10 @@ declare module 'acde:lock' {
   const lock: import('../types/page').AcdeLock
   export { lock, lock as default }
 }
+declare module 'acde:icons' {
+  const icons: import('../types/page').AcdeIcons
+  export { icons, icons as default }
+}
 declare module 'acde:desktops' {
   const desktops: import('../types/page').AcdeDesktops
   export { desktops, desktops as default }

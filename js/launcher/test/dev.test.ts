@@ -91,6 +91,21 @@ describe('the single-app dev channel', () => {
     assert.deepEqual(posted.at(-1), { type: 'colorscheme', dark: true })
   })
 
+  test('the system colour scheme reaches the page unless emulate holds one; emulate null goes back to it', async () => {
+    const { dev, posted, ask } = channel()
+    dev.follow(true)
+    assert.deepEqual([dev.dark, posted.at(-1)], [true, { type: 'colorscheme', dark: true }])
+    const sent = posted.length
+    dev.follow(true)
+    assert.equal(posted.length, sent)
+    await ask({ id: 1, op: 'emulate', colorScheme: 'light' })
+    dev.follow(false)
+    dev.follow(true)
+    assert.deepEqual([dev.dark, posted.length], [false, sent + 1])
+    await ask({ id: 2, op: 'emulate', colorScheme: null })
+    assert.deepEqual([dev.dark, posted.at(-1)], [true, { type: 'colorscheme', dark: true }])
+  })
+
   test('screen wants an absolute path; resize and the host-window-only ops say when the window cannot', async () => {
     const { ask } = channel()
     assert.equal((await ask({ id: 19, op: 'screen', path: 'shot.png' })).ok, false)

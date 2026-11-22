@@ -330,8 +330,11 @@ type ModuleHost = { defineModule(url: string, exports: object): void; refuseModu
 
 export class RemoteBridge {
   readonly value: Record<string, unknown> = {}
+  static readonly SERVICE_EVENTS: Readonly<Record<string, readonly string[]>> = { icons: ['changed'] }
   readonly #services = new Set<string>()
+  readonly #shapeOf = new Map<string, ServiceShape>()
   readonly #changes = new Notices()
+  readonly #notices: Notices
   #shapes = ''
   readonly permits: Permits
   readonly #rpc: Rpc
@@ -343,6 +346,8 @@ export class RemoteBridge {
   constructor(rpc: Rpc, init: WebInit, self: WindowSelf | null, windows: WindowList, permits = new Permits(init.tier?.approvals, init.app?.label ?? init.kind)) {
     this.#rpc = rpc
     this.permits = permits
+    this.#notices = windows.notices
+    windows.notices.on('icons:changed', (event) => this.#syncChanged('icons', 'theme', (event as { theme?: unknown }).theme))
     const permissions = () => ({
       ...Rpc.calls(() => rpc, 'permissions', 'pending', 'answer', 'list', 'revoke'),
       on: windows.notices.for('permissions', ['prompt', 'answered']),
@@ -456,8 +461,10 @@ export class RemoteBridge {
     const before = [...this.#services]
     for (const service of before) delete this.value[service]
     this.#services.clear()
+    this.#shapeOf.clear()
     for (const [service, shape] of Object.entries(services)) {
       if (service === 'services') continue
+      this.#shapeOf.set(service, shape)
       this.value[service] = this.#proxy(service, shape)
       this.#services.add(service)
     }
@@ -471,11 +478,18 @@ export class RemoteBridge {
     this.#changes.emit('services:changed', { names, added: names.filter((name) => !before.includes(name)), removed })
   }
 
+  #syncChanged(service: string, key: string, value: unknown): void {
+    const shape = this.#shapeOf.get(service)
+    if (shape && key in shape.sync) this.#shapeOf.set(service, { ...shape, sync: { ...shape.sync, [key]: value } })
+  }
+
   #proxy(service: string, shape: ServiceShape): unknown {
     const methods: Record<string, unknown> = { ...shape.values }
     for (const method of shape.methods) {
-      methods[method] = method in shape.sync ? () => shape.sync[method] : (...args: unknown[]) => this.#rpc.call(service, method, args)
+      methods[method] = method in shape.sync ? () => this.#shapeOf.get(service)?.sync[method] : (...args: unknown[]) => this.#rpc.call(service, method, args)
     }
+    const events = RemoteBridge.SERVICE_EVENTS[service]
+    if (events) methods['on'] = this.#notices.for(service, events)
     if (!shape.callable) return methods
     const call = (...args: unknown[]) => this.#rpc.call(service, '', args)
     for (const [key, value] of Object.entries(methods)) Object.defineProperty(call, key, { value, enumerable: true, configurable: true, writable: true })

@@ -15,6 +15,7 @@ export class Host {
   static label = ''
   static readonly NOTICES = new Map<string, readonly string[]>([
     ['appschanged', ['apps:changed']],
+    ['iconschanged', ['icons:changed']],
     ['download', ['desktop:download']],
     ['notification', ['desktop:notification']],
     ['screenedge', ['desktop:edge']],

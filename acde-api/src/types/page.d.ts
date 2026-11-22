@@ -1,4 +1,5 @@
 import type { AppsChangedEvent, DesktopEventMap, ShortcutEvent, WindowGrabEvent, WindowGrabLostEvent, WindowsEvents } from './events'
+import type { AcdeIcons } from './names'
 import type { AcdeOffice } from './office'
 import type { AcdePermissions } from './permissions'
 import type { SharedPlace } from './places'
@@ -12,6 +13,7 @@ export type * from './permissions'
 export type * from './terminal/index'
 export type * from './lock/index'
 export type * from './session/index'
+export type { AcdeIcons, IconsChangedEvent } from './names'
 
 export interface FinderRoot {
   id: string
@@ -1189,6 +1191,7 @@ export interface AcdePage {
   readonly desktops?: AcdeDesktops
   readonly session?: AcdeSession
   readonly lock?: AcdeLock
+  readonly icons?: AcdeIcons
   readonly inspect?: AcdeInspect
   readonly open?: AcdeOpen
   readonly openPath?: AcdeOpenFiles['openPath']

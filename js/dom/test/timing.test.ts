@@ -273,3 +273,17 @@ test('an image with a fractional intrinsic size (an SVG 1706.667 wide) reports w
   web.dom._imageDone(img, [1706.667, 0.4, 1])
   assert.deepEqual(web.json(`(() => { const i = document.getElementById('img'); return [i.naturalWidth, i.naturalHeight] })()`), [1707, 0])
 })
+
+test('a hidden page runs no animation frames, like a background tab; showing it again runs the waiting ones', async () => {
+  using web = await page('<!doctype html><html><body></body></html>')
+  web.internals.setVisible(false)
+  web.run(`globalThis.ticks = 0; requestAnimationFrame(() => ticks++)`)
+  const asked = web.host.frameRequests
+  web.frame()
+  assert.equal(web.json('ticks'), 0)
+  assert.equal(web.host.frameRequests, asked, 'no frame is asked for while hidden')
+  web.internals.setVisible(true)
+  assert.ok(web.host.frameRequests > asked, 'showing the page asks for a frame')
+  web.frame()
+  assert.equal(web.json('ticks'), 1)
+})

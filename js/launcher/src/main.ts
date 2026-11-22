@@ -29,6 +29,7 @@ import { Inspect, type InspectHost, type InspectShell, type ShellWindow } from '
 import { GuestWindows } from './dev/guest'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
+import { fixedScheme, followScheme, type AppearancePortal } from './app/appearance'
 import { PagePort } from './manager/pageport'
 import type { AnchorWire } from '../../page/src/pinanchor'
 
@@ -86,6 +87,7 @@ interface LauncherNatives extends Natives {
     readonly Manager?: { connect(): ManagerLink }
     readonly DevTools?: NativeDevTools
     readonly FileChooser?: { open(): Promise<NativeFileChooser> }
+    readonly Appearance?: AppearancePortal
   }
 }
 
@@ -200,6 +202,7 @@ class Launcher {
       const target = this.#target()
       return target && { ...target, url: this.#init?.url ?? null }
     }
+    const fixed = fixedScheme(process.env)
     this.#devtools = new DevToolsEndpoint(natives.native.DevTools, relay ?? this.#shell, page, relay?.announce)
     this.#dev = new DevChannel({
       shell: this.#shell,
@@ -210,7 +213,8 @@ class Launcher {
       ...(relay && { respond: relay.respond }),
       ...(this.#guest && { place: (windows: unknown) => this.#guest!.place(windows) }),
       production: !process.env['ACDE_DEV'],
-    }, process.env['ACDE_COLOR_SCHEME'] === 'dark')
+    }, fixed === true)
+    if (fixed === null) void followScheme(natives.native.Appearance, (dark) => this.#dev.follow(dark))
     this.#backend = session.kind === 'app' && session.found?.app.backend ? new AppBackend(session.found) : null
     const port = manager?.welcome.port
     this.#port = port ? new PagePort(port.data ?? null, manager.connectBackend?.bind(manager), (line) => process.stderr.write(`acdev: ${line}\n`)) : null
@@ -282,6 +286,7 @@ class Launcher {
       scale: this.args.scale,
       languages: SessionLanguage.of(process.env, sys().languages()),
       navigator: { userAgent: '', platform: process.platform === 'darwin' ? 'MacIntel' : process.platform === 'win32' ? 'Win32' : 'Linux x86_64' },
+      dark: this.#dev.dark,
     }
   }
 
@@ -456,7 +461,7 @@ class Launcher {
     this.#releaseShortcuts()
     this.#reloading = false
     const grant = this.#grant()
-    this.#spawn({ ...this.#init!, token: grant.token })
+    this.#spawn({ ...this.#init!, token: grant.token, dark: this.#dev.dark })
   }
 
   #capabilities(method: string, args: unknown[]): unknown {
@@ -657,6 +662,7 @@ class Launcher {
       else if (event.type === 'invoke') this.#thread?.post({ rpc: 'invoke', fn: event['fn'], args: event['args'] ?? [] })
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
       else if (event.type === 'unlend' && !this.#desktop) this.#unlend(String(event['name'] ?? ''))
+      else if (event.type === 'visibility' && !this.#desktop) void this.#rpc?.call('window', 'visible', [event['visible'] === true]).catch(() => undefined)
       else if (event.type === 'menuinvoke' && !this.#desktop) void this.#rpc?.call('window', 'menu', [event['menu'], event['item']]).catch(() => undefined)
       else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event as ShellEvent))
     }
