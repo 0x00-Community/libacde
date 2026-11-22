@@ -80,6 +80,12 @@ crate; `acde:` 模块、`@acde/api`、`acde_*` 协议、`ACDE_*` 环境变量、
   默认配置的 `commandline` (`settings.json`, 商店版、预览版、非打包版三处)、PATH 上的 `pwsh.exe`、Windows PowerShell、`%ComSpec%`; 子进程不继承
   任何句柄, 整棵进程树放进一个关句柄即结束的作业对象: 关终端时先关伪控制台 (shell 收到 `CTRL_CLOSE_EVENT`), 3 秒后还在就结束整个作业, 会话
   线程退出时作业句柄关闭, 后台留下的进程一并结束; 没有 `cwd` 事件, `exit` 的 `signal` 总是 null.
+  终端的实现可由前端提供 (用户 2026-11-22 定, 伪终端挪到 acdes): 库里的接缝是 `acde::terminal` 的 trait `TerminalHost` (`open` / `input` /
+  `resize` / `close` / `listen` / `shells` / `limits` / `close_all`), 前端在 `acde::start` 之前调一次 `acde::terminal::provide(Box<dyn TerminalHost>)`
+  登记 (每进程一次, 照 `render::gpu::set_cpu_raster`); `src/host/terminal.rs` 的绑定只解析参数 (`open` 第三个参数 `{command?, cwd?, env?}` 按形状
+  读成 `OpenOptions`, 形状不对回 400, `code` 是出错的字段名), 规则与校验归实现方, 拒绝用 `Refusal {status, code, message}` 表示. 没有登记时用上面
+  这份旧实现作缺省 (不收 `open` 的选项, 给了回 400 `unsupported`; `shells()` 回空表, `limits()` 回 `{max: 8, open}`); acdes 登记自己的实现并验收后,
+  旧实现与 ConPTY 删掉, 宿主窗口方式不再提供终端.
   network 第一次调用时连 NetworkManager; office 由启动器在会话授予 office 时 (`grants.office`, 起页面前) 调
   `sys.openOffice()` 开 (桥的套接字 `$XDG_RUNTIME_DIR/acde/office/office.sock` 一个会话只有一个, 同时有两个声明 office 的进程时后起的那个桥起不来; 文档服务另需 ONLYOFFICE Document Server) (network / office / system 只在 Linux). `acde:system` (清单能力 `system`, src/host `system.rs` → runtime `system.rs`):
   这台电脑的信息 (主机名、系统、CPU、GPU、NPU、内存、开机时长、序列号)、各卷容量、时区和 NTP (经 timedated)、改时区 /

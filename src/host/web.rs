@@ -72,7 +72,7 @@ struct Webs {
 #[derive(Default)]
 struct System {
     workspace: Option<crate::runtime::Workspace>,
-    terminals: Option<crate::runtime::Terminals>,
+    terminals: Option<std::sync::Arc<dyn crate::terminal::TerminalHost>>,
     #[cfg(target_os = "linux")]
     networks: crate::runtime::Networks,
     #[cfg(target_os = "linux")]
@@ -93,7 +93,7 @@ struct Grants {
     fs: Option<crate::runtime::Workspace>,
     picker: crate::host::picker::Picker,
     capture: crate::host::capture::Allowed,
-    terminal: Option<crate::runtime::Terminals>,
+    terminal: Option<std::sync::Arc<dyn crate::terminal::TerminalHost>>,
     #[cfg(target_os = "linux")]
     network: Option<crate::runtime::Networks>,
     #[cfg(target_os = "linux")]
@@ -199,7 +199,7 @@ impl Webs {
             capture,
             app,
             picker,
-            terminal: terminal.then(|| system.terminals.get_or_insert_with(crate::runtime::Terminals::new).shared()),
+            terminal: terminal.then(|| system.terminals.get_or_insert_with(crate::terminal::host).clone()),
             #[cfg(target_os = "linux")]
             network: network.then(|| system.networks.clone()),
             #[cfg(target_os = "linux")]

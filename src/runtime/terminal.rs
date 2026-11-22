@@ -1,5 +1,6 @@
 use crate::runtime::failure::{Code, Failure, Outcome};
 use crate::runtime::sync::Locked;
+use crate::terminal::{OpenOptions, Refusal, Reply, Sink};
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, VecDeque},
@@ -282,6 +283,36 @@ impl Terminals {
             self.registry.close(&session);
         }
         Ok(())
+    }
+}
+
+impl crate::terminal::TerminalHost for Terminals {
+    fn open(&self, options: OpenOptions) -> Reply {
+        if options.command.is_some() || options.cwd.is_some() || options.env.is_some() {
+            return Err(Refusal::new(400, "unsupported", "this runtime does not take terminal options"));
+        }
+        Terminals::open(self, options.cols, options.rows).map_err(|e| Refusal::from_failure(&e))
+    }
+    fn input(&self, id: &str, data: String) -> Reply {
+        Terminals::input(self, id.to_owned(), data).map_err(|e| Refusal::from_failure(&e))
+    }
+    fn resize(&self, id: &str, cols: f64, rows: f64) -> Reply {
+        Terminals::resize(self, id.to_owned(), cols, rows).map_err(|e| Refusal::from_failure(&e))
+    }
+    fn close(&self, id: &str) -> Value {
+        Terminals::close(self, id.to_owned())
+    }
+    fn listen(&self, id: &str, sink: Sink) -> std::result::Result<(), Refusal> {
+        Terminals::listen(self, id, sink).map_err(|e| Refusal::from_failure(&e))
+    }
+    fn shells(&self) -> Value {
+        json!([])
+    }
+    fn limits(&self) -> Value {
+        json!({"max": MAX_TERMINALS, "open": self.registry.sessions().len()})
+    }
+    fn close_all(&self) {
+        Terminals::close_all(self)
     }
 }
 
