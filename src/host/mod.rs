@@ -96,6 +96,7 @@ pub fn common(args: &[String], platform: &Shared) -> Option<i32> {
 
 pub fn exit(code: i32) -> ! {
     child::stop_all();
+    crate::terminal::close_all();
     crate::storage::flush_all();
     crate::log::flush();
     std::process::exit(code);

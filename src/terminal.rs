@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::sync::{Arc, OnceLock};
 
@@ -17,28 +18,61 @@ pub struct Refusal {
     pub message: String,
 }
 
-pub type Reply = Result<Value, Refusal>;
-pub type Sink = Box<dyn Fn(Value) -> bool + Send + Sync>;
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum TerminalEvent {
+    Output { data: String },
+    Cwd { path: String },
+    Exit { code: Option<i32>, signal: Option<i32> },
+    Foreground { program: String, busy: bool },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Shell {
+    pub path: String,
+    pub name: String,
+    pub login: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct Limits {
+    pub max: usize,
+    pub open: usize,
+}
+
+pub type Sink = Box<dyn Fn(Vec<TerminalEvent>) -> bool + Send + Sync>;
 
 pub trait TerminalHost: Send + Sync {
-    fn open(&self, options: OpenOptions) -> Reply;
-    fn input(&self, id: &str, data: String) -> Reply;
-    fn resize(&self, id: &str, cols: f64, rows: f64) -> Reply;
-    fn close(&self, id: &str) -> Value;
+    fn open(&self, options: OpenOptions) -> Result<String, Refusal>;
+    fn input(&self, id: &str, data: String) -> Result<(), Refusal>;
+    fn resize(&self, id: &str, cols: f64, rows: f64) -> Result<(u32, u32), Refusal>;
+    fn close(&self, id: &str);
     fn listen(&self, id: &str, sink: Sink) -> Result<(), Refusal>;
-    fn shells(&self) -> Value;
-    fn limits(&self) -> Value;
+    fn shells(&self) -> Vec<Shell>;
+    fn limits(&self) -> Limits;
     fn close_all(&self);
 }
 
-static PROVIDED: OnceLock<Arc<dyn TerminalHost>> = OnceLock::new();
+static CHOSEN: OnceLock<Arc<dyn TerminalHost>> = OnceLock::new();
 
 pub fn provide(host: Box<dyn TerminalHost>) -> bool {
-    PROVIDED.set(Arc::from(host)).is_ok()
+    let host: Arc<dyn TerminalHost> = Arc::from(host);
+    let mut taken = false;
+    CHOSEN.get_or_init(|| {
+        taken = true;
+        host
+    });
+    taken
 }
 
 pub(crate) fn host() -> Arc<dyn TerminalHost> {
-    PROVIDED.get().cloned().unwrap_or_else(|| Arc::new(crate::runtime::Terminals::new()))
+    Arc::clone(CHOSEN.get_or_init(|| Arc::new(crate::runtime::Terminals::new())))
+}
+
+pub(crate) fn close_all() {
+    if let Some(host) = CHOSEN.get() {
+        host.close_all();
+    }
 }
 
 impl Refusal {
@@ -105,5 +139,23 @@ mod tests {
     fn a_refusal_reads_back_as_a_failure() {
         let text: String = Refusal::new(429, "limit", "at most 32 terminals").into();
         assert_eq!(Refusal::from_failure(&text), Refusal::new(429, "limit", "at most 32 terminals"));
+    }
+
+    #[test]
+    fn events_have_the_page_shape() {
+        let events = vec![
+            TerminalEvent::Output { data: "hi".into() },
+            TerminalEvent::Cwd { path: "~".into() },
+            TerminalEvent::Exit { code: Some(7), signal: None },
+            TerminalEvent::Foreground { program: "vim".into(), busy: true },
+        ];
+        let shaped = json!([
+            {"type": "output", "data": "hi"},
+            {"type": "cwd", "path": "~"},
+            {"type": "exit", "code": 7, "signal": null},
+            {"type": "foreground", "program": "vim", "busy": true},
+        ]);
+        assert_eq!(serde_json::to_value(&events).unwrap(), shaped);
+        assert_eq!(serde_json::from_value::<Vec<TerminalEvent>>(shaped).unwrap(), events);
     }
 }
