@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::Name;
 use super::group::{GlassGroup, Piece};
-use crate::motion::Curve;
+use crate::motion::{Curve, Preset};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Phase {
@@ -24,12 +24,14 @@ pub struct Appearance {
 }
 
 impl Appearance {
-    pub fn step(&mut self, groups: &mut [&mut GlassGroup], now: f64, curve: Curve) -> bool {
+    pub fn step(&mut self, groups: &mut [&mut GlassGroup], now: f64, preset: Preset) -> bool {
         let present = named(groups);
-        if !std::mem::replace(&mut self.seen, true) {
+        let first = !std::mem::replace(&mut self.seen, true);
+        if first || !preset.moves() {
             self.tracks = present.iter().map(|&(id, at)| (id, Track { piece: piece(groups, at), phase: Phase::Shown })).collect();
             return false;
         }
+        let curve = preset.curve();
         for &(id, at) in &present {
             let full = piece(groups, at);
             let phase = match self.tracks.get(&id).map(|t| t.phase) {
@@ -99,7 +101,6 @@ fn scaled(full: &Piece, from: [f32; 2], t: f32) -> Piece {
 mod tests {
     use super::*;
     use crate::glass::{Glass, Level, Role};
-    use crate::motion::Preset;
 
     fn named_piece(x: f32, id: &str) -> Piece {
         Piece { id: Name::of(id), ..Piece::of_rect([x, 0.0, 40.0, 40.0], 20.0, 2.0, Glass::preset(Role::Regular, Level::Clear)) }
@@ -112,7 +113,7 @@ mod tests {
     }
 
     fn step(appearance: &mut Appearance, group: &mut GlassGroup, now: f64) -> bool {
-        appearance.step(&mut [group], now, Preset::Standard.curve())
+        appearance.step(&mut [group], now, Preset::Standard)
     }
 
     #[test]
@@ -171,5 +172,17 @@ mod tests {
         step(&mut fresh, &mut GlassGroup::new(12.0), 0.0);
         assert!(!step(&mut fresh, &mut alone, 1.0));
         assert_eq!(alone.pieces()[0], named_piece(0.0, "solo"));
+    }
+
+    #[test]
+    fn reduced_motion_shows_and_drops_pieces_at_once() {
+        let mut appearance = Appearance::default();
+        appearance.step(&mut [&mut group(&[named_piece(0.0, "a")])], 0.0, Preset::Reduced);
+        let mut both = group(&[named_piece(0.0, "a"), named_piece(100.0, "b")]);
+        assert!(!appearance.step(&mut [&mut both], 1.0, Preset::Reduced));
+        assert_eq!(both.pieces()[1], named_piece(100.0, "b"));
+        let mut left = group(&[named_piece(0.0, "a")]);
+        assert!(!appearance.step(&mut [&mut left], 2.0, Preset::Reduced));
+        assert_eq!(left.len(), 1);
     }
 }

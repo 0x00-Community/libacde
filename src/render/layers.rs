@@ -10,7 +10,6 @@ use crate::gpu::{LayerCommand, RenderCommand};
 use acde_scene::corner::Corners;
 use acde_scene::glass::group::{GlassGroup, Piece};
 use acde_scene::glass::{Appearance, Glass, Membership};
-use acde_scene::motion::Preset;
 use kurbo::{Affine, BezPath, PathEl, Rect, Shape};
 
 use crate::render::commands::{Builder, Commands};
@@ -152,7 +151,7 @@ static WARNED_FULL_GROUP: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn animate_glass(layers: &mut [Layer], appearance: &mut Appearance, now: f64) -> Option<Rect> {
     let mut groups: Vec<&mut GlassGroup> = layers.iter_mut().filter_map(|l| l.backdrop.as_mut()?.group.as_mut()).collect();
-    if !appearance.step(&mut groups, now, Preset::Standard.curve()) {
+    if !appearance.step(&mut groups, now, acde_scene::motion::system()) {
         return None;
     }
     let mut area: Option<Rect> = None;

@@ -103,8 +103,8 @@
   记着上一帧各组里带 `--acde-glass-id` 的块 (`Piece.id`). 新出现的名字从同组里离它最近的那块的中心长出来 (半宽高和半径从 0 按曲线到实际大小, 中心从那块的中心
   移到自己的位置); 消失的名字留一个影子块, 加进离它最近的那块所在的组, 按曲线缩回那块的中心后丢掉. 曲线是 `motion::Preset::Standard` (临界阻尼弹簧,
   约 0.51 秒), 和合成器窗口动画同一份. 第一帧已有的块、没写名字的块、同组里没有别的块可依附的新块直接出现, 不做动画. 动画进行时, 平面的损伤加上各组外框
-  外扩 `reach()`, 帧标 `animating`, 引擎每个 tick 都要重画 (`glass_moving` 计入 `is_dirty`), 停下后恢复. 还没接"减少动态效果": 现在总按标准档,
-  等页面拿到这个偏好 (和玻璃档位一条路) 再按 `Preset::Reduced` 不做形状动画.
+  外扩 `reach()`, 帧标 `animating`, 引擎每个 tick 都要重画 (`glass_moving` 计入 `is_dirty`), 停下后恢复. 档位取系统的"减少动态效果" (`motion::system()`, 来自门户 `org.freedesktop.appearance` 的 `reduced-motion`):
+  `Preset::Reduced` (`moves()` 为假) 时不做形状动画, 新块直接出现、消失的块直接去掉, 进行中的影子也立即丢掉.
   (也给出窗口之间毛玻璃的取样外扩 `margin`): 偏移在约 0.5–1.3 之间连续调 (一层时从 0 起, 五层时最多到 2), 强度随 sigma 连续变,
   近似同 sigma 的高斯 (`SPREAD` 是 DX12 上量出的每档方差, `tests/vello_compose.rs` 按相位平均量边缘的展宽对照); sigma 小于约
   0.96 px 时一层不偏移, 再按 `mix` 和原图混合. sigma 为 0 不模糊 (drop-shadow、backdrop 只拷一份). shell 的 GLES 链不做 `mix`.
