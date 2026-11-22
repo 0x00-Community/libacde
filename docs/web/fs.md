@@ -20,17 +20,27 @@ acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边�
 把它从 `roots()` 里去掉, 以它为 root 的调用 reject 403 `denied` (`AcdePermissionError`). `fs.revoke(令牌)` 收回选择的文件夹, `acde:permissions` 也列出和收回它 (见 `docs/runtime/webs.md`「批准」). Broker 交给 web 的授权是
 `fs: {places, paths}` (src/host `web.rs` → `Workspace::files`). 下面按路径的根只给桌面页面.
 
-**临时借出的根** (daily-desktop 12, 用户 2026-11-18 定方案 A, 名字 `lent`): 管家可给应用的某一次拉起借出文件夹.
-- 拉起时: welcome 的 `grants.fs.roots` (`[{name, dir, label?}]`, 只认对象形式的 `fs`) 在起页面线程时登记.
-- 运行中: 目标应用不多开且已在运行时, 管家把请求推给它并附 `lend: {name, dir, label?}`; 启动器先经 `sys.lendRoot(应用编号, lend)` 登记,
-  再把请求交给页面 (`window.request`), 请求里补 `root: <name>`.
+**临时借出的根** (daily-desktop 12, 用户 2026-11-18 定方案 A, 名字 `lent`; 2026-11-22 起改传目录描述符, 路径不出管家, 见总仓
+`.scratch/system/fs-lend-fd.md`): 管家可给应用的某一次拉起借出文件夹.
+- 借出条目: `{name, label, kind: 'directory' | 'file', writable, fd}`, `fd` 是同一帧 `fds` (描述符整数数组) 里的下标.
+  描述符由管家打开 (文件夹 `O_PATH | O_DIRECTORY | O_CLOEXEC`), 经管家通道 `SCM_RIGHTS` 附在帧上.
+- 拉起时: welcome 的 `lent` + `fds`, 启动器在起页面线程前交给 `sys.adoptRoots(应用编号, lent, fds)`.
+- 运行中: 管家推 `{type: 'lend', ...条目, fds}`, 启动器收下后给页面发 `fsroots {added}`; 带借出的打开请求是 `{type: 'request', request, lent, fds}`,
+  启动器收下再把请求交给页面 (`window.request`), 请求里补 `root: <第一个收下的 name>`.
+- `sys.adoptRoots` (src/host `web.rs`, 只在 unix 上有) 先把 `fds` 里每个描述符都收成自己的 (`OwnedFd`, 0 到 2 和重复的不收),
+  再把 `kind: 'directory'` 的条目连同它的描述符登记 (`LentRoot::from_fd`, 句柄是 `cap_std::fs::Dir`), 回登记上的 `name`;
+  没被条目用到的、`kind: 'file'` 的、登记被拒的描述符随即关掉.
 - 登记的根放在进程内 (`fs/mod.rs` 的 `Shared.lent`, 按应用编号), 同一应用同名的后来的替换先前的, 进程结束就没了, 不记进批准.
-  `roots()` 里排在私有文件夹和公共位置之后: `{id: name, label: label 或目录名, source: 'lent'}`, 可读写, 按 `name` 当 root 用.
-  `name` 不能是 `private`、公共位置名或 `folder-` 开头, `dir` 要是绝对路径, 不合的拒绝 (`LentRoot::checked`).
+  `roots()` 里排在私有文件夹和公共位置之后: `{id: name, label, source: 'lent', mode}`, `label` 为空时用 `name`; `writable` 为假时 `mode: 'read_only'`,
+  写入一律 403 `EACCES` (由 libacde 守, 描述符本身不限读写). 按 `name` 当 root 用.
+  根直接带着这个句柄 (`FinderRoot::holding`, `FinderRoot.held`), 没有路径: 不出现在 `path` 里, `locate` 不在它下面找, `openPath` 拒绝 (`EINVAL`),
+  也不参与按路径的交出核对 (`Finder.admit`); 查根自身的 `stat` 名字取 `label`.
+  `name` 不能是 `private`、公共位置名或 `folder-`、`removable-` 开头, 不合的拒绝 (`LentRoot::checked`).
 - 收回: 桌面调 `acde:apps` 的 `unlend(dir)` (管家的 `apps.unlend`, 只有桌面能调, 应答 `{revoked: 收回几个}`), 管家对借过这个目录的每个进程推 `{type: 'unlend', name}`;
   启动器经 `sys.unlendRoot(应用编号, name)` 从 `Shared.lent` 去掉 (`Workspace::unlend`), 之后 `roots()` 不再列它, 拿它当 root 的调用按不是自己的根拒绝;
   去掉了就给页面发 `acde:fs` 的 `roots` 事件 `{removed: [name]}`, 页面据此重新取 `roots()`. 宿主上没有管家, 没有这条路.
-- 桌面经 `acde:apps` 的 `open(app, request, {root: {name, dir, label?}})` 请管家借出 (SDK `OpenWindowOptions.root`, 只给桌面用), 管家决定给不给.
+- 桌面经 `acde:apps` 的 `open(app, request, {root: {name, dir, label?}})` 请管家借出 (SDK `OpenWindowOptions.root`, 只给桌面用), 管家决定给不给;
+  `dir` 只到管家为止, 管家打开后按上面的帧交给应用.
 
 **U 盘的根** (用户 2026-11-19 同意按推荐路线做, 来源名 `removable`; runtime `fs/removable.rs`): 已挂载的 U 盘和移动硬盘自动成为根, 卸载或拔掉时自动去掉.
 - 哪些挂载算: `/proc/self/mountinfo` 里挂载点正好在 `/run/media/$USER/` 或 `/media/$USER/` 下一层 (UDisks2 给用户挂可移动盘的位置), 且来源是 `/dev/` 下的块设备;
@@ -142,8 +152,8 @@ Windows 的 `XDG_DESKTOP_DIR` 和 `XDG_DOWNLOAD_DIR` 支持盘符绝对路径及
 10 分钟没有操作的写入自动放弃 (`acde-fs-writes` 线程每 30 秒查一次; 之后用这个 `id` 是 `EINVAL`); web 结束 (关页面、崩溃) 时放弃它全部的写入;
 进程被杀留下的 `.acde-part` 在下次在同一文件夹开写入时删掉超过 20 分钟没改的. 写入的调用和 `writeFile` 一样进这个 web 的改动队列, `readRange` 走读的线程池.
 
-**在 root 之下打开** (`fs/beneath.rs`, 依赖 `cap-std` / `cap-fs-ext`): 每个调用先拿 root 的目录句柄 (`FinderRoot::open`; 按路径的根每次
-`Dir::open_ambient_dir` 打开), 之后读写、列出、建、删、改名都相对这个句柄, 不再拼绝对路径, 各平台只有这一份代码. 中间的文件夹在句柄之下逐级解析:
+**在 root 之下打开** (`fs/beneath.rs`, 依赖 `cap-std` / `cap-fs-ext`): 每个调用先拿 root 的目录句柄 (`FinderRoot::open`; 借出的根复制它带着的句柄,
+按路径的根每次 `Dir::open_ambient_dir` 打开), 之后读写、列出、建、删、改名都相对这个句柄, 不再拼绝对路径, 各平台只有这一份代码. 中间的文件夹在句柄之下逐级解析:
 Linux 用 `openat2(RESOLVE_BENEATH)`, 其他平台由 `cap-std` 模拟; root 内的相对链接照常可走, 绝对链接 (哪怕指回 root 里) 和走出 root 的 `..`
 都算出 root, 是 400 `EINVAL` (`cap-std` 的出界错误在 `Failure` 的 io 映射里认出来, `fs::escaped`). 检查和使用之间换掉中间文件夹也出不了 root.
 打开文件一律不跟随最后一级的链接 (`FollowSymlinks::No`; unix 另加 `O_NONBLOCK`, 不会卡在 FIFO 上; Windows 打开后再查是不是链接).

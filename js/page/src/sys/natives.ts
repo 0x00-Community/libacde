@@ -1,5 +1,4 @@
 import type { HostNative } from '@acde/dom'
-import type { LentRoot } from '@acde/api'
 import type { StoragePlace } from '../contract'
 
 export interface FileStat {
@@ -58,7 +57,7 @@ interface SysNative {
   stopBackend?(pid: number, ms: number): boolean
   write?(pid: number, text: string): boolean
   endInput?(pid: number): void
-  lendRoot?(app: string, root: LentRoot): string
+  adoptRoots?(app: string, lent: readonly Lent[], fds: readonly number[]): string[]
   unlendRoot?(app: string, name: string): boolean
   spawnWeb(
     name: string,
@@ -77,9 +76,17 @@ interface SysNative {
   contentType?(extension: string): string | null
 }
 
+export interface Lent {
+  readonly name: string
+  readonly label: string
+  readonly kind: 'directory' | 'file'
+  readonly writable: boolean
+  readonly fd: number
+}
+
 export interface WebGrants {
   readonly app: string | null
-  readonly fs: true | string[] | { readonly places: string[]; readonly paths: boolean; readonly roots?: readonly LentRoot[] } | null
+  readonly fs: true | string[] | { readonly places: string[]; readonly paths: boolean } | null
   readonly terminal: boolean
   readonly network: boolean
   readonly system: boolean

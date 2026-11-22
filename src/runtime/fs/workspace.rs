@@ -8,6 +8,7 @@ use std::{
     fs::{self, File, Metadata},
     io::{self, ErrorKind, Read, Write},
     path::Path,
+    sync::Arc,
     time::UNIX_EPOCH,
 };
 
@@ -53,7 +54,20 @@ pub struct FinderRoot {
     pub place: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drive: Option<String>,
+    #[serde(skip)]
+    pub(crate) held: Option<Held>,
 }
+
+#[derive(Clone, Debug)]
+pub(crate) struct Held(Arc<Dir>);
+
+impl PartialEq for Held {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for Held {}
 
 impl FinderRoot {
     pub fn new(path: String, label: &str, source: RootSource) -> Self {
@@ -68,11 +82,27 @@ impl FinderRoot {
             exists: true,
             place: None,
             drive: None,
+            held: None,
         }
     }
 
+    pub(crate) fn holding(id: String, label: String, dir: Arc<Dir>, source: RootSource) -> Self {
+        Self { id, shown: None, held: Some(Held(dir)), ..Self::new(String::new(), &label, source) }
+    }
+
     pub(crate) fn open(&self) -> io::Result<Dir> {
-        beneath::open_root(&self.path)
+        match &self.held {
+            Some(Held(dir)) => dir.try_clone(),
+            None => beneath::open_root(&self.path),
+        }
+    }
+
+    pub(crate) fn on_disk(&self) -> Option<&str> {
+        self.held.is_none().then_some(self.path.as_str())
+    }
+
+    fn name(&self) -> &str {
+        self.on_disk().map_or(self.label.as_str(), |path| path.basename())
     }
 
     pub fn access(self, writable: bool) -> Self {
@@ -340,8 +370,9 @@ impl WorkspaceFs {
 
     pub fn resolve(root: &FinderRoot, relative: &str) -> Outcome<Resolved> {
         let relative = Self::inner(relative)?;
-        let real_root = Self::realpath(&root.path)?;
-        let real = Self::realpath(&root.path.join(if relative.is_empty() { "." } else { &relative }))
+        let path = root.on_disk().ok_or_else(|| Failure::invalid("a lent folder has no path"))?;
+        let real_root = Self::realpath(path)?;
+        let real = Self::realpath(&path.join(if relative.is_empty() { "." } else { &relative }))
             .map_err(|error| denied_or(error, || Failure::http(404, "no such file or directory")))?;
         if !Path::new(&real).starts_with(&real_root) {
             return Err(Failure::invalid("path leaves the workspace through a symlink"));
@@ -371,7 +402,7 @@ impl WorkspaceFs {
 
     fn entry(root: &FinderRoot, relative: &str) -> Outcome<FinderEntry> {
         if relative.is_empty() {
-            return Ok(FinderEntry::of(&root.open()?.dir_metadata()?, root.path.basename(), None));
+            return Ok(FinderEntry::of(&root.open()?.dir_metadata()?, root.name(), None));
         }
         let (dir, name) = Self::parent(root, relative)?;
         FinderEntry::read(&dir, &name)

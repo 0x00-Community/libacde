@@ -1,6 +1,6 @@
 import { installCore } from '@acde/dom/core'
 import type { WebInit } from '../../page/src/contract'
-import type { WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
+import type { Lent, WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
 import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
 import { readDirOr, readTextOr } from '../../page/src/sys/fs'
 import { screenshotFile, xdgHome } from '../../page/src/sys/os'
@@ -18,7 +18,6 @@ import type { NativeFileChooser } from '../../page/src/native'
 import { API_LEVEL } from '@acde/api/manifest'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported, wallpaperOf } from './app/calls'
-import type { LentRoot } from '@acde/api'
 import { rejectingCalls, sessionOf, windowGrant, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
 import { WindowSnapshots, type ShellEvent } from './app/events'
 import { ServiceHost } from './manager/service'
@@ -300,6 +299,7 @@ class Launcher {
     this.#backend?.start()
     if (session.grants?.office) Launcher.#openOffice()
     if (this.#desktop && this.manager && session.grants?.devices) sys().startDevices?.()
+    this.#adopt(this.manager?.welcome.lent, this.manager?.welcome.fds)
     this.#spawn({ ...init, name: this.#webName(init.name) })
     this.#watchRemovable()
   }
@@ -656,6 +656,7 @@ class Launcher {
       else if (event.type === 'devreload') void this.#devReload(event['hot'] === true)
       else if (event.type === 'invoke') this.#thread?.post({ rpc: 'invoke', fn: event['fn'], args: event['args'] ?? [] })
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
+      else if (event.type === 'lend' && !this.#desktop) this.#lend([event as unknown as Lent], event['fds'])
       else if (event.type === 'unlend' && !this.#desktop) this.#unlend(String(event['name'] ?? ''))
       else if (event.type === 'menuinvoke' && !this.#desktop) void this.#rpc?.call('window', 'menu', [event['menu'], event['item']]).catch(() => undefined)
       else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event as ShellEvent))
@@ -673,17 +674,21 @@ class Launcher {
     this.#thread?.post({ type: 'fsroots', removed: [name] })
   }
 
+  #adopt(lent: unknown, fds: unknown): string[] {
+    const given = Array.isArray(fds) ? fds.filter((fd): fd is number => Number.isInteger(fd)) : []
+    if (!given.length) return []
+    return sys().adoptRoots?.(this.session.found?.app.id ?? '', Array.isArray(lent) ? lent : [], given) ?? []
+  }
+
+  #lend(lent: unknown, fds: unknown): string[] {
+    const added = this.#adopt(lent, fds)
+    if (added.length) this.#thread?.post({ type: 'fsroots', added, removed: [] })
+    return added
+  }
+
   #deliver(event: ManagerEvent): void {
     const request = event['request'] as Record<string, unknown> | undefined
-    const lend = event['lend'] as LentRoot | undefined
-    let root: string | undefined
-    if (lend) {
-      try {
-        root = sys().lendRoot?.(this.session.found!.app.id, lend)
-      } catch (error) {
-        process.stderr.write(`acdev: the lent folder ${lend.dir}: ${(error as Error).message}\n`)
-      }
-    }
+    const [root] = this.#lend(event['lent'], event['fds'])
     const handed = root === undefined ? request : { ...request, root }
     void this.#rpc?.call('window', 'request', [handed]).catch(() => undefined)
   }

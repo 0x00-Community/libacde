@@ -1,7 +1,7 @@
 import type { DesktopManifest } from '@acde/api'
 import type { AppManifest } from '@acde/api/manifest'
 import type { WebTier } from '../../../page/src/contract'
-import type { WebGrants } from '../../../page/src/sys/natives'
+import type { Lent, WebGrants } from '../../../page/src/sys/natives'
 import { join } from '../../../page/src/sys/path'
 import type { Found } from '../app/app'
 
@@ -35,6 +35,8 @@ export interface Welcome {
   readonly session?: { readonly own: boolean }
   readonly lock?: boolean
   readonly instance?: number
+  readonly lent?: readonly Lent[]
+  readonly fds?: readonly number[]
 }
 
 export function windowSize(given: unknown): readonly [number, number] | null {

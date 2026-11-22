@@ -93,7 +93,9 @@ impl Shared {
 
     fn root_in(roots: &[FinderRoot], view: View, id: &str) -> Outcome<FinderRoot> {
         match view {
-            View::All(_) => roots.iter().find(|root| root.path == id || root.id == id).cloned().ok_or_else(|| Failure::invalid("not a Runtime workspace")),
+            View::All(_) => {
+                roots.iter().find(|root| root.on_disk() == Some(id) || root.id == id).cloned().ok_or_else(|| Failure::invalid("not a Runtime workspace"))
+            }
             View::Files(_) => Files::find(roots.iter().filter(|root| root.id == id).cloned().collect(), id),
         }
     }
@@ -301,14 +303,12 @@ impl Shared {
         #[cfg(not(windows))]
         let relative = |root: &str| clean.within(root).map(|path| path.trim_start_matches('/').to_owned());
         let roots = Self::allowed(roots, view);
-        let (root, relative) =
-            roots.iter().filter_map(|root| relative(&root.path).map(|path| (root, path))).max_by_key(|(root, _)| root.path.len()).ok_or_else(
-                || match view {
-                    View::All(None) => Failure::http(404, "not inside any workspace the Finder lists"),
-                    _ => Failure::http(403, "not inside a workspace allowed for this app"),
-                },
-            )?;
-        Ok(serde_json::json!({"root": root.id, "path": relative}))
+        let within = |root: &FinderRoot| root.on_disk().and_then(|path| relative(path).map(|inside| (root.id.clone(), path.len(), inside)));
+        let (root, _, relative) = roots.iter().filter_map(within).max_by_key(|(_, length, _)| *length).ok_or_else(|| match view {
+            View::All(None) => Failure::http(404, "not inside any workspace the Finder lists"),
+            _ => Failure::http(403, "not inside a workspace allowed for this app"),
+        })?;
+        Ok(serde_json::json!({"root": root, "path": relative}))
     }
 
     fn open_path(&self, workspace: &FinderRoot, path: &str) -> Outcome<Value> {
@@ -447,7 +447,7 @@ impl Workspace {
         }
         match self.shared.call(&call, owner, view, &roots, &self.writes) {
             Err(failure) if call.reads() => {
-                let missing = roots.iter().any(|root| root.exists && !std::path::Path::new(&root.path).is_dir());
+                let missing = roots.iter().any(|root| root.exists && root.on_disk().is_some_and(|path| !std::path::Path::new(path).is_dir()));
                 let grants = self.shared.grants.changes();
                 let fresh = self.fresh_roots()?;
                 if !missing && fresh == roots {

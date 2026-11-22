@@ -1,9 +1,11 @@
 use super::grants::Granted;
 use crate::runtime::failure::{Failure, Outcome};
+use crate::runtime::fs::beneath::Dir;
 use crate::runtime::fs::removable;
 use crate::runtime::fs::workspace::{FinderRoot, RootMode, RootSource, WorkspaceFs};
 use sha2::{Digest, Sha256};
 use std::path::Path;
+use std::sync::Arc;
 
 const PLACES: [(&str, &str); 6] =
     [("desktop", "Desktop"), ("documents", "Documents"), ("downloads", "Downloads"), ("music", "Music"), ("pictures", "Pictures"), ("videos", "Videos")];
@@ -16,14 +18,20 @@ pub struct GrantedFolder {
     pub exists: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct LentRoot {
     pub name: String,
-    pub dir: String,
-    pub label: Option<String>,
+    pub label: String,
+    pub writable: bool,
+    pub dir: Arc<Dir>,
 }
 
 impl LentRoot {
+    #[cfg(unix)]
+    pub fn from_fd(name: String, label: String, writable: bool, fd: std::os::fd::OwnedFd) -> Self {
+        Self { name, label, writable, dir: Arc::new(Dir::from_std_file(fd.into())) }
+    }
+
     pub(crate) fn checked(self) -> Outcome<Self> {
         let taken = self.name == "private" || PLACES.iter().any(|(place, _)| *place == self.name);
         let prefixed = self.name.starts_with("folder-") || self.name.starts_with(removable::PREFIX);
@@ -31,10 +39,12 @@ impl LentRoot {
             let taken = "private, the shared places, folder- and removable- are taken";
             return Err(Failure::invalid(format!("{:?} cannot name a lent folder ({taken})", self.name)));
         }
-        if !Path::new(&self.dir).is_absolute() {
-            return Err(Failure::invalid(format!("{}: a lent folder is an absolute path", self.dir)));
-        }
-        Ok(self)
+        let label = if self.label.is_empty() { self.name.clone() } else { self.label };
+        Ok(Self { label, ..self })
+    }
+
+    fn root(&self) -> FinderRoot {
+        FinderRoot::holding(self.name.clone(), self.label.clone(), Arc::clone(&self.dir), RootSource::Lent).access(self.writable)
     }
 }
 
@@ -71,11 +81,7 @@ impl Files {
             let root = self.root(name.into(), path, label, RootSource::Place);
             roots.push(FinderRoot { place: Some(name), ..Self::checked(root, "the folder does not exist") });
         }
-        for lent in &lent {
-            let label = lent.label.clone().unwrap_or_else(|| Self::label(&lent.dir));
-            let root = self.root(lent.name.clone(), lent.dir.clone(), &label, RootSource::Lent);
-            roots.push(Self::checked(root, "the folder does not exist"));
-        }
+        roots.extend(lent.iter().map(LentRoot::root));
         for Granted { path, writable } in granted {
             let label = Self::label(&path);
             let root = self.root(Self::token(&path), path, &label, RootSource::Granted);
@@ -174,6 +180,11 @@ mod tests {
         assert_eq!(json(app.call(FsCall::List { root: desktop, path: None, hidden: None }))["code"], "EACCES");
     }
 
+    fn lent(name: &str, label: &str, writable: bool, dir: &Path) -> LentRoot {
+        let dir = Arc::new(crate::runtime::fs::beneath::open_root(dir.to_str().unwrap()).unwrap());
+        LentRoot { name: name.into(), label: label.into(), writable, dir }
+    }
+
     #[test]
     fn a_lent_root_is_reached_by_its_name_for_this_launch() {
         let home = Home::new("lent");
@@ -181,22 +192,39 @@ mod tests {
         std::fs::create_dir_all(&work).unwrap();
         std::fs::write(work.join("plan.md"), "plan").unwrap();
         let all = Workspace::at(&home.text());
-        let dir = work.to_string_lossy().into_owned();
-        let lent = LentRoot { name: "work".into(), dir: dir.clone(), label: Some("Project".into()) };
-        assert_eq!(all.lend("agent", lent).unwrap(), "work");
-        assert!(all.lend("agent", LentRoot { name: "documents".into(), dir: dir.clone(), label: None }).is_err());
-        assert!(all.lend("agent", LentRoot { name: "rel".into(), dir: "project".into(), label: None }).is_err());
-        assert!(all.lend("agent", LentRoot { name: "removable-1234".into(), dir: dir.clone(), label: None }).is_err());
-        let app = all.files(Files::new(&[], false), "agent");
+        assert_eq!(all.lend("agent", lent("work", "Project", true, &work)).unwrap(), "work");
+        assert!(all.lend("agent", lent("documents", "", true, &work)).is_err());
+        assert!(all.lend("agent", lent("folder-1234", "", true, &work)).is_err());
+        assert!(all.lend("agent", lent("removable-1234", "", true, &work)).is_err());
+        let app = all.files(Files::new(&[], true), "agent");
         let roots = json(app.call(FsCall::Roots));
         let ids: Vec<&str> = roots.as_array().unwrap().iter().map(|root| root["id"].as_str().unwrap()).collect();
         assert_eq!(ids, ["private", "work"]);
-        assert_eq!((roots[1]["source"].as_str(), roots[1]["label"].as_str()), (Some("lent"), Some("Project")));
+        assert_eq!(roots[1], json!({"id": "work", "label": "Project", "source": "lent", "mode": "writable", "reason": null, "exists": true}));
         assert_eq!(read(&app, "work", "plan.md"), "plan");
         assert_eq!(write(&app, "work", "notes.md", "notes")["name"], "notes.md");
         assert!(work.join("notes.md").is_file());
+        assert_eq!(json(app.call(FsCall::Stat { root: "work".into(), path: String::new() }))["name"], "Project");
+        let located = json(app.call(FsCall::Locate { path: work.join("plan.md").to_string_lossy().into_owned() }));
+        assert_eq!(located["code"], "EACCES", "a lent root has no path to locate in");
         let other = all.files(Files::new(&[], false), "other");
         assert_eq!(read(&other, "work", "plan.md")["code"], "EACCES");
+    }
+
+    #[test]
+    fn a_read_only_lent_root_refuses_writes_and_keeps_its_label() {
+        let home = Home::new("lent-read");
+        let work = home.0.join("shown");
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::write(work.join("a.txt"), "a").unwrap();
+        let all = Workspace::at(&home.text());
+        all.lend("viewer", lent("work", "", false, &work)).unwrap();
+        let app = all.files(Files::new(&[], false), "viewer");
+        let roots = json(app.call(FsCall::Roots));
+        assert_eq!((roots[1]["label"].as_str(), roots[1]["mode"].as_str()), (Some("work"), Some("read_only")));
+        assert_eq!(read(&app, "work", "a.txt"), "a");
+        assert_eq!(write(&app, "work", "b.txt", "b")["code"], "EACCES");
+        assert!(!work.join("b.txt").exists());
     }
 
     #[test]
@@ -206,8 +234,7 @@ mod tests {
         std::fs::create_dir_all(&work).unwrap();
         std::fs::write(work.join("plan.md"), "plan").unwrap();
         let all = Workspace::at(&home.text());
-        let dir = work.to_string_lossy().into_owned();
-        all.lend("agent", LentRoot { name: "work".into(), dir, label: None }).unwrap();
+        all.lend("agent", lent("work", "", true, &work)).unwrap();
         let app = all.files(Files::new(&[], false), "agent");
         assert_eq!(read(&app, "work", "plan.md"), "plan");
         assert!(all.unlend("agent", "work"));
