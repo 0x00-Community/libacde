@@ -35,7 +35,7 @@ impl Assets {
         if name.is_empty() || name.ends_with(".map") != map || name.split('/').any(|seg| seg.is_empty() || seg.starts_with('.')) {
             return None;
         }
-        dirs.iter().map(|dir| Path::new(dir).join(&name)).find(|file| file.is_file())
+        dirs.iter().find_map(|dir| crate::render::within(Path::new(dir), &Path::new(dir).join(&name)))
     }
 }
 
@@ -57,6 +57,10 @@ fn asset_file(url: &str) -> Option<PathBuf> {
 
 pub fn read_asset(url: &str) -> Option<Vec<u8>> {
     std::fs::read(asset_file(url)?).ok()
+}
+
+pub fn open_asset(url: &str) -> Option<std::fs::File> {
+    std::fs::File::open(asset_file(url)?).ok()
 }
 
 pub fn read_source_map(url: &str) -> Option<Vec<u8>> {

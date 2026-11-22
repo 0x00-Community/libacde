@@ -530,6 +530,13 @@ export interface CaptureNative {
   onEnded(callback: (source: number, reason: string) => void): void
 }
 
+export interface OpenedVideo {
+  duration: number
+  width: number
+  height: number
+  audio: number
+}
+
 export interface AudioNative {
   readonly sampleRate: number
   onEvent(callback: (kind: number, id: number) => void): void
@@ -571,7 +578,8 @@ export interface AudioNative {
   media(media: number, op: number, value: number): void
   mediaTime(media: number): number
   closeMedia(media: number): void
-  openVideo(media: number, node: number, bytes: Uint8Array): Promise<{ duration: number; width: number; height: number; audio: number }>
+  openVideo(media: number, node: number, bytes: Uint8Array): Promise<OpenedVideo>
+  openVideo(media: number, node: number, url: string): Promise<OpenedVideo> | null
   present(media: number): number
   videoSize(media: number): [number, number]
   clearVideo(node: number): void

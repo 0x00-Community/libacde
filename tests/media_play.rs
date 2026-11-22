@@ -3,8 +3,16 @@ use std::time::{Duration, Instant};
 
 use acde::media::{CHANNELS, Player, RATE};
 
+fn path(name: &str) -> String {
+    format!("{}/tests/fixtures/media/{name}", env!("CARGO_MANIFEST_DIR"))
+}
+
 fn fixture(name: &str) -> Arc<[u8]> {
-    std::fs::read(format!("{}/tests/fixtures/media/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap().into()
+    std::fs::read(path(name)).unwrap().into()
+}
+
+fn file(name: &str) -> std::fs::File {
+    std::fs::File::open(path(name)).unwrap()
 }
 
 fn near(a: u8, b: u8) -> bool {
@@ -63,7 +71,7 @@ fn an_mp4_gives_its_size_frames_and_sound() {
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn seeking_restarts_both_tracks_near_the_target() {
-    let player = Player::open(fixture("clip.mp4")).unwrap();
+    let player = Player::open(file("clip.mp4")).unwrap();
     player.first_frame(Duration::from_secs(5)).expect("a first frame");
     player.seek(0.5);
     let frame = player.first_frame(Duration::from_secs(5)).expect("a frame after seeking");
@@ -102,7 +110,7 @@ fn bytes_that_are_not_media_are_an_error() {
 #[cfg(target_os = "linux")]
 #[test]
 fn a_webm_plays_on_linux() {
-    let player = Player::open(fixture("clip.webm")).unwrap();
+    let player = Player::open(file("clip.webm")).unwrap();
     assert!(player.info().video && player.info().audio);
     let frame = player.first_frame(Duration::from_secs(5)).expect("a first frame");
     let [r, g, b] = centre(&frame);
@@ -129,7 +137,7 @@ fn playlists_and_other_containers_that_point_elsewhere_are_refused() {
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn frames_follow_the_picture_and_a_seek_lands_on_the_new_one() {
-    let player = Player::open(fixture("two-colours.mp4")).unwrap();
+    let player = Player::open(file("two-colours.mp4")).unwrap();
     let first = player.first_frame(Duration::from_secs(5)).expect("a first frame");
     let [r, g, b] = centre(&first);
     assert!(near(r, 0xcc) && near(g, 0x33) && near(b, 0x33), "colour at 0: {r:x} {g:x} {b:x}");
@@ -153,4 +161,23 @@ fn frames_follow_the_picture_and_a_seek_lands_on_the_new_one() {
     let ahead = player.first_frame(Duration::from_secs(5)).expect("a frame after seeking ahead");
     let [r, g, b] = centre(&ahead);
     assert!(ahead.time >= 0.5 && near(r, 0x33) && near(g, 0xcc), "frame at {} colour {r:x} {g:x} {b:x}", ahead.time);
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn a_file_plays_like_its_bytes() {
+    let from_file = Player::open(file("clip.mp4")).unwrap();
+    let from_bytes = Player::open(fixture("clip.mp4")).unwrap();
+    assert_eq!(from_file.info(), from_bytes.info());
+    let (a, b) = (from_file.first_frame(Duration::from_secs(5)).unwrap(), from_bytes.first_frame(Duration::from_secs(5)).unwrap());
+    assert_eq!((a.time, a.width, a.height, centre(&a)), (b.time, b.width, b.height, centre(&b)));
+}
+
+#[test]
+fn a_file_that_is_not_media_is_an_error() {
+    let path = std::env::temp_dir().join(format!("acde-media-not-video-{}", std::process::id()));
+    std::fs::write(&path, b"definitely not a video file").unwrap();
+    let opened = Player::open(std::fs::File::open(&path).unwrap());
+    _ = std::fs::remove_file(&path);
+    assert!(opened.is_err());
 }

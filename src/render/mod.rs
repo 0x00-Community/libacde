@@ -31,6 +31,7 @@ pub use error::{Error, Result};
 pub use geometry::Metrics;
 pub use hud::{Hud, HudStats};
 pub use layers::{Backdrop, Drawing, Layer, LayerFilter};
+pub(crate) use net::within;
 pub use net::{Load, Loader};
 pub use surface::{ClipboardEntry, ClipboardReadReply, ClipboardTypesReply, DragImage, SurfaceCommand, WindowLook, WindowShadow};
 

@@ -8,7 +8,8 @@ use gstreamer_app as gst_app;
 use gstreamer_video as gst_video;
 use gstreamer_video::prelude::VideoFrameExt;
 
-use crate::media::{Backend, CHANNELS, Frame, Info, Pcm, Pull, RATE};
+use crate::media::gio_stream::SourceStream;
+use crate::media::{Backend, CHANNELS, Frame, Info, Pcm, Pull, RATE, Source};
 
 const WAIT: gst::ClockTime = gst::ClockTime::from_mseconds(100);
 
@@ -39,19 +40,10 @@ impl Drop for Gst {
     }
 }
 
-fn source(bytes: Arc<[u8]>) -> Result<gst::Element, String> {
-    let stream = gio::MemoryInputStream::from_bytes(&gio::glib::Bytes::from_owned(Shared(bytes)));
+fn source(source: Source) -> Result<gst::Element, String> {
     let src = element("giostreamsrc")?;
-    src.set_property("stream", stream.upcast::<gio::InputStream>());
+    src.set_property("stream", SourceStream::new(source).upcast::<gio::InputStream>());
     Ok(src)
-}
-
-struct Shared(Arc<[u8]>);
-
-impl AsRef<[u8]> for Shared {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
 }
 
 fn branch(pipeline: &gst::Pipeline, kinds: &[&str], caps: gst::Caps) -> Result<(gst::Element, gst_app::AppSink), String> {
@@ -133,11 +125,11 @@ fn decoded(pipeline: &gst::Pipeline, sinks: &Sinks, pad: &gst::Pad) {
     }
 }
 
-pub(crate) fn open(bytes: Arc<[u8]>) -> Result<(Box<dyn Backend>, Info), String> {
+pub(crate) fn open(media: Source) -> Result<(Box<dyn Backend>, Info), String> {
     init()?;
-    let demux = element(demuxer(&bytes)?)?;
+    let demux = element(demuxer(&media.head())?)?;
     let pipeline = gst::Pipeline::new();
-    let src = source(bytes)?;
+    let src = source(media)?;
     let forbidden = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let flag = forbidden.clone();
     let ours = src.clone();

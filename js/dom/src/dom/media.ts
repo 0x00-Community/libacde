@@ -4,6 +4,7 @@ import { constants, getters, host, tag } from '../core/host'
 import { Blob } from '../core/blob'
 import { unbase64 } from '../core/encoding'
 import { fetch } from '../core/net'
+import { mocked } from '../core/observe'
 import { audioNative, mediaEvents } from '../audio/index'
 import { NodeType, type AudioNative } from '../native'
 import { MediaStream, trackSource, watchTrack, type MediaStreamTrack } from '../media/stream'
@@ -235,6 +236,7 @@ let nextMedia = 1 << 24
 const PLAYS = Symbol('plays')
 const ENDED = Symbol('ended')
 const OPEN = Symbol('open')
+const OPEN_FILE = Symbol('open file')
 const RUNNING = Symbol('running')
 const SEEKED = Symbol('seeked')
 const RESET = Symbol('reset')
@@ -283,6 +285,10 @@ export class HTMLMediaElement extends HTMLElement {
 
   [OPEN](native: AudioNative, media: number, bytes: Uint8Array): Promise<Opened> {
     return native.openMedia(media, bytes)
+  }
+
+  [OPEN_FILE](_native: AudioNative, _media: number, _url: string): Promise<Opened> | null {
+    return null
   }
 
   [OPENED](_media: number, _info: Opened, _fresh: boolean): void {}
@@ -415,6 +421,11 @@ export class HTMLMediaElement extends HTMLElement {
         return fail(4, String((error as Error)?.message ?? error))
       }
       host.setTimer(0, () => opened(info))
+      return
+    }
+    const file = mocked('fetch', 'GET', url) ? null : this[OPEN_FILE](native, media, url)
+    if (file) {
+      file.then(opened, (error: unknown) => fail(4, String((error as Error)?.message ?? error)))
       return
     }
     fetch(url)
@@ -739,6 +750,10 @@ export class HTMLVideoElement extends HTMLMediaElement {
 
   override [OPEN](native: AudioNative, media: number, bytes: Uint8Array): Promise<Opened> {
     return native.openVideo(media, this[ID], bytes)
+  }
+
+  override [OPEN_FILE](native: AudioNative, media: number, url: string): Promise<Opened> | null {
+    return native.openVideo(media, this[ID], url)
   }
 
   override [OPENED](media: number, info: Opened, fresh: boolean): void {

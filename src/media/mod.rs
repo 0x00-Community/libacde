@@ -2,6 +2,8 @@
 mod apple;
 pub mod capture;
 #[cfg(target_os = "linux")]
+mod gio_stream;
+#[cfg(target_os = "linux")]
 mod gst;
 
 use std::collections::VecDeque;
@@ -43,6 +45,65 @@ pub struct Frame {
 pub struct Pcm {
     pub time: f64,
     pub samples: Vec<f32>,
+}
+
+pub enum Source {
+    Bytes(Arc<[u8]>),
+    File(std::fs::File),
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+impl Source {
+    pub(crate) fn len(&self) -> u64 {
+        match self {
+            Source::Bytes(bytes) => bytes.len() as u64,
+            Source::File(file) => file.metadata().map_or(0, |m| m.len()),
+        }
+    }
+
+    pub(crate) fn read_at(&self, offset: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            Source::Bytes(bytes) => {
+                let rest = bytes.get(usize::try_from(offset).unwrap_or(usize::MAX)..).unwrap_or_default();
+                let n = rest.len().min(buf.len());
+                buf[..n].copy_from_slice(&rest[..n]);
+                Ok(n)
+            }
+            Source::File(file) => std::os::unix::fs::FileExt::read_at(file, buf, offset),
+        }
+    }
+
+    pub(crate) fn fill_at(&self, offset: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+        let mut filled = 0;
+        while filled < buf.len() {
+            match self.read_at(offset + filled as u64, &mut buf[filled..]) {
+                Ok(0) => break,
+                Ok(n) => filled += n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(filled)
+    }
+
+    fn head(&self) -> Vec<u8> {
+        let mut head = vec![0; 12];
+        let n = self.fill_at(0, &mut head).unwrap_or(0);
+        head.truncate(n);
+        head
+    }
+}
+
+impl From<Arc<[u8]>> for Source {
+    fn from(bytes: Arc<[u8]>) -> Self {
+        Source::Bytes(bytes)
+    }
+}
+
+impl From<std::fs::File> for Source {
+    fn from(file: std::fs::File) -> Self {
+        Source::File(file)
+    }
 }
 
 pub enum Pull<T> {
@@ -97,8 +158,8 @@ enum Track {
 }
 
 impl Player {
-    pub fn open(bytes: Arc<[u8]>) -> Result<Player, String> {
-        let (backend, info) = open_backend(bytes)?;
+    pub fn open(source: impl Into<Source>) -> Result<Player, String> {
+        let (backend, info) = open_backend(source.into())?;
         let readers = usize::from(info.video) + usize::from(info.audio);
         let state = State { video_done: !info.video, audio_done: !info.audio, ..State::default() };
         let shared = Arc::new(Shared { state: Mutex::new(state), wake: Condvar::new(), backend, readers });
@@ -327,16 +388,16 @@ impl<T> Pull<T> {
 }
 
 #[cfg(target_os = "macos")]
-fn open_backend(bytes: Arc<[u8]>) -> Result<(Box<dyn Backend>, Info), String> {
-    apple::open(bytes)
+fn open_backend(source: Source) -> Result<(Box<dyn Backend>, Info), String> {
+    apple::open(source)
 }
 
 #[cfg(target_os = "linux")]
-fn open_backend(bytes: Arc<[u8]>) -> Result<(Box<dyn Backend>, Info), String> {
-    gst::open(bytes)
+fn open_backend(source: Source) -> Result<(Box<dyn Backend>, Info), String> {
+    gst::open(source)
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-fn open_backend(_: Arc<[u8]>) -> Result<(Box<dyn Backend>, Info), String> {
+fn open_backend(_: Source) -> Result<(Box<dyn Backend>, Info), String> {
     Err("video playback is not supported on this platform".into())
 }

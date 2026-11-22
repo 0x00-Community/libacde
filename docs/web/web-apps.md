@@ -174,20 +174,21 @@
       尾巴没完的节点不回收、算作还活着.
     - 对 Chrome: 同一段脚本 (`OfflineAudioContext`, 每种节点) 在 Chrome 和 acdev 里各跑一遍, 结果对比见 libacde 提交信息.
 - **视频** (src/media `acde-media`): 用系统的框架解码, 不随包带编解码器 (用户定, 2026-11-09; libacde 闭源, 不链接 GPL 的 ffmpeg).
-  - `Player::open(bytes)` 探出 `Info {duration, width, height, audio, video}`, 每个轨一条读线程 (`acde-video` / `acde-video-audio`) 各自往
+  - `Player::open(source)` (`Source::Bytes` 内存里的字节, 或 `Source::File` 打开的文件, 按字节范围读, 不整份读进内存) 探出 `Info {duration, width, height, audio, video}`, 每个轨一条读线程 (`acde-video` / `acde-video-audio`) 各自往
     有界队列里解: 视频 RGBA 帧 (领先 4 帧), 音频 48 kHz 立体声 f32 交错 (领先半秒). 两个轨分开读, 不会一个轨满了卡住解封装器让另一个轨饿死.
     `seek(t)`: 清队列, 两条线程都停下后由最后一条重启解码器. 消费方拉: `take_audio` (混音器线程)、`frame_at(t)` (取到时间的最后一帧,
     更早的丢掉)、`first_frame` (等第一帧, 给海报帧和尺寸).
   - Linux `gst.rs`: 先按开头的字节认容器 (MP4 / QuickTime 的 `ftyp`、Matroska / WebM 的 EBML、Ogg), 自己放解封装器
     (`qtdemux` / `matroskademux` / `oggdemux`), 不让 GStreamer 自己挑: 自动挑会把 HLS / DASH 播放列表之类交给会去取别的 URL (含 `file://`)
-    的元素. 再保险一层: 管道里加进任何 Source 类或读 URI 的元素 (`deep-element-added`) 就整个拒绝. `giostreamsrc` 读内存里的字节
-    (`GMemoryInputStream`, 能随机读) → 解封装器 → 一个 `multiqueue` (一个轨空了它会给另一个轨多存, 两个轨交错远也不卡死) → 每个轨一个
+    的元素. 再保险一层: 管道里加进任何 Source 类或读 URI 的元素 (`deep-element-added`) 就整个拒绝. `giostreamsrc` 读来源
+    (`gio_stream.rs` `SourceStream`: 自己的 GInputStream + GSeekable, 按位置读 `Source::read_at`, 文件是 `pread`, 只读解封装器要的那段) → 解封装器 → 一个 `multiqueue` (一个轨空了它会给另一个轨多存, 两个轨交错远也不卡死) → 每个轨一个
     `decodebin3` (只剩解析和解码) → 视频 `videoconvert ! videoflip video-direction=auto ! videoconvert` 成 RGBA (旋转标签在这里转正), 音频
     `audioconvert ! audioresample` 成 F32LE 48 kHz 立体声, 各进一个 `appsink` (不按时钟, 最多 2 个缓冲). 解封装器发 `no-more-pads`、
     预滚完、要的轨都接上才报 Info. seek 是 FLUSH | ACCURATE, 目标前的帧和样本丢掉. 运行时要 gst-plugins-base / gst-plugins-good (MP4、WebM 解封装, Opus, VP8 / VP9) 和
     gst-plugin-va (硬解); H.264 / AAC 的软解是 gst-libav (经 Arch 的 GPL ffmpeg), Arch 包里是可选依赖.
   - macOS `apple.rs`: `AVURLAsset` 带 `AVURLAssetReferenceRestrictionsKey = ForbidAll` 开 (文件里引用别的文件或 URL 一律不跟), 不许走
-    网络; 数据由 `AVAssetResourceLoader` 代理 (`AcdeMediaLoader`) 从内存按字节范围给, `AVAssetReader` 解出
+    网络; 数据由 `AVAssetResourceLoader` 代理 (`AcdeMediaLoader`) 按字节范围从来源读 (`Source::fill_at`; 一次最多给 4 MiB,
+    要到文件尾的请求也只给这么多, AVFoundation 再按剩下的范围要), `AVAssetReader` 解出
     BGRA 帧 (拷出时换成 RGBA, 按轨道的 `preferredTransform` 转 90 / 180 / 270 度) 和 LPCM; 每个输出各自一把锁; seek 是取消旧的
     reader 按时间范围新建. AVFoundation 只认 MP4 / QuickTime: WebM 在 macOS 上打不开 (Safari 自己解析 WebM, 这里没有).
   - `<video>` (acde-dom `dom/media.ts` `HTMLVideoElement`, src/host `audio/mod.rs` `openVideo` / `present`, `audio/video.rs`): 和
@@ -199,6 +200,11 @@
     UA 样式 `object-fit: contain`) 加固有尺寸 (`set_video_size`, 变了重排; 没有帧时是 300×150). `videoWidth` / `videoHeight` 在
     `loadedmetadata` 时就有; 之后帧尺寸变了发 `resize` (`readyState` 是 `HAVE_NOTHING` 时不发, 照标准). `canPlayType` 按 `acde_media::TYPES`
     (平台能开的容器). 换源 / 去掉 `src` 清掉画面 (`clearVideo`); 播放器释放 (`Player` 的 drop) 在单独线程里停解码器, 不卡混音器和 JS.
+  - 视频从哪读 (2026-11-22): 同源的本地资源 (包内文件、借出的目录, 如壁纸页的 `/media/`) 按文件开: JS 把地址交给 `openVideo(media, node, url)`,
+    src/host `dom.rs` `open_asset` 用和 `fetch` 同一个 `Assets::file` 找文件 (解开符号链接后核对仍在目录里), 打开后交 `Source::File`,
+    播放时只按范围读要的部分, 1 GB 的壁纸视频不再整份进内存. 找不到 (别的源、`blob:` / `data:`、后端路径) 时 `openVideo` 同步回 `null`,
+    退回原来的路: `fetch` 整份取来再交字节. 开发工具 `route` 拦了这个地址时也走 `fetch`, 让假的回应生效. 按文件开的不经 `fetch`,
+    所以不出现在网络记录里. `file:` 地址的视频还没有 (`fetch` 不给 `file:`). `<audio>` 仍整份取 (symphonia 从内存解).
   - 解析出来的 (`loadPage`、`innerHTML` / `outerHTML` / `insertAdjacentHTML`) 和克隆出来的 (`cloneNode` / `importNode`) `<video>` /
     `<audio>` 有 `src` 或 `<source>` 就自己开始加载 (标准: 设了 `src` 就跑加载算法), `preload="none"` 且没有 `autoplay` 时发 `loadstart` 和
     `suspend` 后停在 `NETWORK_IDLE`, 等 `play()` 再取. 还没有: 海报图 (`poster`)、`seeked` 等到新位置的帧画出来再发、文字轨、MSE.

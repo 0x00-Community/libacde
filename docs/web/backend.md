@@ -60,6 +60,8 @@
     (旧预加载不读控制帧, 就是等满 3 秒再终止). 后端退出时注销这一代的通道 / 目录, 上面还没完的流失败.
 - **路由**: 页面的 `fetch` / `XMLHttpRequest` / `WebSocket` / `EventSource` 都由这个 web 自己的线程发 (src/host `backend.rs` 的 `natives.backend`,
   每个 web 都有 → runtime `fetch/` `FetchClient`: ntex 的 HTTP / WebSocket 客户端, I/O 在 `acde-rt` 线程; acde-dom `core/net/index.ts` 的 `route`). 去哪:
+  - 同源资源 (GET / HEAD) → 按最长前缀在包目录和借出的目录里找 (src/host `dom.rs` `Assets::file`, 模块和 source map 也走它): 和渲染器的资源一样
+    解开符号链接后核对仍在那个目录里 (`render/net.rs` `within`, 2026-11-22; 原来借出目录里指向外面的链接照读), 不在就当没有.
   - 同源非资源路径、有后端时的 `localhost:<port>` (和 127.0.0.1、[::1]、0.0.0.0) → 自己应用的 unix socket (`Dial::Socket`, `init.sockets`; 没出现或
     拒绝连接时重试 10 秒). 没有后端的 web 同源非资源路径失败, `localhost` 走下面的网络.
   - 别的主机 (`Dial::Url`, http / https / ws / wss) → 宿主的网络: 系统 DNS, TCP, https / wss 用 `http.rs` 的 `tls()` (只给 http/1.1 的 ALPN,
