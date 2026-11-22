@@ -618,7 +618,7 @@ test('file handles read large files in ranges and write them in chunks committed
     out.push(file.size, await file.slice(24, 30).text())
     const chunks = []
     for await (const chunk of file.stream()) chunks.push(chunk.length)
-    out.push(chunks.join(','), (await file.text()).slice(0, 3), await (async () => new Response(file.slice(1, 4)))().then(() => 'body', (e) => e.name))
+    out.push(chunks.join(','), (await file.text()).slice(0, 3), await new Response(file.slice(1, 4)).text())
     out.push(await (await smallHandle.getFile()).text())
     const w = await bigHandle.createWritable()
     await w.write('0123456789abcdefghij'); await w.write({ type: 'write', position: 24, data: new Blob(['XY']) })
@@ -628,7 +628,7 @@ test('file handles read large files in ranges and write them in chunks committed
     const dropped = await smallHandle.createWritable(); await dropped.write('gone'); await dropped.abort()
   })().catch((e) => out.push('error ' + e.name + ' ' + e.message))`)
   await web.wait(20)
-  assert.deepEqual(web.json('out'), [40, 'YZABCD', '40', 'ABC', 'NotReadableError', 'small'])
+  assert.deepEqual(web.json('out'), [40, 'YZABCD', '40', 'ABC', 'BCD', 'small'])
   assert.deepEqual(calls.filter((call) => call.startsWith('write')), ['write 0+8', 'write 8+8', 'write 16+4', 'write 24+2', 'write 5+1', 'write 0+4'])
   assert.equal(new TextDecoder().decode(files.get('/home/u/big.bin') as Uint8Array), '0123456789abcdefghij\0\0\0\0XY')
   assert.equal(new TextDecoder().decode(files.get('/home/u/small.txt') as Uint8Array), 'sma\0\0!')
@@ -641,6 +641,116 @@ test('file handles read large files in ranges and write them in chunks committed
   })`)
   await web.wait(10)
   assert.deepEqual(web.json('out'), ['01', 'NotReadableError'])
+})
+
+const ECHO = `(() => {
+  const backend = globalThis.backend = { calls: [], sent: [], closed: [] }
+  const dec = new TextDecoder()
+  let next = 1
+  __acdeDom.installBackendTransport({
+    port: 3000,
+    request(port, method, path, headers, body, on) {
+      const id = next++
+      backend.calls.push({ method, path, headers: Object.fromEntries(headers), body: body ? dec.decode(body) : null, length: body ? body.length : null })
+      setTimeout(() => { on({ type: 'head', status: 200, statusText: 'OK', headers: [] }); on({ type: 'end' }) }, 1)
+      return id
+    },
+    abort() {},
+    websocket(port, path, headers, protocols, on) {
+      const id = next++
+      setTimeout(() => on({ type: 'open', protocol: '', extensions: '' }), 1)
+      return id
+    },
+    send(id, data) { backend.sent.push(typeof data === 'string' ? data : dec.decode(data)) },
+    close(id, code, reason) { backend.closed.push([backend.sent.length, code ?? null, reason ?? null]) },
+  })
+})()`
+
+test('on-demand Files (and their slices) are bodies like any Blob: fetch, Request / Response, FormData, XHR, blob: URLs, WebSocket', async () => {
+  using web = await page()
+  const big = new Uint8Array(40).map((_, i) => 65 + (i % 26))
+  const files = new Map<string, Node>([['/home/u/big.bin', big]])
+  const calls: string[] = []
+  const r = rangedFiles(files, calls)
+  web.internals.env.files = { ...chooser({}, files).files, ranged: r.ranged }
+  ;(web.context as Record<string, unknown>)['bigHandle'] = web.internals.handles.of({ name: 'big.bin', path: '/home/u/big.bin' }, 'file', 'read')
+  web.run(ECHO)
+  web.run(`globalThis.out = {}; (async () => {
+    const file = await bigHandle.getFile()
+    const chunk = file.slice(8, 24, 'application/x-part')
+    await fetch('/upload', { method: 'POST', body: chunk })
+    await fetch(new Request('/upload', { method: 'PUT', body: file.slice(0, 4) }))
+    out.response = [await new Response(file.slice(30)).text(), new Response(chunk).headers.get('content-type')]
+    const form = new FormData()
+    form.append('name', 'big')
+    form.append('file', file.slice(0, 5), 'part.bin')
+    await fetch('/form', { method: 'POST', body: form })
+    await new Promise((resolve) => { const x = new XMLHttpRequest(); x.open('POST', '/xhr'); x.onloadend = resolve; x.send(file.slice(26, 30)) })
+    const url = globalThis.imageUrl = URL.createObjectURL(file)
+    const got = await fetch(url)
+    out.blobUrl = [got.status, got.headers.get('content-length'), got.headers.get('content-type'), (await got.text()).slice(0, 4)]
+    out.xhrBlobUrl = await new Promise((resolve) => { const x = new XMLHttpRequest(); x.open('GET', url); x.onload = () => resolve([x.status, x.responseText.length]); x.send() })
+    const ws = new WebSocket('/ws')
+    await new Promise((resolve) => { ws.onopen = resolve })
+    ws.send('first')
+    ws.send(file.slice(0, 3))
+    ws.send('third')
+    out.buffered = ws.bufferedAmount
+    ws.close(1000, 'done')
+    out.queued = backend.sent.slice()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    out.ws = [backend.sent, backend.closed, ws.bufferedAmount]
+  })().catch((e) => out.error = e.name + ' ' + e.message)`)
+  await web.wait(40)
+  const calls_ = web.json<{ method: string; path: string; headers: Record<string, string>; body: string; length: number }[]>('backend.calls')
+  const [post, put, form, xhr] = calls_
+  assert.equal(web.json('out.error ?? null'), null)
+  assert.deepEqual([post!.method, post!.body, post!.length, post!.headers['content-type']], ['POST', 'IJKLMNOPQRSTUVWX', 16, 'application/x-part'])
+  assert.deepEqual([put!.method, put!.body, put!.headers['content-type'] ?? null], ['PUT', 'ABCD', null])
+  assert.match(form!.headers['content-type']!, /^multipart\/form-data; boundary=----acdeFormBoundary[0-9a-f]{24}$/)
+  const boundary = form!.headers['content-type']!.split('boundary=')[1]
+  assert.equal(form!.body, [
+    `--${boundary}\r\nContent-Disposition: form-data; name="name"\r\n\r\nbig\r\n`,
+    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="part.bin"\r\nContent-Type: application/octet-stream\r\n\r\nABCDE\r\n`,
+    `--${boundary}--\r\n`,
+  ].join(''))
+  assert.deepEqual([xhr!.method, xhr!.body], ['POST', 'ABCD'])
+  assert.deepEqual(web.json('out.response'), ['EFGHIJKLMN', 'application/x-part'])
+  assert.deepEqual(web.json('out.blobUrl'), [200, '40', '', 'ABCD'])
+  assert.deepEqual(web.json('out.xhrBlobUrl'), [200, 40])
+  assert.deepEqual(web.json('out.buffered'), 8)
+  assert.deepEqual(web.json('out.queued'), ['first'])
+  assert.deepEqual(web.json('out.ws'), [['first', 'ABC', 'third'], [[3, 1000, 'done']], 0])
+  const image = web.run<string>('imageUrl')
+  web.dom.loader!(900, image, 'image', '')
+  for (let i = 0; i < 50 && !web.dom.loads.has(900); i++) await web.wait(2)
+  assert.equal(new TextDecoder().decode(web.dom.loads.get(900)!).slice(0, 4), 'ABCD')
+})
+
+test('a WebSocket whose queued Blob cannot be read fails the connection; sends after it are dropped', async () => {
+  using web = await page()
+  const big = new Uint8Array(40).fill(65)
+  const files = new Map<string, Node>([['/home/u/big.bin', big]])
+  const r = rangedFiles(files, [])
+  web.internals.env.files = { ...chooser({}, files).files, ranged: r.ranged }
+  ;(web.context as Record<string, unknown>)['bigHandle'] = web.internals.handles.of({ name: 'big.bin', path: '/home/u/big.bin' }, 'file', 'read')
+  ;(web.context as Record<string, unknown>)['touch'] = () => r.touch('/home/u/big.bin')
+  web.run(ECHO)
+  web.run(`globalThis.out = {}; (async () => {
+    const file = await bigHandle.getFile()
+    touch()
+    const ws = new WebSocket('/ws')
+    await new Promise((resolve) => { ws.onopen = resolve })
+    const events = []
+    ws.onerror = () => events.push('error')
+    const closed = new Promise((resolve) => { ws.onclose = (e) => resolve([e.code, e.wasClean]) })
+    ws.send(file)
+    ws.send('after')
+    out.close = await closed
+    out.rest = [events, backend.sent, ws.readyState]
+  })().catch((e) => out.error = e.name + ' ' + e.message)`)
+  await web.wait(20)
+  assert.deepEqual(web.json('out'), { close: [1006, false], rest: [['error'], [], 3] })
 })
 
 test('document.fonts lists the faces of @font-face rules and the ones added', async () => {

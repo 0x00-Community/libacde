@@ -1,4 +1,4 @@
-import { Blob } from '../blob'
+import { Blob, blobRead } from '../blob'
 import type { Header, Target } from '../backend'
 import { mocked, Tracked, type MockReply } from '../observe'
 import { concat, TextDecoder } from '../encoding'
@@ -8,7 +8,7 @@ import { constants, getters, host, tag } from '../host'
 import { readAllBytes } from '../streams'
 import { URL } from '../url'
 import { Headers } from './headers'
-import { type BodyInit, NULL_BODY, assetHead, backendFailed, exchange, extractBody, headerOf, net, route, unreachable } from './index'
+import { type BodyInit, NULL_BODY, assetHead, backendFailed, exchange, extractBody, headerOf, net, onDemandObject, route, unreachable } from './index'
 
 export class XMLHttpRequestEventTarget extends EventTarget {}
 defineHandlers(XMLHttpRequestEventTarget.prototype, ['loadstart', 'progress', 'abort', 'error', 'load', 'timeout', 'loadend'])
@@ -80,9 +80,8 @@ export class XMLHttpRequest extends XMLHttpRequestEventTarget {
       return this.#backend(routed.target, token, body)
     }
     const tracked = Tracked.start('xhr', this.#method, this.#url, 0, false, this.#headers)
-    const finish = () => {
+    const finish = (found: { bytes: Uint8Array; type: string } | null | undefined = routed?.asset) => {
       if (token !== this.#sent) return tracked?.error('aborted')
-      const found = routed?.asset
       if (!found) {
         tracked?.error(unreachable(this.#url))
         this.#state(4)
@@ -109,7 +108,9 @@ export class XMLHttpRequest extends XMLHttpRequestEventTarget {
     }
     if (!this.#async) return finish()
     fire(this, new ProgressEvent('loadstart'))
-    host.setTimer(0, finish)
+    const onDemand = onDemandObject(this.#url)
+    if (onDemand) return void blobRead(onDemand).then((bytes) => finish({ bytes, type: onDemand.type }), () => finish(null))
+    host.setTimer(0, () => finish())
   }
 
   #mocked(mock: MockReply, token: number): void {

@@ -1,7 +1,8 @@
 import type { Header } from './backend'
+import { blobRead } from './blob'
 import { concat } from './encoding'
 import { host } from './host'
-import { assetHead, exchange, headerOf, net, route, typeOfName, unreachable } from './net'
+import { assetHead, exchange, headerOf, net, onDemandObject, route, typeOfName, unreachable } from './net'
 import { observer, Tracked, type RequestKind } from './observe'
 import { URL } from './url'
 
@@ -49,6 +50,18 @@ export function reportServed(url: string, destination: string, cached = false): 
 
 export function loadResource(url: string, destination: string, cors: string, done: (bytes: Uint8Array | null, opaque: boolean) => void): void {
   const kind = KINDS[destination] ?? 'fetch'
+  const onDemand = onDemandObject(url)
+  if (onDemand) {
+    blobRead(onDemand).then((bytes) => {
+      served(kind, url, { bytes, type: onDemand.type })
+      done(bytes, false)
+    }, (error: unknown) => {
+      Tracked.start(kind, 'GET', url)?.error(String((error as Error)?.message ?? error))
+      failed(url, String((error as Error)?.message ?? error))
+      done(null, false)
+    })
+    return
+  }
   const routed = route(url, 'GET')
   if (!routed) {
     Tracked.start(kind, 'GET', url)?.error(unreachable(url))

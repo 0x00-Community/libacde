@@ -1,4 +1,4 @@
-import { Blob, blobBytes } from '../blob'
+import { Blob, blobInMemory, blobRead } from '../blob'
 import { cookies, dialOf, isRemote, requestHeaders, transport, type Target, type WsEvent } from '../backend'
 import { Tracked } from '../observe'
 import { bytesOf } from '../encoding'
@@ -9,6 +9,8 @@ import { URL } from '../url'
 import { backendFailed, browserHeaders, net, route, unreachable } from './index'
 
 const WS_STATES = { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 } as const
+
+type Outgoing = { data: string | Uint8Array | null; readonly size: number }
 
 export class WebSocket extends EventTarget {
   readonly url: string
@@ -21,6 +23,8 @@ export class WebSocket extends EventTarget {
   #id: number | null = null
   #finished = false
   #tracked: Tracked | null = null
+  #outgoing: Outgoing[] = []
+  #closing: { code?: number; reason?: string } | null = null
   readonly #origin: string
 
   constructor(url: string | URL, protocols?: string | Iterable<string>) {
@@ -121,17 +125,52 @@ export class WebSocket extends EventTarget {
     if (this.readyState === WS_STATES.CONNECTING) {
       throw new DOMException("Failed to execute 'send' on 'WebSocket': Still in CONNECTING state.", 'InvalidStateError')
     }
-    let payload: string | Uint8Array
+    let payload: string | Uint8Array | null
     if (typeof data === 'string') payload = data
-    else if (data instanceof Blob) payload = blobBytes(data).slice()
+    else if (data instanceof Blob) payload = blobInMemory(data)?.slice() ?? null
     else if (typeof data === 'object' && data !== null) payload = bytesOf(data as ArrayBuffer).slice()
     else payload = String(data)
+    const size = payload === null ? (data as Blob).size : typeof payload === 'string' ? host.encodeUtf8(payload).length : payload.length
     if (this.readyState !== WS_STATES.OPEN || this.#id === null) {
-      this.bufferedAmount += typeof payload === 'string' ? host.encodeUtf8(payload).length : payload.length
+      this.bufferedAmount += size
       return
     }
-    transport?.send(this.#id, payload)
-    this.#tracked?.frame(true, payload)
+    if (payload !== null && !this.#outgoing.length) {
+      transport?.send(this.#id, payload)
+      this.#tracked?.frame(true, payload)
+      return
+    }
+    const entry: Outgoing = { data: payload, size }
+    this.#outgoing.push(entry)
+    this.bufferedAmount += size
+    if (payload !== null) return
+    blobRead(data as Blob).then((bytes) => {
+      entry.data = bytes
+      this.#flush()
+    }, () => this.#fail())
+  }
+
+  #flush(): void {
+    while (this.#outgoing[0]?.data != null) {
+      const { data, size } = this.#outgoing.shift()!
+      if (this.#finished || this.#id === null) return void (this.#outgoing = [])
+      transport?.send(this.#id, data!)
+      this.#tracked?.frame(true, data!)
+      this.bufferedAmount -= size
+    }
+    if (this.#outgoing.length || !this.#closing || this.#finished || this.#id === null) return
+    const { code, reason } = this.#closing
+    this.#closing = null
+    transport?.close(this.#id, code, reason)
+  }
+
+  #fail(): void {
+    if (this.#finished) return
+    this.#outgoing = []
+    this.#closing = null
+    if (this.#id !== null) transport?.close(this.#id)
+    backendFailed('WS', this.url, 'a Blob to send could not be read')
+    this.#finish(1006, '', false)
   }
 
   close(code?: number, reason?: string): void {
@@ -151,7 +190,9 @@ export class WebSocket extends EventTarget {
       return
     }
     this.readyState = WS_STATES.CLOSING
-    transport?.close(this.#id, code, reason === undefined ? undefined : String(reason))
+    const closing = { code, reason: reason === undefined ? undefined : String(reason) }
+    if (this.#outgoing.length) this.#closing = closing
+    else transport?.close(this.#id, closing.code, closing.reason)
   }
 }
 constants(WebSocket, WS_STATES)

@@ -1,4 +1,4 @@
-import { Blob, blobBytes } from '../blob'
+import { Blob, blobInMemory } from '../blob'
 import {
   allowedHeaders,
   backendTarget,
@@ -14,7 +14,7 @@ import {
 } from '../backend'
 import { Cors } from '../cors'
 import { mocked, Tracked, type MockReply, type RequestKind } from '../observe'
-import { bytesOf, concat, TextDecoder, unbase64 } from '../encoding'
+import { bytesOf, TextDecoder, unbase64 } from '../encoding'
 import { DOMException } from '../exception'
 import { G, host, tag } from '../host'
 import { isDisturbed, readAllBytes, ReadableStream, streamOfBytes, type ReadableStreamDefaultController } from '../streams'
@@ -106,11 +106,22 @@ export function moduleSource(url: string): string | null {
   return host.decode(found.bytes, 'utf-8', false, false)
 }
 
+function objectBlob(url: string): Blob | null {
+  const hash = url.indexOf('#')
+  const blob = objectUrls.get(hash < 0 ? url : url.slice(0, hash))
+  return blob instanceof Blob ? blob : null
+}
+
+export function onDemandObject(url: string): Blob | null {
+  const blob = url.startsWith('blob:') ? objectBlob(url) : null
+  return blob && !blobInMemory(blob) ? blob : null
+}
+
 function inline(url: string): Loaded | null {
   if (url.startsWith('blob:')) {
-    const hash = url.indexOf('#')
-    const blob = objectUrls.get(hash < 0 ? url : url.slice(0, hash))
-    return blob instanceof Blob ? { bytes: blobBytes(blob), type: blob.type } : null
+    const blob = objectBlob(url)
+    const bytes = blob && blobInMemory(blob)
+    return blob && bytes ? { bytes, type: blob.type } : null
   }
   const comma = url.indexOf(',')
   if (comma < 0) return null
@@ -167,34 +178,36 @@ function isFormData(value: unknown): value is FormDataLike {
 
 export type BodyInit = string | ArrayBuffer | ArrayBufferView | Blob | URLSearchParams | ReadableStream<Uint8Array> | FormDataLike | null | undefined
 
-function multipart(form: FormDataLike): { bytes: Uint8Array; type: string } {
+function multipart(form: FormDataLike): { bytes: Uint8Array | null; stream: ReadableStream<Uint8Array> | null; type: string } {
   const random = new Uint8Array(12)
   host.randomBytes(random)
   const boundary = `----acdeFormBoundary${[...random].map((b) => b.toString(16).padStart(2, '0')).join('')}`
   const quote = (text: string) => text.replace(/\r/g, '%0D').replace(/\n/g, '%0A').replace(/"/g, '%22')
-  const parts: Uint8Array[] = []
+  const parts: (Uint8Array | Blob)[] = []
   for (const [name, value] of form.entries()) {
     let head = `--${boundary}\r\nContent-Disposition: form-data; name="${quote(name)}"`
     if (value instanceof Blob) {
       const filename = (value as Blob & { name?: string }).name ?? 'blob'
       head += `; filename="${quote(filename)}"\r\nContent-Type: ${value.type || 'application/octet-stream'}\r\n\r\n`
-      parts.push(host.encodeUtf8(head), blobBytes(value), host.encodeUtf8('\r\n'))
+      parts.push(host.encodeUtf8(head), value, host.encodeUtf8('\r\n'))
     } else parts.push(host.encodeUtf8(`${head}\r\n\r\n${String(value).replace(/\r?\n|\r/g, '\r\n')}\r\n`))
   }
   parts.push(host.encodeUtf8(`--${boundary}--\r\n`))
-  return { bytes: concat(parts), type: `multipart/form-data; boundary=${boundary}` }
+  const whole = new Blob(parts)
+  const bytes = blobInMemory(whole)
+  return { bytes, stream: bytes ? null : whole.stream(), type: `multipart/form-data; boundary=${boundary}` }
 }
 
 export function extractBody(body: BodyInit): { bytes: Uint8Array | null; stream: ReadableStream<Uint8Array> | null; type: string | null } {
   if (body === null || body === undefined) return { bytes: null, stream: null, type: null }
   if (typeof body === 'string') return { bytes: host.encodeUtf8(body), stream: null, type: 'text/plain;charset=UTF-8' }
-  if (body instanceof Blob) return { bytes: blobBytes(body), stream: null, type: body.type || null }
+  if (body instanceof Blob) {
+    const bytes = blobInMemory(body)
+    return { bytes, stream: bytes ? null : body.stream(), type: body.type || null }
+  }
   if (body instanceof URLSearchParams) return { bytes: host.encodeUtf8(body.toString()), stream: null, type: 'application/x-www-form-urlencoded;charset=UTF-8' }
   if (body instanceof ReadableStream) return { bytes: null, stream: body, type: null }
-  if (isFormData(body)) {
-    const { bytes, type } = multipart(body)
-    return { bytes, stream: null, type }
-  }
+  if (isFormData(body)) return multipart(body)
   return { bytes: bytesOf(body as ArrayBuffer).slice(), stream: null, type: null }
 }
 
@@ -734,6 +747,24 @@ export async function scriptSource(url: string): Promise<string> {
   return response.text()
 }
 
+function fetchObject(request: Request, blob: Blob, signal: SignalLike | null): Promise<Response> {
+  const headers: Header[] = [['content-length', String(blob.size)], ['content-type', blob.type]]
+  const tracked = Tracked.start('fetch', request.method, request.url, 0, false, request.headers)
+  return new Promise((resolve, reject) => {
+    host.setTimer(0, () => {
+      if (signal?.aborted) {
+        tracked?.error('aborted')
+        return reject(aborted(signal))
+      }
+      tracked?.response(200, 'OK', headers)
+      tracked?.end(blob.size)
+      const response = new Response(request.method === 'HEAD' ? null : blob, { status: 200, statusText: 'OK', headers })
+      response.url = request.url
+      resolve(response)
+    })
+  })
+}
+
 function fetchMocked(request: Request, mock: MockReply, signal: SignalLike | null): Promise<Response> {
   const tracked = Tracked.start('fetch', request.method, request.url, 0, true, request.headers)
   return new Promise((resolve, reject) => {
@@ -768,6 +799,8 @@ export function fetch(input: string | URL | Request, init?: RequestInit): Promis
   if (signal?.aborted) return Promise.reject(aborted(signal))
   const mock = mocked('fetch', request.method, request.url)
   if (mock) return fetchMocked(request, mock, signal)
+  const onDemand = onDemandObject(request.url)
+  if (onDemand) return fetchObject(request, onDemand, signal)
   const routed = route(request.url, request.method)
   if (routed && 'target' in routed) return fetchBackend(request, routed.target, signal)
   const tracked = Tracked.start('fetch', request.method, request.url, 0, false, request.headers)

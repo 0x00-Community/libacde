@@ -158,8 +158,15 @@ Windows 的 `XDG_DESKTOP_DIR` 和 `XDG_DOWNLOAD_DIR` 支持盘符绝对路径及
 
 **大文件** (#75, runtime `fs/ranged.rs`): `readText` / `readBytes` / `writeFile` 和整读整写仍限 64 MiB. 更大的文件主路径是标准接口:
 句柄的 `getFile()` 超过 64 MiB 时给按需读的 `File` (acde-dom `core/blob.ts` `RangedSource`), `slice()` 不读, `stream()` 每次读 4 MiB,
-`text()` / `arrayBuffer()` 才整读; 打开时记下 `version`, 之后文件变了读是 `NotReadableError` (同 Chromium). 按需读的 `Blob` 在同步用到字节的地方
-(`structuredClone` / `postMessage`、`fetch` / XHR 的请求体、表单的 multipart、`blob:` URL、IndexedDB、WebSocket 发送) 是 `NotReadableError`, `FileReader` 照常.
+`text()` / `arrayBuffer()` 才整读; 打开时记下 `version`, 之后文件变了读是 `NotReadableError` (同 Chromium). 按需读的 `Blob` (和它的 `slice()`) 照标准
+是任何地方都能用的 `Blob`: `fetch` / `Request` / `Response` / XHR 的请求体 (acde-dom `net/index.ts` `extractBody` 给 `blob.stream()`, 发送前
+和别的流式请求体一样读成整块, `Content-Type` 取 `blob.type`, 长度由传输按字节数给), 表单的 multipart (`multipart` 把各段拼成一个 `Blob`,
+全在内存时照旧一块字节, 否则给它的流), `blob:` URL 的 `fetch` (`fetchObject`: 响应体是 `blob.stream()`, `Content-Length` 是 `size`,
+`Content-Type` 是 `type`)、异步 XHR 和图片 / 样式 / 字体资源 (`resources.ts` `loadResource`, 先整读), WebSocket 的 `send(blob)` (`websocket.ts`:
+读完才发, 之后的 `send` 排在它后面按顺序发, 排队的字节计入 `bufferedAmount`、发出去再减; 排队时 `close()` 的关闭帧也排在后面; 读失败时连接失败,
+`error` + `close` 1006, 排队的都丢掉), `FileReader` 照常. 还是 `NotReadableError` 的 (要同步拿到字节的): `structuredClone` / `postMessage` /
+`history.pushState` 的状态 (整个值经 v8 的 ValueSerializer 同步序列化)、存进 IndexedDB、同步 XHR 和 `blob:` 的模块脚本 / `importScripts`
+(同步取文字, `inline` 只认内存里的 `Blob`; 取不到时按取不到报, 不是 `NotReadableError`).
 `createWritable()` 开一个写入 (`keepExistingData` 先把原内容复制进去), `write` 按位置写进同一文件夹的临时文件 (`.<名字>.<uuid>.acde-part`,
 每块最多 16 MiB, 大的数据和按需读的 `Blob` 分块写), `seek` 只移位置, `truncate` 截断或补零, `close()` 提交: fsync 后和 `writeFile` 一样原子替换
 (unix 保留权限和属主, Windows 保留属性和创建时间; 原来没有这个文件时不覆盖地改名), `abort()` 删掉临时文件. 写的位置超过当前长度时中间补零, 同
