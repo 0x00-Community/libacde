@@ -5,8 +5,9 @@
 - **渲染 (会话)**: 每个 web 一个 xdg_toplevel, 自己光栅化 (acdebin-system 的 `crates/paint`, 三块轮转的 GBM 画布, 见它的 `docs/window-paint.md`), 经 linux-dmabuf 交给合成器. 窗口 id:
   桌面 0, web 窗口从 `1<<20` 起 (Broker 发), 和原生窗口同一空间. 应用窗口先是居中的 `free` 窗口, 页面尺寸是清单的 `size` (默认 800x600),
   Broker `grant` 时加上窗框的高 (`Frame.windowSize`), 整个窗口不超过屏幕.
-- **输入**: 合成器按 z 找到指针下的窗口; acdebin-system 的 `crates/window` 转成 shell 事件; 滚轮的默认滚动和 :hover 在 render 线程上. pointermove 对齐到帧
-  (acde-host `host.ts`: 只留最新的, 下一个 `frame` 或别的事件前才派发).
+- **输入**: 合成器按 z 找到指针下的窗口; acdebin-system 的 `crates/window` 转成 shell 事件; 滚轮的默认滚动、:hover 和光标在 render 线程上. pointermove 对齐到帧
+  (acde-host `host.ts`: 两次派发之间的样本都留着, 下一个 `frame` 或别的事件前派发一次, 最后一个样本是派发的事件, 全部样本给
+  `getCoalescedEvents()`, 见 `docs/web/web-apps.md`「指针事件」; model 的 `Inbox` 也不再合并移动).
 - **记住位置** (`src/places.ts`): 窗口没了时合成器发 `windowgone`, Broker 按应用 id 记最后的 rect (全屏的记进全屏之前的) 到
   `$XDG_STATE_HOME/acde/windows.json` (`ACDE_STORAGE` 为空时只在内存); 下次打开且没有别的窗口开着时摆回 (露出屏幕不到 48 像素或标题栏
   在屏幕上沿之外时照旧居中). 只有桌面能隐藏 / 显示 / 提前 (`acde.windows.hide` / `show` / `focus`); 应用的 `minimize` 由运行时最小化 (见 `docs/runtime/window-model.md`「窗口状态」;

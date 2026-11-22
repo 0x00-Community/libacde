@@ -140,9 +140,15 @@ fn pump(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::
         crate::host::picker::note_drop(event.files.as_deref().unwrap_or_default());
     }
     traced(&events);
+    let shift = crate::log::now_ms() - rt::current().now();
     let list = v8::Array::new(scope, events.len() as i32);
     for (i, event) in events.into_iter().enumerate() {
+        let stamp = event.stamp;
         let event = event_object(scope, event);
+        if let Some(stamp) = stamp {
+            let stamp = v8::Number::new(scope, stamp - shift);
+            bind::set(scope, event, "stamp", stamp.into());
+        }
         list.set_index(scope, i as u32, event.into());
     }
     rv.set(list.into());

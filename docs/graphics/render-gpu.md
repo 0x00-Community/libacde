@@ -18,7 +18,10 @@
   `engine/highlight.rs`): 每帧按当时的布局在整页 (含选项列表) 之上画这个元素的 margin / border / padding / content 四块 (CSS 像素的
   `getBoundingClientRect` 当 border 盒, 按 taffy 的 margin / border / padding 宽度外扩内缩, 颜色是 Chrome 的默认半透明配色), 所以滚动、
   缩放和布局变化都跟着走; 元素不在文档里、`display: none` 或不是元素时不画. 改了就标脏并叫醒出帧线程, 不需要 `Dom::commit`. `scroll_at` 落在打开的列表上时滚列表, 落在外面先关掉它.
-- 出帧 (物理像素): `RenderHandle {tick(now_ms), frame(), scroll_at, pointer, commit, invalidate, set_waker}`. CSS 动画的时钟是单调墙上时间,
+- 光标: `RenderHandle::on_cursor(listener)` (`CursorListener`, `Fn(&'static str)`): 指针下的光标变了时在 render 线程上调, 值是 CSS 的关键字
+  (`auto` 已经定成 `default` / `text` / `pointer`, 见 `docs/web/web-apps.md`「光标」); 装上时已经有值就先调一次. `Engine` 在每次 `pointer`
+  和每次重算 (`resolved` 里真的 resolve 了) 之后取一次, 出帧线程每轮末尾比较, 变了才调.
+- 出帧 (物理像素): `RenderHandle {tick(now_ms), frame(), scroll_at, pointer, commit, invalidate, set_waker, on_cursor}`. CSS 动画的时钟是单调墙上时间,
   tick 只对齐到 vblank. 脚本的一个任务里 (从任务里第一次经 `Dom` 读写引擎到任务末的 `Dom::commit`) 动画时钟不走: 任务里第一次重算记下当时的时间,
   之后这个任务里的重算都用它 (照 HTML, 文档时间线只在「更新渲染」时前进; 不然一个任务里先起的动画到后面读 `getComputedStyle` 时已经多走了几十毫秒,
   WPT 插值测试的「100s 时长、-50s 延迟」会差 0.01px). 出帧线程的重算不在任务里, 照旧用墙上时间; 时间只进不退. `Frame {plane, panels, size, scale, animating, commit, trace}` (size 是物理像素, scale 是画这一帧时的缩放: 前端靠这两个认出改尺寸或缩放之前画、晚到的帧): plane 是整页 (含画布背景, 不含面板); `panels` 是

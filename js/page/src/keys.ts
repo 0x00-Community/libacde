@@ -112,7 +112,7 @@ export class ShellInput {
         const modifiers = { ...this.#mods }
         if (raw.type === 'wheel') return { type: 'wheel', target, x, y, deltaX: raw.deltaX ?? 0, deltaY: raw.deltaY ?? 0, modifiers }
         const movement = raw.type === 'pointermove' && raw.deltaX !== undefined ? ([raw.deltaX, raw.deltaY ?? 0] as const) : undefined
-        return { type: raw.type, target, x, y, button: BUTTONS[raw.button ?? 272] ?? 0, movement, modifiers }
+        return { type: raw.type, target, x, y, button: BUTTONS[raw.button ?? 272] ?? 0, movement, modifiers, time: raw.stamp }
       }
       case 'keydown':
       case 'keyup': {

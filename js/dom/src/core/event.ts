@@ -60,6 +60,8 @@ export interface EventInit {
 
 let eventTrusted: (event: Event, trusted: boolean) => void
 export let eventPath: (event: Event, full: (() => EventTarget[]) | null) => void
+export let eventTime: (event: Event, timeStamp: number) => void
+export let eventCoalesced: (event: Event, target: EventTarget) => void
 let dispatch: (target: EventTarget, event: Event) => boolean
 let invoke: (target: EventTarget, event: Event, capture: boolean) => void
 
@@ -94,6 +96,13 @@ export class Event {
   static {
     eventTrusted = (event, trusted) => {
       event.#trusted = trusted
+    }
+    eventTime = (event, timeStamp) => {
+      event.#timeStamp = timeStamp
+    }
+    eventCoalesced = (event, target) => {
+      event.#trusted = true
+      event.#target = target
     }
     eventPath = (event, full) => {
       event.#full = full

@@ -316,3 +316,45 @@ test('range inputs change their value the way the user does, past a page that tr
   web.internals.input.pointer('pointerup', 88, 8)
   assert.deepEqual(web.json('log'), ['changed:8'])
 })
+
+test('pointermove: getCoalescedEvents has every sample since the last dispatch, each with its own position, time and movement', async () => {
+  using web = await page('<!doctype html><html><body><div id="pad"></div></body></html>')
+  web.dom.boxes.set(web.internals.idOf(web.run('document.getElementById("pad")')), { x: 10, y: 20, width: 300, height: 200 })
+  web.run(`
+    globalThis.seen = []
+    const pad = document.getElementById('pad')
+    const sample = (s, e) => ({ x: s.clientX, ox: s.offsetX, t: s.timeStamp, mx: s.movementX, b: s.buttons, p: s.pressure, type: s.pointerType, same: s.target === e.target, trusted: s.isTrusted, bubbles: s.bubbles, nested: s.getCoalescedEvents().length })
+    pad.addEventListener('pointermove', (e) => seen.push({ x: e.clientX, t: e.timeStamp, mx: e.movementX, samples: e.getCoalescedEvents().map((s) => sample(s, e)) }))
+    pad.addEventListener('pointerdown', (e) => seen.push({ down: e.getCoalescedEvents().length, p: e.pressure }))
+  `)
+  type Sample = { x: number; ox: number; t: number; mx: number; b: number; p: number; type: string; same: boolean; trusted: boolean; bubbles: boolean; nested: number }
+  type Seen = { x: number; t: number; mx: number; samples: Sample[] }
+  const input = web.internals.input
+  input.pointer('pointermove', 30, 40)
+  const t0 = web.run('performance.now()') as number
+  input.pointer('pointermove', 60, 40, { time: t0 - 1, samples: [{ x: 40, y: 40, time: t0 - 10 }, { x: 50, y: 40, time: t0 - 5 }, { x: 60, y: 40, time: t0 - 1 }] })
+  const [first, moved] = web.json<Seen[]>('seen')
+  assert.deepEqual(first!.samples.map((s) => s.x), [30])
+  assert.deepEqual(moved!.samples.map((s) => [s.x, s.ox, s.mx, s.b, s.p, s.type, s.same, s.trusted, s.bubbles, s.nested]), [
+    [40, 30, 10, 0, 0, 'mouse', true, true, false, 0],
+    [50, 40, 10, 0, 0, 'mouse', true, true, false, 0],
+    [60, 50, 10, 0, 0, 'mouse', true, true, false, 0],
+  ])
+  assert.deepEqual([moved!.x, moved!.mx], [60, 30])
+  for (const [i, ago] of [10, 5, 1].entries()) assert.ok(Math.abs(moved!.samples[i]!.t - (t0 - ago)) < 0.5, `sample ${i} keeps its time`)
+  assert.ok(Math.abs(moved!.t - (t0 - 1)) < 0.5, 'the dispatched event has the time of the last sample')
+
+  web.run('seen.length = 0')
+  input.pointer('pointerdown', 60, 40)
+  input.pointer('pointermove', 70, 40, { samples: [{ x: 65, y: 40 }, { x: 70, y: 40 }] })
+  const [down, drag] = web.json<[{ down: number; p: number }, Seen]>('seen')
+  assert.deepEqual([down.down, down.p], [0, 0.5])
+  assert.deepEqual(drag.samples.map((s) => [s.x, s.b, s.p]), [[65, 1, 0.5], [70, 1, 0.5]])
+  input.pointer('pointerup', 70, 40)
+
+  assert.deepEqual(web.json(`(() => {
+    const a = new PointerEvent('pointermove', { clientX: 1 }), b = new PointerEvent('pointermove', { clientX: 2 })
+    const errors = [[{}], null, 3].map((list) => { try { new PointerEvent('pointermove', { coalescedEvents: list }); return 'accepted' } catch (e) { return e.name } })
+    return [new PointerEvent('pointermove').getCoalescedEvents().length, new PointerEvent('pointermove', { coalescedEvents: [a, b] }).getCoalescedEvents().map((e) => e.clientX), new PointerEvent('pointermove').getPredictedEvents().length, errors]
+  })()`), [0, [1, 2], 0, ['TypeError', 'TypeError', 'TypeError']])
+})

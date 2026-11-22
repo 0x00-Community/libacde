@@ -305,6 +305,23 @@
     收到的消息不是 JSON 或超长时发 `messageerror`, 端口不关.
   - 全局对象上没有任何私有字段, 也没有额外的 `acde:` 模块.
 - **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`)、从文件读的页面 (`PageSource.html`) 只认 `.html` 入口 (`.xhtml` 文件不按 XML 解析)、页面按响应的字符编码解码 (现在总按 UTF-8)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、`SharedWorker` 和 Service Worker、`crypto.subtle`、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
+- **指针事件** (https://w3c.github.io/pointerevents/, acde-dom `dom/input.ts` / `dom/events.ts`, 2026-11-21): 只有鼠标: `pointerId` 1, `pointerType`
+  `'mouse'`, `isPrimary` true, `width` / `height` 1, `pressure` 按着按钮时 0.5、否则 0 (规范给鼠标的值), `tiltX` / `tiltY` / `twist` /
+  `tangentialPressure` 0. `pointermove` 按帧派发 (`docs/runtime/webs.md`「输入」), 两次派发之间宿主送来的每个位置都留着: 派发的事件是
+  最后一个样本, `getCoalescedEvents()` 按先后给出全部样本 (至少一个). 每个样本是单独的可信 `PointerEvent`: `target` 和派发的那个相同,
+  不冒泡、不可取消, 有自己的 `clientX` / `offsetX` / `movementX` / `buttons` / `pressure` / `timeStamp`, 它自己的 `getCoalescedEvents()` 为空.
+  `timeStamp` 是宿主把输入排进队列的时刻 (`Event.stamp`, src/host `webnative.rs` 的 `pump` 换成页面循环的时钟; 装了 `clock` 假时钟时按样本
+  早了多久从假时钟倒推), 派发的事件和它引起的 over / enter / click 等用最后一个样本的时刻, `pointerdown` / `pointerup` 用自己的.
+  别的指针事件 (含 down / up) 的 `getCoalescedEvents()` 为空; 页面自己 `new PointerEvent(type, {coalescedEvents, predictedEvents})` 给的就是这两个列表
+  (不是 `PointerEvent` 的序列时照 WebIDL 抛 TypeError), 没给是空的; `getPredictedEvents()` 总是空的 (不做预测, 规范允许). 宿主的队列
+  (model `Inbox`) 和页面里等帧的样本都最多留 1024 个连着的移动, 再多时最新的一个并进最后一个 (位置取新的, `deltaX` / `deltaY` 相加),
+  只有页面卡住时才会碰到. 和规范的差别 (还没改): `pointermove` 的 `button` 是 0 (规范是 -1), 没有 `pointerrawupdate`; 数位笔
+  (`pointerType: 'pen'`、压力、倾斜) 还没有: 宿主窗口见 acdev `docs/hostwin.md`「光标」后的「数位板」, 会话的 crates/window 只接 `wl_pointer`.
+- **光标** (CSS UI `cursor`, `src/render/cursor.rs`, 2026-11-21): render 取指针下的节点 (render 线程的 hover, 每次 `RenderHandle::pointer` 和每次重算样式之后)
+  最近的元素的计算值 `cursor` 的关键字; `auto` 照 CSS UI 4 定: 在链接 (`a[href]` / `area[href]` 和它们里面, 和浏览器一样) 上是 `pointer`, 在可编辑的地方 (有
+  文字输入的 input、textarea、`contenteditable` 不是 false 的, disabled 的除外) 或可选的文字 (命中在文字上, `user-select` 不是 none) 上是 `text`, 别处是
+  `default`. `url(…)` 只用后面的关键字 (图片光标还没有). 指针停着、页面改了样式或布局时也跟着变. 交给前端: `docs/graphics/render-gpu.md` 的
+  `RenderHandle::on_cursor`; 宿主窗口见 acdev `docs/hostwin.md`「光标」; 会话 (acdes 的 crates/window) 和 C 接口还没接, 一直是默认箭头.
 - **指针锁定** (https://w3c.github.io/pointerlock/, acde-dom `dom/pointerlock.ts`, 2026-11-19): `Element.requestPointerLock(options?)` 返回 promise,
   `document.pointerLockElement` / `ShadowRoot.pointerLockElement` (和 `activeElement` 一样不往影子宿主换), `document.exitPointerLock()`,
   `pointerlockchange` / `pointerlockerror` 发在 document 上 (同一个任务里先发事件再落定 promise). 拒绝: 元素不在文档里或窗口没有焦点
@@ -315,7 +332,7 @@
   surface 的 `pointerLock` (`platform::Window::pointer_lock`, 缺省 false: 会话和 C 接口没有; 宿主窗口见 acdev `docs/hostwin.md`「输入」),
   能锁时 acde-host `host.ts` 把 `env.pointerLock` 接到 `surface.lockPointer(on)` (`SurfaceCommand::PointerLock`). 宿主的回答是
   `pointerlock {code: 1 | 0, title: 'request'}` (每个请求恰好一次), 宿主收回 (Esc、失焦、焦点给了别的窗口) 是 `pointerlock {code: 0, title: 'lost'}`;
-  页面自己 `exitPointerLock` 不等回答. 锁着时 `pointermove` 带 `deltaX` / `deltaY` (按帧合并时相加) 成为 `movementX` / `movementY`, 位置停在锁定时的点,
+  页面自己 `exitPointerLock` 不等回答. 锁着时 `pointermove` 带 `deltaX` / `deltaY` 成为 `movementX` / `movementY` (每个样本是自己的, 派发的事件是一帧里的和), 位置停在锁定时的点,
   所有指针事件 (含 click、wheel) 都发给锁定的元素, 不发 over / out / enter / leave. 元素离开文档时解锁 (发 `pointerlockchange`).
 - **用户激活** (https://html.spec.whatwg.org/#user-activation, acde-dom `dom/activation.ts`): 真的输入 (acde-dom `Input`) 里按下指针按钮、按下
   Esc 以外的键时记一次激活, 在派发事件之前, 所以这次的处理函数里就有临时激活 (transient activation, 5 秒内有效, 不消耗). `navigator.userActivation`

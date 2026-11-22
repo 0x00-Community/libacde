@@ -2,6 +2,7 @@ mod canvas;
 mod capture;
 mod caret;
 mod commands;
+mod cursor;
 mod damage;
 mod decoration;
 mod dom;
@@ -236,6 +237,8 @@ const _HANDLES_ARE_SEND: () = {
 
 pub type Waker = Box<dyn Fn() + Send>;
 
+pub type CursorListener = Box<dyn Fn(&'static str) + Send>;
+
 #[derive(Default)]
 struct Slot {
     frame: Option<Frame>,
@@ -243,6 +246,12 @@ struct Slot {
     pending: bool,
     wanted: bool,
     answered: bool,
+}
+
+#[derive(Default)]
+struct CursorSlot {
+    shown: Option<&'static str>,
+    listener: Option<CursorListener>,
 }
 
 pub(crate) enum Cmd {
@@ -259,6 +268,7 @@ struct Shared {
     queued: AtomicBool,
     pings: parking_lot::Mutex<Vec<SyncSender<()>>>,
     slot: Mutex<Slot>,
+    cursor: parking_lot::Mutex<CursorSlot>,
     commits: AtomicU64,
     touched: AtomicBool,
     tasks: AtomicU64,
@@ -278,6 +288,17 @@ impl Shared {
         self.queue.lock().splice(0..0, held);
         self.queued.store(true, Ordering::Release);
         _ = wake.send(());
+    }
+
+    fn show_cursor(&self, cursor: &'static str) {
+        let mut slot = self.cursor.lock();
+        if slot.shown == Some(cursor) {
+            return;
+        }
+        slot.shown = Some(cursor);
+        if let Some(listener) = &slot.listener {
+            listener(cursor);
+        }
     }
 
     fn ping(&self, reply: SyncSender<()>, wake: &Sender<()>) {
@@ -366,6 +387,7 @@ impl Document {
                             queued: AtomicBool::new(false),
                             pings: Default::default(),
                             slot: Default::default(),
+                            cursor: Default::default(),
                             commits: AtomicU64::new(0),
                             touched: AtomicBool::new(false),
                             tasks: AtomicU64::new(0),
@@ -450,6 +472,14 @@ impl RenderHandle {
         self.shared.push(Cmd::Invalidate, &self.wake);
     }
 
+    pub fn on_cursor(&self, listener: CursorListener) {
+        let mut slot = self.shared.cursor.lock();
+        if let Some(cursor) = slot.shown {
+            listener(cursor);
+        }
+        slot.listener = Some(listener);
+    }
+
     pub fn set_waker(&self, waker: Waker) {
         if let Ok(mut slot) = self.shared.slot.lock() {
             if slot.frame.is_some() || slot.pending {
@@ -480,7 +510,9 @@ fn run(shared: &Shared, rx: &Receiver<()>) {
                 wake();
             }
         }
+        let cursor = engine.cursor;
         drop(engine);
+        shared.show_cursor(cursor);
         for ping in pings {
             _ = ping.send(());
         }

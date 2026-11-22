@@ -242,12 +242,32 @@ function targetOrigin(target: EventTarget | null, axis: 0 | 1): number {
   return r[axis]! + (m ? (axis === 0 ? m.clientLeft : m.clientTop) : 0)
 }
 
+function pointerEvents(value: unknown, member: string): readonly PointerEvent[] {
+  if (value === undefined) return []
+  const fail = (why: string) => new TypeError(`Failed to construct 'PointerEvent': Failed to read the '${member}' property from 'PointerEventInit': ${why}`)
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function') || typeof (value as Iterable<unknown>)[Symbol.iterator] !== 'function') {
+    throw fail('The provided value cannot be converted to a sequence.')
+  }
+  const list = [...(value as Iterable<unknown>)]
+  if (!list.every((event) => event instanceof PointerEvent)) throw fail("Failed to convert value to 'PointerEvent'.")
+  return list as PointerEvent[]
+}
+
 export class PointerEvent extends MouseEvent {
+  readonly #coalesced: readonly PointerEvent[]
+  readonly #predicted: readonly PointerEvent[]
+
+  constructor(type: string, init?: (EventInit & Init) | null) {
+    super(type, init)
+    this.#coalesced = pointerEvents(init?.coalescedEvents, 'coalescedEvents')
+    this.#predicted = pointerEvents(init?.predictedEvents, 'predictedEvents')
+  }
+
   getCoalescedEvents(): PointerEvent[] {
-    return [this]
+    return [...this.#coalesced]
   }
   getPredictedEvents(): PointerEvent[] {
-    return []
+    return [...this.#predicted]
   }
 }
 initFields(PointerEvent, {

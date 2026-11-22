@@ -1,4 +1,5 @@
-import { fireFromTask, type Event } from '../core/event'
+import { now as clockNow, hostTime } from '../core/clock'
+import { eventCoalesced, eventTime, fireFromTask, type Event } from '../core/event'
 import { DOMException } from '../core/exception'
 import { G, host } from '../core/host'
 import { NONE, NodeType } from '../native'
@@ -20,11 +21,20 @@ export interface Modifiers {
   readonly meta?: boolean
 }
 
+export interface PointerSample {
+  readonly x: number
+  readonly y: number
+  readonly movement?: readonly [number, number]
+  readonly time?: number
+}
+
 interface PointerOptions {
   readonly button?: number
   readonly modifiers?: Modifiers
   readonly target?: number | null
   readonly movement?: readonly [number, number]
+  readonly time?: number
+  readonly samples?: readonly PointerSample[]
 }
 
 interface KeyOptions {
@@ -63,6 +73,7 @@ export class Input {
   #lastDown = { at: 0, x: 0, y: 0, count: 0 }
   #noCompat = false
   #last = { x: 0, y: 0 }
+  #time: number | undefined
   capture: Element | null = null
   readonly selects = new SelectInput()
   readonly text = new PointerSelection()
@@ -80,7 +91,28 @@ export class Input {
   }
 
   #fire(target: Element, type: string, init: Record<string, unknown>, Kind: new (type: string, init: Record<string, unknown>) => Event = MouseEvent as never): boolean {
-    return fireFromTask(target, new Kind(type, { bubbles: true, cancelable: true, composed: true, view: G, ...init }))
+    const event = new Kind(type, { bubbles: true, cancelable: true, composed: true, view: G, ...init })
+    if (this.#time !== undefined) eventTime(event, this.#time)
+    return fireFromTask(target, event)
+  }
+
+  #coalesced(target: Element, x: number, y: number, options: PointerOptions): PointerEvent[] {
+    const samples = options.samples?.length ? options.samples : [{ x, y, movement: options.movement, time: options.time }]
+    let { x: px, y: py } = this.#last
+    return samples.map((sample) => {
+      const movement = sample.movement ?? [sample.x - px, sample.y - py]
+      px = sample.x
+      py = sample.y
+      const event = new PointerEvent('pointermove', { view: G, ...this.#init(sample.x, sample.y, { ...options, movement }) })
+      eventCoalesced(event, target)
+      const time = sample.time === undefined ? this.#time : Input.#pageTime(sample.time)
+      if (time !== undefined) eventTime(event, time)
+      return event
+    })
+  }
+
+  static #pageTime(hostMs: number): number {
+    return clockNow() - Math.max(0, hostTime.now() - hostMs)
   }
 
   #init(x: number, y: number, options: PointerOptions, button = 0) {
@@ -88,8 +120,8 @@ export class Input {
     return { clientX: x, clientY: y, screenX: x, screenY: y, movementX, movementY, button, buttons: this.#buttons, pointerId: 1, pointerType: 'mouse', isPrimary: true, width: 1, height: 1, pressure: this.#buttons ? 0.5 : 0, ...mods(options.modifiers) }
   }
 
-  #pointer(target: Element, type: string, init: Record<string, unknown>, detail = 0): boolean {
-    const pointer = this.#fire(target, `pointer${type}`, init, PointerEvent as never)
+  #pointer(target: Element, type: string, init: Record<string, unknown>, detail = 0, pointerOnly: Record<string, unknown> = {}): boolean {
+    const pointer = this.#fire(target, `pointer${type}`, { ...init, ...pointerOnly }, PointerEvent as never)
     if (type === 'down') this.#noCompat = !pointer
     const mouse = this.#noCompat && (type === 'down' || type === 'up' || type === 'move') ? true : this.#fire(target, `mouse${type}`, { ...init, detail })
     if (type === 'up') this.#noCompat = false
@@ -139,9 +171,14 @@ export class Input {
       this.#last = { x, y }
       return
     }
-    if (type === 'pointermove') this.#move(x, y, options)
-    else if (type === 'pointerdown') this.#down(x, y, options)
-    else this.#up(x, y, options)
+    this.#time = options.time === undefined ? undefined : Input.#pageTime(options.time)
+    try {
+      if (type === 'pointermove') this.#move(x, y, options)
+      else if (type === 'pointerdown') this.#down(x, y, options)
+      else this.#up(x, y, options)
+    } finally {
+      this.#time = undefined
+    }
     this.#last = { x, y }
   }
 
@@ -149,7 +186,7 @@ export class Input {
     const target = this.elementAt(options.target, x, y)
     const init = this.#init(x, y, options)
     this.#hoverTo(this.capture ? this.elementAt(options.target, x, y, true) : target, init)
-    if (this.#pointer(target, 'move', init) && this.#buttons & 1) {
+    if (this.#pointer(target, 'move', init, 0, { coalescedEvents: this.#coalesced(target, x, y, options) }) && this.#buttons & 1) {
       if (this.text.dragging) this.text.move(x, y)
       if (this.ranges.dragging) this.ranges.move(x)
     }

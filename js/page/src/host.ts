@@ -24,6 +24,7 @@ export class Host {
     ['permissionanswered', ['permissions:answered']],
   ])
   static readonly #WINDOW_EVENTS = new Set<string>(WINDOW_EVENTS)
+  static readonly MOVES_KEPT = 1024
   readonly #page: WebInternals
   readonly #dom: DomNative
   readonly #shellInput: ShellInput
@@ -35,7 +36,7 @@ export class Host {
   #surface: NativeSurface | null = null
   #closed = false
   #buttons = 0
-  #move: RawShellEvent | null = null
+  #moves: RawShellEvent[] = []
   onActivation: (active: boolean) => void = () => {}
   onPanelMove: (id: number, extent: readonly [number, number, number, number]) => void = () => {}
   onPanelEnded: (id: number, why: 'parent-closed' | 'refused') => void = () => {}
@@ -157,7 +158,7 @@ export class Host {
       case 'pointermove': {
         const over = () => input.elementAt(event.target, event.x, event.y, true) as unknown as Element
         if ((this.#buttons & 1 || this.#drag.active) && this.#drag.move(over(), event.x, event.y, (source) => this.#cancelPointer(source))) return
-        return input.pointer('pointermove', event.x, event.y, { target: event.target, modifiers: event.modifiers, movement: event.movement })
+        return input.pointer('pointermove', event.x, event.y, { target: event.target, modifiers: event.modifiers, movement: event.movement, time: event.time, samples: event.samples })
       }
       case 'pointerdown': {
         const button = event.button ?? 0
@@ -166,7 +167,7 @@ export class Host {
           this.#buttons = 0
         }
         this.#buttons |= 1 << button
-        input.pointer('pointerdown', event.x, event.y, { target: event.target, button, modifiers: event.modifiers })
+        input.pointer('pointerdown', event.x, event.y, { target: event.target, button, modifiers: event.modifiers, time: event.time })
         if (button === 0) this.#drag.press(input.elementAt(event.target, event.x, event.y, true) as unknown as Element, event.x, event.y)
         return
       }
@@ -174,7 +175,7 @@ export class Host {
         const button = event.button ?? 0
         this.#buttons &= ~(1 << button)
         if (button === 0 && this.#drag.release(input.elementAt(event.target, event.x, event.y, true) as unknown as Element, event.x, event.y)) return
-        return input.pointer('pointerup', event.x, event.y, { target: event.target, button, modifiers: event.modifiers })
+        return input.pointer('pointerup', event.x, event.y, { target: event.target, button, modifiers: event.modifiers, time: event.time })
       }
       case 'pointerleave':
         if (this.#buttons || this.#drag.active) return
@@ -309,9 +310,12 @@ export class Host {
           continue
         }
         if (raw.type === 'pointermove') {
-          const last = this.#move
-          if (!last) surface.requestFrame()
-          this.#move = last && raw.deltaX !== undefined && last.deltaX !== undefined ? { ...raw, deltaX: last.deltaX + raw.deltaX, deltaY: (last.deltaY ?? 0) + (raw.deltaY ?? 0) } : raw
+          const moves = this.#moves
+          if (!moves.length) surface.requestFrame()
+          const last = moves[moves.length - 1]
+          if (last && moves.length >= Host.MOVES_KEPT) {
+            moves[moves.length - 1] = last.deltaX !== undefined && raw.deltaX !== undefined ? { ...raw, deltaX: last.deltaX + raw.deltaX, deltaY: (last.deltaY ?? 0) + (raw.deltaY ?? 0) } : raw
+          } else moves.push(raw)
           continue
         }
         this.#flushMove(events)
@@ -323,11 +327,16 @@ export class Host {
   }
 
   #flushMove(events: ShellEvent[]): void {
-    const move = this.#move
-    if (!move) return
-    this.#move = null
-    const event = this.#shellInput.normalize(move)
-    if (event) events.push(event)
+    const moves = this.#moves
+    if (!moves.length) return
+    this.#moves = []
+    const last = moves[moves.length - 1]!
+    const deltas = moves.filter((m) => m.deltaX !== undefined)
+    const merged = deltas.length && last.deltaX !== undefined ? { ...last, deltaX: deltas.reduce((sum, m) => sum + m.deltaX!, 0), deltaY: deltas.reduce((sum, m) => sum + (m.deltaY ?? 0), 0) } : last
+    const event = this.#shellInput.normalize(merged)
+    if (event?.type !== 'pointermove') return
+    const samples = moves.map((m) => ({ x: m.x ?? 0, y: m.y ?? 0, movement: m.deltaX === undefined ? undefined : ([m.deltaX, m.deltaY ?? 0] as const), time: m.stamp }))
+    events.push({ ...event, samples })
   }
 
   close(): void {

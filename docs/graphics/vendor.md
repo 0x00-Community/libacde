@@ -80,6 +80,7 @@ blitz fork 和上游结构的不同: HTML 解析用 src/render 自己的 html5ev
 | `stylo.rs`, `layout/construct.rs`, `node/text.rs` | placeholder 排版, `::placeholder` 按需计算 |
 | `config.rs` `default_lang`, `tree.rs`, `document.rs`, `iframe.rs`, `stylo.rs` | 根没有 lang 时用默认语言 (-x-lang 继承, 传给 parley) |
 | `node/node.rs` `hit_inner` | transform 不可逆的元素命中不到 |
+| `document.rs` `hover_is_text`, `refresh_hover` | 不给 shell 发光标 (上游 `get_cursor` / `set_cursor` 去掉了); 公开 hover 是不是命中在文字上, render (`src/render/cursor.rs`) 据此定 `cursor: auto` |
 | `config.rs` `skip_iframe_content`, `mutator.rs` `load_iframe` | `<iframe>` 不加载 |
 | `document.rs` `set_canvas_picture` / `layout_canvas_text` | 存 `<canvas>` 的 2D 图; canvas 的文字排版 |
 | `node/element.rs` `paint_epoch` / `repaint`, `node/text.rs` `generation`, `layout/list.rs` | 绘制缓存用的代数 |

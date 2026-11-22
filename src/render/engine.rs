@@ -55,6 +55,7 @@ pub(crate) struct Engine {
     pub(crate) trace: Option<crate::log::Trace>,
     pub(crate) input: Option<crate::log::Trace>,
     pub(crate) held: Vec<crate::render::Cmd>,
+    pub(crate) cursor: &'static str,
 }
 
 unsafe impl Send for Engine {}
@@ -104,6 +105,7 @@ impl Engine {
             trace: None,
             input: None,
             held: Vec::new(),
+            cursor: "default",
         };
         let document = this.doc.root_node().id;
         {
@@ -401,6 +403,7 @@ impl Engine {
         if self.doc.set_hover_to(x / scale, y / scale) {
             self.touch();
         }
+        self.cursor = crate::render::cursor::of(&self.doc);
     }
 
     fn plane(&mut self, commands: Commands, scale: f64, viewport: kurbo::Rect) -> Plane {
@@ -532,6 +535,7 @@ impl Engine {
             let start = Instant::now();
             self.resolved_at = now;
             self.doc.resolve(self.resolved_at);
+            self.cursor = crate::render::cursor::of(&self.doc);
             self.stats.resolve_ms = crate::log::since_ms(start);
             self.stats.resolve.add(self.stats.resolve_ms);
             self.stats.resolves += 1;
