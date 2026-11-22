@@ -1,4 +1,4 @@
-import { now as clockNow, hostTime } from '../core/clock'
+import { now as clockNow, hostTime, isInstalled as clockInstalled } from '../core/clock'
 import { eventCoalesced, eventTime, fireFromTask, type Event } from '../core/event'
 import { DOMException } from '../core/exception'
 import { G, host } from '../core/host'
@@ -74,6 +74,7 @@ export class Input {
   #noCompat = false
   #last = { x: 0, y: 0 }
   #time: number | undefined
+  #shift = 0
   capture: Element | null = null
   readonly selects = new SelectInput()
   readonly text = new PointerSelection()
@@ -105,15 +106,12 @@ export class Input {
       py = sample.y
       const event = new PointerEvent('pointermove', { view: G, ...this.#init(sample.x, sample.y, { ...options, movement }) })
       eventCoalesced(event, target)
-      const time = sample.time === undefined ? this.#time : Input.#pageTime(sample.time)
+      const time = sample.time === undefined ? this.#time : sample.time + this.#shift
       if (time !== undefined) eventTime(event, time)
       return event
     })
   }
 
-  static #pageTime(hostMs: number): number {
-    return clockNow() - Math.max(0, hostTime.now() - hostMs)
-  }
 
   #init(x: number, y: number, options: PointerOptions, button = 0) {
     const [movementX, movementY] = options.movement ?? [x - this.#last.x, y - this.#last.y]
@@ -171,7 +169,8 @@ export class Input {
       this.#last = { x, y }
       return
     }
-    this.#time = options.time === undefined ? undefined : Input.#pageTime(options.time)
+    this.#shift = clockInstalled() ? clockNow() - hostTime.now() : 0
+    this.#time = options.time === undefined ? undefined : options.time + this.#shift
     try {
       if (type === 'pointermove') this.#move(x, y, options)
       else if (type === 'pointerdown') this.#down(x, y, options)

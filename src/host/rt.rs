@@ -131,6 +131,12 @@ impl Loop {
         self.started.elapsed().as_secs_f64() * 1000.0
     }
 
+    pub fn from_log_ms(&self, log_ms: f64) -> f64 {
+        let origin = crate::log::start();
+        let after = self.started.checked_duration_since(origin).map(|d| d.as_secs_f64() * 1000.0);
+        log_ms - after.unwrap_or_else(|| -origin.duration_since(self.started).as_secs_f64() * 1000.0)
+    }
+
     pub fn set_timer(&self, ms: f64, callback: v8::Global<v8::Function>, refed: bool) -> u32 {
         let at = Instant::now() + Duration::from_secs_f64(ms.max(0.0) / 1000.0);
         self.timers.borrow_mut().add(at, Job::Js { callback, refed })
