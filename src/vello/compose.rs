@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use super::Blur;
+use crate::gpu::glass::Glass;
 use crate::gpu::{Backdrop, Effect, Px, Shadow};
 
 #[repr(C)]
@@ -46,6 +47,7 @@ impl Params {
 }
 
 const KEEP_FRAMES: u64 = 8;
+const GLASS_TAG: u32 = 1 << 20;
 const CACHE_BYTES: u64 = 96 << 20;
 const MAX_BINDS: usize = 256;
 
@@ -60,6 +62,7 @@ enum Pipe {
     Filter,
     Clear,
     Mix,
+    Glass,
 }
 
 struct Draw<'a> {
@@ -107,7 +110,7 @@ impl Composer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("acde compose"),
-            source: wgpu::ShaderSource::Wgsl(format!("{}\n{}", crate::gpu::corner::WGSL, include_str!("compose.wgsl")).into()),
+            source: wgpu::ShaderSource::Wgsl(format!("{}\n{}\n{}", crate::gpu::corner::WGSL, crate::gpu::glass::WGSL, include_str!("compose.wgsl")).into()),
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("acde compose"),
@@ -191,6 +194,7 @@ impl Composer {
             pipeline("fs_filter", Some(over)),
             pipeline("fs_clear", None),
             pipeline("fs_up", Some(mix)),
+            pipeline("fs_glass", Some(over)),
         ];
         let stride = Params::SIZE.next_multiple_of(u64::from(device.limits().min_uniform_buffer_offset_alignment));
         Self {
@@ -478,11 +482,72 @@ impl Composer {
     }
 
     pub fn backdrop(&mut self, encoder: &mut wgpu::CommandEncoder, canvas: &wgpu::TextureView, b: &Backdrop) {
+        if let Some(glass) = b.glass {
+            return self.glass(encoder, canvas, b, &glass);
+        }
         let Some(region) = Self::region(b.rect, canvas.texture().size()) else { return };
         let blurred = self.blur(encoder, canvas.texture(), region, b.effect.blur);
         let (matrix, bias) = b.effect.columns();
         let params = Params { rect: b.rect, radius: b.radius, exponent: b.exponent, matrix, bias, ..Default::default() };
         self.pass(encoder, canvas, false, &[Draw { pipe: Pipe::Backdrop, src: &blurred, params, scissor: Some(region), mix: None }]);
+    }
+
+    fn glass(&mut self, encoder: &mut wgpu::CommandEncoder, canvas: &wgpu::TextureView, b: &Backdrop, glass: &Glass) {
+        let reach = glass.reach() as f32;
+        let outer = [b.rect[0] - reach, b.rect[1] - reach, b.rect[2] + 2.0 * reach, b.rect[3] + 2.0 * reach];
+        let Some(region) = Self::region(outer, canvas.texture().size()) else { return };
+        let [x, y, w, h] = region;
+        let mixed = self.mixed_blurs(encoder, canvas, region, glass, b.effect.blur);
+        let filtered = self.textures(w, h, 0, GLASS_TAG + 8).swap_remove(0);
+        let (matrix, bias) = b.effect.columns();
+        let params = Params { rect: [0.0, 0.0, w as f32, h as f32], matrix, bias, ..Default::default() };
+        self.pass(encoder, &filtered, true, &[Draw { pipe: Pipe::Filter, src: &mixed, params, scissor: None, mix: None }]);
+        let (r, bleed, light) = (glass.refraction, glass.bleed, glass.highlight);
+        let matrix = [
+            r.inner_amount,
+            r.inner_height,
+            r.outer_amount,
+            r.outer_height,
+            bleed.amount,
+            bleed.radius,
+            bleed.opacity,
+            light.angle,
+            light.amount,
+            glass.white_point,
+            glass.smoothing,
+            r.inner_height,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        ];
+        let bias = [x as f32, y as f32, w as f32, h as f32];
+        let params = Params { rect: b.rect, radius: b.radius, exponent: b.exponent, color: glass.tint, matrix, bias, ..Default::default() };
+        self.pass(encoder, canvas, false, &[Draw { pipe: Pipe::Glass, src: &filtered, params, scissor: Some(region), mix: None }]);
+    }
+
+    fn mixed_blurs(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        canvas: &wgpu::TextureView,
+        region: [u32; 4],
+        glass: &Glass,
+        fallback: f32,
+    ) -> wgpu::TextureView {
+        let [_, _, w, h] = region;
+        let mixed = self.textures(w, h, 0, GLASS_TAG).swap_remove(0);
+        let layers: Vec<(usize, f32, f32)> = glass.blur.iter().enumerate().filter(|(_, l)| l.opacity > 0.0).map(|(i, l)| (i, l.radius, l.opacity)).collect();
+        let layers = if layers.is_empty() { vec![(0, fallback, 1.0)] } else { layers };
+        let mut total = 0.0;
+        for (n, (i, radius, opacity)) in layers.into_iter().enumerate() {
+            let blurred = self.blur_tagged(encoder, canvas.texture(), region, radius, GLASS_TAG + 1 + i as u32);
+            total += opacity;
+            let texel = [1.0 / w as f32, 1.0 / h as f32];
+            let params = Params { texel, offset: 0.0, ..Default::default() };
+            let (pipe, mix) = if n == 0 { (Pipe::Up, None) } else { (Pipe::Mix, Some(opacity / total)) };
+            self.pass(encoder, &mixed, n == 0, &[Draw { pipe, src: &blurred, params, scissor: None, mix }]);
+        }
+        mixed
     }
 
     pub fn shadow(&mut self, encoder: &mut wgpu::CommandEncoder, canvas: &wgpu::TextureView, s: &Shadow, [x, y, w, h]: [u32; 4], at: [u32; 2], clip: [u32; 4]) {

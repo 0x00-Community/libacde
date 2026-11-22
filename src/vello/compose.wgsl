@@ -79,6 +79,29 @@ fn fs_backdrop(in: VsOut) -> @location(0) vec4<f32> {
 }
 
 @fragment
+fn fs_glass(in: VsOut) -> @location(0) vec4<f32> {
+    let px = in.pos.xy;
+    let half = params.rect.zw * 0.5;
+    let p = px - params.rect.xy - half;
+    let d = acde_corner_distance(p, half, min(params.radius, min(half.x, half.y)), params.exponent);
+    let refraction = params.matrix[0];
+    let g1 = params.matrix[1];
+    let g2 = params.matrix[2];
+    let region = params.bias;
+    let at = px + acde_glass_offset(p, half, d, refraction);
+    let under = textureSample(src, samp, clamp((at - region.xy) / region.zw, vec2<f32>(0.0), vec2<f32>(1.0)));
+    let inside = acde_glass_inside(d, g2.z);
+    if inside <= 0.0 {
+        return under * acde_glass_bleed(d, g1.xyz);
+    }
+    let straight = select(vec3<f32>(0.0), under.rgb / under.a, under.a > 0.0);
+    let shine = acde_glass_highlight(p, half, d, g2.w, g1.w, g2.x);
+    let rgb = acde_glass_tone(straight, g2.y, params.color, shine);
+    let alpha = max(under.a, params.color.a) * inside;
+    return vec4<f32>(rgb * alpha, alpha);
+}
+
+@fragment
 fn fs_shadow(in: VsOut) -> @location(0) vec4<f32> {
     let local = (in.pos.xy - params.shift - params.rect.xy) / params.rect.zw;
     if any(local < vec2<f32>(0.0)) || any(local > vec2<f32>(1.0)) {
