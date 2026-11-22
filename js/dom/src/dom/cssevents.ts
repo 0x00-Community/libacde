@@ -15,6 +15,7 @@ let wake = (): void => {}
 hooks.listen = (type) => {
   if (listened || !TYPES.has(type.toLowerCase())) return
   listened = true
+  dom.wantAnimationEvents()
   wake()
 }
 

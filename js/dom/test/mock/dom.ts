@@ -715,6 +715,8 @@ export class MockDom implements DomNative {
     this.openStates.set(id, { modal, open })
   }
 
+  wantAnimationEvents(): void {}
+
   takeAnimationEvents(): AnimationEvents {
     return { animating: false, events: this.animationEvents.splice(0) }
   }

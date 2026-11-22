@@ -706,6 +706,7 @@ natives! {
     "takeScrolled" => fn take_scrolled(scope, args, dom) { Ok(Ids(dom.take_scrolled())) }
     "imageState" => fn image_state(scope, args, dom) { let id = id(scope, &args, 0); dom.image_state(id).map(|s| Floats(s.to_vec())) }
     "takeLoaded" => fn take_loaded(scope, args, dom) { Ok(Ids(dom.take_loaded())) }
+    "wantAnimationEvents" => fn want_animation_events(scope, args, dom) { dom.want_animation_events() }
     "takeAnimationEvents" => fn take_animation_events(scope, args, dom) { Ok(dom.take_animation_events()) }
     "sheetState" => fn sheet_state(scope, args, dom) { let id = id(scope, &args, 0); dom.sheet_state(id).map(f64::from) }
     "sheetUrl" => fn sheet_url(scope, args, dom) { let id = id(scope, &args, 0); dom.sheet_url(id) }

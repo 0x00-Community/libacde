@@ -233,6 +233,15 @@ impl Dom {
         self.read(|e| Ok(e.take_loaded())).unwrap_or_default()
     }
 
+    /// The page listens for CSS animation and transition events: from now on the engine keeps them
+    /// for `take_animation_events`
+    pub fn want_animation_events(&self) -> Result<()> {
+        self.read(|e| {
+            e.doc.want_animation_events();
+            Ok(())
+        })
+    }
+
     pub fn take_animation_events(&self) -> AnimationEvents {
         self.read(|e| Ok(e.take_animation_events())).unwrap_or_default()
     }
