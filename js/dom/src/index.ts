@@ -303,7 +303,7 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
       moved()
       try {
         deliverScrolls()
-        if (!gpuFrames.behind()) runAnimationFrames(clockNow(), report)
+        if (!gpuFrames.behind() && !documentState.hidden) runAnimationFrames(clockNow(), report)
         deliverObservations()
         animating = deliverCssEvents()
       } catch (error) {
@@ -317,7 +317,7 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
       gpuContexts.present()
       frameVersion = version
       dom.commit()
-      if (framesPending() || loading || playing || animating) frames.request()
+      if ((framesPending() && !documentState.hidden) || loading || playing || animating) frames.request()
     },
     endTask() {
       idbTaskEnded()
@@ -350,6 +350,7 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
       if (!visible) input.selects.close()
       documentState.hidden = !visible
       fire(document, new Event('visibilitychange', { bubbles: true }))
+      if (visible && framesPending()) frames.request()
     },
     setActive(active) {
       if (focus.windowActive === active) return

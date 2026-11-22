@@ -662,6 +662,7 @@ class Launcher {
       else if (event.type === 'invoke') this.#thread?.post({ rpc: 'invoke', fn: event['fn'], args: event['args'] ?? [] })
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
       else if (event.type === 'unlend' && !this.#desktop) this.#unlend(String(event['name'] ?? ''))
+      else if (event.type === 'visibility' && !this.#desktop) void this.#rpc?.call('window', 'visible', [event['visible'] === true]).catch(() => undefined)
       else if (event.type === 'menuinvoke' && !this.#desktop) void this.#rpc?.call('window', 'menu', [event['menu'], event['item']]).catch(() => undefined)
       else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event as ShellEvent))
     }
