@@ -51,6 +51,12 @@
   混合 (第 i 层的权重是它的不透明度除以已混合各层之和), 再过一遍 `backdrop-filter` 的颜色矩阵 (`Pipe::Filter`), 最后 `fs_glass` 逐像素做折射取样、高光、白点、
   着色、平滑边缘和渗出; 着色器拼的是 acde-scene 的 `corner::WGSL` 和 `glass::WGSL`, 和合成器同一份函数. 参数经 `Params`: 矩阵前三列放折射、渗出与高光、
   白点与平滑, `bias` 是取样区域, `color` 是着色.
+  预设表 (通透度档位, 2026-11-22, 总仓 `.scratch/libacde/glass-transparency-plan.md`; `glass/preset.rs`, 参数表只此一份): `Glass::preset(Role, Level)`,
+  `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0, 参数取样张 clear-2)、`Medium` (适中, 1, clear-3)、`Tinted`
+  (着色, 2, regular-2)、`Opaque` (减少透明度, 3: 重模糊加接近不透明的着色, `Glass::opaque(dark)` 按深浅给色, 预设取浅色). 名字和线上值都在 `Level`
+  (`parse` / `from_wire` / `to_wire`, 照 `motion::Preset`), 认不得的线上值当通透. regular 取当前档, clear 再通透一档 (`Level::clearer`, 到通透为止,
+  不透明不变). 高光各档一律 `330deg 0.5` (强度待用户在 0.5、0.35、0.2 里定). `Glass::from_properties_at(level, …)` 按档位取预设再盖分项;
+  `from_properties` 是默认档 (通透).
   玻璃组 (融合, 2026-11-22, 总仓 `.scratch/libacde/glass-merge-plan.md`; `acde_scene::glass::group`): `GlassGroup` 是最多 `MOST_PIECES` (16) 块
   `Piece {center, half, radius, exponent, glass}` 加间距 `spacing`, 满了 `push` 回 false (调用方让多出的块不参加融合, 各画各的, 记一次 warn).
   各块的距离场按 Inigo Quilez 的多项式平滑最小值合成 (https://iquilezles.org/articles/smin/ , `h = clamp(0.5 + 0.5 (d − dᵢ) / k)`,

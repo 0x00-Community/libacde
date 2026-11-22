@@ -231,9 +231,10 @@ mod tests {
     use super::*;
     use crate::blur::channels;
     use crate::corner::Corners;
+    use crate::glass::{Level, Role};
 
     fn regular() -> Glass {
-        Glass::preset("regular").unwrap()
+        Glass::preset(Role::Regular, Level::Tinted)
     }
 
     fn ground(width: usize, height: usize) -> Pixels {

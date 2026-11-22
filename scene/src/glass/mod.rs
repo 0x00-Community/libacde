@@ -2,6 +2,9 @@ use crate::blur::{Pixels, blur, channels, pack};
 use crate::corner::{self, Corners};
 
 pub mod group;
+mod preset;
+
+pub use preset::{Level, Role};
 
 pub const WGSL: &str = include_str!("glass.wgsl");
 
@@ -48,38 +51,17 @@ pub struct Glass {
 }
 
 impl Glass {
-    pub fn preset(name: &str) -> Option<Self> {
-        let layers = |pairs: [(f32, f32); LAYERS]| pairs.map(|(radius, opacity)| BlurLayer { radius, opacity });
-        match name {
-            "regular" => Some(Self {
-                refraction: Refraction { inner_amount: 0.5, inner_height: 12.0, outer_amount: 0.2, outer_height: 20.0 },
-                blur: layers([(2.0, 1.0), (6.0, 0.8), (12.0, 0.6), (24.0, 0.4), (40.0, 0.2)]),
-                bleed: Bleed { amount: 0.3, radius: 16.0, opacity: 0.4 },
-                highlight: Highlight { angle: 315f32.to_radians(), amount: 0.6 },
-                white_point: 0.06,
-                smoothing: 0.5,
-                tint: [1.0, 1.0, 1.0, 0.1],
-            }),
-            "clear" => Some(Self {
-                refraction: Refraction { inner_amount: 0.7, inner_height: 14.0, outer_amount: 0.3, outer_height: 24.0 },
-                blur: layers([(1.0, 1.0), (3.0, 0.5), (6.0, 0.3), (0.0, 0.0), (0.0, 0.0)]),
-                bleed: Bleed { amount: 0.2, radius: 12.0, opacity: 0.3 },
-                highlight: Highlight { angle: 315f32.to_radians(), amount: 0.8 },
-                white_point: 0.02,
-                smoothing: 0.4,
-                tint: [1.0, 1.0, 1.0, 0.04],
-            }),
-            _ => None,
-        }
+    pub fn from_properties(property: impl Fn(&str) -> Option<String>, warn: impl Fn(String)) -> Option<Self> {
+        Self::from_properties_at(Level::default(), property, warn)
     }
 
-    pub fn from_properties(property: impl Fn(&str) -> Option<String>, warn: impl Fn(String)) -> Option<Self> {
+    pub fn from_properties_at(level: Level, property: impl Fn(&str) -> Option<String>, warn: impl Fn(String)) -> Option<Self> {
         let name = property("acde-glass")?;
         let name = name.trim();
         if name == "none" || name.is_empty() {
             return None;
         }
-        let Some(mut glass) = Self::preset(name) else {
+        let Some(mut glass) = Role::parse(name).map(|role| Self::preset(role, level)) else {
             warn(format!("--acde-glass: no glass called {name:?} (none, regular, clear)"));
             return None;
         };
@@ -418,7 +400,7 @@ mod tests {
         assert_eq!(glass.blur[2], BlurLayer::default());
         assert!((glass.highlight.angle - core::f32::consts::FRAC_PI_2).abs() < 1e-6);
         assert_eq!(glass.tint[3], 0.5);
-        assert_eq!(glass.bleed, Glass::preset("regular").unwrap().bleed);
+        assert_eq!(glass.bleed, Glass::preset(Role::Regular, Level::Clear).bleed);
     }
 
     #[test]
@@ -435,13 +417,13 @@ mod tests {
         let warned = std::cell::Cell::new(0);
         let given = [("acde-glass", "clear"), ("acde-glass-refraction", "0.6 14em 0.2 2px")];
         let glass = Glass::from_properties(properties(&given), |_| warned.set(warned.get() + 1)).unwrap();
-        assert_eq!(glass.refraction, Glass::preset("clear").unwrap().refraction);
+        assert_eq!(glass.refraction, Glass::preset(Role::Clear, Level::Clear).refraction);
         assert_eq!(warned.get(), 1);
     }
 
     #[test]
     fn the_wire_round_trips_and_is_forgiving() {
-        let glass = Glass::preset("regular").unwrap();
+        let glass = Glass::preset(Role::Regular, Level::Tinted);
         let wire = glass.to_wire();
         assert_eq!(wire.len(), WIRE_FLOATS * 4);
         assert_eq!(Glass::from_wire(&wire), glass);
@@ -456,11 +438,11 @@ mod tests {
 
     #[test]
     fn scaled_and_reach() {
-        let glass = Glass::preset("regular").unwrap();
+        let glass = Glass::preset(Role::Regular, Level::Tinted);
         let twice = glass.scaled(2.0);
         assert_eq!(twice.refraction.outer_height, 40.0);
-        assert_eq!(twice.blur[4].radius, 80.0);
-        assert_eq!(glass.reach(), 120.0);
+        assert_eq!(twice.blur[4].radius, 112.0);
+        assert_eq!(glass.reach(), 168.0);
     }
 
     #[test]
@@ -469,14 +451,14 @@ mod tests {
         let half_white = 0x8080_8080;
         let source = Pixels { width: 40, height: 30, data: vec![half_white; 40 * 30] };
         let corners = Corners { radius: 0.0, exponent: 2.0 };
-        let out = cpu::paint(&source, margin, corners, &Glass::preset("regular").unwrap());
+        let out = cpu::paint(&source, margin, corners, &Glass::preset(Role::Regular, Level::Tinted));
         let [a, r, ..] = channels(out.data[15 * 40 + 2]);
         assert!(a > 0 && r <= a, "premultiplied: colour {r} within alpha {a}");
     }
 
     #[test]
     fn the_cpu_glass_covers_the_area_bleeds_near_it_and_leaves_the_far_corner_out() {
-        let glass = Glass::preset("regular").unwrap();
+        let glass = Glass::preset(Role::Regular, Level::Tinted);
         let margin = 24;
         assert!(margin as f32 > glass.bleed.radius, "the margin reaches past the bleed");
         let (width, height) = (80, 70);
@@ -499,7 +481,7 @@ mod tests {
 
     #[test]
     fn the_highlight_angle_is_where_the_light_comes_from_as_in_css() {
-        let glass = Glass { highlight: Highlight { angle: 315f32.to_radians(), amount: 1.0 }, ..Glass::preset("regular").unwrap() };
+        let glass = Glass { highlight: Highlight { angle: 315f32.to_radians(), amount: 1.0 }, ..Glass::preset(Role::Regular, Level::Tinted) };
         let margin = 24;
         let (width, height) = (96, 72);
         let source = Pixels { width, height, data: vec![0xff40_4040; width * height] };
