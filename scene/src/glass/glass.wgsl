@@ -15,7 +15,7 @@ fn acde_glass_highlight(p: vec2<f32>, half: vec2<f32>, d: f32, band: f32, angle:
     if -d > b || d > 0.0 {
         return 0.0;
     }
-    let facing = max(dot(acde_glass_normal(p, half), vec2<f32>(cos(angle), sin(angle))), 0.0);
+    let facing = max(dot(acde_glass_normal(p, half), vec2<f32>(sin(angle), -cos(angle))), 0.0);
     return facing * facing * (1.0 + d / b) * amount;
 }
 

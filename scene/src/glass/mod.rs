@@ -53,7 +53,7 @@ impl Glass {
                 refraction: Refraction { inner_amount: 0.5, inner_height: 12.0, outer_amount: 0.2, outer_height: 20.0 },
                 blur: layers([(2.0, 1.0), (6.0, 0.8), (12.0, 0.6), (24.0, 0.4), (40.0, 0.2)]),
                 bleed: Bleed { amount: 0.3, radius: 16.0, opacity: 0.4 },
-                highlight: Highlight { angle: 135f32.to_radians(), amount: 0.6 },
+                highlight: Highlight { angle: 315f32.to_radians(), amount: 0.6 },
                 white_point: 0.06,
                 smoothing: 0.5,
                 tint: [1.0, 1.0, 1.0, 0.1],
@@ -62,7 +62,7 @@ impl Glass {
                 refraction: Refraction { inner_amount: 0.7, inner_height: 14.0, outer_amount: 0.3, outer_height: 24.0 },
                 blur: layers([(1.0, 1.0), (3.0, 0.5), (6.0, 0.3), (0.0, 0.0), (0.0, 0.0)]),
                 bleed: Bleed { amount: 0.2, radius: 12.0, opacity: 0.3 },
-                highlight: Highlight { angle: 135f32.to_radians(), amount: 0.8 },
+                highlight: Highlight { angle: 315f32.to_radians(), amount: 0.8 },
                 white_point: 0.02,
                 smoothing: 0.4,
                 tint: [1.0, 1.0, 1.0, 0.04],
@@ -255,6 +255,10 @@ fn color(text: &str) -> Option<[f32; 4]> {
     if let Some(hex) = text.strip_prefix('#') {
         let byte = |i: usize| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok().map(|b| f32::from(b) / 255.0);
         return match hex.len() {
+            3 | 4 => {
+                let digit = |i: usize| u8::from_str_radix(hex.get(i..i + 1)?, 16).ok().map(|d| f32::from(d * 17) / 255.0);
+                Some([digit(0)?, digit(1)?, digit(2)?, if hex.len() == 4 { digit(3)? } else { 1.0 }])
+            }
             6 => Some([byte(0)?, byte(2)?, byte(4)?, 1.0]),
             8 => Some([byte(0)?, byte(2)?, byte(4)?, byte(6)?]),
             _ => None,
@@ -316,7 +320,7 @@ pub mod cpu {
             let angle = f64::from(glass.highlight.angle);
             Self {
                 soft: 1.0 + 4.0 * f64::from(glass.smoothing),
-                light: (angle.cos(), angle.sin()),
+                light: (angle.sin(), -angle.cos()),
                 band: f64::from(glass.refraction.inner_height.max(2.0)),
                 reach: f64::from(glass.bleed.radius.max(1.0)),
             }
@@ -457,5 +461,29 @@ mod tests {
         assert_eq!(channels(out.data[35 * width + 40])[0], 255);
         assert!(channels(out.data[35 * width + margin - 4])[0] > 0, "the bleed shows 4 px outside the edge");
         assert_eq!(channels(out.data[0])[0], 0);
+    }
+
+    #[test]
+    fn short_hex_colours_read_like_the_long_ones() {
+        assert_eq!(color("#fff0"), Some([1.0, 1.0, 1.0, 0.0]));
+        assert_eq!(color("#0f8"), color("#00ff88"));
+        assert_eq!(color("#0f88"), color("#00ff8888"));
+        assert_eq!(color("#ff"), None);
+    }
+
+    #[test]
+    fn the_highlight_angle_is_where_the_light_comes_from_as_in_css() {
+        let glass = Glass { highlight: Highlight { angle: 315f32.to_radians(), amount: 1.0 }, ..Glass::preset("regular").unwrap() };
+        let margin = 24;
+        let (width, height) = (96, 72);
+        let source = Pixels { width, height, data: vec![0xff40_4040; width * height] };
+        let out = cpu::paint(&source, margin, Corners { radius: 8.0, exponent: 2.0 }, &glass);
+        let red = |x: usize, y: usize| channels(out.data[y * width + x])[1];
+        let (top_left, bottom_right) = (red(margin + 6, margin + 6), red(width - margin - 7, height - margin - 7));
+        assert!(top_left > bottom_right, "315deg lights the top left edge: {top_left} against {bottom_right}");
+        let below = Glass { highlight: Highlight { angle: 180f32.to_radians(), amount: 1.0 }, ..glass };
+        let out = cpu::paint(&source, margin, Corners { radius: 8.0, exponent: 2.0 }, &below);
+        let red = |x: usize, y: usize| channels(out.data[y * width + x])[1];
+        assert!(red(width / 2, height - margin - 2) > red(width / 2, margin + 1), "180deg lights the bottom edge");
     }
 }
