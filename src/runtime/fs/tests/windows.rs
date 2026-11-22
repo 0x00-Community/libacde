@@ -11,7 +11,7 @@ impl Scratch {
         let path = std::env::temp_dir().join(format!("acde-ws-{}", uuid::Uuid::new_v4()));
         let root = path.join("root");
         fs::create_dir_all(&root).unwrap();
-        Self { path, root: WorkspaceFs::granted(root.to_str().unwrap()) }
+        Self { path, root: WorkspaceFs::folder(root.to_str().unwrap()) }
     }
 }
 

@@ -2,9 +2,9 @@
 
 页面的 `acde:fs` 是 src/host `fs.rs` 绑的 `natives.fs`, 实现在 runtime `fs/` (`Workspace` → `WorkspaceFs`), 类型 acde-api `AcdeFs`.
 第一个参数是 root (`roots()` 里某项的 `id`; 下面按路径的根 `id` 就是 `path`), 第二个是相对路径: 绝对路径、`..` 出 root、经符号链接出 root 都拒绝 (见下「在 root 之下打开」),
-root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOWNLOAD_DIR` 或 `~/Downloads`, 存在时)、`~/agentos-work` (存在时), 加上用户授给
-这个应用的文件夹. 根列表每个 web 缓存 (#143, runtime `fs/access/cache.rs` `RootCache`, 存在 `Workspace` 上): `roots()` 每次重建并刷新缓存; 别的调用用缓存,
-授权变了 (任何应用的授予或撤销, `Grants::changes`) 或超过 2 秒就重建; 调用点名的根 (`FsCall::targets`) 在缓存里找不到时, 先重建再执行;
+root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOWNLOAD_DIR` 或 `~/Downloads`, 存在时)、`~/agentos-work` (存在时), 按路径的根
+不含借出的文件夹. 根列表每个 web 缓存 (#143, runtime `fs/access/cache.rs` `RootCache`, 存在 `Workspace` 上): `roots()` 每次重建并刷新缓存; 别的调用用缓存,
+借出变了 (任何应用的借出或收回, `Shared::changes`) 或超过 2 秒就重建; 调用点名的根 (`FsCall::targets`) 在缓存里找不到时, 先重建再执行;
 只读调用 (`FsCall::reads`) 失败后, 若缓存里的根不见了或重建结果不同, 用新列表重试一次; 写操作进了文件系统后失败不重试 (避免 copy / rename / delete 执行两次), 所以根文件夹刚被删时的写操作在缓存过期 (2 秒) 前直接报错.
 列表内容和顺序与不缓存时一致, 只省掉每次调用都查环境变量、建桌面 / 私有文件夹、对每个根 `is_dir`. Windows 上隐藏和系统属性的文件按隐藏文件算. 运行时不记 Finder 看到哪里 (`state()` / `place()` 随 #69 移除, 由文件管理器自己记).
 
@@ -12,12 +12,13 @@ root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOW
 `private` (本应用的私有数据文件夹 `$XDG_DATA_HOME/acde/files/<应用 id>`, 没设时 `$HOME/.local/share/...`, 第一次用时建), 公共位置名 (SDK `SHARED_PLACES`:
 `desktop`、`documents`、`downloads`、`music`、`pictures`、`videos`, 按 XDG 用户目录 `XDG_<名>_DIR` / `user-dirs.dirs`; Windows 没设时用对应的已知文件夹
 `SHGetKnownFolderPath`, `path.rs` `known_folder`; 解析在 `fs/workspace/userdirs.rs`, 测试里用 `ACDE_TEST_KNOWN_<名>` 代替已知文件夹;
-acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边要同时改另一边), 选择的文件夹是 `folder-<路径 SHA-256 前 16 位十六进制>` 的令牌. `fs: true` 只给 `private` 和用户选给它的文件夹;
+acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边要同时改另一边), 用户选的文件夹是借出的根, 按借出名 (`work`、`work-2`…) 当 root. `fs: true` 只给 `private` 和借给它的文件夹;
 公共位置要在 `fs.roots` 里点名 (校验器: 不是这六个名字就是错误, `agentos-work` 不算;
 末段是位置名的路径如 `~/Downloads` 提示改写位置名, 别的提示用户选的文件夹) 并经批准 (见 `docs/runtime/webs.md`「批准」). `roots()` 回
-`{id, label, source: 'private' | 'place' | 'granted', mode, reason, exists, place?}`, 只有点名了公共位置的系统应用另带 `path`; 别的应用拿不到绝对路径,
+`{id, label, source: 'private' | 'place' | 'lent' | 'removable', mode, reason, exists, place?}`, 只有点名了公共位置的系统应用另带 `path`; 别的应用拿不到绝对路径,
 `locate` / `openPath` 报 403 `EACCES`. 没批准或撤销了的位置: web 侧 (`FileAccess.guard`, 经 `Permits`)
-把它从 `roots()` 里去掉, 以它为 root 的调用 reject 403 `denied` (`AcdePermissionError`). `fs.revoke(令牌)` 收回选择的文件夹, `acde:permissions` 也列出和收回它 (见 `docs/runtime/webs.md`「批准」). Broker 交给 web 的授权是
+把它从 `roots()` 里去掉, 以它为 root 的调用 reject 403 `denied` (`AcdePermissionError`). `fs.revoke(name)` 收回借给自己的文件夹 (经页面调用 `unlend` 到启动器: 会话里调管家 `fs.unlend({name})`, 再从本进程去掉并发 `fsroots {removed}`;
+宿主窗口里直接去掉, 不是借出的名字回 400 `EINVAL`). libacde 不再记任何按路径的授权 (原 `fs/access/grants.rs` 与 `permissions.json` 里的文件夹已删), 记住选过的文件夹由管家负责. Broker 交给 web 的授权是
 `fs: {places, paths}` (src/host `web.rs` → `Workspace::files`). 下面按路径的根只给桌面页面.
 
 **临时借出的根** (daily-desktop 12, 用户 2026-11-18 定方案 A, 名字 `lent`; 2026-11-22 起改传目录描述符, 路径不出管家, 见总仓
@@ -36,7 +37,8 @@ acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边�
   根直接带着这个句柄 (`FinderRoot::holding`, `FinderRoot.held`), 没有路径: 不出现在 `path` 里, `locate` 不在它下面找, `openPath` 拒绝 (`EINVAL`),
   也不参与按路径的交出核对 (`Finder.admit`); 查根自身的 `stat` 名字取 `label`.
   `name` 不能是 `private`、公共位置名或 `folder-`、`removable-` 开头, 不合的拒绝 (`LentRoot::checked`).
-- 收回: 桌面调 `acde:apps` 的 `unlend(dir)` (管家的 `apps.unlend`, 只有桌面能调, 应答 `{revoked: 收回几个}`), 管家对借过这个目录的每个进程推 `{type: 'unlend', name}`;
+- 收回: 应用自己 `fs.revoke(name)` (见上), 或桌面经管家 `fs.unlend({app, name})` (列出用 `fs.lent({app?})` → `[{name, label, writable}]`; 只有桌面能带 app,
+  应用带了回 403; 旧的 `apps.unlend(dir)` 管家只留一个版本过渡). 管家对借过的其他进程推 `{type: 'unlend', name}` (应用自己收回时不给发起的进程推);
   启动器经 `sys.unlendRoot(应用编号, name)` 从 `Shared.lent` 去掉 (`Workspace::unlend`), 之后 `roots()` 不再列它, 拿它当 root 的调用按不是自己的根拒绝;
   去掉了就给页面发 `acde:fs` 的 `roots` 事件 `{removed: [name]}`, 页面据此重新取 `roots()`. 宿主上没有管家, 没有这条路.
 - 桌面经 `acde:apps` 的 `open(app, request, {root: {name, dir, label?}})` 请管家借出 (SDK `OpenWindowOptions.root`, 只给桌面用), 管家决定给不给;

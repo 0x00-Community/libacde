@@ -42,7 +42,7 @@ mod tests {
         let builds = Cell::new(0);
         let build = || -> Outcome<Vec<FinderRoot>> {
             builds.set(builds.get() + 1);
-            Ok(vec![FinderRoot::new("/a".into(), "a", RootSource::Granted)])
+            Ok(vec![FinderRoot::new("/a".into(), "a", RootSource::Default)])
         };
         for _ in 0..1000 {
             assert_eq!(cache.get(0, build).unwrap().len(), 1);

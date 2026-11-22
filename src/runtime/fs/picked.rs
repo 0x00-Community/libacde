@@ -26,12 +26,12 @@ impl PickedFolders {
     }
 
     pub fn add(&self, path: &str) -> Picked<String> {
-        let path = super::access::grants::folder(path, "picked")?;
+        let path = super::access::folder::existing(path, "picked")?;
         let mut roots = self.roots.locked();
         if let Some(known) = roots.iter().find(|root| same_folder(&root.path, &path)) {
             return Ok(known.path.clone());
         }
-        roots.push(WorkspaceFs::granted(&path));
+        roots.push(WorkspaceFs::folder(&path));
         Ok(path)
     }
 
@@ -62,7 +62,7 @@ impl PickedFolders {
         let picked = files.iter().find(|(known, _)| same_folder(known, path)).and_then(|(known, writable)| {
             let known = std::path::Path::new(known);
             let (parent, name) = (known.parent()?.to_str()?, known.file_name()?.to_str()?);
-            Some((WorkspaceFs::granted(parent).access(*writable), name.to_owned()))
+            Some((WorkspaceFs::folder(parent).access(*writable), name.to_owned()))
         });
         picked.ok_or_else(|| Failure::http(403, "not inside a folder the user picked"))
     }

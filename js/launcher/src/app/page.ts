@@ -7,13 +7,14 @@ export interface PageCallsHost {
   readonly language: () => string | undefined
   chooser(): Promise<NativeFileChooser> | null
   folder(title: string, writable: boolean): Promise<{ readonly name: string; readonly label: string } | null>
+  unlend(name: string): Promise<void>
   notify?(title: string, body: string, subtitle: string): void
 }
 
 type Filter = { name: string; globs: string[]; mimes: string[] }
 
 export class PageCalls {
-  static readonly METHODS: ReadonlySet<string> = new Set(['open', 'save', 'folder', 'notify'])
+  static readonly METHODS: ReadonlySet<string> = new Set(['open', 'save', 'folder', 'unlend', 'notify'])
   readonly #host: PageCallsHost
   #chooser: Promise<NativeFileChooser | null> | null = null
 
@@ -24,6 +25,7 @@ export class PageCalls {
   async call(method: string, args: readonly unknown[]): Promise<unknown> {
     const options = (args[0] ?? {}) as Record<string, unknown>
     if (method === 'notify') return this.#notify(options)
+    if (method === 'unlend') return this.#host.unlend(PageCalls.#text(args[0], 200))
     if (method === 'folder') return this.#host.folder(PageCalls.#text(options['title'], 300), options['writable'] === true)
     const chooser = await this.#fileChooser()
     if (!chooser) return null

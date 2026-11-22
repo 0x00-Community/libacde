@@ -64,7 +64,7 @@ describe('the single-app launcher answers its window and page calls', () => {
       seen.push({ title, writable })
       return { name: 'work', label: 'Notes' }
     }
-    const pages = new PageCalls({ label: 'Reader', language: () => 'en', chooser: () => Promise.resolve(chooser), folder })
+    const pages = new PageCalls({ label: 'Reader', language: () => 'en', chooser: () => Promise.resolve(chooser), folder, unlend: async () => undefined })
     assert.deepEqual(await pages.call('open', [{ multiple: true, filters: [{ name: 'Books', globs: ['*.epub'] }] }]), ['/tmp/a.epub'])
     assert.equal(await pages.call('save', [{ name: 'notes.md' }]), '/tmp/out.md')
     assert.deepEqual(await pages.call('folder', [{ title: 'Reader: Pick', writable: true }]), { name: 'work', label: 'Notes' })
@@ -76,7 +76,7 @@ describe('the single-app launcher answers its window and page calls', () => {
     const logged: string[] = []
     const log = (_level: number, _target: string, text: string) => void logged.push(text)
     bindNatives({ host: { log, logEnabled: () => false }, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
-    const none = new PageCalls({ label: 'Reader', language: () => 'en', chooser: () => null, folder: async () => null })
+    const none = new PageCalls({ label: 'Reader', language: () => 'en', chooser: () => null, folder: async () => null, unlend: async () => undefined })
     assert.equal(await none.call('open', [{}]), null)
     assert.match(logged[0]!, /no file chooser/)
   })

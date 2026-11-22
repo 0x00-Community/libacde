@@ -369,7 +369,7 @@ mod tests {
         static NEXT: AtomicU32 = AtomicU32::new(0);
         let dir = std::env::temp_dir().join(format!("acde-ranged-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
         std::fs::create_dir_all(&dir).unwrap();
-        let root = WorkspaceFs::granted(dir.to_str().unwrap());
+        let root = WorkspaceFs::folder(dir.to_str().unwrap());
         (dir, root)
     }
 
@@ -489,7 +489,7 @@ mod tests {
         assert_eq!(code(writes.open_in(&root, "missing.txt", &never)), "ENOENT");
         assert_eq!(code(writes.chunk(&opened[1].id, Some(0), &vec![0; MAX_CHUNK as usize + 1])), "EFBIG");
         assert_eq!(code(writes.open_in(&root, "../out.txt", &OpenWrite::default())), "EINVAL");
-        let read_only = WorkspaceFs::granted(dir.to_str().unwrap()).access(false);
+        let read_only = WorkspaceFs::folder(dir.to_str().unwrap()).access(false);
         assert_eq!(code(writes.open_in(&read_only, "a.txt", &OpenWrite::default())), "EACCES");
         drop(writes);
         assert_eq!(parts(&dir), 0);

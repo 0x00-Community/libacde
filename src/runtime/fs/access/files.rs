@@ -1,22 +1,12 @@
-use super::grants::Granted;
 use crate::runtime::failure::{Failure, Outcome};
 use crate::runtime::fs::beneath::Dir;
 use crate::runtime::fs::removable;
 use crate::runtime::fs::workspace::{FinderRoot, RootMode, RootSource, WorkspaceFs};
-use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::Arc;
 
 const PLACES: [(&str, &str); 6] =
     [("desktop", "Desktop"), ("documents", "Documents"), ("downloads", "Downloads"), ("music", "Music"), ("pictures", "Pictures"), ("videos", "Videos")];
-
-#[napi_derive::napi(object)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GrantedFolder {
-    pub id: String,
-    pub label: String,
-    pub exists: bool,
-}
 
 #[derive(Clone, Debug)]
 pub struct LentRoot {
@@ -70,13 +60,7 @@ impl Files {
         self.paths
     }
 
-    pub fn token(path: &str) -> String {
-        let digest = Sha256::digest(path.as_bytes());
-        let hex: String = digest.iter().take(8).map(|byte| format!("{byte:02x}")).collect();
-        format!("folder-{hex}")
-    }
-
-    pub(in crate::runtime::fs) fn roots(&self, fs: &WorkspaceFs, owner: &str, lent: Vec<LentRoot>, granted: Vec<Granted>) -> Outcome<Vec<FinderRoot>> {
+    pub(in crate::runtime::fs) fn roots(&self, fs: &WorkspaceFs, owner: &str, lent: Vec<LentRoot>) -> Outcome<Vec<FinderRoot>> {
         let private = fs.private_dir(owner);
         std::fs::DirBuilder::new().recursive(true).create(&private)?;
         let mut roots = vec![self.root("private".into(), private, "App data", RootSource::Private)];
@@ -86,23 +70,10 @@ impl Files {
             roots.push(FinderRoot { place: Some(name), ..Self::checked(root, "the folder does not exist") });
         }
         roots.extend(lent.iter().map(LentRoot::root));
-        for Granted { path, writable } in granted {
-            let label = Self::label(&path);
-            let root = self.root(Self::token(&path), path, &label, RootSource::Granted);
-            roots.push(Self::checked(root, "the folder no longer exists").access(writable));
-        }
         if self.removable {
             roots.extend(removable::mounted().iter().map(|mount| mount.root(self.paths)));
         }
         Ok(roots)
-    }
-
-    pub fn folder(path: &str) -> GrantedFolder {
-        GrantedFolder { id: Self::token(path), label: Self::label(path), exists: Path::new(path).is_dir() }
-    }
-
-    fn label(path: &str) -> String {
-        Path::new(path).file_name().and_then(|name| name.to_str()).unwrap_or("folder").to_owned()
     }
 
     pub(crate) fn find(roots: Vec<FinderRoot>, id: &str) -> Outcome<FinderRoot> {
@@ -226,9 +197,23 @@ mod tests {
         let app = all.files(Files::new(&[], false), "viewer");
         let roots = json(app.call(FsCall::Roots));
         assert_eq!((roots[1]["label"].as_str(), roots[1]["mode"].as_str()), (Some("work"), Some("read_only")));
+        std::fs::create_dir_all(work.join("album")).unwrap();
         assert_eq!(read(&app, "work", "a.txt"), "a");
-        assert_eq!(write(&app, "work", "b.txt", "b")["code"], "EACCES");
-        assert!(!work.join("b.txt").exists());
+        let refused = |call: FsCall| {
+            let answer = json(app.call(call));
+            (answer["status"].clone(), answer["code"].clone())
+        };
+        let eacces = (json!(403), json!("EACCES"));
+        assert_eq!(refused(FsCall::WriteFile { root: "work".into(), path: "b.txt".into(), data: Some(b"b".to_vec()), options: None }), eacces);
+        assert_eq!(refused(FsCall::Mkdir { root: "work".into(), path: "new".into(), options: None }), eacces);
+        assert_eq!(refused(FsCall::Rename { root: "work".into(), from: "a.txt".into(), to: "c.txt".into() }), eacces);
+        assert_eq!(refused(FsCall::Delete { root: "work".into(), path: "a.txt".into() }), eacces);
+        let copy =
+            |from: (&str, &str), to: &str| FsCall::Copy { from_root: from.0.into(), from_path: from.1.into(), to_root: to.into(), to_dir: String::new() };
+        assert_eq!(refused(copy(("private", ""), "work")), eacces);
+        assert_eq!(refused(copy(("work", "album"), "work")), eacces);
+        assert_eq!(json(app.call(copy(("work", "a.txt"), "private")))["name"], "a.txt");
+        assert!(!work.join("b.txt").exists() && !work.join("new").exists() && work.join("a.txt").is_file());
     }
 
     #[test]
@@ -319,7 +304,7 @@ mod tests {
         let app = all.files(Files::new(&["documents".to_owned()], false), "viewer");
         let picked = home.0.join("Picked");
         std::fs::create_dir_all(&picked).unwrap();
-        app.grant(picked.to_str().unwrap()).unwrap();
+        all.lend("viewer", lent("work", "", true, &picked)).unwrap();
         assert_eq!(write(&app, "private", "mine.docx", "p")["name"], "mine.docx");
         let handed = home.0.join("Handed");
         std::fs::create_dir_all(&handed).unwrap();
@@ -329,66 +314,12 @@ mod tests {
         }
         let private = home.0.join("data").join("acde").join("files").join("viewer").join("mine.docx");
         let admit = |path: &Path, extra: &[String]| app.admit_with(path.to_str().unwrap(), extra).map_err(|f| f.status);
-        for inside in [&files[0], &files[1], &private] {
+        for inside in [&files[0], &private] {
             assert!(admit(inside, &[]).is_ok(), "{}", inside.display());
         }
+        assert_eq!(admit(&files[1], &[]), Err(403), "a lent folder has no path to admit");
         assert_eq!(admit(&files[2], &[]), Err(403), "a place the app did not name");
         assert_eq!(admit(&files[3], &[]), Err(403), "a folder it holds nothing in");
         assert!(admit(&files[3], &[handed.to_string_lossy().into_owned()]).is_ok(), "a handed file's folder");
-    }
-
-    #[test]
-    fn a_picked_folder_is_a_root_token_until_it_is_revoked() {
-        let home = Home::new("picked");
-        let picked = home.0.join("Projects");
-        std::fs::create_dir_all(&picked).unwrap();
-        std::fs::write(picked.join("plan.md"), "plan").unwrap();
-        let all = Workspace::at(&home.text());
-        let app = all.files(Files::new(&[], false), "vault");
-        let granted = app.grant(picked.to_str().unwrap()).unwrap();
-        let token = Files::token(&granted);
-        assert!(token.starts_with("folder-") && !token.contains("Projects"));
-        let roots = json(app.call(FsCall::Roots));
-        assert_eq!(roots[1], json!({"id": token, "label": "Projects", "source": "granted", "mode": "writable", "reason": null, "exists": true}));
-        assert_eq!(read(&app, &token, "plan.md"), "plan");
-        assert_eq!(read(&all.files(Files::new(&[], false), "other"), &token, "plan.md")["code"], "EACCES");
-        assert!(matches!(app.call(FsCall::Revoke { root: token.clone() }), Ok(FsReply::Done)));
-        assert_eq!(read(&app, &token, "plan.md")["code"], "EACCES");
-    }
-
-    #[test]
-    fn a_read_only_pick_is_a_root_that_refuses_writes() {
-        let home = Home::new("read-only");
-        let picked = home.0.join("Photos");
-        std::fs::create_dir_all(picked.join("album")).unwrap();
-        std::fs::write(picked.join("a.txt"), "a").unwrap();
-        let all = Workspace::at(&home.text());
-        let app = all.files(Files::new(&[], false), "viewer");
-        let token = Files::token(&app.grant_as(picked.to_str().unwrap(), false).unwrap());
-        let roots = json(app.call(FsCall::Roots));
-        assert_eq!(roots[1], json!({"id": token, "label": "Photos", "source": "granted", "mode": "read_only", "reason": null, "exists": true}));
-        let listed = json(app.call(FsCall::List { root: token.clone(), path: None, hidden: None }));
-        assert_eq!(listed["entries"].as_array().map(Vec::len), Some(2), "{listed}");
-        assert_eq!(read(&app, &token, "a.txt"), "a");
-        let refused = |call: FsCall| {
-            let answer = json(app.call(call));
-            (answer["status"].clone(), answer["code"].clone())
-        };
-        let eacces = (json!(403), json!("EACCES"));
-        assert_eq!(refused(FsCall::WriteFile { root: token.clone(), path: "b.txt".into(), data: Some(b"b".to_vec()), options: None }), eacces);
-        assert_eq!(refused(FsCall::Mkdir { root: token.clone(), path: "new".into(), options: None }), eacces);
-        assert_eq!(refused(FsCall::Rename { root: token.clone(), from: "a.txt".into(), to: "c.txt".into() }), eacces);
-        assert_eq!(refused(FsCall::Delete { root: token.clone(), path: "a.txt".into() }), eacces);
-        let copy =
-            |from: (&str, &str), to: &str| FsCall::Copy { from_root: from.0.into(), from_path: from.1.into(), to_root: to.into(), to_dir: String::new() };
-        assert_eq!(refused(copy(("private", ""), &token)), eacces);
-        assert_eq!(refused(copy((&token, "album"), &token)), eacces);
-        assert_eq!(json(app.call(copy((&token, "a.txt"), "private")))["name"], "a.txt");
-        assert!(!picked.join("b.txt").exists() && !picked.join("new").exists() && picked.join("a.txt").is_file());
-        app.grant_as(picked.to_str().unwrap(), true).unwrap();
-        assert_eq!(json(app.call(FsCall::Roots))[1]["mode"], "writable");
-        assert_eq!(write(&app, &token, "b.txt", "b")["name"], "b.txt");
-        assert!(matches!(app.call(FsCall::Revoke { root: token.clone() }), Ok(FsReply::Done)));
-        assert_eq!(read(&app, &token, "a.txt")["code"], "EACCES");
     }
 }

@@ -65,11 +65,11 @@ impl OfficeFiles {
     }
 
     pub fn handed(dir: &str) -> FinderRoot {
-        FinderRoot { id: String::new(), shown: None, label: String::new(), ..WorkspaceFs::granted(dir) }
+        FinderRoot { id: String::new(), shown: None, label: String::new(), ..WorkspaceFs::folder(dir) }
     }
 
     pub fn file(&self, root_path: &str, relative: &str) -> Outcome<OfficeFile> {
-        Self::file_in(WorkspaceFs::granted(root_path), relative)
+        Self::file_in(WorkspaceFs::folder(root_path), relative)
     }
 
     pub fn read_only(mut file: OfficeFile) -> OfficeFile {
@@ -159,7 +159,7 @@ impl OfficeFiles {
     }
 
     pub fn save(&self, root_path: &str, relative: &str, data: &[u8], expected_ms: i64) -> Outcome<SaveResult> {
-        let root = WorkspaceFs::granted(root_path);
+        let root = WorkspaceFs::folder(root_path);
         let relative = WorkspaceFs::inner(relative)?;
         let unchanged = WriteOptions { create: Create::Never, if_modified_ms: Some(expected_ms as f64), ..WriteOptions::default() };
         match WorkspaceFs::write_file_in(&root, &relative, data, &unchanged) {

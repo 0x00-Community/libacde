@@ -191,6 +191,7 @@ class Launcher {
       language: () => SessionLanguage.of(process.env, sys().languages()).language,
       chooser: () => chooser?.open() ?? null,
       folder: (title: string, writable: boolean) => this.#pickFolder(title, writable),
+      unlend: (name: string) => this.#revoke(name),
       ...(this.#shell.notify && { notify: (title: string, body: string, subtitle: string) => this.#shell.notify!(title, body, subtitle) }),
     })
     const relay = managerRelay(manager)
@@ -669,10 +670,18 @@ class Launcher {
     this.#thread?.post({ type: 'services', services: this.#services })
   }
 
-  #unlend(name: string): void {
+  #unlend(name: string): boolean {
     const app = this.session.found?.app.id
-    if (!app || !name || !sys().unlendRoot?.(app, name)) return
+    if (!app || !name || !sys().unlendRoot?.(app, name)) return false
     this.#thread?.post({ type: 'fsroots', removed: [name] })
+    return true
+  }
+
+  async #revoke(name: string): Promise<void> {
+    const refused = () => Object.assign(new TypeError(`${name} is not a folder lent to this app`), { status: 400, code: 'EINVAL' })
+    if (!this.session.found) throw refused()
+    if (this.manager) await this.manager.call('fs', 'unlend', [{ name }])
+    if (!this.#unlend(name) && !this.manager) throw refused()
   }
 
   #adopt(lent: unknown, fds: unknown): string[] {

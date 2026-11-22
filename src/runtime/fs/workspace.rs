@@ -31,7 +31,6 @@ pub enum RootSource {
     Desktop,
     Downloads,
     Default,
-    Granted,
     Private,
     Place,
     Lent,
@@ -331,14 +330,14 @@ impl WorkspaceFs {
         Ok([root(desktop, "Desktop", RootSource::Desktop)].into_iter().chain(down).chain(work).chain(drives).collect())
     }
 
-    pub fn granted(path: &str) -> FinderRoot {
+    pub fn folder(path: &str) -> FinderRoot {
         let exists = Path::new(path).is_dir();
         let label = Path::new(path).file_name().and_then(|name| name.to_str()).unwrap_or(path);
         FinderRoot {
             mode: if exists { RootMode::Writable } else { RootMode::Unavailable },
             reason: (!exists).then(|| "the folder no longer exists".to_owned()),
             exists,
-            ..FinderRoot::new(path.to_owned(), label, RootSource::Granted)
+            ..FinderRoot::new(path.to_owned(), label, RootSource::Default)
         }
     }
 

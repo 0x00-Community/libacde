@@ -118,24 +118,6 @@ fn state_file(name: &str) -> Option<std::path::PathBuf> {
     Some(state.join("acde").join(name))
 }
 
-fn write_state(path: &std::path::Path, bytes: &[u8], mode: u32) -> std::io::Result<()> {
-    use std::io::Write;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    cfg_select! {
-        unix => { std::os::unix::fs::OpenOptionsExt::mode(&mut options, mode); }
-        _ => { _ = mode; }
-    }
-    let mut out = options.open(&tmp)?;
-    out.write_all(bytes)?;
-    out.sync_all()?;
-    std::fs::rename(tmp, path)
-}
-
 async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
     rt::blocking(work).await.map_err(|_| failure("native_task_failed", "native task did not complete; query the original operation"))?
 }

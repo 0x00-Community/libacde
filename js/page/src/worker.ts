@@ -300,7 +300,8 @@ export default async function boot(natives: WebNatives): Promise<void> {
       return roots(handler)
     }
     const listed = async () => HostStrings.roots(await (typed as unknown as { roots(): Promise<unknown> }).roots(), language)
-    bridge.value['fs'] = { ...typed, roots: listed, on }
+    const revoke = async (root: string) => void (await rpc.call('page', 'unlend', [String(root)]))
+    bridge.value['fs'] = { ...typed, roots: listed, on, revoke }
   }
   if (natives.terminal) bridge.value['terminal'] = natives.terminal
   const checked = (name: string, value: object) => {

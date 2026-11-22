@@ -233,9 +233,8 @@ mod tests {
         std::fs::write(home.0.join("Documents").join("a.txt"), "a").unwrap();
         let all = Workspace::at(&home.0.to_string_lossy());
         let documents = home.0.join("Documents").to_string_lossy().into_owned();
-        let grant = all.scoped(Some(vec![]), Some("legacy"));
-        let root = grant.grant(&documents).unwrap();
-        let app = all.scoped(Some(vec![]), Some("legacy"));
+        let root = documents.clone();
+        let app = all.scoped(Some(vec![documents]), Some("legacy"));
         assert_eq!(copy(&app, (&root, "a.txt"), (&root, ""))["name"], "a 2.txt");
         let desktop = home.0.join("Desktop").to_string_lossy().into_owned();
         assert_eq!(copy(&app, (&root, "a.txt"), (&desktop, ""))["code"], "EACCES");
