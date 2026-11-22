@@ -585,10 +585,11 @@ impl Composer {
             rect: b.rect,
             radius: b.radius,
             exponent: b.exponent,
-            shift: [glass.lens.index, 0.0],
+            shift: [glass.lens.index, glass.outline.width],
             color: glass.tint,
             matrix,
             bias,
+            outline: glass.outline.color,
             ..Default::default()
         };
         self.pass(encoder, canvas, false, &[Draw { pipe: Pipe::Glass, src: &filtered, params, scissor: Some(region), mix: None, group: None }]);

@@ -687,6 +687,19 @@ mod tests {
     }
 
     #[test]
+    fn changing_only_the_outline_keeps_every_other_wire_float() {
+        let glass = Glass::preset(Role::Regular, Level::Clear);
+        let changed = Glass { outline: Outline { width: 3.0, color: [0.1, 0.2, 0.3, 0.4], merged: true }, ..glass };
+        let (a, b) = (glass.floats(), changed.floats());
+        for i in (0..WIRE_FLOATS).filter(|i| !(31..37).contains(i)) {
+            assert_eq!(a[i].to_bits(), b[i].to_bits(), "wire float {i} moved when only the outline changed");
+        }
+        let back = Glass::from_wire(&changed.to_wire());
+        assert_eq!(Glass { outline: glass.outline, ..back }, glass);
+        assert_eq!(back.outline, changed.outline);
+    }
+
+    #[test]
     fn short_hex_colours_read_like_the_long_ones() {
         assert_eq!(color("#fff0"), Some([1.0, 1.0, 1.0, 0.0]));
         assert_eq!(color("#0f8"), color("#00ff88"));

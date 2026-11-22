@@ -404,21 +404,69 @@ mod tests {
     }
 
     #[test]
-    fn piece_outlines_keep_each_old_edge_even_when_the_glass_merges() {
+    fn piece_outlines_keep_each_edge_and_leave_the_gap_between_pieces_bare() {
         let (pair, _) = outlined_pair(false, 1.0);
         assert!(red(&pair, 49, 30) > 128, "the left piece keeps its right edge");
         assert!(red(&pair, 54, 30) > 128, "the right piece keeps its left edge");
-        assert!(red(&pair, 52, 30) > 1, "the two outlines may cross in the neck");
+        assert!(red(&pair, 52, 30) <= 1, "no piece has an edge in the gap: {}", red(&pair, 52, 30));
         for (x, y) in [(30, 30), (74, 30)] {
             assert!(red(&pair, x, y) <= 1, "no line in the middle of a piece at ({x}, {y})");
         }
-        assert!(channels(pair.data[30 * 104 + 52])[0] > 0, "the glass still flows through the neck");
+        assert!(channels(pair.data[30 * 104 + 52])[0] > 0, "the glass still flows through the gap");
+    }
+
+    #[test]
+    fn overlapping_pieces_draw_both_outlines_across_each_other() {
+        let outline = super::super::Outline { width: 1.0, color: [1.0, 0.0, 0.0, 1.0], merged: false };
+        let plain = [
+            super::super::BlurLayer { radius: 0.0, opacity: 1.0 },
+            super::super::BlurLayer::default(),
+            super::super::BlurLayer::default(),
+            super::super::BlurLayer::default(),
+            super::super::BlurLayer::default(),
+        ];
+        let glass = Glass { blur: plain, outline, smoothing: 0.0, ..Glass::default() };
+        let source = Pixels { width: 104, height: 60, data: vec![0xff00_4000; 104 * 60] };
+        let pair = group(10.0, &[Piece::of_rect([10.0, 10.0, 50.0, 40.0], 20.0, 2.0, glass), Piece::of_rect([40.0, 10.0, 50.0, 40.0], 20.0, 2.0, glass)])
+            .paint_cpu(&source);
+        assert!(red(&pair, 59, 30) > 128, "the left piece's right edge runs through the overlap");
+        assert!(red(&pair, 40, 30) > 128, "the right piece's left edge runs through the overlap");
+        assert!(red(&pair, 50, 30) <= 1, "between the two crossing lines the overlap is plain glass");
     }
 
     #[test]
     fn no_outline_draws_no_line() {
         let (pair, single) = outlined_pair(false, 0.0);
         assert_eq!((first_lit(&pair), first_lit(&single)), (None, None), "no red above rounding without an outline");
+    }
+
+    #[test]
+    fn the_outline_never_touches_the_middle_of_the_glass() {
+        let middle = |outline: super::super::Outline| {
+            let glass = Glass { outline, ..Glass::preset(Role::Regular, Level::Clear) };
+            let source = ground(104, 60);
+            let pair = group(10.0, &[Piece::of_rect([10.0, 10.0, 40.0, 40.0], 20.0, 2.0, glass), Piece::of_rect([54.0, 10.0, 40.0, 40.0], 20.0, 2.0, glass)]);
+            let out = pair.paint_cpu(&source);
+            (out.data[30 * 104 + 30], out.data[30 * 104 + 74])
+        };
+        let line = super::super::Outline { width: 1.0, color: [1.0, 1.0, 1.0, 0.5], merged: false };
+        let none = middle(super::super::Outline::default());
+        assert_eq!(middle(line), none);
+        assert_eq!(middle(super::super::Outline { merged: true, ..line }), none);
+    }
+
+    #[test]
+    fn changing_only_the_outline_keeps_every_other_uniform_float() {
+        let glass = Glass::preset(Role::Regular, Level::Clear);
+        let piece = Piece::of_rect([1.0, 2.0, 30.0, 20.0], 6.0, 2.0, glass);
+        let floats = |p: Piece| p.floats();
+        let changed = Piece { glass: Glass { outline: super::super::Outline { width: 3.0, color: [0.1, 0.2, 0.3, 0.4], merged: true }, ..glass }, ..piece };
+        let outline_slots = [7, 28, 29, 30, 31, 32];
+        for (i, (a, b)) in floats(piece).iter().zip(floats(changed)).enumerate() {
+            if !outline_slots.contains(&i) {
+                assert_eq!(a.to_bits(), b.to_bits(), "uniform float {i} moved when only the outline changed");
+            }
+        }
     }
 
     #[test]

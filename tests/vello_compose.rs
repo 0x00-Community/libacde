@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use acde::gpu::glass::group::{GlassGroup, Piece};
-use acde::gpu::glass::{Glass, Level, Role};
+use acde::gpu::glass::{Glass, Level, Outline, Role};
 use acde::gpu::{Backdrop, ColorMatrix, Effect, Gpu, Shadow, wgpu};
 use acde::vello::{Composer, Op};
 
@@ -276,4 +276,30 @@ fn a_one_piece_glass_group_composes_like_the_single_glass_and_two_pieces_merge()
     let merged = glass_over_stripes(&mut bench, &pair);
     let neck = (32 * W + 58) as usize;
     assert_ne!(merged[neck], alone[neck], "the 4 px gap between the pieces is bridged by glass");
+}
+
+#[test]
+fn a_single_glass_draws_its_outline_on_the_gpu_and_none_draws_nothing() {
+    let mut bench = Bench::new();
+    let base = Glass {
+        highlight: Default::default(),
+        lens: Default::default(),
+        tint: [0.0; 4],
+        white_point: 0.0,
+        darken: 0.0,
+        ..Glass::preset(Role::Regular, Level::Clear)
+    };
+    let red = Outline { width: 1.0, color: [1.0, 0.0, 0.0, 1.0], merged: false };
+    let rect = [16.0, 12.0, 40.0, 40.0];
+    let draw = |bench: &mut Bench, outline: Outline| {
+        let backdrop = Backdrop { rect, radius: 8.0, glass: Some(Glass { outline, ..base }), ..Backdrop::default() };
+        bench.fill(&bench.canvas, &vec![[0, 64, 0, 255]; (W * H) as usize]);
+        bench.run(|c, e, canvas| c.backdrop(e, canvas, &backdrop))
+    };
+    let lined = draw(&mut bench, red);
+    let bare = draw(&mut bench, Outline::default());
+    let at = |pixels: &[[u8; 4]], x: u32, y: u32| pixels[(y * W + x) as usize][0];
+    assert!(at(&lined, 16, 32) > 128, "the left edge has the outline: {}", at(&lined, 16, 32));
+    assert!(at(&lined, 36, 32) <= 1, "the middle has none");
+    assert!(bare.iter().all(|p| p[0] <= 1), "no outline draws nothing red");
 }
