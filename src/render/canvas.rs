@@ -284,6 +284,7 @@ impl Canvas {
     }
 
     fn scene(&mut self) -> &mut Scene {
+        self.bitmap.take();
         Arc::make_mut(&mut self.scene)
     }
 
@@ -348,13 +349,14 @@ impl Canvas {
         }
         let result = self.record(doc, ops, source);
         let open = self.state.clips.len();
-        self.scene().commands.extend((0..open).map(|_| crate::gpu::RenderCommand::PopLayer));
+        if open > 0 {
+            self.scene().commands.extend((0..open).map(|_| crate::gpu::RenderCommand::PopLayer));
+        }
         self.closed = open;
         result
     }
 
     fn record(&mut self, doc: &mut BaseDocument, ops: &[u8], source: &dyn Fn(&BaseDocument, u8, u32) -> Option<Source>) -> Result<()> {
-        self.bitmap = Default::default();
         let mut r = Reader { buf: ops, pos: 0 };
         while r.pos < ops.len() {
             match r.u8()? {
@@ -504,7 +506,12 @@ impl Canvas {
                     let mut rect = Rect::new(x, y, x + w, y + h).to_path(Scene::TOLERANCE);
                     rect.apply_affine(self.state.transform);
                     match kind {
-                        0 => self.fill(&rect, Fill::NonZero),
+                        0 => {
+                            if self.opaque_fill() && self.covers_canvas(&rect) {
+                                self.drop_commands();
+                            }
+                            self.fill(&rect, Fill::NonZero)
+                        }
                         1 => self.stroke(&rect),
                         _ => self.clear(&rect),
                     }
@@ -857,14 +864,29 @@ impl Canvas {
         out
     }
 
-    fn clear(&mut self, rect: &BezPath) {
+    fn covers_canvas(&self, rect: &BezPath) -> bool {
         let canvas = Rect::new(0.0, 0.0, self.size.0, self.size.1);
-        let whole = rect.bounding_box().contains_rect(canvas) && rect.elements().len() <= 6 && {
-            let t = self.state.transform.as_coeffs();
-            t[1].abs() < 1e-9 && t[2].abs() < 1e-9
-        };
-        if whole && self.state.clips.is_empty() {
-            self.scene = Arc::new(Scene { tolerance: self.scene.tolerance, commands: Vec::new() });
+        let t = self.state.transform.as_coeffs();
+        self.state.clips.is_empty() && rect.bounding_box().contains_rect(canvas) && rect.elements().len() <= 6 && t[1].abs() < 1e-9 && t[2].abs() < 1e-9
+    }
+
+    fn drop_commands(&mut self) {
+        self.scene = Arc::new(Scene { tolerance: self.scene.tolerance, commands: Vec::new() });
+        self.bitmap.take();
+    }
+
+    fn opaque_fill(&self) -> bool {
+        let solid = matches!(&self.state.fill.paint, crate::gpu::Paint::Solid(c) if c.components[3] >= 1.0) && self.state.fill.pattern.is_none();
+        solid
+            && self.state.alpha >= 1.0
+            && self.state.blend == BlendMode::default()
+            && self.state.filter.is_none()
+            && self.state.shadow.color.components[3] <= 0.0
+    }
+
+    fn clear(&mut self, rect: &BezPath) {
+        if self.covers_canvas(rect) {
+            self.drop_commands();
             return;
         }
         let scene = self.scene();
@@ -952,7 +974,7 @@ impl Canvas {
             scene.push_clip_layer(*rule, Affine::IDENTITY, path);
         }
         self.scene = Arc::new(scene);
-        self.bitmap = Default::default();
+        self.bitmap = if self.state.clips.is_empty() { std::cell::OnceCell::from(Some(image)) } else { Default::default() };
     }
 
     fn extents(line: &blitz_dom::parley::Line<blitz_dom::node::TextBrush>) -> (f64, f64) {

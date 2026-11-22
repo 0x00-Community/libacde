@@ -34,6 +34,9 @@ impl Ops {
     fn fill_rect(self, x: f32, y: f32, w: f32, h: f32) -> Self {
         self.op(43, &[]).u8(0).op_args(&[x, y, w, h])
     }
+    fn clone_ops(&self) -> Self {
+        Self(self.0.clone())
+    }
     fn apply(self, doc: &Doc, id: u32) {
         doc.canvas(id, &self.0).unwrap();
     }
@@ -429,4 +432,38 @@ fn draw_image_of_an_svg_image() {
     let px = page.pixels();
     assert!(Page::red(&px, 35, 25), "the SVG drawn scaled into 20,10 30x30");
     assert!(!Page::red(&px, 15, 25) && !Page::red(&px, 55, 25));
+}
+
+#[test]
+fn a_put_image_is_the_source_until_something_is_drawn_over_it() {
+    let page = Page::new();
+    let (doc, b) = (&page.doc, page.canvas);
+    let a = doc.create_element("canvas").unwrap();
+    doc.set_attribute(a, "width", "4").unwrap();
+    doc.set_attribute(a, "height", "4").unwrap();
+    let data: Vec<u8> = (0..16u8).flat_map(|i| [i * 16, 255 - i * 16, 40, 255]).collect();
+    let mut draw = Ops::default().op(45, &[]).u8(1);
+    draw.0.extend(a.to_le_bytes());
+    let draw = draw.op_args(&[0.0, 0.0, f32::NAN, f32::NAN, 0.0, 0.0, 4.0, 4.0]);
+    Ops::default().put((0.0, 0.0), (4, 4), &data).apply(doc, a);
+    Ops::default().op(43, &[]).u8(2).op_args(&[0.0, 0.0, 100.0, 50.0]).apply(doc, b);
+    draw.clone_ops().apply(doc, b);
+    assert_eq!(doc.get_image_data(b, 0.0, 0.0, 4.0, 4.0).unwrap(), data);
+    Ops::default().put((0.0, 0.0), (4, 4), &data).fill_style(BLUE).fill_rect(0.0, 0.0, 2.0, 4.0).apply(doc, a);
+    draw.apply(doc, b);
+    assert_eq!(pixel(doc, b, 1.0, 1.0), [0, 0, 255, 255]);
+    assert_eq!(&doc.get_image_data(b, 3.0, 1.0, 1.0, 1.0).unwrap()[..], &data[(4 + 3) * 4..(4 + 3) * 4 + 4]);
+}
+
+#[test]
+fn an_opaque_fill_over_the_whole_canvas_hides_what_was_under_it_and_a_translucent_one_does_not() {
+    let page = Page::new();
+    let (doc, c) = (&page.doc, page.canvas);
+    Ops::default().fill_style(RED).fill_rect(10.0, 10.0, 20.0, 20.0).fill_style(BLUE).fill_rect(-5.0, -5.0, 200.0, 100.0).apply(doc, c);
+    assert_eq!(pixel(doc, c, 15.0, 15.0), [0, 0, 255, 255]);
+    Ops::default().fill_style(RED).fill_rect(10.0, 10.0, 20.0, 20.0).fill_style([0.0, 1.0, 0.0, 0.5]).fill_rect(0.0, 0.0, 100.0, 50.0).apply(doc, c);
+    let p = pixel(doc, c, 15.0, 15.0);
+    assert!(p[0] > 100 && p[1] > 100 && p[2] < 10, "{p:?}");
+    let q = pixel(doc, c, 60.0, 40.0);
+    assert!(q[2] > 100 && q[1] > 100, "{q:?}");
 }
