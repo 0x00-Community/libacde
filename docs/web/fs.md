@@ -165,18 +165,21 @@ Linux 用 `openat2(RESOLVE_BENEATH)`, 其他平台由 `cap-std` 模拟; root 内
 Linux 会话 (acdebin-system 的 `crates/window` `drop_performed`) 有本地文件时同样去掉这两项, 路径只经 `Event.files` 交给页面宿主.
 
 **选文件夹和授权**: 标准的 `showDirectoryPicker(options?)` → `FileSystemDirectoryHandle` (acde-dom `dom/picker.ts`, 参数校验和错误照 Chromium,
-取消或没有选择器是 `AbortError`, `requestPermission` 不弹窗; handle 只活到页面结束). 链路: acde-dom 的
-`env.files` → src/host `picker.rs` 绑的 `natives.picker` (不是 `acde:` 模块). 选择器在 `acde-picker` 线程上开, 先取 `choose` 事先给的答复
-(acdev runtime 的 `src/chooser.rs`, 三种选择器都在这里定去哪): Linux 是 portal
-FileChooser (`directory: true`), macOS 是 hostwin 主线程上的 `NSOpenPanel` sheet, Windows 是 `SHBrowseForFolderW`. handle 的读写在 runtime
-`fs/picked.rs` `PickedFolders` (每个 web 一份, 只在内存, 选中的文件夹当 root; 新建 `O_EXCL | O_NOFOLLOW`; 整读整写一个文件最多 64 MiB, 更大的见「大文件」).
-Windows 选择器返回盘符或 UNC 绝对路径, 内存句柄和持久授权使用同一路径规则. `bash scripts/check-directory-picker.sh` 用预设选择结果验收.
-用户选中的文件夹同时授给调用的应用 (`acde:fs` 多一个 root `{source: 'granted', label}`, 文件夹没了是 `mode: 'unavailable'`):
-默认的只读选择给只读网页句柄和只读的 root (`mode: 'read_only'`, 能列出和读, 写入、新建、mkdir、rename、删除、复制进去都是 403 `EACCES`,
-检查在 `WorkspaceFs` 的各写入函数和 `copy` 开头的 `FinderRoot::writable`); `mode: 'readwrite'` 的选择提示明确读写授权, root 可写.
-同一个文件夹再被读写地选中就升成可写, 只读选择不会把可写的降级. 记在 `$XDG_STATE_HOME/acde/grants/<应用 id>.json`
-(`{roots, readOnly?}`, `readOnly` 是 `roots` 里只读的那些; runtime `fs/access/grants.rs`; `ACDE_STORAGE` 为空时只在内存); 桌面选的不授.
-`fs.revoke(rootPath)` 收回, `acde:permissions` 同样列出和收回只读的. Broker 起 web 时 grants 带应用 id, `web.rs` 给 `Workspace::scoped(roots, app)` 和 `natives.picker`.
+取消或没有选择器是 `AbortError`, `requestPermission` 不弹窗; handle 只活到页面结束). 选中的文件夹一律成为借出的根 (见「临时借出的根」),
+页面和 libacde 都拿不到它的路径. 链路: acde-dom 的 `env.files.directory` → acde-host `pagecalls.ts` 的页面调用 `folder({title, writable})`
+→ 启动器 (`launcher/src/app/page.ts` `PageCalls`, `main.ts` `#pickFolder`):
+- 会话里调管家 `fs.pick({kind: 'folder', title, writable})`, 应答 (借出条目和 `fds`) 交 `sys.adoptRoots`; 管家记住这次借出, 下次随 welcome 的 `lent` 回来.
+- 宿主窗口里没有管家, 调 `sys.pickFolder(应用编号, title, writable)` (src/host `picker.rs`): 选择器在 `acde-picker` 线程上开, 先取 `choose` 事先给的答复
+  (acdev runtime 的 `src/chooser.rs`, 三种选择器都在这里定去哪): Linux 是 portal FileChooser (`directory: true`), macOS 是 hostwin 主线程上的
+  `NSOpenPanel` sheet, Windows 是 `SHBrowseForFolderW`; 拿到的路径当场打开成目录句柄 (`LentRoot::open`), 名字由 libacde 取 (`work`、`work-2`…),
+  标签是文件夹名, 只在这次运行有效, 不记.
+- 两种都回 `{name, label}` 并给页面发 `fsroots {added}`; 页面的目录 handle 内部键是 `lent:<name>` (子项 `lent:<name>/<相对路径>`), 读写经 `natives.picker`
+  到 runtime `fs/picked.rs` `PickedFolders`, 它按名字到这个应用的借出里找根 (`Workspace::lent_root`), 别的应用的借出找不到 (403 `EACCES`).
+  新建 `O_EXCL | O_NOFOLLOW`; 整读整写一个文件最多 64 MiB, 更大的见「大文件」.
+`bash scripts/check-directory-picker.sh` 用预设选择结果验收.
+借出的根同时出现在 `acde:fs` 的 `roots()` 里 (`source: 'lent'`). 默认的只读选择给只读网页句柄和只读的根 (`mode: 'read_only'`, 能列出和读, 写入、新建、mkdir、
+rename、删除、复制进去都是 403 `EACCES`, 检查在 `WorkspaceFs` 的各写入函数和 `copy` 开头的 `FinderRoot::writable`); `mode: 'readwrite'` 的选择提示明确读写授权, 根可写.
+桌面没有应用编号, 选不了文件夹.
 
 **打开和保存文件**: `showOpenFilePicker` / `<input type=file>` / `showSaveFilePicker` (acde-dom `dom/picker.ts`、`dom/forms.ts`) → `env.files.open` /
 `save` → acde-host `pagecalls.ts` 的页面调用 `open` / `save` → Broker `#fileChooser()` 的 `native.FileChooser` 的 `openFile({title, multiple,

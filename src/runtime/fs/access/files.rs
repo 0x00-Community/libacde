@@ -32,6 +32,10 @@ impl LentRoot {
         Self { name, label, writable, dir: Arc::new(Dir::from_std_file(fd.into())) }
     }
 
+    pub fn open(label: String, writable: bool, path: &str) -> std::io::Result<Self> {
+        Ok(Self { name: String::new(), label, writable, dir: Arc::new(crate::runtime::fs::beneath::open_root(path)?) })
+    }
+
     pub(crate) fn checked(self) -> Outcome<Self> {
         let taken = self.name == "private" || PLACES.iter().any(|(place, _)| *place == self.name);
         let prefixed = self.name.starts_with("folder-") || self.name.starts_with(removable::PREFIX);
@@ -43,7 +47,7 @@ impl LentRoot {
         Ok(Self { label, ..self })
     }
 
-    fn root(&self) -> FinderRoot {
+    pub(in crate::runtime::fs) fn root(&self) -> FinderRoot {
         FinderRoot::holding(self.name.clone(), self.label.clone(), Arc::clone(&self.dir), RootSource::Lent).access(self.writable)
     }
 }

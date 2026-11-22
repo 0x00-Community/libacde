@@ -120,7 +120,7 @@ impl Webs {
                 app: None,
                 storage: None,
                 fs: None,
-                picker: crate::host::picker::Picker::new(rt::current().platform(), None),
+                picker: crate::host::picker::Picker::new(None),
                 capture: Default::default(),
                 terminal: None,
                 #[cfg(target_os = "linux")]
@@ -177,7 +177,7 @@ impl Webs {
         let display = bind::get(scope, wanted, "display").is_some_and(|v| v.is_true());
         let system = &mut self.system;
         let workspace = system.workspace.get_or_insert_with(crate::runtime::Workspace::new);
-        let picker = crate::host::picker::Picker::new(rt::current().platform(), app.as_deref().map(|app| workspace.scoped(Some(Vec::new()), Some(app))));
+        let picker = crate::host::picker::Picker::new(app.as_deref().map(|app| workspace.scoped(Some(Vec::new()), Some(app))));
         let fs = fs.and_then(|fs| match fs {
             Ok(files) => app.as_deref().map(|app| workspace.files(files, app)),
             Err(roots) => Some(workspace.scoped(roots, app.as_deref())),
@@ -231,14 +231,18 @@ fn owned_fds(given: Option<serde_json::Value>) -> Vec<Option<std::os::fd::OwnedF
     numbers.into_iter().map(owned).collect()
 }
 
+pub(crate) fn lend(owner: &str, root: crate::runtime::LentRoot) -> Result<String, crate::runtime::FsError> {
+    WEBS.with(|w| w.borrow_mut().system.workspace.get_or_insert_with(crate::runtime::Workspace::new).lend(owner, root)).map_err(Into::into)
+}
+
 #[cfg(unix)]
-fn adopt(workspace: &crate::runtime::Workspace, owner: &str, lent: Lent, fds: &mut [Option<std::os::fd::OwnedFd>]) -> Option<String> {
+fn adopt(owner: &str, lent: Lent, fds: &mut [Option<std::os::fd::OwnedFd>]) -> Option<String> {
     let fd = fds.get_mut(lent.fd).and_then(Option::take)?;
     if lent.kind != "directory" {
         return None;
     }
     let root = crate::runtime::LentRoot::from_fd(lent.name, lent.label, lent.writable, fd);
-    workspace.lend(owner, root).inspect_err(|error| log::warn!("{owner}: a lent folder is refused: {}", error.message)).ok()
+    lend(owner, root).inspect_err(|error| log::warn!("{owner}: a lent folder is refused: {}", error.message)).ok()
 }
 
 #[cfg(unix)]
@@ -247,11 +251,7 @@ pub fn adopt_roots(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments
     let mut given = bind::Args { scope: &mut *scope, args: &args };
     let (owner, lent, mut fds) = (given.string(0), given.json(1), owned_fds(given.json(2)));
     let lent: Vec<Lent> = lent.and_then(|value| serde_json::from_value(value).ok()).unwrap_or_default();
-    let names: Vec<String> = WEBS.with(|w| {
-        let mut webs = w.borrow_mut();
-        let workspace = webs.system.workspace.get_or_insert_with(crate::runtime::Workspace::new);
-        lent.into_iter().filter_map(|lent| adopt(workspace, &owner, lent, &mut fds)).collect()
-    });
+    let names: Vec<String> = lent.into_iter().filter_map(|lent| adopt(&owner, lent, &mut fds)).collect();
     rv.set(names.js(scope));
 }
 

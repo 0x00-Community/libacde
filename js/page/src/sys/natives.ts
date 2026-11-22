@@ -58,6 +58,7 @@ interface SysNative {
   write?(pid: number, text: string): boolean
   endInput?(pid: number): void
   adoptRoots?(app: string, lent: readonly Lent[], fds: readonly number[]): string[]
+  pickFolder?(app: string, title: string, writable: boolean): Promise<{ readonly name: string; readonly label: string } | null>
   unlendRoot?(app: string, name: string): boolean
   spawnWeb(
     name: string,

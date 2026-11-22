@@ -1,18 +1,15 @@
 use std::cell::RefCell;
 
-use crate::runtime::{EntryKind, FsError, Opened, PickedFolders, Range, Workspace};
+use crate::runtime::{EntryKind, FsError, LentRoot, Opened, PickedFolders, Range, Workspace};
 
 use crate::host::{bind, offload};
 
 #[derive(Clone)]
 pub struct Picker {
-    platform: crate::host::platform::Shared,
-    grants: Option<Workspace>,
     folders: PickedFolders,
 }
 
 enum Reply {
-    Path(Option<String>),
     Entries(Vec<(String, EntryKind)>),
     Kind(Option<EntryKind>),
     Removed(bool),
@@ -22,35 +19,11 @@ enum Reply {
     Done,
 }
 
-enum Failed {
-    Chooser(String),
-    Fs(FsError),
-}
-
-impl From<FsError> for Failed {
-    fn from(error: FsError) -> Self {
-        Self::Fs(error)
-    }
-}
-
-type Answer = Result<Reply, Failed>;
+type Answer = Result<Reply, FsError>;
 
 impl Picker {
-    pub fn new(platform: crate::host::platform::Shared, grants: Option<Workspace>) -> Self {
-        Self { platform, grants, folders: PickedFolders::default() }
-    }
-
-    fn directory(&self, title: &str, writable: bool) -> Answer {
-        let Some(picked) = self.platform.choose_folder(title).map_err(Failed::Chooser)? else {
-            return Ok(Reply::Path(None));
-        };
-        let path = self.folders.add(&picked)?;
-        if let Some(grants) = &self.grants
-            && let Err(error) = grants.grant_as(&path, writable)
-        {
-            log::warn!("granting the picked folder {path}: {}", error.message);
-        }
-        Ok(Reply::Path(Some(path)))
+    pub fn new(app: Option<Workspace>) -> Self {
+        Self { folders: PickedFolders::lent_from(app) }
     }
 }
 
@@ -67,7 +40,6 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>, picker:
     PICKER.with(|p| *p.borrow_mut() = Some(picker));
     let object = v8::Object::new(scope);
     crate::methods!(scope, object,
-        "directory" => directory,
         "entries" => entries,
         "entry" => entry,
         "remove" => remove,
@@ -105,12 +77,6 @@ fn kind(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Option<EntryKi
         Some("directory") => Some(EntryKind::Directory),
         _ => None,
     }
-}
-
-fn directory(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
-    let title = bind::arg_string(scope, &args, 0);
-    let writable = bind::arg_bool(scope, &args, 1);
-    run(scope, &mut rv, move |picker| picker.directory(&title, writable));
 }
 
 fn entries(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
@@ -212,8 +178,7 @@ fn abort_write(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mu
 
 fn settle(scope: &mut v8::PinScope, resolver: v8::Local<v8::PromiseResolver>, answer: Answer) {
     let value: v8::Local<v8::Value> = match answer {
-        Ok(Reply::Path(Some(path))) => bind::string(scope, &path).into(),
-        Ok(Reply::Path(None) | Reply::Kind(None) | Reply::Read(None) | Reply::Range(None)) => v8::null(scope).into(),
+        Ok(Reply::Kind(None) | Reply::Read(None) | Reply::Range(None)) => v8::null(scope).into(),
         Ok(Reply::Range(Some(range))) => crate::js_object!(scope, {
             "bytes" => range.data, "offset" => range.offset, "size" => range.size, "lastModified" => range.modified_ms, "version" => range.version
         })
@@ -231,17 +196,50 @@ fn settle(scope: &mut v8::PinScope, resolver: v8::Local<v8::PromiseResolver>, an
             list.into()
         }
         Ok(Reply::Read(Some((data, modified_ms)))) => crate::js_object!(scope, {"bytes" => data, "lastModified" => modified_ms}).into(),
-        Err(Failed::Chooser(message)) => {
-            let text = bind::string(scope, &message);
-            let error = v8::Exception::error(scope, text);
-            resolver.reject(scope, error);
-            return;
-        }
-        Err(Failed::Fs(FsError { status, code, message })) => {
+        Err(FsError { status, code, message }) => {
             let error = offload::failure(scope, &message, Some(i32::from(status)), code);
             resolver.reject(scope, error);
             return;
         }
     };
     resolver.resolve(scope, value);
+}
+
+type Chosen = Result<Option<(String, LentRoot)>, String>;
+
+pub fn pick_folder(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let owner = bind::arg_string(scope, &args, 0);
+    let title = bind::arg_string(scope, &args, 1);
+    let writable = bind::arg_bool(scope, &args, 2);
+    let platform = crate::host::rt::current().platform();
+    let choose = move || -> Chosen {
+        let Some(path) = platform.choose_folder(&title)? else { return Ok(None) };
+        let label = std::path::Path::new(&path).file_name().map_or_else(|| path.clone(), |name| name.to_string_lossy().into_owned());
+        let root = LentRoot::open(label, writable, &path).map_err(|error| format!("{path}: {error}"))?;
+        Ok(Some((owner, root)))
+    };
+    offload::run(scope, &mut rv, "acde-picker", choose, lend_chosen);
+}
+
+fn lend_chosen(scope: &mut v8::PinScope, resolver: v8::Local<v8::PromiseResolver>, chosen: Chosen) {
+    let lent = chosen.and_then(|chosen| {
+        let Some((owner, root)) = chosen else { return Ok(None) };
+        let label = root.label.clone();
+        crate::host::web::lend(&owner, root).map(|name| Some((name, label))).map_err(|error| error.message)
+    });
+    match lent {
+        Ok(Some((name, label))) => {
+            let picked = crate::js_object!(scope, {"name" => name, "label" => label});
+            resolver.resolve(scope, picked.into());
+        }
+        Ok(None) => {
+            let null = v8::null(scope);
+            resolver.resolve(scope, null.into());
+        }
+        Err(message) => {
+            let text = bind::string(scope, &message);
+            let error = v8::Exception::error(scope, text);
+            resolver.reject(scope, error);
+        }
+    }
 }

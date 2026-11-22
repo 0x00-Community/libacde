@@ -175,6 +175,7 @@ pub fn object<'s>(scope: &mut v8::PinScope<'s, '_>, argv: &[String]) -> v8::Loca
         "onSignal" => on_signal,
         "spawnWeb" => crate::host::web::spawn_web,
         "unlendRoot" => crate::host::web::unlend_root,
+        "pickFolder" => crate::host::picker::pick_folder,
     );
     #[cfg(unix)]
     bind::method(scope, obj, "adoptRoots", crate::host::web::adopt_roots);

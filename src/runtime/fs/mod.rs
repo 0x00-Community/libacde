@@ -74,13 +74,22 @@ impl Shared {
         if !Grants::valid_owner(owner) {
             return Err(Failure::invalid("folders are lent to an app"));
         }
-        let root = root.checked()?;
-        let name = root.name.clone();
         let mut lent = self.lent.lock().unwrap_or_else(|e| e.into_inner());
         let roots = lent.entry(owner.to_owned()).or_default();
+        let root = match root.name.is_empty() {
+            true => LentRoot { name: Self::fresh_name(roots), ..root },
+            false => root,
+        }
+        .checked()?;
+        let name = root.name.clone();
         roots.retain(|known| known.name != name);
         roots.push(root);
         Ok(name)
+    }
+
+    fn fresh_name(roots: &[LentRoot]) -> String {
+        let taken = |name: &str| roots.iter().any(|root| root.name == name);
+        (1..).map(|n| if n == 1 { "work".to_owned() } else { format!("work-{n}") }).find(|name| !taken(name)).unwrap_or_default()
     }
 
     fn unlend(&self, owner: &str, name: &str) -> bool {
@@ -371,6 +380,11 @@ impl Workspace {
 
     pub(crate) fn unlend(&self, owner: &str, name: &str) -> bool {
         self.shared.unlend(owner, name)
+    }
+
+    pub(crate) fn lent_root(&self, name: &str) -> Option<FinderRoot> {
+        let owner = self.owner.as_deref()?;
+        self.shared.lent_to(owner).iter().find(|root| root.name == name).map(LentRoot::root)
     }
 
     pub fn files(&self, files: Files, owner: &str) -> Self {

@@ -18,7 +18,6 @@ export interface HandOver {
 }
 
 export interface FolderPicker {
-  directory(title: string, writable: boolean): Promise<string | null>
   entries(dir: string): Promise<{ name: string; kind: Kind }[]>
   entry(dir: string, name: string, create: Kind | null): Promise<Kind | 'other' | null>
   remove(dir: string, name: string, recursive: boolean): Promise<boolean>
@@ -154,10 +153,12 @@ export class PageCalls implements HandOver {
           const writable = mode === 'readwrite'
           const strings = HostStrings.of(this.#setup.language())
           const prompt = writable ? strings.writeFolder : strings.readFolder
-          const path = await picker.directory(`${this.#setup.label ?? strings.desktop}: ${prompt}`, writable)
-          if (!path) return null
+          const title = `${this.#setup.label ?? strings.desktop}: ${prompt}`
+          const lent = (await this.#rpc.call('page', 'folder', [{ title, writable }])) as { name?: unknown; label?: unknown } | null
+          if (!lent || typeof lent.name !== 'string' || !lent.name) return null
+          const path = `lent:${lent.name}`
           this.#folders.add(path)
-          return { name: basename(path) || path, path }
+          return { name: typeof lent.label === 'string' && lent.label ? lent.label : lent.name, path }
         } catch (error) {
           if (!this.#warned) this.#log(`folder chooser: ${(error as Error).message}`)
           this.#warned = true

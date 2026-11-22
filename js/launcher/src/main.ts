@@ -190,6 +190,7 @@ class Launcher {
       label: session.label,
       language: () => SessionLanguage.of(process.env, sys().languages()).language,
       chooser: () => chooser?.open() ?? null,
+      folder: (title: string, writable: boolean) => this.#pickFolder(title, writable),
       ...(this.#shell.notify && { notify: (title: string, body: string, subtitle: string) => this.#shell.notify!(title, body, subtitle) }),
     })
     const relay = managerRelay(manager)
@@ -684,6 +685,16 @@ class Launcher {
     const added = this.#adopt(lent, fds)
     if (added.length) this.#thread?.post({ type: 'fsroots', added, removed: [] })
     return added
+  }
+
+  async #pickFolder(title: string, writable: boolean): Promise<{ readonly name: string; readonly label: string } | null> {
+    const app = this.session.found?.app.id
+    if (!app) return null
+    if (!this.manager) return (await sys().pickFolder?.(app, title, writable)) ?? null
+    const lent = (await this.manager.call('fs', 'pick', [{ kind: 'folder', title, writable }])) as (Lent & { readonly fds?: unknown }) | null
+    if (!lent) return null
+    const [name] = this.#lend([lent], lent.fds)
+    return name === undefined ? null : { name, label: lent.label || name }
   }
 
   #deliver(event: ManagerEvent): void {

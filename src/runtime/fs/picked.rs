@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Default)]
 pub struct PickedFolders {
+    lent: Option<super::Workspace>,
     roots: Arc<Mutex<Vec<FinderRoot>>>,
     files: Arc<Mutex<Vec<(String, bool)>>>,
     writes: Writes,
@@ -17,7 +18,13 @@ pub struct PickedFolders {
 
 type Picked<T> = std::result::Result<T, FsError>;
 
+const LENT: &str = "lent:";
+
 impl PickedFolders {
+    pub fn lent_from(workspace: Option<super::Workspace>) -> Self {
+        Self { lent: workspace, ..Self::default() }
+    }
+
     pub fn add(&self, path: &str) -> Picked<String> {
         let path = super::access::grants::folder(path, "picked")?;
         let mut roots = self.roots.locked();
@@ -37,6 +44,11 @@ impl PickedFolders {
     }
 
     fn locate(&self, path: &str) -> Outcome<(FinderRoot, String)> {
+        if let Some(key) = path.strip_prefix(LENT) {
+            let (name, relative) = key.split_once('/').unwrap_or((key, ""));
+            let root = self.lent.as_ref().and_then(|workspace| workspace.lent_root(name));
+            return root.map(|root| (root, relative.to_owned())).ok_or_else(|| Failure::http(403, "not a folder lent to this app"));
+        }
         let inside = self
             .roots
             .locked()
@@ -208,6 +220,26 @@ mod tests {
         assert!(!folders.remove(&picked, "sub", true).unwrap());
         assert_eq!(code(folders.child(&picked, "..", None)), "EINVAL");
         assert_eq!(code(folders.child(&picked, "a/b", None)), "EINVAL");
+        _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_lent_key_reaches_the_folder_lent_to_this_app_only() {
+        let base = scratch();
+        let picked = base.join("picked");
+        std::fs::write(Path::new(&picked).join("a.txt"), b"a").unwrap();
+        let all = crate::runtime::fs::Workspace::at(&base);
+        let root = crate::runtime::LentRoot::open("Picked".into(), false, &picked).unwrap();
+        assert_eq!(all.lend("viewer", root).unwrap(), "work");
+        let folders = PickedFolders::lent_from(Some(all.files(crate::runtime::Files::new(&[], false), "viewer")));
+        assert_eq!(folders.read("lent:work/a.txt").unwrap().unwrap().data, b"a");
+        assert_eq!(folders.entries("lent:work").unwrap(), [("a.txt".to_string(), EntryKind::File)]);
+        assert_eq!(code(folders.write("lent:work/b.txt", b"b")), "EACCES");
+        assert_eq!(code(folders.read("lent:work/../x")), "EINVAL");
+        assert_eq!(code(folders.read("lent:other/a.txt")), "EACCES");
+        let stranger = PickedFolders::lent_from(Some(all.files(crate::runtime::Files::new(&[], false), "stranger")));
+        assert_eq!(code(stranger.read("lent:work/a.txt")), "EACCES");
+        assert_eq!(code(PickedFolders::default().read("lent:work/a.txt")), "EACCES");
         _ = std::fs::remove_dir_all(base);
     }
 
