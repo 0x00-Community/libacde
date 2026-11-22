@@ -72,7 +72,7 @@ impl Piece {
             light.amount,
             g.white_point,
             g.smoothing,
-            0.0,
+            light.width,
             g.tint[0],
             g.tint[1],
             g.tint[2],

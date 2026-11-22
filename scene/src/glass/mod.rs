@@ -13,8 +13,9 @@ pub use preset::{Level, Role};
 pub const WGSL: &str = include_str!("glass.wgsl");
 
 pub const LAYERS: usize = 5;
-const WIRE_FLOATS: usize = 29;
+const WIRE_FLOATS: usize = 30;
 const MOST_LENGTH: f32 = 256.0;
+const FAR_EDGE: f64 = 0.33;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Refraction {
@@ -41,6 +42,7 @@ pub struct Bleed {
 pub struct Highlight {
     pub angle: f32,
     pub amount: f32,
+    pub width: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -117,8 +119,11 @@ impl Glass {
             Some(())
         });
         read("acde-glass-highlight", &mut |g, t| {
-            let [a, b] = words::<2>(t)?;
-            g.highlight = Highlight { angle: degrees(a)?, amount: number(b)? };
+            g.highlight = match *t.split_whitespace().collect::<Vec<_>>() {
+                [a, b] => Highlight { angle: degrees(a)?, amount: number(b)?, ..g.highlight },
+                [a, b, c] => Highlight { angle: degrees(a)?, amount: number(b)?, width: px(c)? },
+                _ => return None,
+            };
             Some(())
         });
         read("acde-glass-white-point", &mut |g, t| {
@@ -153,7 +158,11 @@ impl Glass {
             },
             blur: self.blur.map(|l| BlurLayer { radius: length(l.radius), opacity: unit(l.opacity) }),
             bleed: Bleed { amount: unit(self.bleed.amount), radius: length(self.bleed.radius), opacity: unit(self.bleed.opacity) },
-            highlight: Highlight { angle: if self.highlight.angle.is_finite() { self.highlight.angle } else { 0.0 }, amount: unit(self.highlight.amount) },
+            highlight: Highlight {
+                angle: if self.highlight.angle.is_finite() { self.highlight.angle } else { 0.0 },
+                amount: unit(self.highlight.amount),
+                width: length(self.highlight.width),
+            },
             white_point: unit(self.white_point),
             smoothing: unit(self.smoothing),
             tint: self.tint.map(unit),
@@ -171,6 +180,7 @@ impl Glass {
         g.bleed.radius *= f;
         g.lens.strength *= f;
         g.lens.width *= f;
+        g.highlight.width *= f;
         g
     }
 
@@ -229,6 +239,7 @@ impl Glass {
             self.lens.dispersion,
             self.darken,
             self.lens.width,
+            self.highlight.width,
         ]
     }
 
@@ -238,7 +249,7 @@ impl Glass {
             refraction: Refraction { inner_amount: f[0], inner_height: f[1], outer_amount: f[2], outer_height: f[3] },
             blur: [layer(0), layer(1), layer(2), layer(3), layer(4)],
             bleed: Bleed { amount: f[14], radius: f[15], opacity: f[16] },
-            highlight: Highlight { angle: f[17], amount: f[18] },
+            highlight: Highlight { angle: f[17], amount: f[18], width: f[29] },
             white_point: f[19],
             smoothing: f[20],
             tint: [f[21], f[22], f[23], f[24]],
@@ -368,7 +379,7 @@ pub mod cpu {
             Self {
                 soft: 1.0 + 4.0 * f64::from(glass.smoothing),
                 light: (angle.sin(), -angle.cos()),
-                band: f64::from(glass.refraction.inner_height.max(2.0)),
+                band: f64::from(glass.highlight.width.max(0.5)),
                 reach: f64::from(glass.bleed.radius.max(1.0)),
             }
         }
@@ -392,8 +403,9 @@ pub mod cpu {
                 return 0.0;
             }
             let length = x.hypot(y).max(1e-6);
-            let facing = ((x * self.light.0 + y * self.light.1) / length).max(0.0);
-            (facing * facing * (1.0 + d.min(0.0) / self.band)) as f32
+            let toward = (x * self.light.0 + y * self.light.1) / length;
+            let (facing, away) = (toward.max(0.0), (-toward).max(0.0));
+            ((facing * facing + FAR_EDGE * away * away) * (1.0 + d.min(0.0) / self.band)) as f32
         }
     }
 
@@ -548,7 +560,7 @@ mod tests {
 
     #[test]
     fn the_highlight_angle_is_where_the_light_comes_from_as_in_css() {
-        let glass = Glass { highlight: Highlight { angle: 315f32.to_radians(), amount: 1.0 }, ..Glass::preset(Role::Regular, Level::Tinted) };
+        let glass = Glass { highlight: Highlight { angle: 315f32.to_radians(), amount: 1.0, width: 12.0 }, ..Glass::preset(Role::Regular, Level::Tinted) };
         let margin = 24;
         let (width, height) = (96, 72);
         let source = Pixels { width, height, data: vec![0xff40_4040; width * height] };
@@ -556,7 +568,7 @@ mod tests {
         let red = |x: usize, y: usize| channels(out.data[y * width + x])[1];
         let (top_left, bottom_right) = (red(margin + 6, margin + 6), red(width - margin - 7, height - margin - 7));
         assert!(top_left > bottom_right, "315deg lights the top left edge: {top_left} against {bottom_right}");
-        let below = Glass { highlight: Highlight { angle: 180f32.to_radians(), amount: 1.0 }, ..glass };
+        let below = Glass { highlight: Highlight { angle: 180f32.to_radians(), amount: 1.0, width: 12.0 }, ..glass };
         let out = cpu::paint(&source, margin, Corners { radius: 8.0, exponent: 2.0 }, &below);
         let red = |x: usize, y: usize| channels(out.data[y * width + x])[1];
         assert!(red(width / 2, height - margin - 2) > red(width / 2, margin + 1), "180deg lights the bottom edge");

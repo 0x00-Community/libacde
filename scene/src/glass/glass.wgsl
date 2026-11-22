@@ -13,13 +13,17 @@ fn acde_glass_offset(p: vec2<f32>, half: vec2<f32>, d: f32, refraction: vec4<f32
     return acde_glass_offset_along(acde_glass_normal(p, half), d, refraction);
 }
 
+const ACDE_GLASS_FAR_EDGE: f32 = 0.33;
+
 fn acde_glass_shine(n: vec2<f32>, d: f32, band: f32, angle: f32, amount: f32) -> f32 {
-    let b = max(band, 2.0);
+    let b = max(band, 0.5);
     if -d > b || d > 0.0 {
         return 0.0;
     }
-    let facing = max(dot(n, vec2<f32>(sin(angle), -cos(angle))), 0.0);
-    return facing * facing * (1.0 + d / b) * amount;
+    let toward = dot(n, vec2<f32>(sin(angle), -cos(angle)));
+    let facing = max(toward, 0.0);
+    let away = max(-toward, 0.0);
+    return (facing * facing + ACDE_GLASS_FAR_EDGE * away * away) * (1.0 + d / b) * amount;
 }
 
 fn acde_glass_highlight(p: vec2<f32>, half: vec2<f32>, d: f32, band: f32, angle: f32, amount: f32) -> f32 {

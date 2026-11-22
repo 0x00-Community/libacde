@@ -573,7 +573,7 @@ impl Composer {
             light.amount,
             glass.white_point,
             glass.smoothing,
-            r.inner_height,
+            light.width,
             glass.lens.strength,
             glass.lens.dispersion,
             glass.darken,

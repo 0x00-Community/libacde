@@ -1,7 +1,8 @@
 use super::{Bleed, BlurLayer, Glass, Highlight, LAYERS, Lens, Refraction};
 
 const HIGHLIGHT_DEGREES: f32 = 330.0;
-const HIGHLIGHT_AMOUNT: f32 = 0.35;
+const HIGHLIGHT_AMOUNT: f32 = 0.2;
+const HIGHLIGHT_WIDTH: f32 = 1.5;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Role {
@@ -141,7 +142,7 @@ fn layers(pairs: [(f32, f32); LAYERS]) -> [BlurLayer; LAYERS] {
 }
 
 fn highlight() -> Highlight {
-    Highlight { angle: HIGHLIGHT_DEGREES.to_radians(), amount: HIGHLIGHT_AMOUNT }
+    Highlight { angle: HIGHLIGHT_DEGREES.to_radians(), amount: HIGHLIGHT_AMOUNT, width: HIGHLIGHT_WIDTH }
 }
 
 #[cfg(test)]
@@ -160,7 +161,7 @@ mod tests {
             ("acde-glass-lens", "60px 6px 0.05"),
             ("acde-glass-blur", "0px 1"),
             ("acde-glass-bleed", "0 0 0"),
-            ("acde-glass-highlight", "330deg 0.35"),
+            ("acde-glass-highlight", "330deg 0.2 1.5px"),
             ("acde-glass-darken", "0.05"),
             ("acde-glass-white-point", "0"),
             ("acde-glass-smoothing", "0.35"),

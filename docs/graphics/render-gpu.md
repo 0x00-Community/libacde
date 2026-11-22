@@ -39,12 +39,14 @@
   `[半径, 模糊, 饱和, 亮度, 指数]`; C 接口不改结构, 指数放在 `AcdeCommand.thickness` (Backdrop 本来不用它). 没写 shape 时是圆弧 (n = 2).
 - 模糊 (src/vello `Composer`、shell `effects.rs`) 是降采样 / 升采样链, 几层、采样偏移多大由 acde-model `Blur::of(sigma)` 一处决定
   系统玻璃 (2026-11-22, 总仓 `.scratch/libacde/glass-plan.md`): 元素有 `backdrop-filter` 又声明了作者自定义属性 `--acde-glass` (`regular`、`clear`, 其余分项
-  `--acde-glass-refraction`、`-blur`、`-bleed`、`-highlight`、`-white-point`、`-smoothing`、`-tint` 盖在预设上; `-highlight: <角度> <强度>` 的角度按 CSS
-  的约定, 0deg 朝上、顺时针, 表示光从哪边来, 打亮朝向光源的边, 预设 315deg 是左上来光 (2026-11-22 改, 原来按数学角且 y 朝下, 135deg 打亮了左下;
+  `--acde-glass-refraction`、`-blur`、`-bleed`、`-highlight`、`-white-point`、`-smoothing`、`-tint` 盖在预设上; `-highlight: <角度> <强度> [<宽度>]` 的角度按 CSS
+  的约定, 0deg 朝上、顺时针, 表示光从哪边来, 打亮朝向光源的边, 对侧的边另有一条约三分之一强度的亮线; 宽度是从边缘往里的一条细带 (长度, 随缩放, 不写沿用预设),
+  强度在带内从边缘线性降到 0 (2026-11-22 改: 原来带宽借折射的 inner_height, clear 档 18 px 一整条加白, 面积太大; 苹果的镜面光是 1–2 px 的细边, 上亮下暗,
+  参考 https://github.com/ALEXalesha/LiquidGlass 、https://dev.to/vitalbadjo/liquid-glass-css-the-apple-liquid-glass-effect-with-css-only-plus-svg-refraction-1hkd ), 预设 315deg 是左上来光 (2026-11-22 改, 原来按数学角且 y 朝下, 135deg 打亮了左下;
   `-tint` 的颜色认 `#rgb`、`#rgba`、`#rrggbb`、`#rrggbbaa` 与 `rgb(r g b / a)`) 时, blitz-paint (`render/glass.rs`) 从计算样式取这几个
   自定义属性的文本, 交 `acde_scene::glass::Glass::from_properties` 解析 (解析只此一处; 写错的分项留空并记 warn), 和角形一起作为 `LayerShape` 随
   `push_shaped_layer` 带出. `render::Backdrop::glass()` 给出它 (长度已乘图层变换的缩放), `gpu::Backdrop` 多一个 `glass` 字段. 玻璃的算法、线上格式
-  (`to_wire` / `from_wire`, 29 个小端 f32; 第 26–29 个是透镜强度、色散、乘暗、透镜宽度, 只收到前 25 个的旧对端按 0 处理)、`scaled` / `reach`、CPU 简化版 (`glass::cpu::paint`: 最小和最大两层模糊按两层的不透明度归一、在预乘空间混合, 区域外的渗出是预乘底色乘渗出系数, 和 GPU 一致; 高光、白点、着色按直通色算; 不做折射) 和
+  (`to_wire` / `from_wire`, 30 个小端 f32; 第 26–30 个是透镜强度、色散、乘暗、透镜宽度、高光宽度, 只收到前 25 个的旧对端按 0 处理)、`scaled` / `reach`、CPU 简化版 (`glass::cpu::paint`: 最小和最大两层模糊按两层的不透明度归一、在预乘空间混合, 区域外的渗出是预乘底色乘渗出系数, 和 GPU 一致; 高光、白点、着色按直通色算; 不做折射) 和
   逐像素的 WGSL (`glass::WGSL`, 要先拼 `corner::WGSL`) 都在 acde-scene; CPU 的盒式模糊也只此一份 (`acde_scene::blur`, 原 acompositor `frost.rs` 原样搬来).
   合成器经 `acompositor_backdrop_v1` 版本 3 的 `add_glass_area` 收玻璃 (acdes). 进程内的 GPU 合成 (`src/vello/compose.rs`, 宿主窗口用) 也画玻璃
   (2026-11-22): 取样区域是元素外扩 `reach()`; 五层里不透明度大于 0 的每层用现有的模糊管线 (`blur_tagged`) 各模糊一次, 按 `Pipe::Mix` 依次插值成按不透明度归一的
@@ -55,7 +57,7 @@
   `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 不模糊、不染色、不渗出, 乘暗 0.05, 透镜强度 60 px、宽度 6 px、色散 0.05 (边缘彩边约 3 px), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3)、`Tinted`
   (着色, 2, regular-2)、`Opaque` (减少透明度, 3: 重模糊加接近不透明的着色, `Glass::opaque(dark)` 按深浅给色, 预设取浅色). 名字和线上值都在 `Level`
   (`parse` / `from_wire` / `to_wire`, 照 `motion::Preset`), 认不得的线上值当通透. regular 取当前档, clear 再通透一档 (`Level::clearer`, 到通透为止,
-  不透明不变). 高光各档一律 `330deg 0.35` (用户 2026-11-22 定). `Glass::from_properties_at(level, …)` 按档位取预设再盖分项;
+  不透明不变). 高光各档一律 `330deg 0.2 1.5px` (用户 2026-11-22 定, 细边). `Glass::from_properties_at(level, …)` 按档位取预设再盖分项;
   `from_properties` 是默认档 (通透).
   玻璃组 (融合, 2026-11-22, 总仓 `.scratch/libacde/glass-merge-plan.md`; `acde_scene::glass::group`): `GlassGroup` 是最多 `MOST_PIECES` (16) 块
   `Piece {center, half, radius, exponent, glass}` 加间距 `spacing`, 满了 `push` 回 false (调用方让多出的块不参加融合, 各画各的, 记一次 warn).
@@ -67,7 +69,7 @@
   (中心差分, 步长 0.5 px). 所以一块玻璃、或离别块不小于 k 的那部分, 结果和单块玻璃逐位相同 (`group.rs` 的回归测试对照 `cpu::paint`).
   模糊层全组一份, 取第一块的. WGSL (`group::WGSL`, 要先拼 `corner::WGSL` 和 `glass::WGSL`) 只引用一个模块级数组 `acde_glass_pieces`,
   由使用方自己声明绑定: `var<uniform> acde_glass_pieces: array<AcdeGlassPiece, 16>`; 每块 7 个 vec4 (112 字节, `to_uniform` 给出整块 1792 字节):
-  `shape` (中心、半宽高)、`corner` (半径、指数)、`refraction`、`bleed` (渗出三项加高光角度)、`look` (高光强度、白点、平滑)、`tint`、`lens` (透镜强度、色散、乘暗、透镜宽度). 用 uniform 定长数组
+  `shape` (中心、半宽高)、`corner` (半径、指数)、`refraction`、`bleed` (渗出三项加高光角度)、`look` (高光强度、白点、平滑、高光宽度)、`tint`、`lens` (透镜强度、色散、乘暗、透镜宽度). 用 uniform 定长数组
   不用存储缓冲: WebGL2 级别的 wgpu 限额里存储缓冲为 0 (https://wgpu.rs/doc/wgpu/struct.Limits.html `downlevel_webgl2_defaults`), uniform 块至少
   16384 字节 (https://registry.khronos.org/OpenGL-Refpages/es3.1/html/glGet.xhtml), 页面合成和合成器都能用. 块数和间距由使用方的参数传入
   `acde_glass_group_field(p, count, spacing)`; `acde_glass_group_offset` / `acde_glass_group_shade` 按场做折射偏移和着色, 和单块的 `fs_glass` 是同一套函数

@@ -111,7 +111,7 @@ fn acde_glass_group_shade(under: vec4<f32>, f: AcdeGlassField) -> vec4<f32> {
     }
     let straight = select(vec3<f32>(0.0), under.rgb / under.a, under.a > 0.0);
     let n = f.toward / max(length(f.toward), 0.000001);
-    let shine = acde_glass_shine(n, f.d, f.look.refraction.y, f.look.bleed.w, f.look.look.x);
+    let shine = acde_glass_shine(n, f.d, f.look.look.w, f.look.bleed.w, f.look.look.x);
     let rgb = acde_glass_tone_darkened(straight, f.look.look.y, f.look.tint, shine, f.look.lens.z);
     let alpha = max(under.a, f.look.tint.a) * inside;
     return vec4<f32>(rgb * alpha, alpha);
