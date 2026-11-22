@@ -292,7 +292,7 @@ impl crate::terminal::TerminalHost for Terminals {
             return Err(Refusal::new(400, "unsupported", "this runtime does not take terminal options"));
         }
         let opened = Terminals::open(self, options.cols, options.rows).map_err(|e| Refusal::from_failure(&e))?;
-        Ok(opened["id"].as_str().unwrap_or_default().to_owned())
+        opened["id"].as_str().map(str::to_owned).ok_or_else(|| Refusal::new(500, "internal_error", "the terminal has no id"))
     }
     fn input(&self, id: &str, data: String) -> std::result::Result<(), Refusal> {
         Terminals::input(self, id.to_owned(), data).map(drop).map_err(|e| Refusal::from_failure(&e))
@@ -306,7 +306,12 @@ impl crate::terminal::TerminalHost for Terminals {
         Terminals::close(self, id.to_owned());
     }
     fn listen(&self, id: &str, sink: Sink) -> std::result::Result<(), Refusal> {
-        let sink = move |events: Value| sink(serde_json::from_value(events).unwrap_or_default());
+        let sink = move |events: Value| {
+            let events = events.as_array().into_iter().flatten().filter_map(|event| {
+                serde_json::from_value(event.clone()).inspect_err(|e| log::warn!("terminal: an event of an unknown shape is skipped: {e}")).ok()
+            });
+            sink(events.collect())
+        };
         Terminals::listen(self, id, sink).map_err(|e| Refusal::from_failure(&e))
     }
     fn shells(&self) -> Vec<Shell> {

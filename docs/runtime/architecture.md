@@ -85,7 +85,7 @@ crate; `acde:` 模块、`@acde/api`、`acde_*` 协议、`ACDE_*` 环境变量、
   回 `Shell {path, name, login}`, `limits` 回 `Limits {max, open}`, 事件是枚举 `TerminalEvent` (`Output` / `Cwd` / `Exit` / `Foreground`), 由绑定
   转成页面的 JSON 形状 (`acde-api` 的 `types/terminal/index.d.ts`、`events.d.ts`). 前端在 `acde::start` 之前调一次 `acde::terminal::provide(Box<dyn TerminalHost>)`
   登记 (照 `render::gpu::set_cpu_raster`): 第一次取实现 (第一个拿到 terminal 能力的 web) 时选定, 之后不再换, 晚来的 `provide` 回 false;
-  `acde::exit` 调选定实现的 `close_all`, 所以实现要在那里挂断所有终端、不等待. trait 的方法都在页面的 JS 线程上同步执行, 实现不能阻塞 (起进程、读
+  `acde::exit` 调选定实现的 `close_all`, 所以实现要在那里挂断所有终端、不等待 (选定的实现在静态量里, 不会被释放; 前端不经 `acde::exit` 结束时没人收尾, acdes 的 `main` 总以 `acde::exit` 结束). trait 的方法都在页面的 JS 线程上同步执行, 实现不能阻塞 (起进程、读
   `/etc/shells` 这类快操作可以, 慢的自己放到别的线程). 绑定只解析参数形状: `cols`、`rows` 原样交给实现 (NaN、0、过大由实现检查); `open` 第三个参数
   `{command?, cwd?, env?}` 读成 `OpenOptions`, 不是对象、是函数、或无法转成 JSON (BigInt、循环引用) 回 400 `invalid_request`, 某个字段形状不对回 400,
   `code` 是该字段名 (`command` / `cwd` / `env`, 与实现方按规则拒绝时同一个 code); 规则与校验归实现方, 拒绝用 `Refusal {status, code, message}`
