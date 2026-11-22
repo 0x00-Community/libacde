@@ -162,3 +162,6 @@ macOS 26 的系统分配器 (xzone malloc) 把释放掉的大块 (1 MiB 以上) 
   `HashMap<String, Vec<u8>>` 在噪声内不变. 8 线程同时做大块时慢得更多 (同一张 VM 表上的锁); 运行时里这种大块只在页面 ⇄ 后端的数据通道上,
   那里一次 4 MiB 的请求要几毫秒.
 - 别的平台不变: Linux、Windows 的 V8 用默认分配器.
+
+后端请求体从 JS 只拷一次: `host/backend.rs` 的 `request` 直接把 `Uint8Array` 的内容拷进 ntex 的 `Bytes` (`Bytes::copy_from_slice`), 交给
+`FetchClient::request`; 原来先拷成 `Vec<u8>`, ntex 的 `Bytes::from(Vec)` 又拷一次.

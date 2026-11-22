@@ -146,7 +146,7 @@ fn request(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv
     let body = if body.is_null_or_undefined() {
         None
     } else {
-        match bind::bytes(body) {
+        match bind::with_bytes(body, ntex::util::Bytes::copy_from_slice) {
             Some(bytes) => Some(bytes),
             None => return bind::throw_type_error(scope, "acde.backend: the body is a Uint8Array or null"),
         }

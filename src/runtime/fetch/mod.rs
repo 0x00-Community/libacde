@@ -10,6 +10,7 @@ use ntex::io::{Filter, Io, IoBoxed, Sealed};
 use ntex::service::fn_service;
 use ntex::time::{Deadline, Millis, Seconds};
 use ntex::url::Url;
+use ntex::util::Bytes;
 use ntex::ws::{CloseCode, CloseReason, Codec, Message, WsClient, WsClientConfig};
 use std::{
     cell::{Cell, RefCell},
@@ -229,11 +230,11 @@ pub(crate) struct Exchange {
     path: String,
     host: String,
     headers: Vec<(String, String)>,
-    body: Option<Vec<u8>>,
+    body: Option<Bytes>,
 }
 
 impl Exchange {
-    fn new(to: Dial, method: String, path: String, pairs: Vec<Vec<String>>, body: Option<Vec<u8>>) -> Result<Self, String> {
+    fn new(to: Dial, method: String, path: String, pairs: Vec<Vec<String>>, body: Option<Bytes>) -> Result<Self, String> {
         let to = to.check(&path, &["http", "https"])?;
         if !is_token(&method) {
             return Err("method must be an HTTP token".into());
@@ -557,7 +558,7 @@ impl FetchClient {
         }
     }
 
-    pub fn request(&self, to: Dial, method: String, path: String, headers: Vec<Vec<String>>, body: Option<Vec<u8>>, deliver: Deliver) -> Result<u32, String> {
+    pub fn request(&self, to: Dial, method: String, path: String, headers: Vec<Vec<String>>, body: Option<Bytes>, deliver: Deliver) -> Result<u32, String> {
         Ok(self.exchange(Exchange::new(to, method, path, headers, body)?, Delivered(deliver)))
     }
 

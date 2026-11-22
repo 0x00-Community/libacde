@@ -73,7 +73,7 @@ fn request(socket: &str, method: &str, path: &str, headers: &[(&str, &str)], bod
         path: path.into(),
         host: "localhost".into(),
         headers: headers.iter().map(|(n, v)| (n.to_string(), v.to_string())).collect(),
-        body: body.map(<[u8]>::to_vec),
+        body: body.map(Bytes::copy_from_slice),
     }
 }
 
@@ -146,7 +146,7 @@ fn remote_url_over_tcp() {
         "POST".into(),
         String::new(),
         vec![vec!["Origin".into(), "http://acde.local".into()]],
-        Some(b"hi".to_vec()),
+        Some(Bytes::from_static(b"hi")),
     )
     .expect("a valid request");
     let (sender, events) = channel();
@@ -510,7 +510,7 @@ fn channel_exchange_past_the_initial_credit() {
     let client = FetchClient::default();
     let body: Vec<u8> = (0..size).map(|i| (i % 251) as u8).collect();
     let to = Dial::App { app: "fetch.channel.test".into(), port: 3000 };
-    let mut exchange = Exchange::new(to, "POST".into(), "/echo".into(), vec![], Some(body.clone())).expect("valid");
+    let mut exchange = Exchange::new(to, "POST".into(), "/echo".into(), vec![], Some(Bytes::copy_from_slice(&body))).expect("valid");
     exchange.host = "localhost:3000".into();
     client.exchange(exchange, sender);
     std::thread::sleep(Duration::from_millis(200));
