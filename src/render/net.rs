@@ -103,11 +103,15 @@ impl LocalNet {
 }
 
 fn icon_path(rest: &str) -> Option<PathBuf> {
-    let path = Path::new("/").join(rest);
-    if !Path::new(rest).components().all(|c| matches!(c, Component::Normal(_))) {
+    icon_path_among(&icon_dirs(), rest)
+}
+
+fn icon_path_among(dirs: &[PathBuf], rest: &str) -> Option<PathBuf> {
+    let path = Url::parse(&format!("file:///{rest}")).ok()?.to_file_path().ok()?;
+    if !path.components().skip(1).all(|c| matches!(c, Component::Normal(_))) {
         return None;
     }
-    icon_dirs().iter().find_map(|d| within(d, &path))
+    dirs.iter().find_map(|d| within(d, &path))
 }
 
 fn icon_dirs() -> Vec<PathBuf> {
@@ -115,7 +119,7 @@ fn icon_dirs() -> Vec<PathBuf> {
     let data_home = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).or_else(|| home.as_ref().map(|h| h.join(".local/share")));
     let data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
     let shares = data_home.into_iter().chain(data_dirs.split(':').filter(|d| !d.is_empty()).map(PathBuf::from));
-    let mut dirs: Vec<PathBuf> = shares.flat_map(|s| [s.join("icons"), s.join("pixmaps")]).collect();
+    let mut dirs: Vec<PathBuf> = shares.flat_map(|s| [s.join("icons"), s.join("pixmaps"), s.join("swcatalog/icons")]).collect();
     dirs.extend(home.map(|h| h.join(".icons")));
     dirs
 }
@@ -242,6 +246,13 @@ mod tests {
         assert!(net.path(&icons(&scratch.0.join("lent/ok.png"))).is_none(), "a lent folder is not an icon folder");
         assert!(net.path(&url("http://acde.local/acde-icons/usr/share/icons/../../../etc/passwd")).is_none());
         assert!(net.path(&url("http://other.example/acde-icons/usr/share/icons/x.png")).is_none());
+        let dir = scratch.0.join("share/icons/hi color");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("图标.png"), b"png").unwrap();
+        let encoded = Url::from_file_path(dir.join("图标.png")).unwrap().path().trim_start_matches('/').to_owned();
+        assert!(encoded.contains("%20") && encoded.contains("%E5"), "{encoded}");
+        let decoded = icon_path_among(&[scratch.0.join("share/icons")], &encoded);
+        assert_eq!(decoded, std::fs::canonicalize(dir.join("图标.png")).ok(), "a percent-encoded path is decoded first");
         let icon = icon_dirs().into_iter().filter_map(|d| std::fs::read_dir(d).ok()).flatten().flatten().map(|e| e.path()).find(|p| p.is_file());
         if let Some(icon) = icon {
             assert_eq!(net.path(&icons(&icon)), std::fs::canonicalize(&icon).ok(), "an icon under an icon folder: {}", icon.display());
