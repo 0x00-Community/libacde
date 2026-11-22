@@ -23,6 +23,8 @@ export interface Place {
   readonly languages: Languages
   readonly navigator: { readonly userAgent: string; readonly platform: string }
   readonly dark: boolean
+  readonly glass: { readonly level: number; readonly reducedTransparency: boolean }
+  readonly reducedMotion: boolean
 }
 
 export class AppLookup {
@@ -113,6 +115,8 @@ function common(token: bigint, window: number, place: Place, services: WebInit['
     height: place.height * place.scale,
     scale: place.scale,
     dark: place.dark,
+    glass: place.glass,
+    reducedMotion: place.reducedMotion,
     languages: place.languages,
     navigator: place.navigator,
     services,

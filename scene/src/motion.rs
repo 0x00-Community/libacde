@@ -1,4 +1,5 @@
 use core::f64::consts::TAU;
+use core::sync::atomic::{AtomicU32, Ordering};
 
 const RESPONSE: f64 = 0.35;
 const SETTLING: f64 = 9.233_413_476_451_586;
@@ -44,6 +45,16 @@ impl Preset {
             Self::Reduced => Curve::Eased { seconds: REDUCED_FADE, ease: Ease::LINEAR },
         }
     }
+}
+
+static SYSTEM: AtomicU32 = AtomicU32::new(0);
+
+pub fn set_system(preset: Preset) -> bool {
+    SYSTEM.swap(preset.to_wire(), Ordering::AcqRel) != preset.to_wire()
+}
+
+pub fn system() -> Preset {
+    Preset::from_wire(SYSTEM.load(Ordering::Acquire))
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]

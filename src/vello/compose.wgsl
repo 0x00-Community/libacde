@@ -9,11 +9,13 @@ struct Params {
     color: vec4<f32>,
     matrix: mat4x4<f32>,
     bias: vec4<f32>,
+    outline: vec4<f32>,
 }
 
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var samp: sampler;
 @group(0) @binding(2) var<uniform> params: Params;
+@group(0) @binding(3) var<uniform> acde_glass_pieces: array<AcdeGlassPiece, ACDE_GLASS_MOST_PIECES>;
 
 struct VsOut {
     @builtin(position) pos: vec4<f32>,
@@ -78,27 +80,52 @@ fn fs_backdrop(in: VsOut) -> @location(0) vec4<f32> {
     return c * mask;
 }
 
+fn glass_sample(at: vec2<f32>, region: vec4<f32>) -> vec4<f32> {
+    return textureSample(src, samp, clamp((at - region.xy) / region.zw, vec2<f32>(0.0), vec2<f32>(1.0)));
+}
+
+fn glass_under(at: vec2<f32>, bend: AcdeGlassBend, region: vec4<f32>) -> vec4<f32> {
+    let red = glass_sample(at + bend.red, region);
+    let green = glass_sample(at + bend.green, region);
+    let blue = glass_sample(at + bend.blue, region);
+    return vec4<f32>(red.r, green.g, blue.b, green.a);
+}
+
 @fragment
 fn fs_glass(in: VsOut) -> @location(0) vec4<f32> {
     let px = in.pos.xy;
     let half = params.rect.zw * 0.5;
     let p = px - params.rect.xy - half;
-    let d = acde_corner_distance(p, half, min(params.radius, min(half.x, half.y)), params.exponent);
+    let radius = min(params.radius, min(half.x, half.y));
+    let d = acde_corner_distance(p, half, radius, params.exponent);
     let refraction = params.matrix[0];
     let g1 = params.matrix[1];
     let g2 = params.matrix[2];
+    let lens = params.matrix[3];
     let region = params.bias;
     let at = px + acde_glass_offset(p, half, d, refraction);
-    let under = textureSample(src, samp, clamp((at - region.xy) / region.zw, vec2<f32>(0.0), vec2<f32>(1.0)));
+    let bend = acde_glass_lens_rgb(acde_glass_corner_gradient(p, half, radius, params.exponent), d, min(half.x, half.y), lens, params.shift.x);
+    let under = glass_under(at, bend, region);
     let inside = acde_glass_inside(d, g2.z);
     if inside <= 0.0 {
         return under * acde_glass_bleed(d, g1.xyz);
     }
     let straight = select(vec3<f32>(0.0), under.rgb / under.a, under.a > 0.0);
     let shine = acde_glass_highlight(p, half, d, g2.w, g1.w, g2.x);
-    let rgb = acde_glass_tone(straight, g2.y, params.color, shine);
-    let alpha = max(under.a, params.color.a) * inside;
-    return vec4<f32>(rgb * alpha, alpha);
+    let rgb = acde_glass_tone_darkened(straight, g2.y, params.color, shine, lens.z);
+    let lined = acde_glass_outlined(rgb, max(under.a, params.color.a), d, params.shift.y, params.outline);
+    let alpha = lined.a * inside;
+    return vec4<f32>(lined.rgb * alpha, alpha);
+}
+
+@fragment
+fn fs_glass_group(in: VsOut) -> @location(0) vec4<f32> {
+    let px = in.pos.xy;
+    let count = u32(params.shift.x);
+    let f = acde_glass_group_field(px, count, params.shift.y);
+    let at = px + acde_glass_group_offset(f);
+    let under = glass_under(at, acde_glass_group_lens(f, px, count, params.shift.y), params.bias);
+    return acde_glass_group_shade(under, f);
 }
 
 @fragment

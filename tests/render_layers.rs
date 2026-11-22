@@ -24,7 +24,9 @@ const CSS: &str = "html, body { margin: 0; height: 100%; }
   .ds4 { filter: drop-shadow(0 0 4px black); }
   .ds10 { filter: drop-shadow(2px 3px 10px black); }
   .ds25 { filter: drop-shadow(0 0 25px black); }
-  .bl6 { filter: blur(6px); }";
+  .bl6 { filter: blur(6px); }
+  .merge { --acde-glass-merge: 10px; }
+  .pill { position: absolute; top: 20px; width: 60px; height: 40px; border-radius: 20px; backdrop-filter: blur(2px); --acde-glass: regular; }";
 
 struct Page {
     doc: Doc,
@@ -180,4 +182,85 @@ fn backdrop_blurs_combine_as_root_sum_of_squares() {
     assert!((b.blur() - 5.0).abs() < 1e-3, "blur {}", b.blur());
     assert!((b.effect().blur - 5.0).abs() < 1e-3, "blur {}", b.effect().blur);
     assert!(b.effect().matrix.is_none());
+}
+
+#[test]
+fn glass_merges_within_its_container_or_by_union_into_one_group() {
+    for (container, pill, groups) in [("merge", "", 1), ("", "", 2), ("", "--acde-glass-union: pair;", 1)] {
+        let page = Page::new(1.0);
+        let row = page.div(container);
+        for left in ["20px", "86px"] {
+            let id = page.doc.create_element("div").unwrap();
+            page.doc.set_attribute(id, "class", "pill").unwrap();
+            page.doc.set_attribute(id, "style", &format!("left: {left}; {pill}")).unwrap();
+            page.doc.append_child(row, id).unwrap();
+        }
+        let frame = page.frame();
+        let backdrops: Vec<_> = frame.plane.layers.iter().filter_map(|l| l.backdrop.as_ref()).collect();
+        assert_eq!(backdrops.len(), groups, "{container:?} {pill:?}");
+        if groups == 2 {
+            assert!(backdrops.iter().all(|b| b.group().is_none()));
+            continue;
+        }
+        let group = backdrops[0].group().expect("one group");
+        assert_eq!(group.len(), 2);
+        assert!(near(backdrops[0].bounds.width(), 126.0), "the group covers both pills: {:?}", backdrops[0].bounds);
+        assert_eq!(group.spacing, if container.is_empty() { 0.0 } else { 10.0 });
+    }
+}
+
+#[test]
+fn a_named_glass_leaving_its_group_shrinks_away_over_frames() {
+    let page = Page::new(1.0);
+    let row = page.div("merge");
+    let pill = |left: &str, name: &str| {
+        let id = page.doc.create_element("div").unwrap();
+        page.doc.set_attribute(id, "class", "pill").unwrap();
+        page.doc.set_attribute(id, "style", &format!("left: {left}; --acde-glass-id: {name}")).unwrap();
+        page.doc.append_child(row, id).unwrap();
+        id
+    };
+    pill("20px", "a");
+    let leaving = pill("86px", "b");
+    let pieces = |frame: &Frame| frame.plane.layers.iter().filter_map(|l| l.backdrop.as_ref()?.group()).map(|g| g.len()).sum::<usize>();
+    assert_eq!(pieces(&page.frame()), 2);
+    page.doc.remove(leaving).unwrap();
+    let frame = page.frame();
+    assert!(frame.animating, "the ghost of b is still shrinking");
+    assert_eq!(pieces(&frame), 2, "a and the ghost of b");
+    std::thread::sleep(Duration::from_millis(700));
+    page.handle.tick(0.0);
+    let settled = page.frame();
+    assert_eq!(pieces(&settled), 1);
+    assert!(!settled.animating);
+    let d = settled.plane.damage;
+    assert!(d.x <= 86.0 && d.x + d.width >= 146.0, "the frame that drops the ghost repaints where it was: {d:?}");
+}
+
+#[test]
+fn a_union_groups_a_circle_and_different_sized_pills_across_dom_branches() {
+    let page = Page::new(1.0);
+    let mut nodes = Vec::new();
+    for (wrapper_left, glass) in [
+        ("0px", "left: 20px; top: 20px; width: 120px; height: 60px; border-radius: 30px"),
+        ("10px", "left: 146px; top: 34px; width: 50px; height: 32px; border-radius: 16px"),
+        ("20px", "left: 202px; top: 35px; width: 30px; height: 30px; border-radius: 50%"),
+    ] {
+        let wrapper = page.doc.create_element("section").unwrap();
+        page.doc.set_attribute(wrapper, "style", &format!("position: absolute; left: {wrapper_left}")).unwrap();
+        page.doc.append_child(page.body, wrapper).unwrap();
+        let id = page.doc.create_element("div").unwrap();
+        page.doc.set_attribute(id, "class", "pill").unwrap();
+        page.doc.set_attribute(id, "style", &format!("{glass}; --acde-glass-union: tuner")).unwrap();
+        page.doc.append_child(wrapper, id).unwrap();
+        nodes.push(id);
+    }
+    let frame = page.frame();
+    let groups: Vec<_> = frame.plane.layers.iter().filter_map(|l| l.backdrop.as_ref()?.group()).collect();
+    assert_eq!(groups.len(), 1);
+    let pieces = groups[0].pieces();
+    assert_eq!(pieces.len(), 3);
+    assert_eq!(pieces.iter().map(|p| p.half).collect::<Vec<_>>(), [[60.0, 30.0], [25.0, 16.0], [15.0, 15.0]]);
+    assert_eq!(pieces.iter().map(|p| p.radius).collect::<Vec<_>>(), [30.0, 16.0, 15.0]);
+    assert_eq!(nodes.len(), 3);
 }

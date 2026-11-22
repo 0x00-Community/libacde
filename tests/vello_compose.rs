@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use acde::gpu::glass::group::{GlassGroup, Piece};
+use acde::gpu::glass::{Glass, Level, Outline, Role};
 use acde::gpu::{Backdrop, ColorMatrix, Effect, Gpu, Shadow, wgpu};
 use acde::vello::{Composer, Op};
 
@@ -147,7 +149,7 @@ fn backdrop(bench: &mut Bench, matrices: &[ColorMatrix]) -> Vec<[u8; 4]> {
     for m in matrices {
         effect.matrix(m.0);
     }
-    let backdrop = Backdrop { rect: [8.0, 8.0, 112.0, 48.0], radius: 0.0, exponent: 2.0, glass: None, effect };
+    let backdrop = Backdrop { rect: [8.0, 8.0, 112.0, 48.0], effect, ..Backdrop::default() };
     bench.run(|c, e, canvas| c.backdrop(e, canvas, &backdrop))
 }
 
@@ -197,7 +199,7 @@ fn backdrop_blurs_summed_in_squares() {
     once.blur(5.0);
     let mut run = |effect: Effect| {
         bench.fill(&bench.canvas, &edge(LEFT, RIGHT, W / 2));
-        let backdrop = Backdrop { rect: [8.0, 8.0, 112.0, 48.0], radius: 0.0, exponent: 2.0, glass: None, effect };
+        let backdrop = Backdrop { rect: [8.0, 8.0, 112.0, 48.0], effect, ..Backdrop::default() };
         bench.run(|c, e, canvas| c.backdrop(e, canvas, &backdrop))
     };
     assert_eq!(run(twice), run(once));
@@ -248,4 +250,56 @@ fn a_shadow_from_the_blurred_canvas_matches_one_blurred_alone() {
     });
     let worst = alone.iter().zip(&shared).map(|(a, b)| a.iter().zip(b).map(|(x, y)| x.abs_diff(*y)).max().unwrap_or(0)).max().unwrap_or(0);
     assert!(worst <= 2, "the shadow differs by up to {worst}");
+}
+
+fn glass_over_stripes(bench: &mut Bench, backdrop: &Backdrop) -> Vec<[u8; 4]> {
+    let stripes: Vec<[u8; 4]> = (0..W * H).map(|i| if (i % W / 6).is_multiple_of(2) { LEFT } else { RIGHT }).collect();
+    bench.fill(&bench.canvas, &stripes);
+    bench.run(|c, e, canvas| c.backdrop(e, canvas, backdrop))
+}
+
+#[test]
+fn a_one_piece_glass_group_composes_like_the_single_glass_and_two_pieces_merge() {
+    let mut bench = Bench::new();
+    let glass = Glass { outline: Default::default(), ..Glass::preset(Role::Regular, Level::Clear) };
+    let rect = [16.0, 12.0, 40.0, 40.0];
+    let single = Backdrop { rect, radius: 20.0, glass: Some(glass), ..Backdrop::default() };
+    let mut one = GlassGroup::new(10.0);
+    assert!(one.push(Piece::of_rect(rect, 20.0, 2.0, glass)));
+    let grouped = Backdrop { group: Some(one), ..single };
+    let (alone, as_group) = (glass_over_stripes(&mut bench, &single), glass_over_stripes(&mut bench, &grouped));
+    let worst = alone.iter().zip(&as_group).map(|(a, b)| a.iter().zip(b).map(|(x, y)| x.abs_diff(*y)).max().unwrap_or(0)).max().unwrap_or(0);
+    assert!(worst <= 1, "a one-piece group differs from the single glass by up to {worst}");
+    let mut two = one;
+    assert!(two.push(Piece::of_rect([60.0, 12.0, 40.0, 40.0], 20.0, 2.0, glass)));
+    let pair = Backdrop { rect: [16.0, 12.0, 84.0, 40.0], group: Some(two), ..single };
+    let merged = glass_over_stripes(&mut bench, &pair);
+    let neck = (32 * W + 58) as usize;
+    assert_ne!(merged[neck], alone[neck], "the 4 px gap between the pieces is bridged by glass");
+}
+
+#[test]
+fn a_single_glass_draws_its_outline_on_the_gpu_and_none_draws_nothing() {
+    let mut bench = Bench::new();
+    let base = Glass {
+        highlight: Default::default(),
+        lens: Default::default(),
+        tint: [0.0; 4],
+        white_point: 0.0,
+        darken: 0.0,
+        ..Glass::preset(Role::Regular, Level::Clear)
+    };
+    let red = Outline { width: 1.0, color: [1.0, 0.0, 0.0, 1.0], merged: false };
+    let rect = [16.0, 12.0, 40.0, 40.0];
+    let draw = |bench: &mut Bench, outline: Outline| {
+        let backdrop = Backdrop { rect, radius: 8.0, glass: Some(Glass { outline, ..base }), ..Backdrop::default() };
+        bench.fill(&bench.canvas, &vec![[0, 64, 0, 255]; (W * H) as usize]);
+        bench.run(|c, e, canvas| c.backdrop(e, canvas, &backdrop))
+    };
+    let lined = draw(&mut bench, red);
+    let bare = draw(&mut bench, Outline::default());
+    let at = |pixels: &[[u8; 4]], x: u32, y: u32| pixels[(y * W + x) as usize][0];
+    assert!(at(&lined, 16, 32) > 128, "the left edge has the outline: {}", at(&lined, 16, 32));
+    assert!(at(&lined, 36, 32) <= 1, "the middle has none");
+    assert!(bare.iter().all(|p| p[0] <= 1), "no outline draws nothing red");
 }

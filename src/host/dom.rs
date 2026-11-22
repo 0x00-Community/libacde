@@ -765,6 +765,15 @@ natives! {
         dom.set_dark(bind::arg_bool(scope, &args, 0));
         Ok(())
     }
+    "setReducedMotion" => fn set_reduced_motion(scope, args, dom) {
+        dom.set_reduced_motion(bind::arg_bool(scope, &args, 0));
+        Ok(())
+    }
+    "setGlass" => fn set_glass(scope, args, dom) {
+        let (level, reduced) = (bind::arg_u32(scope, &args, 0), bind::arg_bool(scope, &args, 1));
+        dom.set_glass(level, reduced);
+        Ok(())
+    }
 }
 
 #[cfg(test)]

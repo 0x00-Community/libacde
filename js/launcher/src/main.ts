@@ -28,7 +28,7 @@ import { Inspect, type InspectHost, type InspectShell, type ShellWindow } from '
 import { GuestWindows } from './dev/guest'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
-import { fixedScheme, followScheme, type AppearancePortal } from './app/appearance'
+import { fixedScheme, followAppearance, type AppearanceChange, type AppearancePortal, type Glass } from './app/appearance'
 import { PagePort } from './manager/pageport'
 import type { AnchorWire } from '../../page/src/pinanchor'
 
@@ -177,6 +177,8 @@ class Launcher {
   #devState: unknown = null
   readonly #backend: AppBackend | null
   readonly #port: PagePort | null
+  #glass: Glass = { level: 0, reducedTransparency: false }
+  #reducedMotion = false
 
   constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
     this.#shell = Launcher.shell(natives, session.label)
@@ -217,7 +219,7 @@ class Launcher {
       ...(this.#guest && { place: (windows: unknown) => this.#guest!.place(windows) }),
       production: !process.env['ACDE_DEV'],
     }, fixed === true)
-    if (fixed === null) void followScheme(natives.native.Appearance, (dark) => this.#dev.follow(dark))
+    void followAppearance(natives.native.Appearance, fixed !== null, (change) => this.#appearance(change))
     this.#backend = session.kind === 'app' && session.found?.app.backend ? new AppBackend(session.found) : null
     const port = manager?.welcome.port
     this.#port = port ? new PagePort(port.data ?? null, manager.connectBackend?.bind(manager), (line) => process.stderr.write(`acdev: ${line}\n`)) : null
@@ -290,7 +292,21 @@ class Launcher {
       languages: SessionLanguage.of(process.env, sys().languages()),
       navigator: { userAgent: '', platform: process.platform === 'darwin' ? 'MacIntel' : process.platform === 'win32' ? 'Win32' : 'Linux x86_64' },
       dark: this.#dev.dark,
+      glass: this.#glass,
+      reducedMotion: this.#reducedMotion,
     }
+  }
+
+  #appearance({ dark, glass, reducedTransparency, reducedMotion }: AppearanceChange): void {
+    if (dark !== undefined) this.#dev.follow(dark)
+    if (reducedMotion !== undefined && reducedMotion !== this.#reducedMotion) {
+      this.#reducedMotion = reducedMotion
+      this.#thread?.post({ type: 'motion', reduced: reducedMotion })
+    }
+    const next: Glass = { level: glass ?? this.#glass.level, reducedTransparency: reducedTransparency ?? this.#glass.reducedTransparency }
+    if (next.level === this.#glass.level && next.reducedTransparency === this.#glass.reducedTransparency) return
+    this.#glass = next
+    this.#thread?.post({ type: 'glass', ...next })
   }
 
   #grant(): Grant {
@@ -467,7 +483,7 @@ class Launcher {
     this.#releaseShortcuts()
     this.#reloading = false
     const grant = this.#grant()
-    this.#spawn({ ...this.#init!, token: grant.token, dark: this.#dev.dark })
+    this.#spawn({ ...this.#init!, token: grant.token, dark: this.#dev.dark, glass: this.#glass, reducedMotion: this.#reducedMotion })
   }
 
   #capabilities(method: string, args: unknown[]): unknown {

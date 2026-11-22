@@ -204,9 +204,19 @@ pub struct Plane {
 }
 
 impl Plane {
+    fn damaged(&mut self, area: Rect) {
+        self.damage = self.damage.union(area);
+        self.damage_rects.push(area);
+        self.collapse();
+    }
+
     fn absorb(&mut self, old: Plane) {
         self.damage = self.damage.union(old.damage);
         self.damage_rects.extend(old.damage_rects);
+        self.collapse();
+    }
+
+    fn collapse(&mut self) {
         if self.damage_rects.len() > 8 {
             self.damage_rects = vec![self.damage];
         }

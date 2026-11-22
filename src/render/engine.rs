@@ -37,9 +37,12 @@ pub(crate) struct Engine {
     pub(crate) dirty: bool,
     stats: Stats,
     damage: Damage,
+    glass: acde_scene::glass::Preference,
     paint_cache: PaintCache,
     panels: Vec<(NodeId, u32, kurbo::Rect)>,
     panel_damage: std::collections::HashMap<u32, Damage>,
+    glass_motion: std::collections::HashMap<Option<u32>, (acde_scene::glass::Appearance, Option<kurbo::Rect>)>,
+    glass_moving: bool,
     verify: bool,
     from_cache: bool,
     pub(crate) committed: u64,
@@ -83,9 +86,12 @@ impl Engine {
             dirty: true,
             stats: Stats::default(),
             damage: Damage::default(),
+            glass: acde_scene::glass::Preference { dark: options.dark, ..acde_scene::glass::preference() },
             paint_cache: PaintCache::default(),
             panels: Vec::new(),
             panel_damage: Default::default(),
+            glass_motion: Default::default(),
+            glass_moving: false,
             verify: options.verify_paint.unwrap_or_else(|| std::env::var("ACDE_PAINT_VERIFY").is_ok_and(|v| v == "1")),
             from_cache: false,
             committed: 0,
@@ -115,7 +121,10 @@ impl Engine {
         self.panels.retain(|p| p.0 != node);
         match rect {
             Some([x, y, w, h]) => self.panels.push((node, id, kurbo::Rect::new(x * scale, y * scale, (x + w) * scale, (y + h) * scale))),
-            None => _ = self.panel_damage.remove(&id),
+            None => {
+                self.panel_damage.remove(&id);
+                self.glass_motion.remove(&Some(id));
+            }
         }
         if had != rect.is_some() {
             self.paint_cache.clear();
@@ -172,6 +181,29 @@ impl Engine {
         self.touch();
     }
 
+    pub(crate) fn set_reduced_motion(&mut self, reduced: bool) {
+        let preset = if reduced { acde_scene::motion::Preset::Reduced } else { acde_scene::motion::Preset::Standard };
+        if acde_scene::motion::set_system(preset) {
+            self.touch();
+        }
+    }
+
+    pub(crate) fn set_glass(&mut self, preference: acde_scene::glass::Preference) {
+        let dark = self.doc.viewport().color_scheme == ColorScheme::Dark;
+        self.adopt_glass(acde_scene::glass::Preference { dark, ..preference });
+    }
+
+    fn adopt_glass(&mut self, preference: acde_scene::glass::Preference) {
+        acde_scene::glass::set_preference(preference);
+        if self.glass == preference {
+            return;
+        }
+        self.glass = preference;
+        self.paint_cache.clear();
+        self.damage = Damage::default();
+        self.touch();
+    }
+
     pub(crate) fn set_dark(&mut self, on: bool) {
         let scheme = if on { ColorScheme::Dark } else { ColorScheme::Light };
         if self.doc.viewport().color_scheme == scheme {
@@ -180,6 +212,7 @@ impl Engine {
         let mut viewport = self.doc.viewport().clone();
         viewport.color_scheme = scheme;
         self.doc.set_viewport(viewport);
+        self.adopt_glass(acde_scene::glass::Preference { dark: on, ..self.glass });
         self.touch();
     }
 
@@ -313,7 +346,7 @@ impl Engine {
     }
 
     pub(crate) fn is_dirty(&self) -> bool {
-        self.dirty || self.stale || self.doc.is_animating()
+        self.dirty || self.stale || self.doc.is_animating() || self.glass_moving
     }
 
     pub(crate) fn invalidate(&mut self) {
@@ -331,6 +364,7 @@ impl Engine {
         if self.doc.is_animating() {
             self.touch();
         }
+        self.dirty |= self.glass_moving;
     }
 
     pub(crate) fn scroll_at(&mut self, x: f32, y: f32, dx: f64, dy: f64, at: f64) {
@@ -382,6 +416,19 @@ impl Engine {
         plane
     }
 
+    fn animate_glass(&mut self, key: Option<u32>, plane: &mut Plane, now: f64) -> bool {
+        let (appearance, last) = self.glass_motion.entry(key).or_default();
+        let area = crate::render::layers::animate_glass(&mut plane.layers, appearance, now);
+        let drawn = match (area, std::mem::replace(last, area)) {
+            (Some(a), Some(b)) => Some(a.union(b)),
+            (a, b) => a.or(b),
+        };
+        if let Some(drawn) = drawn {
+            plane.damaged(drawn.into());
+        }
+        area.is_some()
+    }
+
     fn panel(&mut self, (id, rect, commands): (u32, kurbo::Rect, Commands), scale: f64) -> Panel {
         let size = (rect.width().round().max(1.0) as u32, rect.height().round().max(1.0) as u32);
         let viewport = kurbo::Rect::new(0.0, 0.0, size.0.into(), size.1.into());
@@ -411,10 +458,28 @@ impl Engine {
     pub(crate) fn finish_frame(&mut self, painted: Painted) -> Frame {
         let Painted { commands, panels, scale, size: (width, height), animating, commit } = painted;
         let viewport = kurbo::Rect::new(0.0, 0.0, width.into(), height.into());
-        let plane = self.plane(commands, scale, viewport);
-        let panels = panels.into_iter().map(|p| self.panel(p, scale)).collect();
+        let now = self.clock.now();
+        let mut plane = self.plane(commands, scale, viewport);
+        let mut moving = self.animate_glass(None, &mut plane, now);
+        let panels = panels
+            .into_iter()
+            .map(|p| {
+                let mut panel = self.panel(p, scale);
+                moving |= self.animate_glass(Some(panel.id), &mut panel.plane, now);
+                panel
+            })
+            .collect();
+        self.glass_moving = moving;
         let framed = crate::log::now_ms();
-        Frame { plane, panels, size: (width, height), scale, animating, commit, trace: self.trace.take().map(|t| crate::log::Trace { framed, ..t }) }
+        Frame {
+            plane,
+            panels,
+            size: (width, height),
+            scale,
+            animating: animating || moving,
+            commit,
+            trace: self.trace.take().map(|t| crate::log::Trace { framed, ..t }),
+        }
     }
 
     pub(crate) fn tree(&mut self) -> Tree<'_> {
