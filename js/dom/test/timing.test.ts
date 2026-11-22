@@ -136,6 +136,31 @@ test('Web Animations run as CSS animations: @keyframes rules and the inline anim
   assert.equal(rule(names[1]!), `@keyframes ${names[1]} { 0% { opacity: 0; } 100% { opacity: 1; } }`)
 })
 
+test('Web Animations composite: keyframe composite becomes animation-composition in the keyframe, the effect composite in the inline list', async () => {
+  using web = await page('<!doctype html><html><head></head><body><div id="a"></div></body></html>')
+  const result = web.json<{ style: string; rules: string[]; composite: string; frames: string[]; bad: string[] }>(`(() => {
+    const a = document.getElementById('a')
+    const first = a.animate([{ minWidth: '100px', composite: 'add' }, { minWidth: 'min-content', composite: 'accumulate' }, { minWidth: '0px' }], 1000)
+    const second = a.animate({ opacity: [0, 1], composite: ['auto', 'replace'] }, { duration: 1000, composite: 'add' })
+    const bad = []
+    try { a.animate([{ opacity: 0, composite: 'nope' }], 10) } catch (e) { bad.push(e.name) }
+    try { a.animate([{ opacity: 0 }], { duration: 10, composite: 'auto' }) } catch (e) { bad.push(e.name) }
+    second.effect.composite = 'accumulate'
+    const sheet = document.querySelector('style[data-acde-animations]').sheet
+    return { style: a.getAttribute('style'), rules: [...sheet.cssRules].map((r) => r.cssText.replace(/\\s+/g, ' ')),
+      composite: second.effect.composite, frames: first.effect.getKeyframes().map((k) => k.composite), bad }
+  })()`)
+  const declared = Object.fromEntries(result.style.split(';').filter((d) => d.trim()).map((d) => d.split(/:(.*)/s).map((s) => s.trim()) as [string, string]))
+  assert.equal(declared['animation-composition'], 'replace, accumulate')
+  assert.equal(result.composite, 'accumulate')
+  assert.deepEqual(result.frames, ['add', 'accumulate', 'auto'])
+  assert.deepEqual(result.bad, ['TypeError', 'TypeError'])
+  const [first, second] = declared['animation-name']!.split(', ')
+  const rule = (name: string) => result.rules.find((r) => r.startsWith(`@keyframes ${name} `))
+  assert.equal(rule(first!), `@keyframes ${first} { 0% { min-width: 100px; animation-composition: add; } 50% { min-width: min-content; animation-composition: accumulate; } 100% { min-width: 0px; } }`)
+  assert.equal(rule(second!), `@keyframes ${second} { 0% { opacity: 0; } 100% { opacity: 1; animation-composition: replace; } }`)
+})
+
 test('Web Animations lifecycle on the inline style: pause, finish, fill, commitStyles, cancel, reverse, rule cleanup', async () => {
   using web = await page('<!doctype html><html><head></head><body><div id="a" style="color: red; animation: spin 1s"></div><div id="b"></div></body></html>')
   web.run(`

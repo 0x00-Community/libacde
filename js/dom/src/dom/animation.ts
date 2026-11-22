@@ -46,6 +46,7 @@ const SYNC = Symbol('sync')
 const CSS = Symbol('css')
 const RULE = Symbol('rule')
 const BODY = Symbol('body')
+const COMPOSITE = Symbol('composite')
 
 export class AnimationEffect {
   readonly [TIMING]: Timing
@@ -89,7 +90,7 @@ tag(AnimationEffect)
 export class KeyframeEffect extends AnimationEffect {
   target: Element | null
   pseudoElement: string | null
-  composite = 'replace'
+  #composite = 'replace'
   #keyframes: Record<string, unknown>[]
   #body: string | null = null
 
@@ -97,15 +98,34 @@ export class KeyframeEffect extends AnimationEffect {
     super(options)
     this.target = target
     this.pseudoElement = typeof options === 'object' ? (options.pseudoElement ?? null) : null
+    if (typeof options === 'object' && options.composite !== undefined) this.#composite = composite(options.composite, COMPOSITES)
     this.#keyframes = KeyframeEffect.#normalize(keyframes)
+  }
+
+  get composite(): string {
+    return this.#composite
+  }
+  set composite(value: string) {
+    this.#composite = composite(value, COMPOSITES)
+    this[OWNER]?.[SYNC]()
   }
 
   static #normalize(keyframes: unknown): Record<string, unknown>[] {
     if (keyframes === null || keyframes === undefined) return []
-    if (Array.isArray(keyframes)) return keyframes.map((k) => ({ ...(k as object) }))
-    const record = keyframes as Record<string, unknown>
+    const frames = Array.isArray(keyframes) ? keyframes.map((k) => ({ ...(k as object) }) as Record<string, unknown>) : KeyframeEffect.#indexed(keyframes as Record<string, unknown>)
+    for (const frame of frames) {
+      if (frame['composite'] !== undefined && frame['composite'] !== null) frame['composite'] = composite(frame['composite'], FRAME_COMPOSITES)
+    }
+    return frames
+  }
+
+  static #indexed(record: Record<string, unknown>): Record<string, unknown>[] {
     const length = Math.max(1, ...Object.values(record).map((v) => (Array.isArray(v) ? v.length : 1)))
     return Array.from({ length }, (_, i) => Object.fromEntries(Object.entries(record).map(([k, v]) => [k, Array.isArray(v) ? v[Math.min(i, v.length - 1)] : v])))
+  }
+
+  [COMPOSITE](): string {
+    return this.#composite
   }
 
   getKeyframes(): Record<string, unknown>[] {
@@ -270,6 +290,7 @@ export class Animation extends EventTarget {
       reversed ? DIRECTIONS[DIRECTIONS.indexOf(direction) ^ 1]! : direction,
       reversed && fill === 'forwards' ? 'backwards' : reversed && fill === 'backwards' ? 'forwards' : fill,
       this.#state === 'paused' || this.#rate === 0 ? 'paused' : 'running',
+      effect[COMPOSITE](),
     ]
   }
 
@@ -357,11 +378,19 @@ tag(Animation)
 const DIRECTIONS = ['normal', 'reverse', 'alternate', 'alternate-reverse']
 const FILLS = new Set(['none', 'forwards', 'backwards', 'both', 'auto'])
 const META = new Set(['offset', 'easing', 'composite', 'computedOffset'])
-const LONGHANDS = ['animation-name', 'animation-duration', 'animation-timing-function', 'animation-delay', 'animation-iteration-count', 'animation-direction', 'animation-fill-mode', 'animation-play-state']
+const LONGHANDS = ['animation-name', 'animation-duration', 'animation-timing-function', 'animation-delay', 'animation-iteration-count', 'animation-direction', 'animation-fill-mode', 'animation-play-state', 'animation-composition']
+const COMPOSITES = new Set(['replace', 'add', 'accumulate'])
+const FRAME_COMPOSITES = new Set([...COMPOSITES, 'auto'])
 const OWN = ['animation', ...LONGHANDS]
 
 function ms(value: number): string {
   return `${+value.toFixed(3)}ms`
+}
+
+function composite(value: unknown, allowed: ReadonlySet<string>): string {
+  const text = String(value)
+  if (!allowed.has(text)) throw new TypeError(`The provided value '${text}' is not a valid enum value of type CompositeOperation${allowed === FRAME_COMPOSITES ? 'OrAuto' : ''}.`)
+  return text
 }
 
 function easing(value: string): string {
@@ -414,6 +443,7 @@ function keyframesBody(frames: readonly Record<string, unknown>[]): string {
         if (value && safe(value)) declarations.push(`${cssProperty(key)}: ${value}`)
       }
       if (typeof frame['easing'] === 'string' && easing(frame['easing']) === frame['easing']) declarations.push(`animation-timing-function: ${frame['easing']}`)
+      if (typeof frame['composite'] === 'string' && COMPOSITES.has(frame['composite'])) declarations.push(`animation-composition: ${frame['composite']}`)
       return `${+(offsets[i]! * 100).toFixed(4)}% { ${declarations.join('; ')} }`
     })
     .join(' ')

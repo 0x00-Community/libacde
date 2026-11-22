@@ -346,7 +346,7 @@ fn waapi(names: &[&str], delays: &[&str]) -> String {
     let n = names.len();
     let list = |v: &str| vec![v; n].join(", ");
     format!(
-        "position: absolute; top: 0; width: 10px; height: 10px; animation-name: {}; animation-duration: {}; animation-timing-function: {}; animation-delay: {}; animation-iteration-count: {}; animation-direction: {}; animation-fill-mode: {}; animation-play-state: {};",
+        "position: absolute; top: 0; width: 10px; height: 10px; animation-name: {}; animation-duration: {}; animation-timing-function: {}; animation-delay: {}; animation-iteration-count: {}; animation-direction: {}; animation-fill-mode: {}; animation-play-state: {}; animation-composition: {};",
         names.join(", "),
         list("1000ms"),
         list("linear"),
@@ -355,6 +355,7 @@ fn waapi(names: &[&str], delays: &[&str]) -> String {
         list("normal"),
         list("forwards"),
         list("running"),
+        list("replace"),
     )
 }
 
