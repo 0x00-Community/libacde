@@ -52,16 +52,51 @@ pub fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-pub fn adapters() -> (wgpu::Instance, Vec<wgpu::Adapter>) {
-    let instance =
-        wgpu::Instance::new(wgpu::InstanceDescriptor { backends: super::BACKEND, ..wgpu::InstanceDescriptor::new_without_display_handle_from_env() });
-    let mut adapters: Vec<_> = pollster::block_on(instance.enumerate_adapters(super::BACKEND)).into_iter().collect();
-    adapters.sort_by_key(|a| match a.get_info().device_type {
-        wgpu::DeviceType::DiscreteGpu | wgpu::DeviceType::IntegratedGpu => 0,
-        wgpu::DeviceType::Cpu => 2,
-        _ => 1,
-    });
-    (instance, adapters)
+pub fn adapters() -> (wgpu::Instance, Vec<Candidate>) {
+    let allowing = wgpu::InstanceDescriptor::new_without_display_handle_from_env().flags | wgpu::InstanceFlags::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER;
+    let strict = instance(allowing - wgpu::InstanceFlags::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER);
+    let compliant: Vec<wgpu::AdapterInfo> = pollster::block_on(strict.enumerate_adapters(super::BACKEND)).iter().map(wgpu::Adapter::get_info).collect();
+    let all = instance(allowing);
+    let named = std::env::var(NAMED).ok().filter(|name| !name.is_empty());
+    let mut found: Vec<Candidate> = pollster::block_on(all.enumerate_adapters(super::BACKEND))
+        .into_iter()
+        .map(|adapter| {
+            let info = adapter.get_info();
+            let compliant = compliant.iter().any(|c| (c.vendor, c.device, &c.name, &c.driver) == (info.vendor, info.device, &info.name, &info.driver));
+            let named = named.as_deref().is_some_and(|name| info.name.contains(name));
+            Candidate { adapter, compliant, named }
+        })
+        .collect();
+    found.sort_by_key(Candidate::rank);
+    (all, found)
+}
+
+pub const NAMED: &str = "MESA_D3D12_DEFAULT_ADAPTER_NAME";
+
+fn instance(flags: wgpu::InstanceFlags) -> wgpu::Instance {
+    wgpu::Instance::new(wgpu::InstanceDescriptor { backends: super::BACKEND, flags, ..wgpu::InstanceDescriptor::new_without_display_handle_from_env() })
+}
+
+pub type Fits = dyn Fn(&wgpu::Device, &wgpu::Queue, &wgpu::Adapter) -> Result<(), String>;
+
+pub struct Candidate {
+    pub adapter: wgpu::Adapter,
+    pub compliant: bool,
+    pub named: bool,
+}
+
+impl Candidate {
+    fn rank(&self) -> (bool, u8, u8) {
+        let (class, kind) = match (self.adapter.get_info().device_type, self.compliant) {
+            (wgpu::DeviceType::DiscreteGpu, true) => (0, 0),
+            (wgpu::DeviceType::IntegratedGpu, true) => (0, 1),
+            (wgpu::DeviceType::DiscreteGpu, false) => (1, 0),
+            (wgpu::DeviceType::IntegratedGpu, false) => (1, 1),
+            (wgpu::DeviceType::Cpu, _) => (3, 0),
+            _ => (2, 0),
+        };
+        (!self.named, class, kind)
+    }
 }
 
 pub fn webgpu_features(adapter: &wgpu::Adapter) -> wgpu::Features {
@@ -225,14 +260,39 @@ impl Gpu {
     }
 
     pub fn open(label: &str) -> Result<(wgpu::Instance, wgpu::Adapter, Arc<Self>), String> {
-        let (instance, adapters) = adapters();
-        let Some(adapter) = adapters.into_iter().next() else { return Err(no_adapter(&instance)) };
-        let info = adapter.get_info();
-        let tiers = DeviceRequest::tiers(webgpu_features(&adapter), adapter.limits());
+        Self::open_with(label, &|_, _, _| Ok(()))
+    }
+
+    pub fn open_with(label: &str, fits: &Fits) -> Result<(wgpu::Instance, wgpu::Adapter, Arc<Self>), String> {
+        let (instance, candidates) = adapters();
+        if candidates.is_empty() {
+            return Err(no_adapter(&instance));
+        }
+        let mut errors = Vec::new();
+        for Candidate { adapter, compliant, .. } in candidates {
+            let info = adapter.get_info();
+            match Self::open_adapter(label, &adapter, compliant, fits) {
+                Ok((device, queue)) => {
+                    if !errors.is_empty() {
+                        log::warn!("{label}: using {} after: {}", info.name, errors.join("; "));
+                    }
+                    return Ok((instance, adapter, Self::new(device, queue, info)));
+                }
+                Err(e) => errors.push(format!("{}: {e}", info.name)),
+            }
+        }
+        Err(errors.join("; "))
+    }
+
+    fn open_adapter(label: &str, adapter: &wgpu::Adapter, compliant: bool, fits: &Fits) -> Result<(wgpu::Device, wgpu::Queue), String> {
+        let tiers = DeviceRequest::tiers(webgpu_features(adapter), adapter.limits());
         let ((device, queue), _) =
-            DeviceRequest::open(label, &tiers, |request| pollster::block_on(adapter.request_device(&request.descriptor(label))).map_err(|e| e.to_string()))
-                .map_err(|e| format!("opening {}: {e}", info.name))?;
-        Ok((instance, adapter, Self::new(device, queue, info)))
+            DeviceRequest::open(label, &tiers, |request| pollster::block_on(adapter.request_device(&request.descriptor(label))).map_err(|e| e.to_string()))?;
+        if !compliant {
+            fits(&device, &queue, adapter).map_err(|e| format!("not a conformant driver, and {e}"))?;
+            log::info!("{label}: {} is not a conformant driver, but it does the work", adapter.get_info().name);
+        }
+        Ok((device, queue))
     }
 
     pub fn expect() {

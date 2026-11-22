@@ -15,6 +15,35 @@ pub struct Vello {
 }
 
 impl Vello {
+    const STORAGE_BUFFERS: u32 = 8;
+    const INVOCATIONS: u32 = 256;
+
+    pub fn probe(device: &wgpu::Device, queue: &wgpu::Queue, downlevel: &wgpu::DownlevelCapabilities) -> Result<(), String> {
+        let limits = device.limits();
+        if !downlevel.flags.contains(wgpu::DownlevelFlags::COMPUTE_SHADERS) {
+            return Err("no compute shaders".into());
+        }
+        if limits.max_storage_buffers_per_shader_stage < Self::STORAGE_BUFFERS {
+            return Err(format!("{} storage buffers per stage, vello needs {}", limits.max_storage_buffers_per_shader_stage, Self::STORAGE_BUFFERS));
+        }
+        if limits.max_compute_invocations_per_workgroup < Self::INVOCATIONS || limits.max_compute_workgroup_size_x < Self::INVOCATIONS {
+            return Err(format!("workgroups of {} invocations, vello needs {}", limits.max_compute_invocations_per_workgroup, Self::INVOCATIONS));
+        }
+        let started = std::time::Instant::now();
+        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+        let build = || Self::on_this_thread(device, queue).map(drop);
+        let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(build)).unwrap_or_else(|_| Err("building vello's pipelines panicked".into()));
+        let internal = pollster::block_on(internal.pop());
+        let validation = pollster::block_on(validation.pop());
+        let errors: Vec<String> = [built.err(), internal.map(|e| e.to_string()), validation.map(|e| e.to_string())].into_iter().flatten().collect();
+        if !errors.is_empty() {
+            return Err(format!("vello's pipelines do not build: {}", errors.join("; ")));
+        }
+        log::info!("acde: vello's pipelines built in {:.1}ms", started.elapsed().as_secs_f64() * 1000.0);
+        Ok(())
+    }
+
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<Self, String> {
         Self::with_threads(device, queue, None)
     }

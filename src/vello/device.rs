@@ -16,8 +16,6 @@ const EXTENSIONS: [&std::ffi::CStr; 4] = [
 
 const SEMAPHORES: usize = 8;
 const WAITS: usize = 64;
-const VELLO_STORAGE_BUFFERS: u32 = 8;
-const VELLO_INVOCATIONS: u32 = 256;
 
 #[derive(Clone, Copy)]
 pub struct Fence(vk::Semaphore);
@@ -58,7 +56,7 @@ impl Device {
         let (adapter, (device, queue, tier)) = Self::on_node(backend, node)?;
         let vello = match backend {
             Backend::Vulkan => Ok(()),
-            Backend::Gles => Self::try_vello(&device, &queue, &adapter.get_downlevel_capabilities()),
+            Backend::Gles => crate::vello::Vello::probe(&device, &queue, &adapter.get_downlevel_capabilities()),
         };
         Ok(Self::assemble(&adapter, (device, queue, tier), backend, vello))
     }
@@ -130,7 +128,9 @@ impl Device {
 
     fn adapters(backend: Backend) -> Vec<wgpu::Adapter> {
         let backends = backend.wgpu();
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends, ..wgpu::InstanceDescriptor::new_without_display_handle() });
+        let base = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
+        let flags = base.flags | wgpu::InstanceFlags::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER;
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends, flags, ..base });
         pollster::block_on(instance.enumerate_adapters(backends))
     }
 
@@ -157,11 +157,20 @@ impl Device {
         {
             return Ok(hardware.swap_remove(at));
         }
+        let named = std::env::var(crate::gpu::NAMED).ok().filter(|name| !name.is_empty());
+        hardware.sort_by_key(|a| {
+            let info = a.get_info();
+            (!named.as_deref().is_some_and(|name| info.name.contains(name)), info.device_type != wgpu::DeviceType::DiscreteGpu)
+        });
         match hardware.len() {
-            1 => Ok(hardware.remove(0)),
             0 if names.is_empty() => Err(format!("no {backend:?} adapter")),
             0 => Err(format!("only software {backend:?} adapters: {}", names.join(", "))),
-            _ => Err(format!("{} matches none of the {backend:?} adapters, and there is more than one: {}", node.display(), names.join(", "))),
+            1 => Ok(hardware.remove(0)),
+            _ => {
+                let chosen = hardware.remove(0);
+                log::info!("{} matches none of the {backend:?} adapters (no PCI ids, as in WSL): taking {}", node.display(), chosen.get_info().name);
+                Ok(chosen)
+            }
         }
     }
 
@@ -180,32 +189,6 @@ impl Device {
             Backend::Gles => pollster::block_on(adapter.request_device(&request.descriptor("acde"))).map_err(|e| e.to_string()),
         })?;
         Ok((device, queue, tier))
-    }
-
-    fn try_vello(device: &wgpu::Device, queue: &wgpu::Queue, downlevel: &wgpu::DownlevelCapabilities) -> Result<(), String> {
-        let limits = device.limits();
-        if !downlevel.flags.contains(wgpu::DownlevelFlags::COMPUTE_SHADERS) {
-            return Err("no compute shaders".into());
-        }
-        if limits.max_storage_buffers_per_shader_stage < VELLO_STORAGE_BUFFERS {
-            return Err(format!("{} storage buffers per stage, vello needs {VELLO_STORAGE_BUFFERS}", limits.max_storage_buffers_per_shader_stage));
-        }
-        if limits.max_compute_invocations_per_workgroup < VELLO_INVOCATIONS || limits.max_compute_workgroup_size_x < VELLO_INVOCATIONS {
-            return Err(format!("workgroups of {} invocations, vello needs {VELLO_INVOCATIONS}", limits.max_compute_invocations_per_workgroup));
-        }
-        let started = std::time::Instant::now();
-        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
-        let build = || crate::vello::Vello::on_this_thread(device, queue).map(drop);
-        let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(build)).unwrap_or_else(|_| Err("building vello's pipelines panicked".into()));
-        let internal = pollster::block_on(internal.pop());
-        let validation = pollster::block_on(validation.pop());
-        let errors: Vec<String> = [built.err(), internal.map(|e| e.to_string()), validation.map(|e| e.to_string())].into_iter().flatten().collect();
-        if !errors.is_empty() {
-            return Err(format!("vello's pipelines do not build: {}", errors.join("; ")));
-        }
-        log::info!("acde: vello's pipelines built on the GLES device in {:.1}ms", started.elapsed().as_secs_f64() * 1000.0);
-        Ok(())
     }
 
     fn open_tier(adapter: &wgpu::Adapter, request: &DeviceRequest) -> Result<(wgpu::Device, wgpu::Queue), String> {
