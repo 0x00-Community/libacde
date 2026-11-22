@@ -483,7 +483,10 @@ export class CSSStyleSheet implements RuleOwner {
     return this.#owner ? dom.sheetDisabled(this.#owner[ID]) : this.#disabled
   }
   set disabled(value: boolean) {
-    if (!this.#owner) return void (this.#disabled = !!value)
+    if (!this.#owner) {
+      this.#disabled = !!value
+      return
+    }
     dom.setSheetDisabled(this.#owner[ID], !!value)
     changed()
   }
