@@ -85,7 +85,7 @@
 - `AcdeOpenFiles.handlers`: 能打开这个文件的应用. 系统不知道它的类型时 `mime` 是 `''` (Windows); `association` 是 `setDefault` 记住选择用的键:
   MIME 类型, Windows 上是扩展名 (`.md`).
 - `AcdeOpenFiles.setDefault`: 为一个 MIME 类型 (Windows 上为一个扩展名, 如 `.md`) 记住 `handler`; 不动系统自己的默认.
-- `AcdeWindow.setBackdrop`: 模糊窗口某块区域后面的东西. 平台画不准时可以近似 (见 `acde:capabilities` 的 `window.backdrop`).
+- `AcdeWindow.setBackdrop`: 模糊窗口某块区域后面的东西; `effect.shape` 是角形 (`round` / `squircle` / `superellipse(k)`, 2026-11-22, 类型 `BackdropEffect`). 平台画不准时可以近似 (见 `acde:capabilities` 的 `window.backdrop`).
 - `AcdeWindow.on('beforeclose')`: 原来是一个签名 `() => boolean | void | Promise<boolean | void>`, 拆成返回 `boolean` 和返回 `void` 的两个重载, 能传的函数不变.
 
 ## 系统模块的错误与事件 (libacde 单子 12)

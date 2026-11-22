@@ -578,7 +578,7 @@ export interface AcdeWindow {
   setGrabHint(rect: WindowRect, edges?: readonly WindowEdge[]): void
   setBackdrop(
     rect: WindowRect | null,
-    effect?: { radius?: number; blur?: number; saturate?: number; brightness?: number },
+    effect?: import('./window-look/index').BackdropEffect,
   ): void
   requestActivate(): void
   requestGrab(kind: 'pointer' | 'keyboard'): void

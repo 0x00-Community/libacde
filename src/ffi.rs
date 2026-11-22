@@ -341,7 +341,7 @@ impl Outgoing {
             SurfaceCommand::Mode(number) => AcdeCommand { number, ..Kind::Mode.into() },
             SurfaceCommand::State(number) => AcdeCommand { number, ..Kind::State.into() },
             SurfaceCommand::GrabHint(rect, number) => AcdeCommand { rect, number, ..Kind::GrabHint.into() },
-            SurfaceCommand::Backdrop(rect, values) => AcdeCommand { rect, values, ..Kind::Backdrop.into() },
+            SurfaceCommand::Backdrop(rect, [r, b, s, l, exponent]) => AcdeCommand { rect, values: [r, b, s, l], thickness: exponent, ..Kind::Backdrop.into() },
             SurfaceCommand::Activate => Kind::Activate.into(),
             SurfaceCommand::Grab(number, flag) => AcdeCommand { number, flag, ..Kind::Grab.into() },
             SurfaceCommand::PointerLock(_) | SurfaceCommand::WindowLook(_) => return None,

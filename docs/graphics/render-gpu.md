@@ -33,7 +33,10 @@
   用声明的半径 (乘图层变换的缩放), 不再从背景路径猜; `exponent()` 没有声明时是 2. GPU 合成的 `gpu::Backdrop` 多一个 `exponent`, 着色器
   用 acde-scene 导出的 `corner::WGSL` (`acde_corner_coverage`, 建着色器时拼在 `compose.wgsl` 前面; acdes 的 compose 同样拼它), 和 `corner::coverage`
   逐行对应, 公式只在 acde-scene 一处; 前端把面板的磨砂交给
-  合成器时带上 `exponent()` (acdes 用 `acompositor_backdrop_v1` 版本 2 的 `add_shaped_area`). 窗口级的 `setBackdrop` 不变 (圆弧).
+  合成器时带上 `exponent()` (acdes 用 `acompositor_backdrop_v1` 版本 2 的 `add_shaped_area`). 窗口级的 `setBackdrop` 也带角形 (2026-11-22, issue 16):
+  `effect.shape` 收 `round` / `squircle` / `superellipse(k)` (k 取 1 到 3, 和 `setWindowLook` 的 `corners.shape` 同一个解析 `cornerShape`, `js/page/src/frametheme.ts`),
+  胶水只传 k, 原生层 (`webnative.rs` `set_backdrop`) 用 `acde_scene::corner::exponent` 换成 n, `SurfaceCommand::Backdrop` 的效果是
+  `[半径, 模糊, 饱和, 亮度, 指数]`; C 接口不改结构, 指数放在 `AcdeCommand.thickness` (Backdrop 本来不用它). 没写 shape 时是圆弧 (n = 2).
 - 模糊 (src/vello `Composer`、shell `effects.rs`) 是降采样 / 升采样链, 几层、采样偏移多大由 acde-model `Blur::of(sigma)` 一处决定
   系统玻璃 (2026-11-22, 总仓 `.scratch/libacde/glass-plan.md`): 元素有 `backdrop-filter` 又声明了作者自定义属性 `--acde-glass` (`regular`、`clear`, 其余分项
   `--acde-glass-refraction`、`-blur`、`-bleed`、`-highlight`、`-white-point`、`-smoothing`、`-tint` 盖在预设上) 时, blitz-paint (`render/glass.rs`) 从计算样式取这几个

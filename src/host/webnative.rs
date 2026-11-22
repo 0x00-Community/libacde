@@ -296,7 +296,9 @@ fn set_grab_hint(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, 
 
 fn set_backdrop(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
     let rect = rect(scope, &args);
-    let effect = [4, 5, 6, 7].map(|i| bind::arg_f64(scope, &args, i));
+    let [radius, blur, saturate, brightness, k] = [4, 5, 6, 7, 8].map(|i| bind::arg_f64(scope, &args, i));
+    let k = if k.is_finite() { k } else { acde_scene::corner::ROUND };
+    let effect = [radius, blur, saturate, brightness, acde_scene::corner::exponent(k)];
     with_surface(scope, |surface| surface.set_backdrop(rect, effect));
 }
 

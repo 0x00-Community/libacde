@@ -1,5 +1,5 @@
 import type {
-  AppMenu, NativeWindow, WindowApp, WindowEdge, WindowEventName, WindowMode, WindowOutput, WindowRect, WindowState,
+  AppMenu, BackdropEffect, NativeWindow, WindowApp, WindowEdge, WindowEventName, WindowMode, WindowOutput, WindowRect, WindowState,
 } from '@acde/api'
 import type { ServiceShape, WebInit, WireMenu } from './contract'
 import { Level, Log } from './log'
@@ -10,6 +10,7 @@ import { CapabilityCheck } from './broker/access/capabilities'
 import { Permits } from './broker/access/approval/permits'
 import type { Approval } from './broker/access/approval/permissions'
 import type { HandOver } from './pagecalls'
+import { cornerShape } from './frametheme.ts'
 import type { CapabilityStatus } from '@acde/api/manifest'
 
 export class WindowList {
@@ -242,9 +243,11 @@ export class WindowSelf {
     requestState: (state: WindowState) => this.#surface.requestState(state),
     setGrabHint: (rect: WindowRect, edges: readonly WindowEdge[] = []) =>
       this.#surface.setGrabHint(rect.x, rect.y, rect.width, rect.height, edges.reduce((bits, e) => bits | WindowSelf.#EDGES[e], 0)),
-    setBackdrop: (rect: WindowRect | null, effect: { radius?: number; blur?: number; saturate?: number; brightness?: number } = {}) => {
+    setBackdrop: (rect: WindowRect | null, effect: BackdropEffect = {}) => {
       const r = rect ?? { x: 0, y: 0, width: 0, height: 0 }
-      this.#surface.setBackdrop(r.x, r.y, r.width, r.height, effect.radius ?? 0, effect.blur ?? 0, effect.saturate ?? 1, effect.brightness ?? 1)
+      const k = cornerShape('setBackdrop: shape', effect.shape)
+      if (typeof k === 'string') throw new TypeError(k)
+      this.#surface.setBackdrop(r.x, r.y, r.width, r.height, effect.radius ?? 0, effect.blur ?? 0, effect.saturate ?? 1, effect.brightness ?? 1, k)
     },
     requestActivate: () => this.#surface.requestActivate(),
     requestGrab: (kind: 'pointer' | 'keyboard') => this.#surface.requestGrab(kind),

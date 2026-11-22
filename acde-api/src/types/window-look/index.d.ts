@@ -1,5 +1,13 @@
 export type CornerShape = 'round' | 'squircle' | `superellipse(${number})`
 
+export interface BackdropEffect {
+  readonly radius?: number
+  readonly blur?: number
+  readonly saturate?: number
+  readonly brightness?: number
+  readonly shape?: CornerShape
+}
+
 export interface WindowCorners {
   readonly radius: number
   readonly shape?: CornerShape

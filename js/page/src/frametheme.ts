@@ -104,6 +104,16 @@ const LOOK_SHAPES: ReadonlyMap<string, number> = new Map([
 const LOOK_SUPERELLIPSE = /^superellipse\(\s*(-?(?:\d+\.?\d*|\.\d+))\s*\)$/
 const LOOK_K = [1, 3] as const
 
+export function cornerShape(what: string, raw: unknown): number | string {
+  if (raw === undefined) return LOOK_ROUND
+  const named = typeof raw === 'string' ? LOOK_SHAPES.get(raw.trim()) : undefined
+  if (named !== undefined) return named
+  const k = typeof raw === 'string' ? LOOK_SUPERELLIPSE.exec(raw.trim())?.[1] : undefined
+  const value = k === undefined ? Number.NaN : Number(k)
+  if (value >= LOOK_K[0] && value <= LOOK_K[1]) return value
+  return `${what} is round, squircle or superellipse(k) with k from ${LOOK_K[0]} to ${LOOK_K[1]}: ${JSON.stringify(raw)}`
+}
+
 export class WindowLookReader {
   readonly #ignored: string[] = []
 
@@ -148,19 +158,9 @@ export class WindowLookReader {
     if (typeof corners === 'string') return corners
     const radius = this.#number('corners.radius', corners['radius'], 0, LOOK_MOST_RADIUS)
     if (typeof radius === 'string') return radius
-    const shape = this.#shape(corners['shape'])
+    const shape = cornerShape('corners.shape', corners['shape'])
     if (typeof shape === 'string') return shape
     return [radius, shape]
-  }
-
-  #shape(raw: unknown): number | string {
-    if (raw === undefined) return LOOK_ROUND
-    const named = typeof raw === 'string' ? LOOK_SHAPES.get(raw.trim()) : undefined
-    if (named !== undefined) return named
-    const k = typeof raw === 'string' ? LOOK_SUPERELLIPSE.exec(raw.trim())?.[1] : undefined
-    const value = k === undefined ? Number.NaN : Number(k)
-    if (value >= LOOK_K[0] && value <= LOOK_K[1]) return value
-    return `corners.shape is round, squircle or superellipse(k) with k from ${LOOK_K[0]} to ${LOOK_K[1]}: ${JSON.stringify(raw)}`
   }
 
   #layers(what: string, raw: unknown): number[] | string {

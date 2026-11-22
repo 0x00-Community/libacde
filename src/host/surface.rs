@@ -68,7 +68,7 @@ impl Surface {
         request_mode(mode: u32) => C::Mode(mode);
         request_state(state: u32) => C::State(state);
         set_grab_hint(rect: [i32; 4], edges: u32) => C::GrabHint(rect, edges);
-        set_backdrop(rect: [i32; 4], effect: [f64; 4]) => C::Backdrop(rect, effect);
+        set_backdrop(rect: [i32; 4], effect: [f64; 5]) => C::Backdrop(rect, effect);
         request_activate() => C::Activate;
         request_grab(kind: u32, on: bool) => C::Grab(kind, on);
         lock_pointer(on: bool) => C::PointerLock(on);

@@ -110,7 +110,7 @@ pub enum SurfaceCommand {
     Mode(u32),
     State(u32),
     GrabHint([i32; 4], u32),
-    Backdrop([i32; 4], [f64; 4]),
+    Backdrop([i32; 4], [f64; 5]),
     Activate,
     Grab(u32, bool),
     PointerLock(bool),

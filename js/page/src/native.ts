@@ -80,7 +80,7 @@ export interface NativeSurface {
   requestMode(mode: 'free' | 'fixed' | 'pinned'): void
   requestState(state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
   setGrabHint(x: number, y: number, width: number, height: number, edges: number): void
-  setBackdrop(x: number, y: number, width: number, height: number, radius: number, blur: number, saturate: number, brightness: number): void
+  setBackdrop(x: number, y: number, width: number, height: number, radius: number, blur: number, saturate: number, brightness: number, k: number): void
   requestActivate(): void
   requestGrab(kind: 'pointer' | 'keyboard'): void
   readonly pointerLock?: boolean
