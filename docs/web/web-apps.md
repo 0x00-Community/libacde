@@ -200,6 +200,11 @@
     UA 样式 `object-fit: contain`) 加固有尺寸 (`set_video_size`, 变了重排; 没有帧时是 300×150). `videoWidth` / `videoHeight` 在
     `loadedmetadata` 时就有; 之后帧尺寸变了发 `resize` (`readyState` 是 `HAVE_NOTHING` 时不发, 照标准). `canPlayType` 按 `acde_media::TYPES`
     (平台能开的容器). 换源 / 去掉 `src` 清掉画面 (`clearVideo`); 播放器释放 (`Player` 的 drop) 在单独线程里停解码器, 不卡混音器和 JS.
+  - 视频从哪读 (2026-11-22): 同源的本地资源 (包内文件、借出的目录, 如壁纸页的 `/media/`) 按文件开: JS 把地址交给 `openVideo(media, node, url)`,
+    src/host `dom.rs` `open_asset` 用和 `fetch` 同一个 `Assets::file` 找文件 (解开符号链接后核对仍在目录里), 打开后交 `Source::File`,
+    播放时只按范围读要的部分, 1 GB 的壁纸视频不再整份进内存. 找不到 (别的源、`blob:` / `data:`、后端路径) 时 `openVideo` 同步回 `null`,
+    退回原来的路: `fetch` 整份取来再交字节. 开发工具 `route` 拦了这个地址时也走 `fetch`, 让假的回应生效. 按文件开的不经 `fetch`,
+    所以不出现在网络记录里. `file:` 地址的视频还没有 (`fetch` 不给 `file:`). `<audio>` 仍整份取 (symphonia 从内存解).
   - 解析出来的 (`loadPage`、`innerHTML` / `outerHTML` / `insertAdjacentHTML`) 和克隆出来的 (`cloneNode` / `importNode`) `<video>` /
     `<audio>` 有 `src` 或 `<source>` 就自己开始加载 (标准: 设了 `src` 就跑加载算法), `preload="none"` 且没有 `autoplay` 时发 `loadstart` 和
     `suspend` 后停在 `NETWORK_IDLE`, 等 `play()` 再取. 还没有: 海报图 (`poster`)、`seeked` 等到新位置的帧画出来再发、文字轨、MSE.
