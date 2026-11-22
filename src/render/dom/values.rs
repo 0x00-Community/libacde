@@ -40,23 +40,6 @@ pub(super) fn ns_of(name: &QualName) -> Ns {
     }
 }
 
-pub(super) fn css_context(
-    url: &blitz_dom::style::stylesheets::UrlExtraData,
-    rule: blitz_dom::style::stylesheets::CssRuleType,
-) -> blitz_dom::style::parser::ParserContext<'_> {
-    blitz_dom::style::parser::ParserContext::new(
-        blitz_dom::style::stylesheets::Origin::Author,
-        url,
-        Some(rule),
-        blitz_dom::style_traits::ParsingMode::DEFAULT,
-        blitz_dom::style::context::QuirksMode::NoQuirks,
-        Default::default(),
-        None,
-        None,
-        Default::default(),
-    )
-}
-
 pub(crate) fn valid_float(text: &str) -> Option<f64> {
     let bytes = text.as_bytes();
     let mut i = usize::from(bytes.first() == Some(&b'-'));

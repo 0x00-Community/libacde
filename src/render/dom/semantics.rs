@@ -1,4 +1,4 @@
-use blitz_dom::style::computed_values::visibility::T as Visibility;
+use blitz_dom::acss::properties::keywords::Visibility;
 use blitz_dom::{Node, NodeData, NodeId};
 use serde::Serialize;
 
@@ -183,12 +183,12 @@ impl<'a> Walk<'a> {
         if attr("aria-hidden").as_deref() == Some("true") || attr("inert").is_some() {
             return Vec::new();
         }
-        let Some(style) = n.primary_styles() else { return Vec::new() };
-        if style.get_box().display.is_none() {
+        let Some(style) = n.style() else { return Vec::new() };
+        if style.is_display_none() {
             return Vec::new();
         }
-        let transparent = style.get_effects().opacity <= 0.0;
-        let unseen = style.clone_visibility() != Visibility::Visible;
+        let transparent = style.groups.opacity().0 <= 0.0;
+        let unseen = *style.groups.visibility() != Visibility::Visible;
         if (transparent || unseen) && !self.invisible {
             return Vec::new();
         }

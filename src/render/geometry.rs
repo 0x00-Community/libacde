@@ -73,7 +73,7 @@ impl Geometry<'_> {
     pub(crate) fn hidden(&self, n: &Node) -> bool {
         let mut current = Some(n);
         while let Some(a) = current.filter(|a| a.is_element()) {
-            if a.primary_styles().is_none_or(|s| s.get_box().display.is_none()) {
+            if a.style().is_none_or(|s| s.is_display_none()) {
                 return true;
             }
             current = a.parent.and_then(|p| self.doc.get_node(p));
@@ -82,7 +82,7 @@ impl Geometry<'_> {
     }
 
     pub(crate) fn offset_parent(&self, node: NodeId) -> Option<NodeId> {
-        use blitz_dom::style::computed_values::position::T as Position;
+        use blitz_dom::acss::properties::keywords::Position;
         let n = self.doc.get_node(node)?;
         let e = n.element_data()?;
         if !n.flags.is_in_document() || matches!(&*e.name.local, "html" | "body") {
@@ -91,7 +91,7 @@ impl Geometry<'_> {
         if self.hidden(n) {
             return None;
         }
-        let position = n.primary_styles().map(|s| s.get_box().position);
+        let position = n.style().map(|s| *s.groups.position());
         if position == Some(Position::Fixed) {
             return None;
         }
@@ -99,7 +99,7 @@ impl Geometry<'_> {
         let mut current = n.parent.and_then(|p| self.doc.get_node(p));
         while let Some(a) = current.filter(|a| a.is_element()) {
             let tag = a.element_data().map(|e| &*e.name.local);
-            let positioned = a.primary_styles().is_some_and(|s| s.get_box().position != Position::Static);
+            let positioned = a.style().is_some_and(|s| *s.groups.position() != Position::Static);
             if positioned || tag == Some("body") || (static_self && matches!(tag, Some("td" | "th" | "table"))) {
                 return Some(a.id);
             }

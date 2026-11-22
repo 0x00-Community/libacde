@@ -202,7 +202,7 @@ impl<'a> Caret<'a> {
                 out.push(id);
                 continue;
             }
-            let hidden = n.primary_styles().is_some_and(|s| s.get_box().display.is_none());
+            let hidden = n.style().is_some_and(|s| s.is_display_none());
             if hidden || n.flags.is_inline_root() {
                 continue;
             }
