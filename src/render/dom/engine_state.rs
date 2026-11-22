@@ -183,7 +183,7 @@ impl Engine {
             }
             Control::Checkable => {
                 let checked = self.checked(node);
-                self.doc.snapshot_node_and(node, ElementState::CHECKED, |n| {
+                self.doc.change_state(node, |n| {
                     if let Some(e) = n.element_data_mut() {
                         if !matches!(e.special_data, SpecialElementData::CheckboxInput(_)) {
                             e.special_data = SpecialElementData::CheckboxInput(checked);
@@ -221,7 +221,7 @@ impl Engine {
         };
         self.doc.set_focus_to(node);
         let Some(focused) = self.doc.get_focussed_node_id() else { return };
-        self.doc.snapshot_node_and(focused, ElementState::FOCUSRING, |n| {
+        self.doc.change_state(focused, |n| {
             if let Some(e) = n.element_data_mut() {
                 e.element_state.set(ElementState::FOCUSRING, visible);
             }
@@ -241,10 +241,10 @@ impl Engine {
         let old = elements(self, self.active);
         let new = elements(self, node);
         for &a in old.iter().filter(|a| !new.contains(a)) {
-            self.doc.snapshot_node_and(a, ElementState::ACTIVE, |n| n.unactive());
+            self.doc.change_state(a, |n| n.unactive());
         }
         for &a in new.iter().filter(|a| !old.contains(a)) {
-            self.doc.snapshot_node_and(a, ElementState::ACTIVE, |n| n.active());
+            self.doc.change_state(a, |n| n.active());
         }
         self.active = node;
     }

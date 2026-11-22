@@ -46,7 +46,7 @@ parking_lot = "=0.13.0"
 # model's #[napi(object)] (feature napi), runtime's exports
 napi = { version = "=3.16.2", default-features = false, features = ["napi8", "async-runtime", "serde-json"] }
 napi-derive = "=3.7.1"
-# render: blitz is our fork, pinned and re-exported; Stylo, Parley and cssparser come through blitz_dom (it re-exports them), so their types are the document's
+# render: blitz is our fork, pinned and re-exported; acss and Parley come through blitz_dom (it re-exports them), so their types are the document's
 blitz-dom = { workspace = true, features = ["svg", "woff", "system-fonts", "file-input", "text-transform-icu", "complex-scripts", "floats", "writing-mode"] }
 blitz-paint = { workspace = true, default-features = true, features = ["scrollbars"] }
 blitz-traits = { workspace = true, default-features = true }

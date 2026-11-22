@@ -91,7 +91,7 @@ impl Dom {
         self.write(|e| {
             let node = e.n(id)?;
             let state = if modal { ElementState::MODAL } else { ElementState::POPOVER_OPEN };
-            e.doc.snapshot_node_and(node, state, |n| {
+            e.doc.change_state(node, |n| {
                 if let Some(data) = n.element_data_mut() {
                     data.element_state.set(state, open);
                 }
