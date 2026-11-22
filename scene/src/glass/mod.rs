@@ -57,7 +57,7 @@ impl Outline {
         if width <= 0.0 {
             return 0.0;
         }
-        (width + 0.5 + d).clamp(0.0, 1.0) * (0.5 - d).clamp(0.0, 1.0)
+        (width + 0.5 + d).clamp(0.0, 1.0)
     }
 
     pub fn coverage(self, d: f64) -> f32 {

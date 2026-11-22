@@ -281,7 +281,7 @@ mod tests {
         let source = ground(width, height);
         let corners = Corners { radius: 8.0, exponent: 4.0 };
         let rect = [margin as f32, margin as f32, (width - 2 * margin) as f32, (height - 2 * margin) as f32];
-        let one = group(12.0, &[Piece::of_rect(rect, 8.0, 4.0, regular())]);
+        let one = group(10.0, &[Piece::of_rect(rect, 8.0, 4.0, regular())]);
         assert_eq!(one.paint_cpu(&source).data, cpu::paint(&source, margin, corners, &regular()).data);
     }
 
@@ -289,8 +289,8 @@ mod tests {
     fn a_piece_out_of_reach_leaves_the_other_exactly_as_it_was() {
         let (width, height) = (200, 60);
         let source = ground(width, height);
-        let left = Piece::of_rect([16.0, 12.0, 48.0, 36.0], 10.0, 2.0, regular());
-        let right = Piece::of_rect([120.0, 12.0, 48.0, 36.0], 10.0, 2.0, Glass { tint: [1.0, 0.0, 0.0, 0.4], ..regular() });
+        let left = Piece::of_rect([16.0, 10.0, 48.0, 36.0], 10.0, 2.0, regular());
+        let right = Piece::of_rect([120.0, 10.0, 48.0, 36.0], 10.0, 2.0, Glass { tint: [1.0, 0.0, 0.0, 0.4], ..regular() });
         let alone = group(20.0, &[left]).paint_cpu(&source);
         let both = group(20.0, &[left, right]).paint_cpu(&source);
         for y in 0..height {
@@ -353,7 +353,7 @@ mod tests {
             white_point: 0.0,
             ..regular()
         };
-        let pair = group(12.0, &[Piece::of_rect([10.0, 10.0, 60.0, 40.0], 20.0, 2.0, glass), Piece::of_rect([50.0, 10.0, 60.0, 40.0], 20.0, 2.0, glass)]);
+        let pair = group(10.0, &[Piece::of_rect([10.0, 10.0, 60.0, 40.0], 20.0, 2.0, glass), Piece::of_rect([50.0, 10.0, 60.0, 40.0], 20.0, 2.0, glass)]);
         let source = Pixels { width: 120, height: 60, data: vec![0xff40_4040; 120 * 60] };
         let out = pair.paint_cpu(&source);
         let pixel = |x: usize, y: usize| channels(out.data[y * 120 + x]);
@@ -365,11 +365,18 @@ mod tests {
 
     fn outlined_pair(merged: bool, width: f32) -> (Pixels, Pixels) {
         let outline = super::super::Outline { width, color: [1.0, 0.0, 0.0, 1.0], merged };
-        let glass = Glass { highlight: super::super::Highlight::default(), lens: super::super::Lens::default(), outline, ..regular() };
+        let plain = [
+            super::super::BlurLayer { radius: 0.0, opacity: 1.0 },
+            super::super::BlurLayer::default(),
+            super::super::BlurLayer::default(),
+            super::super::BlurLayer::default(),
+            super::super::BlurLayer::default(),
+        ];
+        let glass = Glass { blur: plain, outline, smoothing: 0.0, ..Glass::default() };
         let left = Piece::of_rect([10.0, 10.0, 40.0, 40.0], 20.0, 2.0, glass);
         let source = Pixels { width: 104, height: 60, data: vec![0xff00_4000; 104 * 60] };
-        let pair = group(12.0, &[left, Piece::of_rect([54.0, 10.0, 40.0, 40.0], 20.0, 2.0, glass)]).paint_cpu(&source);
-        (pair, group(12.0, &[left]).paint_cpu(&source))
+        let pair = group(10.0, &[left, Piece::of_rect([54.0, 10.0, 40.0, 40.0], 20.0, 2.0, glass)]).paint_cpu(&source);
+        (pair, group(10.0, &[left]).paint_cpu(&source))
     }
 
     fn red(out: &Pixels, x: usize, y: usize) -> u32 {
@@ -425,8 +432,8 @@ mod tests {
         let user = "@group(0) @binding(0) var<uniform> acde_glass_pieces: array<AcdeGlassPiece, ACDE_GLASS_MOST_PIECES>;
 @fragment
 fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
-    let f = acde_glass_group_field(pos.xy, 3u, 12.0);
-    let under = vec4<f32>(acde_glass_group_offset(f) + acde_glass_group_lens(f, pos.xy, 3u, 12.0).green, 0.0, 1.0);
+    let f = acde_glass_group_field(pos.xy, 3u, 10.0);
+    let under = vec4<f32>(acde_glass_group_offset(f) + acde_glass_group_lens(f, pos.xy, 3u, 10.0).green, 0.0, 1.0);
     return acde_glass_group_shade(under, f);
 }";
         validate(&[crate::corner::WGSL, super::super::WGSL, WGSL, user].join("\n"));

@@ -63,8 +63,8 @@ mod tests {
     #[test]
     fn a_container_spacing_makes_a_member_and_names_are_kept() {
         let given = [("acde-glass-id", " dock-item "), ("acde-glass-union", "none")];
-        let member = Membership::from_properties(Some((7, "12px")), properties(&given), |w| panic!("{w}")).unwrap();
-        assert_eq!(member, Membership { container: Some(7), spacing: 12.0, union: None, id: Name::of("dock-item") });
+        let member = Membership::from_properties(Some((7, "10px")), properties(&given), |w| panic!("{w}")).unwrap();
+        assert_eq!(member, Membership { container: Some(7), spacing: 10.0, union: None, id: Name::of("dock-item") });
         assert_eq!(member.scaled(2.0).spacing, 24.0);
     }
 

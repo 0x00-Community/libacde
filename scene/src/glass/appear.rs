@@ -107,7 +107,7 @@ mod tests {
     }
 
     fn group(pieces: &[Piece]) -> GlassGroup {
-        let mut group = GlassGroup::new(12.0);
+        let mut group = GlassGroup::new(10.0);
         pieces.iter().for_each(|p| assert!(group.push(*p)));
         group
     }
@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn pieces_without_an_id_and_a_lone_newcomer_just_appear() {
         let mut appearance = Appearance::default();
-        step(&mut appearance, &mut GlassGroup::new(12.0), 0.0);
+        step(&mut appearance, &mut GlassGroup::new(10.0), 0.0);
         let plain = Piece { id: None, ..named_piece(0.0, "x") };
         let mut lone = group(&[named_piece(50.0, "a"), plain]);
         let before = lone;
@@ -169,7 +169,7 @@ mod tests {
         assert_eq!(lone.pieces()[1], before.pieces()[1]);
         let mut alone = group(&[named_piece(0.0, "solo")]);
         let mut fresh = Appearance::default();
-        step(&mut fresh, &mut GlassGroup::new(12.0), 0.0);
+        step(&mut fresh, &mut GlassGroup::new(10.0), 0.0);
         assert!(!step(&mut fresh, &mut alone, 1.0));
         assert_eq!(alone.pieces()[0], named_piece(0.0, "solo"));
     }

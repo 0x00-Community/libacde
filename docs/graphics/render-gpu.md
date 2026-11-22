@@ -108,7 +108,7 @@
   (`fs_glass`, 参数放 `Params.matrix` 第四列: 厚度、色散、乘暗、斜面宽度; 折射率放 `Params.shift.x`; 组里每块的折射率放 `corner.z`) 与组的 WGSL (`acde_glass_lens`、`acde_glass_group_lens`、`acde_glass_tone_darkened`)
   同一套函数; 组只在边缘一圈内求梯度.
   CPU 版只做乘暗, 不做透镜.
-  页面怎么成组 (2026-11-22): 容器写 `--acde-glass-merge: <长度>` (对应苹果 `GlassEffectContainer(spacing:)`), 元素写 `--acde-glass-union: <名字>`
+  页面怎么成组 (2026-11-22): 容器写 `--acde-glass-merge: <长度>` (对应苹果 `GlassEffectContainer(spacing:)`; 不写就不融合, 属性本身没有内置默认; 推荐 / 系统默认写 `--acde-glass-merge: 10px`, 用户 2026-11-23 定), 元素写 `--acde-glass-union: <名字>`
   (`glassEffectUnion`)、`--acde-glass-id: <名字>` (`glassEffectID`, 出现、消失的动画用); 都是作者自定义属性, 不认它们的浏览器照常显示 backdrop-filter.
   blitz-paint (`render/glass.rs`) 给有系统玻璃的效果图层带出 `LayerShape.group: Option<Membership>` (`acde_scene::glass::Membership`):
   自定义属性会继承, 所以容器是从父元素起往上、值和父元素相同的那一串祖先里最外面的一个 (它的节点号, 间距按 CSS px 乘 scale); 嵌套的两层容器写了同一个

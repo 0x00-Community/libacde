@@ -112,7 +112,7 @@ fn acde_glass_outline_coverage(d: f32, width: f32, alpha: f32) -> f32 {
     if width <= 0.0 {
         return 0.0;
     }
-    return clamp(width + 0.5 + d, 0.0, 1.0) * clamp(0.5 - d, 0.0, 1.0) * alpha;
+    return clamp(width + 0.5 + d, 0.0, 1.0) * alpha;
 }
 
 fn acde_glass_lined(rgb: vec3<f32>, base_alpha: f32, line: f32, color: vec3<f32>) -> vec4<f32> {

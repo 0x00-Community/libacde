@@ -25,7 +25,7 @@ const CSS: &str = "html, body { margin: 0; height: 100%; }
   .ds10 { filter: drop-shadow(2px 3px 10px black); }
   .ds25 { filter: drop-shadow(0 0 25px black); }
   .bl6 { filter: blur(6px); }
-  .merge { --acde-glass-merge: 16px; }
+  .merge { --acde-glass-merge: 10px; }
   .pill { position: absolute; top: 20px; width: 60px; height: 40px; border-radius: 20px; backdrop-filter: blur(2px); --acde-glass: regular; }";
 
 struct Page {
@@ -205,7 +205,7 @@ fn glass_merges_within_its_container_or_by_union_into_one_group() {
         let group = backdrops[0].group().expect("one group");
         assert_eq!(group.len(), 2);
         assert!(near(backdrops[0].bounds.width(), 126.0), "the group covers both pills: {:?}", backdrops[0].bounds);
-        assert_eq!(group.spacing, if container.is_empty() { 0.0 } else { 16.0 });
+        assert_eq!(group.spacing, if container.is_empty() { 0.0 } else { 10.0 });
     }
 }
 
