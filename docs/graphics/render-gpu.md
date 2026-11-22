@@ -91,7 +91,7 @@
   值时算作外层一个. 名字存成 FNV-1a 64 位散列 (`Name`), `none` 和空串当没写. 没有容器也没有 union 名字的玻璃不成组. src/render `Split` 切完图层后
   (`merge_glass`): 同一容器或同一 union 名字 (`Membership::joins`, 可传递) 的玻璃图层, 按绘制顺序把各块 (`Backdrop::piece`: 外框、半径、指数、玻璃) 放进
   第一块那层的 `Backdrop.group`, 外框和裁剪取各块的并集, 其余几块的图层去掉 backdrop (只剩内容). 间距取组内最大 (只靠 union 成组时为 0, 各块不鼓出).
-  超过 16 块时多出的块各画各的, 记一次 warn. 只有一块的组不成组, 照单块画. 底图在第一块的位置取一次, 所以后面几块之前画的内容 (多半没有) 不会出现在玻璃里.
+  超过 16 块时多出的块各画各的, 记一次 warn. 只有一块的成员也成一组 (一块的组和单块画出来相同, G4 有对照测试), 好让出现、消失的动画有处可放. 底图在第一块的位置取一次, 所以后面几块之前画的内容 (多半没有) 不会出现在玻璃里.
   前端把 `render::Backdrop` 换成合成用的 `gpu::Backdrop` 只调 `Backdrop::compose()` (宿主窗口再 `.moved((0.0, dy))`), 以后加字段两边不用改;
   自己造 `gpu::Backdrop` 的 (窗口毛玻璃) 写 `..Backdrop::default()` (默认指数 2、没有玻璃).
   进程内合成画组 (`src/vello/compose.rs`, 2026-11-22): `Composer::backdrop` 见到非空的 `group` 走 `glass_group`: 取样区域是 `Backdrop.rect` (各块并集) 外扩
@@ -99,6 +99,12 @@
   绑定布局: 绑定 3 是块数组 (`acde_glass_pieces`, 动态偏移的 uniform, 每组 `GlassGroup::to_uniform` 的 1792 字节一段), 不画组的绘制给偏移 0; 参数缓冲和块缓冲
   是同一个 `Uniforms` (满了翻倍重建, 已录的绑定组仍指向旧缓冲, 旧缓冲先写好), 任一个重建都清掉绑定组缓存. 块数和间距放在 `Params.shift` (x 块数, y 间距),
   `Params.bias` 是取样区域. 宿主窗口和会话里画页面都经这里, 所以两边跟着生效.
+  出现、消失 (`--acde-glass-id`, 2026-11-22; `acde_scene::glass::Appearance`, 渲染侧 `Engine::animate_glass`): 每张平面 (整页一份, 每个钉住的面板各一份, 面板撤掉时丢掉)
+  记着上一帧各组里带 `--acde-glass-id` 的块 (`Piece.id`). 新出现的名字从同组里离它最近的那块的中心长出来 (半宽高和半径从 0 按曲线到实际大小, 中心从那块的中心
+  移到自己的位置); 消失的名字留一个影子块, 加进离它最近的那块所在的组, 按曲线缩回那块的中心后丢掉. 曲线是 `motion::Preset::Standard` (临界阻尼弹簧,
+  约 0.51 秒), 和合成器窗口动画同一份. 第一帧已有的块、没写名字的块、同组里没有别的块可依附的新块直接出现, 不做动画. 动画进行时, 平面的损伤加上各组外框
+  外扩 `reach()`, 帧标 `animating`, 引擎每个 tick 都要重画 (`glass_moving` 计入 `is_dirty`), 停下后恢复. 还没接"减少动态效果": 现在总按标准档,
+  等页面拿到这个偏好 (和玻璃档位一条路) 再按 `Preset::Reduced` 不做形状动画.
   (也给出窗口之间毛玻璃的取样外扩 `margin`): 偏移在约 0.5–1.3 之间连续调 (一层时从 0 起, 五层时最多到 2), 强度随 sigma 连续变,
   近似同 sigma 的高斯 (`SPREAD` 是 DX12 上量出的每档方差, `tests/vello_compose.rs` 按相位平均量边缘的展宽对照); sigma 小于约
   0.96 px 时一层不偏移, 再按 `mix` 和原图混合. sigma 为 0 不模糊 (drop-shadow、backdrop 只拷一份). shell 的 GLES 链不做 `mix`.

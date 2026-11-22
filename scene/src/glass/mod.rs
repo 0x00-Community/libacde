@@ -1,10 +1,12 @@
 use crate::blur::{Pixels, blur, channels, pack};
 use crate::corner::{self, Corners};
 
+mod appear;
 pub mod group;
 mod membership;
 mod preset;
 
+pub use appear::Appearance;
 pub use membership::{Membership, Name};
 pub use preset::{Level, Role};
 

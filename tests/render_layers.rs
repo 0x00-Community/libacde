@@ -208,3 +208,29 @@ fn glass_merges_within_its_container_or_by_union_into_one_group() {
         assert_eq!(group.spacing, if container.is_empty() { 0.0 } else { 16.0 });
     }
 }
+
+#[test]
+fn a_named_glass_leaving_its_group_shrinks_away_over_frames() {
+    let page = Page::new(1.0);
+    let row = page.div("merge");
+    let pill = |left: &str, name: &str| {
+        let id = page.doc.create_element("div").unwrap();
+        page.doc.set_attribute(id, "class", "pill").unwrap();
+        page.doc.set_attribute(id, "style", &format!("left: {left}; --acde-glass-id: {name}")).unwrap();
+        page.doc.append_child(row, id).unwrap();
+        id
+    };
+    pill("20px", "a");
+    let leaving = pill("86px", "b");
+    let pieces = |frame: &Frame| frame.plane.layers.iter().filter_map(|l| l.backdrop.as_ref()?.group()).map(|g| g.len()).sum::<usize>();
+    assert_eq!(pieces(&page.frame()), 2);
+    page.doc.remove(leaving).unwrap();
+    let frame = page.frame();
+    assert!(frame.animating, "the ghost of b is still shrinking");
+    assert_eq!(pieces(&frame), 2, "a and the ghost of b");
+    std::thread::sleep(Duration::from_millis(700));
+    page.handle.tick(0.0);
+    let settled = page.frame();
+    assert_eq!(pieces(&settled), 1);
+    assert!(!settled.animating);
+}

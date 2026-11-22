@@ -9,7 +9,8 @@ use crate::gpu::Scene;
 use crate::gpu::{LayerCommand, RenderCommand};
 use acde_scene::corner::Corners;
 use acde_scene::glass::group::{GlassGroup, Piece};
-use acde_scene::glass::{Glass, Membership};
+use acde_scene::glass::{Appearance, Glass, Membership};
+use acde_scene::motion::Preset;
 use kurbo::{Affine, BezPath, PathEl, Rect, Shape};
 
 use crate::render::commands::{Builder, Commands};
@@ -100,7 +101,8 @@ impl Backdrop {
     fn piece(&self) -> Option<Piece> {
         let b = self.bounds;
         let rect = [b.x0 as f32, b.y0 as f32, b.width() as f32, b.height() as f32];
-        Some(Piece::of_rect(rect, self.radius() as f32, self.exponent() as f32, self.glass?))
+        let piece = Piece::of_rect(rect, self.radius() as f32, self.exponent() as f32, self.glass?);
+        Some(Piece { id: self.membership.and_then(|m| m.id), ..piece })
     }
 
     pub fn blur(&self) -> f64 {
@@ -148,6 +150,21 @@ impl Backdrop {
 
 static WARNED_FULL_GROUP: AtomicBool = AtomicBool::new(false);
 
+pub(crate) fn animate_glass(layers: &mut [Layer], appearance: &mut Appearance, now: f64) -> Option<Rect> {
+    let mut groups: Vec<&mut GlassGroup> = layers.iter_mut().filter_map(|l| l.backdrop.as_mut()?.group.as_mut()).collect();
+    if !appearance.step(&mut groups, now, Preset::Standard.curve()) {
+        return None;
+    }
+    let mut area: Option<Rect> = None;
+    for b in layers.iter_mut().filter_map(|l| l.backdrop.as_mut()) {
+        let Some(([x, y, w, h], reach)) = b.group.as_ref().and_then(|g| Some((g.bounds()?, g.reach()))) else { continue };
+        b.bounds = b.bounds.union(Rect::new(x.into(), y.into(), f64::from(x + w), f64::from(y + h)));
+        let drawn = b.bounds.inflate(reach, reach);
+        area = Some(area.map_or(drawn, |a| a.union(drawn)));
+    }
+    area
+}
+
 fn merge_glass(layers: &mut [Layer]) {
     let members: Vec<(usize, Membership)> =
         layers.iter().enumerate().filter_map(|(i, l)| l.backdrop.as_ref().filter(|b| b.glass.is_some()).and_then(|b| Some((i, b.membership?)))).collect();
@@ -190,9 +207,6 @@ fn merge_into_first(layers: &mut [Layer], members: impl Iterator<Item = usize>, 
         }
     }
     let [first, rest @ ..] = merged.as_slice() else { return };
-    if rest.is_empty() {
-        return;
-    }
     let area = |i: usize| layers[i].backdrop.as_ref().map(|b| (b.bounds, b.clip)).expect("a member has a backdrop");
     let (bounds, clip) = rest.iter().map(|&i| area(i)).fold(area(*first), |(b, c), (bi, ci)| (b.union(bi), c.union(ci)));
     rest.iter().for_each(|&i| layers[i].backdrop = None);

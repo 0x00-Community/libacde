@@ -19,11 +19,12 @@ pub struct Piece {
     pub radius: f32,
     pub exponent: f32,
     pub glass: Glass,
+    pub id: Option<super::Name>,
 }
 
 impl Piece {
     pub fn of_rect([x, y, w, h]: [f32; 4], radius: f32, exponent: f32, glass: Glass) -> Self {
-        Self { center: [x + w / 2.0, y + h / 2.0], half: [w / 2.0, h / 2.0], radius, exponent, glass }
+        Self { center: [x + w / 2.0, y + h / 2.0], half: [w / 2.0, h / 2.0], radius, exponent, glass, id: None }
     }
 
     pub fn rect(&self) -> [f32; 4] {
@@ -113,6 +114,10 @@ impl GlassGroup {
 
     pub fn pieces(&self) -> &[Piece] {
         &self.pieces[..self.count]
+    }
+
+    pub fn pieces_mut(&mut self) -> &mut [Piece] {
+        &mut self.pieces[..self.count]
     }
 
     pub fn len(&self) -> usize {
