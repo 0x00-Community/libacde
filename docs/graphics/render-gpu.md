@@ -77,9 +77,11 @@
   https://github.com/ShengzhiWu/liquid-glass , 演示 https://shengzhiwu.github.io/liquid-glass ; 只借做法, 没有拷代码): 中间不模糊、不加白, 颜色只乘
   `1 − darken` (它是 0.95); 边缘那圈"发光"不是高光, 是只在很窄一圈边缘的强折射把背后亮的颜色挤成一条细线 (它的放大按场值 `exp(−20·(sum − 0.7))`,
   离阈值一点就几乎为 0); 红绿蓝分三次取样出彩边 (它是 485 / 500 / 515, 即绿色上下各 3%). 我们在距离场上做: e 是到边缘的距离, w 是宽度,
-  取样深度 `s(e) = w + (S − w) · (1 − e/w)²` (S = `min(strength, 1.8 b)`, b 是半短边, 组里按权重混合), 位移 `−n · (s − e)`: 边缘处取到 S 深处,
-  往里单调回落, 离边 w 以上严格为 0, 区域外也为 0. 带内只有几像素, 却把 w 到 S 这一段背景压进去 (样张 2026-11-22 v5: 16 px 时压缩不够, 看得出倒过来的字,
-  像重影; 参考的边缘位移是几百像素量级, 压成一条亮线), 取样单调所以不会对折出两份; S 不超过 1.8 b, 取样留在玻璃里面, 不越到区域外被夹成拉丝;
+  源深度是 `g(e) = e + a·e·(1 − e/w)`, `a = 0.9·(1 − exp(−strength/w))`, 其中 w 不大于半短边, e 在 0..w 内; 位移是 `−n·(g−e)`,
+  e 超过 w 严格为 0. 这是保序的压缩映射: `g′(e) = 1 + a·(1 − 2e/w) ≥ 1 − a > 0.1`, 不会对折、上下翻转或旋转背景; strength 为 0 时 g=e
+  (严格恒等), strength 约 1px 时最大位移小于 0.25px、连续且很轻, 大强度渐近到 0.9 的最大压缩而不会越界. 这个约束照镜头畸变映射的通行条件
+  (OpenLensIO https://ris-pub.smpte.org/res/OpenLensIO_v0_9_0.pdf ; 多项式径向映射 https://salivity.github.io/glsl/article/glsl-lens-distortion-with-polynomial-radial-warps ).
+  `Lens::source_depth` 是 CPU 同公式, 单测覆盖 strength 0、1 和多个大值、不同宽度与半短边, 在整个区间采样 1000 段断言严格递增;
   n 取距离场的梯度 (中心差分 0.5 px; 单块是 `acde_glass_corner_gradient`, 组是合成场的梯度), 在直边上垂直于边、在圆角上沿径向. 不用"中心指向该点"
   那个法线: 它在长条中段是斜的, 第一版 (496fbc2) 用它加上宽衰减, 把中间的字和色块拉成波浪、出重影. 位移朝里取样, 相当于凸透镜放大. 色散: 红、蓝分别取
   `(1 ∓ dispersion)` 倍的位移 (`compose.wgsl` `glass_under`). 它的元球是硬阈值, 我们照旧用平滑边缘抗锯齿. 写法: `--acde-glass-lens: <强度> <宽度> [<色散>]`

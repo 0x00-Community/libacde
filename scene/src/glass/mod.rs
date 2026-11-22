@@ -52,6 +52,17 @@ pub struct Lens {
     pub dispersion: f32,
 }
 
+impl Lens {
+    const MOST_COMPRESSION: f64 = 0.9;
+
+    pub fn source_depth(self, depth: f64, half_short_side: f64) -> f64 {
+        let width = f64::from(self.width).max(0.5).min(half_short_side.max(0.5));
+        let e = depth.clamp(0.0, width);
+        let amount = Self::MOST_COMPRESSION * (1.0 - (-f64::from(self.strength.max(0.0)) / width).exp());
+        depth + amount * e * (1.0 - e / width)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Glass {
     pub refraction: Refraction,
@@ -548,6 +559,31 @@ mod tests {
         let red = |glass: &Glass| channels(cpu::paint(&source, 8, corners, glass).data[15 * 40 + 20])[1];
         assert_eq!(red(&Glass { darken: 0.0, ..plain }), 0xc0);
         assert_eq!(red(&Glass { darken: 0.05, ..plain }), (0xc0 as f32 * 0.95).round() as u32);
+    }
+
+    #[test]
+    fn the_lens_source_mapping_never_folds_over() {
+        for half in [8.0, 40.0, 120.0] {
+            for width in [1.0, 4.0, 20.0, 256.0] {
+                for strength in [0.0, 1.0, 40.0, 60.0, 800.0] {
+                    let lens = Lens { strength, width, dispersion: 0.05 };
+                    let mut last = lens.source_depth(0.0, half);
+                    for i in 1..=1000 {
+                        let depth = half * i as f64 / 1000.0;
+                        let source = lens.source_depth(depth, half);
+                        assert!(source > last, "half={half} width={width} strength={strength}: {last} then {source}");
+                        last = source;
+                    }
+                }
+            }
+        }
+        let off = Lens { strength: 0.0, width: 256.0, dispersion: 0.05 };
+        for depth in [0.0, 0.25, 1.0, 20.0, 50.0] {
+            assert_eq!(off.source_depth(depth, 50.0), depth);
+        }
+        let light = Lens { strength: 1.0, width: 256.0, dispersion: 0.05 };
+        let most = (0..=1000).map(|i| i as f64 / 20.0).map(|e| light.source_depth(e, 50.0) - e).fold(0.0, f64::max);
+        assert!(most < 0.25, "one-pixel strength stays light: {most}");
     }
 
     #[test]
