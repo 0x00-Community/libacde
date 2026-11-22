@@ -92,7 +92,6 @@ impl Engine {
             if let Some(e) = n.element_data_mut() {
                 e.element_state.set(ElementState::CHECKED, selected);
             }
-            n.mark_ancestors_dirty();
         });
         if let Some(select) = self.owner_select(option) {
             self.doc.rebuild_select(select);

@@ -95,7 +95,6 @@ impl Dom {
                 if let Some(data) = n.element_data_mut() {
                     data.element_state.set(state, open);
                 }
-                n.mark_ancestors_dirty();
             });
             Ok(())
         })

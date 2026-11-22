@@ -190,7 +190,6 @@ impl Engine {
                         }
                         e.set_checkbox_input_checked(checked);
                     }
-                    n.mark_ancestors_dirty();
                 });
             }
             _ => {}
@@ -225,7 +224,6 @@ impl Engine {
             if let Some(e) = n.element_data_mut() {
                 e.element_state.set(ElementState::FOCUSRING, visible);
             }
-            n.mark_ancestors_dirty();
         });
     }
 
