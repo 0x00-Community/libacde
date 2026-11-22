@@ -1,11 +1,13 @@
-import type { AppsChangedEvent, DesktopEventMap, ShortcutEvent, TerminalEvent, WindowGrabEvent, WindowGrabLostEvent, WindowsEvents } from './events'
+import type { AppsChangedEvent, DesktopEventMap, ShortcutEvent, WindowGrabEvent, WindowGrabLostEvent, WindowsEvents } from './events'
 import type { AcdeOffice } from './office'
 import type { AcdePermissions } from './permissions'
 import type { SharedPlace } from './places'
+import type { AcdeTerminals } from './terminal/index'
 
 export type * from './events'
 export type * from './office'
 export type * from './permissions'
+export type * from './terminal/index'
 
 export interface FinderRoot {
   id: string
@@ -213,14 +215,6 @@ export interface Screenshot {
 export interface DisplayWallpaper {
   readonly color: string
   readonly image?: string | null
-}
-
-export interface AcdeTerminals {
-  open(cols: number, rows: number): Promise<{ id: string }>
-  subscribe(id: string, callback: (events: TerminalEvent[]) => void): Promise<void>
-  input(id: string, data: string): Promise<{ ok: true }>
-  resize(id: string, cols: number, rows: number): Promise<{ cols: number; rows: number }>
-  close(id: string): Promise<{ closed: string }>
 }
 
 export interface DesktopApp {

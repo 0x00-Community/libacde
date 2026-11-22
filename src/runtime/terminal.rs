@@ -1,5 +1,6 @@
 use crate::runtime::failure::{Code, Failure, Outcome};
 use crate::runtime::sync::Locked;
+use crate::terminal::{Limits, OpenOptions, Refusal, Shell, Sink};
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, VecDeque},
@@ -282,6 +283,45 @@ impl Terminals {
             self.registry.close(&session);
         }
         Ok(())
+    }
+}
+
+impl crate::terminal::TerminalHost for Terminals {
+    fn open(&self, options: OpenOptions) -> std::result::Result<String, Refusal> {
+        if options.command.is_some() || options.cwd.is_some() || options.env.is_some() {
+            return Err(Refusal::new(400, "unsupported", "this runtime does not take terminal options"));
+        }
+        let opened = Terminals::open(self, options.cols, options.rows).map_err(|e| Refusal::from_failure(&e))?;
+        opened["id"].as_str().map(str::to_owned).ok_or_else(|| Refusal::new(500, "internal_error", "the terminal has no id"))
+    }
+    fn input(&self, id: &str, data: String) -> std::result::Result<(), Refusal> {
+        Terminals::input(self, id.to_owned(), data).map(drop).map_err(|e| Refusal::from_failure(&e))
+    }
+    fn resize(&self, id: &str, cols: f64, rows: f64) -> std::result::Result<(u32, u32), Refusal> {
+        let size = Terminals::resize(self, id.to_owned(), cols, rows).map_err(|e| Refusal::from_failure(&e))?;
+        let side = |name: &str| size[name].as_u64().and_then(|v| u32::try_from(v).ok()).unwrap_or_default();
+        Ok((side("cols"), side("rows")))
+    }
+    fn close(&self, id: &str) {
+        Terminals::close(self, id.to_owned());
+    }
+    fn listen(&self, id: &str, sink: Sink) -> std::result::Result<(), Refusal> {
+        let sink = move |events: Value| {
+            let events = events.as_array().into_iter().flatten().filter_map(|event| {
+                serde_json::from_value(event.clone()).inspect_err(|e| log::warn!("terminal: an event of an unknown shape is skipped: {e}")).ok()
+            });
+            sink(events.collect())
+        };
+        Terminals::listen(self, id, sink).map_err(|e| Refusal::from_failure(&e))
+    }
+    fn shells(&self) -> Vec<Shell> {
+        Vec::new()
+    }
+    fn limits(&self) -> Limits {
+        Limits { max: MAX_TERMINALS, open: self.registry.sessions().len() }
+    }
+    fn close_all(&self) {
+        Terminals::close_all(self)
     }
 }
 

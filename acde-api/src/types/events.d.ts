@@ -179,6 +179,7 @@ export type TerminalEvent =
   | { readonly type: 'output'; readonly data: string }
   | { readonly type: 'cwd'; readonly path: string }
   | { readonly type: 'exit'; readonly code: number | null; readonly signal: number | null }
+  | { readonly type: 'foreground'; readonly program: string; readonly busy: boolean }
 
 export interface WindowGrabEvent {
   readonly kind: 'pointer' | 'keyboard'

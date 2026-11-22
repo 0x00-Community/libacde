@@ -11,6 +11,7 @@ pub mod napi;
 pub mod render;
 pub mod runtime;
 pub mod storage;
+pub mod terminal;
 pub mod vello;
 pub mod webgl;
 
