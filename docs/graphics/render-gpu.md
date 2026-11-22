@@ -64,8 +64,8 @@
   画法在 `mode.x`), 页面合成的 `Params` 多一个 vec4 (160 字节), 轮廓宽度在 `shift.y`. "逐位等于单块" 的几条测试都在轮廓关掉 (`none`) 时比; 组的
   CPU 测试覆盖 merged 脖子连续、旧边界无线, pieces 旧边界都有线、脖子是玻璃无线, none 无线.
   预设表 (通透度档位, 2026-11-22, 总仓 `.scratch/libacde/glass-transparency-plan.md`; `glass/preset.rs`, 参数表只此一份): `Glass::preset(Role, Level)`,
-  `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 不模糊、不染色、不渗出, 乘暗 0.05, 透镜斜面 34 px、厚度 22 px、折射率 1.5、色散 0.01 (用户 2026-11-23 在调参页定), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3)、`Tinted`
-  (着色, 2, regular-2)、`Opaque` (减少透明度, 3: 重模糊加接近不透明的着色, `Glass::opaque(dark)` 按深浅给色, 预设取浅色). 名字和线上值都在 `Level`
+  `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 模糊 0.5 px (背景有文本时页面自己切到 8 px, 不进预设), 内圈折射 0.8 (2026-11-23 用户定), 不染色、不渗出, 乘暗 0.05, 透镜斜面 34 px、厚度 22 px、折射率 1.5、色散 0.01 (用户 2026-11-23 在调参页定), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3, 内圈折射按比例从 0.4 提到 0.8)、`Tinted`
+  (着色, 2, regular-2, 内圈折射按比例从 0.35 提到 0.7)、`Opaque` (减少透明度, 3: 重模糊加接近不透明的着色, `Glass::opaque(dark)` 按深浅给色, 预设取浅色). 名字和线上值都在 `Level`
   (`parse` / `from_wire` / `to_wire`, 照 `motion::Preset`), 认不得的线上值当通透. regular 取当前档, clear 再通透一档 (`Level::clearer`, 到通透为止,
   不透明不变). 高光各档一律 `330deg 0.45 4px` (用户 2026-11-23 在调参页定). `Glass::from_properties_at(level, …)` 按档位取预设再盖分项;
   `from_properties` 是默认档 (通透).

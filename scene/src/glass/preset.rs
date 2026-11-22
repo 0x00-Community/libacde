@@ -90,8 +90,8 @@ impl Glass {
     pub fn preset(role: Role, level: Level) -> Self {
         match level.for_role(role) {
             Level::Clear => Self {
-                refraction: Refraction { inner_amount: 0.0, inner_height: 18.0, outer_amount: 0.0, outer_height: 0.0 },
-                blur: layers([(0.0, 1.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]),
+                refraction: Refraction { inner_amount: 0.8, inner_height: 18.0, outer_amount: 0.0, outer_height: 0.0 },
+                blur: layers([(0.5, 1.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]),
                 bleed: Bleed::default(),
                 highlight: highlight(),
                 white_point: 0.0,
@@ -102,7 +102,7 @@ impl Glass {
                 outline: OUTLINE,
             },
             Level::Medium => Self {
-                refraction: Refraction { inner_amount: 0.4, inner_height: 10.0, outer_amount: 0.15, outer_height: 18.0 },
+                refraction: Refraction { inner_amount: 0.8, inner_height: 10.0, outer_amount: 0.15, outer_height: 18.0 },
                 blur: layers([(2.0, 1.0), (5.0, 0.8), (10.0, 0.6), (16.0, 0.4), (24.0, 0.2)]),
                 bleed: Bleed { amount: 0.2, radius: 12.0, opacity: 0.3 },
                 highlight: highlight(),
@@ -113,7 +113,7 @@ impl Glass {
                 ..Self::default()
             },
             Level::Tinted => Self {
-                refraction: Refraction { inner_amount: 0.35, inner_height: 10.0, outer_amount: 0.15, outer_height: 20.0 },
+                refraction: Refraction { inner_amount: 0.7, inner_height: 10.0, outer_amount: 0.15, outer_height: 20.0 },
                 blur: layers([(8.0, 1.0), (16.0, 0.8), (28.0, 0.7), (40.0, 0.5), (56.0, 0.3)]),
                 bleed: Bleed { amount: 0.2, radius: 12.0, opacity: 0.3 },
                 highlight: highlight(),
@@ -162,9 +162,9 @@ mod tests {
     fn regular_glass_at_the_clear_level_is_its_lens_sample() {
         let sample = [
             ("acde-glass", "clear"),
-            ("acde-glass-refraction", "0 18px 0 0"),
+            ("acde-glass-refraction", "0.8 18px 0 0"),
             ("acde-glass-lens", "34px 22px 1.5 0.01"),
-            ("acde-glass-blur", "0px 1"),
+            ("acde-glass-blur", "0.5px 1"),
             ("acde-glass-bleed", "0 0 0"),
             ("acde-glass-highlight", "330deg 0.45 4px"),
             ("acde-glass-darken", "0.05"),
