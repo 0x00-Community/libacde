@@ -82,11 +82,8 @@ impl LocalNet {
             return icon_path(icon);
         }
         let (resource, rest) = self.resources.iter().find_map(|r| Some((r, path.strip_prefix(r.prefix.as_str())?)))?;
-        let rest = Path::new(rest.trim_start_matches('/'));
-        if !rest.components().all(|c| matches!(c, Component::Normal(_))) {
-            return None;
-        }
-        resource.dirs.iter().find_map(|d| within(Path::new(d), &Path::new(d).join(rest)))
+        let rest = decoded(rest)?;
+        resource.dirs.iter().find_map(|d| within(Path::new(d), &Path::new(d).join(&rest)))
     }
 }
 
@@ -107,11 +104,14 @@ fn icon_path(rest: &str) -> Option<PathBuf> {
 }
 
 fn icon_path_among(dirs: &[PathBuf], rest: &str) -> Option<PathBuf> {
-    let path = Url::parse(&format!("file:///{rest}")).ok()?.to_file_path().ok()?;
-    if !path.components().skip(1).all(|c| matches!(c, Component::Normal(_))) {
-        return None;
-    }
+    let path = Path::new("/").join(decoded(rest)?);
     dirs.iter().find_map(|d| within(d, &path))
+}
+
+fn decoded(rest: &str) -> Option<PathBuf> {
+    let path = Url::parse(&format!("file:///{}", rest.trim_start_matches('/'))).ok()?.to_file_path().ok()?;
+    let rest = path.strip_prefix("/").ok()?.to_path_buf();
+    rest.components().all(|c| matches!(c, Component::Normal(_))).then_some(rest)
 }
 
 fn icon_dirs() -> Vec<PathBuf> {
@@ -221,6 +221,9 @@ mod tests {
         let scratch = Scratch::new("plain");
         let net = scratch.net();
         assert!(net.path(&url("http://acde.local/media/ok.png")).is_some());
+        std::fs::write(scratch.0.join("lent/a b.png"), b"ab").unwrap();
+        assert!(net.path(&url("http://acde.local/media/a%20b.png")).is_some(), "the path is percent-decoded");
+        assert!(net.path(&url("http://acde.local/media/%2e%2e/outside/secret")).is_none());
         assert!(net.path(&url("http://acde.local/media/../outside/secret")).is_none());
         assert!(net.path(&url("http://other.example/media/ok.png")).is_none());
     }
