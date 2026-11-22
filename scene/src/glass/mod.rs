@@ -1,6 +1,8 @@
 use crate::blur::{Pixels, blur, channels, pack};
 use crate::corner::{self, Corners};
 
+pub mod group;
+
 pub const WGSL: &str = include_str!("glass.wgsl");
 
 pub const LAYERS: usize = 5;
@@ -161,6 +163,11 @@ impl Glass {
         g
     }
 
+    pub fn mixed(&self, other: &Self, t: f32) -> Self {
+        let (a, b) = (self.floats(), other.floats());
+        Self::from_floats(core::array::from_fn(|i| a[i] * (1.0 - t) + b[i] * t))
+    }
+
     pub fn reach(&self) -> f64 {
         let blur = self.blur.iter().filter(|l| l.opacity > 0.0).map(|l| l.radius).fold(0.0, f32::max);
         f64::from((3.0 * blur).max(self.refraction.outer_height).max(self.bleed.radius))
@@ -282,13 +289,7 @@ pub mod cpu {
     use super::*;
 
     pub fn paint(source: &Pixels, margin: usize, corners: Corners, glass: &Glass) -> Pixels {
-        let ((small_radius, small_opacity), (large_radius, large_opacity)) = glass.two_layers();
-        let small = blur(source, f64::from(small_radius));
-        let large = blur(source, f64::from(large_radius));
-        let weight = match small_opacity + large_opacity {
-            sum if sum > 0.0 => large_opacity / sum,
-            _ => 0.0,
-        };
+        let under = Under::of(source, glass);
         let (width, height) = (source.width, source.height);
         let half = ((width - 2 * margin) as f64 / 2.0, (height - 2 * margin) as f64 / 2.0);
         let center = (width as f64 / 2.0, height as f64 / 2.0);
@@ -296,19 +297,45 @@ pub mod cpu {
         let mut data = Vec::with_capacity(width * height);
         for y in 0..height {
             for x in 0..width {
-                let i = y * width + x;
-                let under = mix(channels(small.data[i]), channels(large.data[i]), weight);
                 let p = (x as f64 + 0.5 - center.0, y as f64 + 0.5 - center.1);
                 let d = corner::distance(p, half, corners.radius, corners.exponent);
-                let pixel = look.pixel(under, p, half, d, glass);
-                let [r, g, b, a] = pixel.map(|v| (v * 255.0).round().clamp(0.0, 255.0) as u32);
-                data.push(pack([a, r, g, b]));
+                data.push(packed(look.pixel(under.at(y * width + x), toward(p, half), d, glass)));
             }
         }
         Pixels { width, height, data }
     }
 
-    struct Look {
+    pub(super) struct Under {
+        small: Pixels,
+        large: Pixels,
+        weight: f32,
+    }
+
+    impl Under {
+        pub(super) fn of(source: &Pixels, glass: &Glass) -> Self {
+            let ((small_radius, small_opacity), (large_radius, large_opacity)) = glass.two_layers();
+            let weight = match small_opacity + large_opacity {
+                sum if sum > 0.0 => large_opacity / sum,
+                _ => 0.0,
+            };
+            Self { small: blur(source, f64::from(small_radius)), large: blur(source, f64::from(large_radius)), weight }
+        }
+
+        pub(super) fn at(&self, i: usize) -> [f32; 4] {
+            mix(channels(self.small.data[i]), channels(self.large.data[i]), self.weight)
+        }
+    }
+
+    pub(super) fn toward(p: (f64, f64), half: (f64, f64)) -> (f64, f64) {
+        (p.0 / half.0.max(1.0), p.1 / half.1.max(1.0))
+    }
+
+    pub(super) fn packed(pixel: [f32; 4]) -> u32 {
+        let [r, g, b, a] = pixel.map(|v| (v * 255.0).round().clamp(0.0, 255.0) as u32);
+        pack([a, r, g, b])
+    }
+
+    pub(super) struct Look {
         soft: f64,
         light: (f64, f64),
         band: f64,
@@ -316,7 +343,7 @@ pub mod cpu {
     }
 
     impl Look {
-        fn of(glass: &Glass) -> Self {
+        pub(super) fn of(glass: &Glass) -> Self {
             let angle = f64::from(glass.highlight.angle);
             Self {
                 soft: 1.0 + 4.0 * f64::from(glass.smoothing),
@@ -326,13 +353,13 @@ pub mod cpu {
             }
         }
 
-        fn pixel(&self, under: [f32; 4], p: (f64, f64), half: (f64, f64), d: f64, glass: &Glass) -> [f32; 4] {
+        pub(super) fn pixel(&self, under: [f32; 4], toward: (f64, f64), d: f64, glass: &Glass) -> [f32; 4] {
             let inside = (0.5 - d / self.soft).clamp(0.0, 1.0) as f32;
             if inside <= 0.0 {
                 let glow = (1.0 - d / self.reach).clamp(0.0, 1.0) as f32 * glass.bleed.amount * glass.bleed.opacity;
                 return under.map(|v| v * glow);
             }
-            let shine = self.highlight(p, half, d) * glass.highlight.amount;
+            let shine = self.highlight(toward, d) * glass.highlight.amount;
             let a = under[3];
             let straight = |v: f32| if a > 0.0 { (v / a).min(1.0) } else { 0.0 };
             let [r, g, b] = tone([straight(under[0]), straight(under[1]), straight(under[2])], glass, shine);
@@ -340,11 +367,10 @@ pub mod cpu {
             [r * alpha, g * alpha, b * alpha, alpha]
         }
 
-        fn highlight(&self, p: (f64, f64), half: (f64, f64), d: f64) -> f32 {
+        fn highlight(&self, (x, y): (f64, f64), d: f64) -> f32 {
             if -d > self.band {
                 return 0.0;
             }
-            let (x, y) = (p.0 / half.0.max(1.0), p.1 / half.1.max(1.0));
             let length = x.hypot(y).max(1e-6);
             let facing = ((x * self.light.0 + y * self.light.1) / length).max(0.0);
             (facing * facing * (1.0 + d.min(0.0) / self.band)) as f32
