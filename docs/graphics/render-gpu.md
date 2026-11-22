@@ -64,9 +64,8 @@
   各块的距离场按 Inigo Quilez 的多项式平滑最小值合成 (https://iquilezles.org/articles/smin/ , `h = clamp(0.5 + 0.5 (d − dᵢ) / k)`,
   `d = mix(d, dᵢ, h) − k h (1 − h)`, k 是间距): 只在两块的距离差小于 k 处起作用, 所以间隙不小于 k 时各块的轮廓原样不动, 小于 k 时开始鼓出,
   小于 k/2 时连成一片. 各块的参数 (除模糊层以外的全部玻璃参数) 按同一权重 h 混合, 做法同 www 的 `public/landing/proto/h/liquid.js` (它又参照
-  Liquid Glass Studio, MIT, https://github.com/iyinchao/liquid-glass-studio ; 只借思路, 没有拷代码). 法线: 各块用单块玻璃原来的法线 (中心指向该点,
-  按半宽归一), 按权重混合; 有块真正接触时 (`merging = max 4h(1 − h)`, 0 是没有接触, 1 是两块各占一半) 再按接触程度过渡到合成场的梯度
-  (中心差分, 步长 0.5 px). 所以一块玻璃、或离别块不小于 k 的那部分, 结果和单块玻璃逐位相同 (`group.rs` 的回归测试对照 `cpu::paint`).
+  Liquid Glass Studio, MIT, https://github.com/iyinchao/liquid-glass-studio ; 只借思路, 没有拷代码). 法线: 一块的组用单块玻璃原来的法线 (中心指向该点, 按半宽归一), 结果和单块玻璃逐位相同; 两块及以上的组在整个融合形状上都用合成场的梯度
+  (中心差分, 步长 0.5 px), 所以高光、边缘折射和透镜沿融合后的整体外轮廓, 不会留在各块原来的位置. `merging = max 4h(1 − h)` 仍记录接触程度供调试, 不再混合法线. 回归测试 (`group.rs` 的回归测试对照 `cpu::paint`).
   模糊层全组一份, 取第一块的. WGSL (`group::WGSL`, 要先拼 `corner::WGSL` 和 `glass::WGSL`) 只引用一个模块级数组 `acde_glass_pieces`,
   由使用方自己声明绑定: `var<uniform> acde_glass_pieces: array<AcdeGlassPiece, 16>`; 每块 7 个 vec4 (112 字节, `to_uniform` 给出整块 1792 字节):
   `shape` (中心、半宽高)、`corner` (半径、指数)、`refraction`、`bleed` (渗出三项加高光角度)、`look` (高光强度、白点、平滑、高光宽度)、`tint`、`lens` (透镜强度、色散、乘暗、透镜宽度). 用 uniform 定长数组

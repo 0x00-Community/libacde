@@ -185,8 +185,8 @@ impl GlassGroup {
             field.d = lerp(field.d, di, h) - k * h * (1.0 - h);
             field.merging = field.merging.max(4.0 * h * (1.0 - h));
         }
-        if field.merging > 0.0 {
-            field.toward = lerp2(unit(field.toward), self.gradient(p), field.merging);
+        if self.count > 1 {
+            field.toward = self.gradient(p);
         }
         Some(field)
     }

@@ -87,8 +87,8 @@ fn acde_glass_group_field(p: vec2<f32>, count: u32, spacing: f32) -> AcdeGlassFi
         d = mix(d, di, h) - k * h * (1.0 - h);
         merging = max(merging, 4.0 * h * (1.0 - h));
     }
-    if merging > 0.0 {
-        toward = mix(toward / max(length(toward), 0.000001), acde_glass_group_gradient(p, count, spacing), merging);
+    if count > 1u {
+        toward = acde_glass_group_gradient(p, count, spacing);
     }
     return AcdeGlassField(d, toward, merging, bevel, look);
 }
