@@ -55,6 +55,7 @@ export interface DomNative {
   describe(id: number): [NodeType, Ns, boolean, string]
   resize?(width: number, height: number, scale: number): void
   setDark?(on: boolean): void
+  setGlass?(level: number, reducedTransparency: boolean): void
   compareDocumentPosition(a: number, b: number): number
 
   createElement(ns: Ns, localName: string): number
