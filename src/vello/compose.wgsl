@@ -10,12 +10,14 @@ struct Params {
     matrix: mat4x4<f32>,
     bias: vec4<f32>,
     outline: vec4<f32>,
+    table: vec4<f32>,
 }
 
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var samp: sampler;
 @group(0) @binding(2) var<uniform> params: Params;
 @group(0) @binding(3) var<uniform> acde_glass_pieces: array<AcdeGlassPiece, ACDE_GLASS_MOST_PIECES>;
+@group(0) @binding(4) var acde_glass_lens_rows: texture_2d<f32>;
 
 struct VsOut {
     @builtin(position) pos: vec4<f32>,
@@ -104,7 +106,7 @@ fn fs_glass(in: VsOut) -> @location(0) vec4<f32> {
     let lens = params.matrix[3];
     let region = params.bias;
     let at = px + acde_glass_offset(p, half, d, refraction);
-    let bend = acde_glass_lens_rgb(acde_glass_corner_gradient(p, half, radius, params.exponent), d, min(half.x, half.y), lens, params.shift.x);
+    let bend = acde_glass_lens_rgb_tabled(acde_glass_corner_gradient(p, half, radius, params.exponent), d, min(half.x, half.y), lens, params.shift.x, params.table);
     let under = glass_under(at, bend, region);
     let inside = acde_glass_inside(d, g2.z);
     if inside <= 0.0 {
@@ -124,7 +126,7 @@ fn fs_glass_group(in: VsOut) -> @location(0) vec4<f32> {
     let count = u32(params.shift.x);
     let f = acde_glass_group_field(px, count, params.shift.y);
     let at = px + acde_glass_group_offset(f);
-    let under = glass_under(at, acde_glass_group_lens(f, px, count, params.shift.y), params.bias);
+    let under = glass_under(at, acde_glass_group_lens_tabled(f, px, count, params.shift.y, params.table), params.bias);
     return acde_glass_group_shade(under, f);
 }
 

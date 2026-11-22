@@ -494,5 +494,13 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     return acde_glass_group_shade(under, f);
 }";
         validate(&[crate::corner::WGSL, super::super::WGSL, WGSL, user].join("\n"));
+        let rows = "@group(0) @binding(1) var acde_glass_lens_rows: texture_2d<f32>;
+@fragment
+fn fs_tabled(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    let f = acde_glass_group_field(pos.xy, 3u, 10.0);
+    let bend = acde_glass_group_lens_tabled(f, pos.xy, 3u, 10.0, vec4<f32>(0.0, 0.6, 1.5, 0.01));
+    return vec4<f32>(bend.red, bend.blue);
+}";
+        validate(&[crate::corner::WGSL, super::super::WGSL, WGSL, super::super::lens::TABLE_WGSL, user, rows].join("\n"));
     }
 }
