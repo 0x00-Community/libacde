@@ -78,7 +78,9 @@
   (运行时不抓窗口外的输入). 宿主窗口给 Broker 推 `edgeenter` / `edgeleave` (`key` 是边, `title` 是输出), Broker 转给桌面和声明了 `acde:desktop` 的系统应用.
   调试端点 `pointer {x, y}` 把指针移到屏幕坐标 (经 `Shell.inject` 的 `move`, 和真的移动走同一段), 用来模拟指针到边.
 - **帧**: `requestFrame` 之后, 上一帧交出去就给下一帧, 两帧之间至少隔最快输出刷新周期的 0.9 倍; 页面没出新帧时退回 wl_surface 的
-  frame 回调. `ACDE_WEB_FPS` 指定帧率.
+  frame 回调. `ACDE_WEB_FPS` 指定帧率. 节奏由 `model::Pacer` 管: 默认按定时器 (`wait` / `tick`); 前端有显示器 vsync 时
+  `set_synced(true)`, 由 `vsync` 在每个 vsync 出帧 (`wants`: 页面要帧或有动画), 定时器只在停了一阵后的第一帧和 vsync 4 个周期没来时出帧;
+  设了 `ACDE_WEB_FPS` 时不跟 vsync. 现在只有 acdev 的宿主窗口 (macOS, `CVDisplayLink`) 用 vsync, 见 acdev `docs/hostwin.md`「出帧节奏」.
 - **通信**: acde-host `remote.ts` 的 `RemoteBridge` 按 Broker 给的能力建代理 (注入的能力直接用 natives), `define` 登记成内置模块
   `acde:<名字>` (`modules.rs` 用 V8 合成模块, 导出 `{<名字>, default}`). 事件不派到 `window` 上: 页面用模块上的 `on(类型, fn)` 订阅 (返回退订
   函数, 不认识的类型抛 TypeError, 文字是 `acde:<模块> has no <类型> event (<有的类型>)`; `acde:window` 也一样, `WindowSelf` 里的事件名表按 SDK `WindowEventName`
