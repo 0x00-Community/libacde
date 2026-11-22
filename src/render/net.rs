@@ -99,7 +99,7 @@ fn icon_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-fn within(dir: &Path, path: &Path) -> Option<PathBuf> {
+pub(crate) fn within(dir: &Path, path: &Path) -> Option<PathBuf> {
     let root = std::fs::canonicalize(dir).ok()?;
     let real = std::fs::canonicalize(path).ok()?;
     (real.starts_with(&root) && real.is_file()).then_some(real)

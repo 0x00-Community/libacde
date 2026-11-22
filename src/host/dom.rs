@@ -35,7 +35,7 @@ impl Assets {
         if name.is_empty() || name.ends_with(".map") != map || name.split('/').any(|seg| seg.is_empty() || seg.starts_with('.')) {
             return None;
         }
-        dirs.iter().map(|dir| Path::new(dir).join(&name)).find(|file| file.is_file())
+        dirs.iter().find_map(|dir| crate::render::within(Path::new(dir), &Path::new(dir).join(&name)))
     }
 }
 
