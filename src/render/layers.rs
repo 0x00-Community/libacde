@@ -6,6 +6,7 @@ use crate::gpu::Filter;
 use crate::gpu::FilterEffect;
 use crate::gpu::Scene;
 use crate::gpu::{LayerCommand, RenderCommand};
+use acde_scene::corner::Corners;
 use kurbo::{Affine, BezPath, PathEl, Rect, Shape};
 
 use crate::render::commands::{Builder, Commands};
@@ -42,6 +43,7 @@ pub struct Backdrop {
     pub clip: Rect,
     pub filter: Arc<Filter>,
     pub scale: f64,
+    pub corners: Option<Corners>,
     shaped: bool,
 }
 
@@ -49,6 +51,9 @@ impl Backdrop {
     pub fn radius(&self) -> f64 {
         let b = self.shape.bounding_box();
         let max = (b.width() / 2.0).min(b.height() / 2.0);
+        if let Some(corners) = self.corners {
+            return corners.radius.clamp(0.0, max);
+        }
         self.shape
             .elements()
             .iter()
@@ -60,6 +65,10 @@ impl Backdrop {
             .map(|p| p.x - b.x0)
             .fold(f64::MAX, f64::min)
             .clamp(0.0, max)
+    }
+
+    pub fn exponent(&self) -> f64 {
+        self.corners.map_or(2.0, |c| c.exponent)
     }
 
     pub fn blur(&self) -> f64 {
@@ -201,6 +210,7 @@ impl<'a> Split<'a> {
                     clip: self.clip(),
                     filter: l.backdrop_filter.clone().unwrap(),
                     scale: self.scale(t * l.transform),
+                    corners: l.corners.map(|c| Corners { radius: c.radius * (t * l.transform).determinant().abs().sqrt(), ..c }),
                     shaped: false,
                 };
                 self.cut();

@@ -4,7 +4,7 @@ struct Params {
     spare0: f32,
     rect: vec4<f32>,
     radius: f32,
-    spare1: f32,
+    exponent: f32,
     shift: vec2<f32>,
     color: vec4<f32>,
     matrix: mat4x4<f32>,
@@ -70,6 +70,18 @@ fn rounded_rect(p: vec2<f32>, half: vec2<f32>, r: f32) -> f32 {
     return length(max(q, vec2<f32>(0.0, 0.0))) + min(max(q.x, q.y), 0.0) - r;
 }
 
+fn superellipse_rect(p: vec2<f32>, half: vec2<f32>, r: f32, n: f32) -> f32 {
+    if r <= 0.0 || abs(n - 2.0) < 0.001 {
+        return rounded_rect(p, half, r);
+    }
+    let q = abs(p) - half + vec2<f32>(r, r);
+    if q.x > 0.0 && q.y > 0.0 {
+        let e = max(n, 1.0);
+        return (pow(pow(q.x / r, e) + pow(q.y / r, e), 1.0 / e) - 1.0) * r;
+    }
+    return max(q.x, q.y) - r;
+}
+
 @fragment
 fn fs_backdrop(in: VsOut) -> @location(0) vec4<f32> {
     let px = in.pos.xy;
@@ -79,7 +91,7 @@ fn fs_backdrop(in: VsOut) -> @location(0) vec4<f32> {
     let m = clamp(params.matrix * straight + params.bias, vec4<f32>(0.0), vec4<f32>(1.0));
     let c = vec4<f32>(m.rgb * m.a, m.a);
     let half = params.rect.zw * 0.5;
-    let d = rounded_rect(px - params.rect.xy - half, half, min(params.radius, min(half.x, half.y)));
+    let d = superellipse_rect(px - params.rect.xy - half, half, min(params.radius, min(half.x, half.y)), params.exponent);
     let mask = clamp(0.5 - d, 0.0, 1.0);
     return c * mask;
 }

@@ -63,6 +63,7 @@ impl Px {
 pub struct Backdrop {
     pub rect: [f32; 4],
     pub radius: f32,
+    pub exponent: f32,
     pub effect: Effect,
 }
 

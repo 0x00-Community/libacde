@@ -147,7 +147,7 @@ fn backdrop(bench: &mut Bench, matrices: &[ColorMatrix]) -> Vec<[u8; 4]> {
     for m in matrices {
         effect.matrix(m.0);
     }
-    let backdrop = Backdrop { rect: [8.0, 8.0, 112.0, 48.0], radius: 0.0, effect };
+    let backdrop = Backdrop { rect: [8.0, 8.0, 112.0, 48.0], radius: 0.0, exponent: 2.0, effect };
     bench.run(|c, e, canvas| c.backdrop(e, canvas, &backdrop))
 }
 
@@ -197,7 +197,7 @@ fn backdrop_blurs_summed_in_squares() {
     once.blur(5.0);
     let mut run = |effect: Effect| {
         bench.fill(&bench.canvas, &edge(LEFT, RIGHT, W / 2));
-        let backdrop = Backdrop { rect: [8.0, 8.0, 112.0, 48.0], radius: 0.0, effect };
+        let backdrop = Backdrop { rect: [8.0, 8.0, 112.0, 48.0], radius: 0.0, exponent: 2.0, effect };
         bench.run(|c, e, canvas| c.backdrop(e, canvas, &backdrop))
     };
     assert_eq!(run(twice), run(once));

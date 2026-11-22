@@ -11,7 +11,7 @@ struct Params {
     spare0: f32,
     rect: [f32; 4],
     radius: f32,
-    spare1: f32,
+    exponent: f32,
     shift: [f32; 2],
     color: [f32; 4],
     matrix: [f32; 16],
@@ -32,7 +32,7 @@ impl Params {
             self.rect[2],
             self.rect[3],
             self.radius,
-            self.spare1,
+            self.exponent,
             self.shift[0],
             self.shift[1],
         ];
@@ -481,7 +481,7 @@ impl Composer {
         let Some(region) = Self::region(b.rect, canvas.texture().size()) else { return };
         let blurred = self.blur(encoder, canvas.texture(), region, b.effect.blur);
         let (matrix, bias) = b.effect.columns();
-        let params = Params { rect: b.rect, radius: b.radius, matrix, bias, ..Default::default() };
+        let params = Params { rect: b.rect, radius: b.radius, exponent: b.exponent, matrix, bias, ..Default::default() };
         self.pass(encoder, canvas, false, &[Draw { pipe: Pipe::Backdrop, src: &blurred, params, scissor: Some(region), mix: None }]);
     }
 
