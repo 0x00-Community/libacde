@@ -82,3 +82,104 @@ export class FrameThemes {
     return out
   }
 }
+
+export interface WindowLookWire {
+  readonly numbers: readonly number[]
+  readonly ignored: readonly string[]
+}
+
+type Fields = Record<string, unknown>
+
+const LOOK_KEYS = ['corners', 'shadows'] as const
+const LOOK_CORNERS = ['radius', 'shape'] as const
+const LOOK_STATES = ['focused', 'unfocused'] as const
+const LOOK_LAYER = ['x', 'y', 'blur', 'spread', 'color'] as const
+const LOOK_MOST_LAYERS = 4
+const LOOK_MOST_RADIUS = 256
+const LOOK_ROUND = 1
+const LOOK_SHAPES: ReadonlyMap<string, number> = new Map([
+  ['round', LOOK_ROUND],
+  ['squircle', 2],
+])
+const LOOK_SUPERELLIPSE = /^superellipse\(\s*(-?(?:\d+\.?\d*|\.\d+))\s*\)$/
+const LOOK_K = [1, 3] as const
+
+export class WindowLookReader {
+  readonly #ignored: string[] = []
+
+  static parse(raw: unknown): WindowLookWire | string {
+    if (raw === null || raw === undefined) return { numbers: [], ignored: [] }
+    return new WindowLookReader().#look(raw)
+  }
+
+  #look(raw: unknown): WindowLookWire | string {
+    const look = this.#object('a window look', raw, LOOK_KEYS, '')
+    if (typeof look === 'string') return `${look} (or null for square windows without shadows)`
+    const corners = this.#corners(look['corners'])
+    if (typeof corners === 'string') return corners
+    const shadows = this.#object('shadows', look['shadows'], LOOK_STATES, 'shadows.')
+    if (typeof shadows === 'string') return shadows
+    const numbers = [...corners]
+    for (const state of LOOK_STATES) {
+      const layers = this.#layers(`shadows.${state}`, shadows[state])
+      if (typeof layers === 'string') return layers
+      numbers.push(layers.length / LOOK_LAYER.length, ...layers)
+    }
+    return { numbers, ignored: this.#ignored }
+  }
+
+  #object(what: string, raw: unknown, keys: readonly string[], prefix: string): Fields | string {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return `${what} is an object with ${keys.join(', ')}`
+    const fields = raw as Fields
+    this.#ignored.push(...Object.keys(fields).filter((key) => !keys.includes(key)).map((key) => `${prefix}${key}`))
+    return fields
+  }
+
+  #number(what: string, raw: unknown, low = -Infinity, high = Infinity): number | string {
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < low || raw > high) {
+      const range = high !== Infinity ? `a number from ${low} to ${high}` : low !== -Infinity ? `a number of at least ${low}` : 'a finite number'
+      return `${what} is ${range}: ${JSON.stringify(raw)}`
+    }
+    return raw
+  }
+
+  #corners(raw: unknown): number[] | string {
+    const corners = this.#object('corners', raw, LOOK_CORNERS, 'corners.')
+    if (typeof corners === 'string') return corners
+    const radius = this.#number('corners.radius', corners['radius'], 0, LOOK_MOST_RADIUS)
+    if (typeof radius === 'string') return radius
+    const shape = this.#shape(corners['shape'])
+    if (typeof shape === 'string') return shape
+    return [radius, shape]
+  }
+
+  #shape(raw: unknown): number | string {
+    if (raw === undefined) return LOOK_ROUND
+    const named = typeof raw === 'string' ? LOOK_SHAPES.get(raw.trim()) : undefined
+    if (named !== undefined) return named
+    const k = typeof raw === 'string' ? LOOK_SUPERELLIPSE.exec(raw.trim())?.[1] : undefined
+    const value = k === undefined ? Number.NaN : Number(k)
+    if (value >= LOOK_K[0] && value <= LOOK_K[1]) return value
+    return `corners.shape is round, squircle or superellipse(k) with k from ${LOOK_K[0]} to ${LOOK_K[1]}: ${JSON.stringify(raw)}`
+  }
+
+  #layers(what: string, raw: unknown): number[] | string {
+    if (!Array.isArray(raw)) return `${what} is an array of shadow layers in CSS order`
+    if (raw.length > LOOK_MOST_LAYERS) return `${what} has at most ${LOOK_MOST_LAYERS} layers, not ${raw.length}`
+    const numbers: number[] = []
+    for (const [index, item] of raw.entries()) {
+      const at = `${what}[${index}]`
+      const layer = this.#object(at, item, LOOK_LAYER, `${at}.`)
+      if (typeof layer === 'string') return layer
+      for (const key of ['x', 'y', 'blur', 'spread'] as const) {
+        const value = this.#number(`${at}.${key}`, layer[key], key === 'blur' ? 0 : -Infinity)
+        if (typeof value === 'string') return value
+        numbers.push(value)
+      }
+      const color = FrameThemes.color(layer['color'])
+      if (color === null) return `${at}.color is not a color (#rrggbbaa, #rrggbb, #rgb, #rgba, rgb() or rgba()): ${JSON.stringify(layer['color'])}`
+      numbers.push(color)
+    }
+    return numbers
+  }
+}

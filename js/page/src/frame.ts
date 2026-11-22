@@ -1,6 +1,6 @@
-import type { DoubleClickAction, FrameTheme } from '@acde/api'
+import type { DoubleClickAction, FrameTheme, WindowLook } from '@acde/api'
 import type { AppManifest } from '@acde/api/manifest'
-import { FrameThemes } from './frametheme.ts'
+import { FrameThemes, WindowLookReader } from './frametheme.ts'
 import type { NativeSurface } from './native'
 import { Level, Log } from './log'
 
@@ -54,11 +54,12 @@ export class Frame {
   }
 
   static desktop(
-    surface: Pick<NativeSurface, 'setDoubleClick' | 'setFrameTheme'>,
+    surface: Pick<NativeSurface, 'setDoubleClick' | 'setFrameTheme' | 'setWindowLook'>,
     warn: (line: string) => void = (line) => Log.write(Level.Warn, 'acde_host', line),
   ): {
     setDoubleClick(action: DoubleClickAction): void
     setFrameTheme(theme: FrameTheme | null): void
+    setWindowLook(look: WindowLook | null): void
   } {
     return {
       setFrameTheme: (theme) => {
@@ -66,6 +67,12 @@ export class Frame {
         if (typeof wire === 'string') throw new TypeError(`setFrameTheme: ${wire}`)
         if (wire.ignored.length) warn(`setFrameTheme: ignored ${wire.ignored.join(', ')} (not known to this runtime)`)
         surface.setFrameTheme?.(...wire.colors, wire.style, wire.side, wire.align)
+      },
+      setWindowLook: (look) => {
+        const wire = WindowLookReader.parse(look)
+        if (typeof wire === 'string') throw new TypeError(`setWindowLook: ${wire}`)
+        if (wire.ignored.length) warn(`setWindowLook: ignored ${wire.ignored.join(', ')} (not known to this runtime)`)
+        surface.setWindowLook?.(...wire.numbers)
       },
       setDoubleClick: (action) => {
         if (!Frame.DOUBLE_CLICK.includes(action)) throw new TypeError(`setDoubleClick: no action ${String(action)} (${Frame.DOUBLE_CLICK.join(', ')})`)

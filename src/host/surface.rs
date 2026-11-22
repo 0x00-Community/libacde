@@ -81,5 +81,6 @@ impl Surface {
         set_page_dark(dark: bool) => C::PageDark(dark);
         set_title(title: &str) => C::Title(title.to_owned());
         set_ime_area(rect: [f64; 4]) => C::ImeArea(rect);
+        set_window_look(look: Option<crate::render::WindowLook>) => C::WindowLook(look);
     }
 }

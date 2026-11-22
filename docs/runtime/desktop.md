@@ -145,6 +145,8 @@
 - 桌面只能**声明**样子和行为: `acde:desktop.setFrameTheme(theme | null)` (SDK `FrameTheme`: 活动 / 非活动的颜色、`buttonStyle`、`buttonSide`、
   `titleAlign`、给不支持深色的页面用的 `light`; 每次给整个主题, `null` 回到默认) 和 `setDoubleClick('fill' | 'minimize' | 'none')`.
   未知的键忽略并记 warn, 坏颜色抛 TypeError. 规则见 `docs/runtime/webs.md`「窗框」.
+- 窗口的外圆角与阴影也只能声明: `acde:desktop.setWindowLook(look | null)` (SDK `WindowLook`: 圆角半径与 CSS 角形 (`round`、`squircle`、`superellipse(k)`), 聚焦 / 不聚焦两档 CSS 外阴影层),
+  由合成器画, 窗口页面自己不再画外阴影和外圆角. 规则见 `docs/runtime/webs.md`「窗框」.
 - 想让自己画标题栏的应用跟着桌面的主题, 由桌面自己经服务发布 (dopame 的做法), 运行时不管.
 
 ## 快捷键
@@ -235,6 +237,7 @@ acdes 一列按 acdes 的代码核对过; 宿主窗口一列取自 `docs/runtime
 | `animate` | 立即完成, 不动 | 合成器逐帧插值 |
 | `setFrameTheme` | 有: 经管家到每个应用进程 (含之后才起的); 只认桌面页, 系统应用设的只到它自己的窗口 | 有 |
 | `setDoubleClick` | 有: 同上; 双击判定用 `ClickSettings` 的默认值 | 有 |
+| `setWindowLook` | 有: 只认桌面进程, 经 `acompositor_desktop_v1` 版本 6 交给合成器 (合成器低于版本 6 时不生效) | 没有 (忽略) |
 | `on('edge')` (指针到屏幕边) | 不发 | 发 |
 | 快捷键的键名 | 字母、数字、F1–F12、方向键、Home / End / PageUp / PageDown / Insert / Delete、Esc、Tab、Enter、Space、Backspace、Print 和几个符号; 媒体键 (`xf86*`) 还不认 | xkb keysym 名 |
 | 应用自己的 `acde:window.shortcut` | 回 501 | 有 |

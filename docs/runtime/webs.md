@@ -48,6 +48,16 @@
   以后加的可选键在旧运行时上不出错, 但这次修改 (#114) 之前的 acdert 仍会抛, 桌面要先探测), 转成 19 个数交给 surface 的 `setFrameTheme` (整个宿主一份,
   `State.theme`). 设了就重画所有开着的有窗框的窗口 (`Msg::Theme`), 焦点变化时窗口换 `active` / `inactive` (`Msg::Active`); `null` 回到
   今天的样子. 谁有它、会话里怎么传同 `setDoubleClick`.
+  `acde.desktop.setWindowLook(look | null)` (用户 2026-11-22 同意的跨仓接口; SDK `WindowLook`, 类型在 `acde-api/src/types/window-look/`):
+  `{corners: {radius, shape?}, shadows: {focused: ShadowLayer[], unfocused: ShadowLayer[]}}`, `ShadowLayer` 是 `{x, y, blur, spread, color}`,
+  含义同 CSS `box-shadow` 的一项外阴影 (逻辑像素; 颜色同 `setFrameTheme`, 一般写 `#rrggbbaa`), 每档按 CSS 列表的顺序 (写在前面的画在上面), 最多 4 层;
+  `radius` 0–256; `shape` 用 CSS `corner-shape` 的写法: `round` (默认, 圆弧)、`squircle` 或 `superellipse(k)`, k 取 1–3; 胶水把它解析成 k 交给原生层
+  (`WindowLook.superellipse`), 换成合成器的超椭圆指数 `n = 2^k` 只在 `acde_scene::corner::exponent` 一处做 (acdes 发给合成器时), 别处不写 `2^k`. 声明窗口的外圆角和聚焦 / 不聚焦两档阴影, 由合成器画;
+  每次给整套, `null` 回到直角、没有阴影. 检查在 js/page `frametheme.ts` (`WindowLookReader.parse`: 缺键、越界、坏颜色、超过 4 层抛 TypeError,
+  不认识的键忽略并记一行 warn), 转成一串数 (`radius, k, 聚焦层数, 每层 x y blur spread 颜色, 不聚焦层数, …`; `null` 不带参数) 交给
+  surface 的 `setWindowLook`, 原生 `WindowLook::from_numbers` 还原后发 `SurfaceCommand::WindowLook(Option<WindowLook>)`. 只有 acdes 的桌面进程用它
+  (经 `acompositor_desktop_v1` 版本 6 交给合成器, 只管窗口外圆角与阴影, 磨砂的角形按各元素自己的 CSS 带出, 不取这里的指数; 见 acdes `docs/acompositor/desktop.md`「窗口外观」); acdev 宿主窗口
+  和 C 接口 (`ffi.rs`) 不处理. 桌面要先探测 (`desktop.setWindowLook?.(…)`): 可选方法, 不提契约级别.
   **页面不支持深色时用 `light`** (#114): 主题带了 `light` 的配色时, 页面没声明支持深色的窗口改画 `light` 那套 (缺的项用运行时默认, 不借深色主题的);
   声明了的照旧用 `active` / `inactive`. 规则同浏览器: 根元素计算后的 `color-scheme` 含 `dark`, 或根元素没写 (`normal`) 而 `<meta name="color-scheme">` 的内容含 `dark`;
   页面同时声明了 `light` 时, 还要 `prefers-color-scheme: dark` 成立 (系统是深色, 或 `emulate` 成深色) 才算深色, 也就是页面此刻画成深色时.

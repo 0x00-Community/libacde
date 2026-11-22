@@ -32,7 +32,7 @@ pub use geometry::Metrics;
 pub use hud::{Hud, HudStats};
 pub use layers::{Backdrop, Drawing, Layer, LayerFilter};
 pub use net::{Load, Loader};
-pub use surface::{ClipboardEntry, ClipboardReadReply, ClipboardTypesReply, DragImage, SurfaceCommand};
+pub use surface::{ClipboardEntry, ClipboardReadReply, ClipboardTypesReply, DragImage, SurfaceCommand, WindowLook, WindowShadow};
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
