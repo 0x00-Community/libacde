@@ -18,10 +18,11 @@ struct Params {
     color: [f32; 4],
     matrix: [f32; 16],
     bias: [f32; 4],
+    outline: [f32; 4],
 }
 
 impl Params {
-    const SIZE: u64 = 144;
+    const SIZE: u64 = 160;
 
     fn bytes(&self) -> [u8; Self::SIZE as usize] {
         let head = [
@@ -38,7 +39,7 @@ impl Params {
             self.shift[0],
             self.shift[1],
         ];
-        let f = head.iter().chain(&self.color).chain(&self.matrix).chain(&self.bias);
+        let f = head.iter().chain(&self.color).chain(&self.matrix).chain(&self.bias).chain(&self.outline);
         let mut out = [0u8; Self::SIZE as usize];
         for (chunk, v) in out.as_chunks_mut::<4>().0.iter_mut().zip(f) {
             *chunk = v.to_le_bytes();

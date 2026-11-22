@@ -8,10 +8,11 @@ pub const WGSL: &str = include_str!("group.wgsl");
 pub const MOST_PIECES: usize = 16;
 pub const PIECE_BYTES: usize = PIECE_FLOATS * 4;
 pub const UNIFORM_BYTES: usize = MOST_PIECES * PIECE_BYTES;
-const PIECE_FLOATS: usize = 28;
+const PIECE_FLOATS: usize = 36;
 const LEAST_SPACING: f64 = 1e-4;
 const GRADIENT_STEP: f64 = 0.5;
 const MERGE_NORMAL: f64 = 4.0;
+const LEAST_SLOPE: f64 = 0.05;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Piece {
@@ -61,7 +62,7 @@ impl Piece {
             self.radius,
             self.exponent,
             g.lens.index,
-            0.0,
+            g.outline.width,
             r.inner_amount,
             r.inner_height,
             r.outer_amount,
@@ -82,6 +83,14 @@ impl Piece {
             g.lens.dispersion,
             g.darken,
             g.lens.bezel,
+            g.outline.color[0],
+            g.outline.color[1],
+            g.outline.color[2],
+            g.outline.color[3],
+            if g.outline.merged { 1.0 } else { 0.0 },
+            0.0,
+            0.0,
+            0.0,
         ]
     }
 }
@@ -96,6 +105,7 @@ pub struct GlassGroup {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Field {
     pub d: f64,
+    pub line: f32,
     pub toward: (f64, f64),
     pub merging: f64,
     pub glass: Glass,
@@ -173,7 +183,9 @@ impl GlassGroup {
     pub fn field(&self, p: (f64, f64)) -> Option<Field> {
         let k = self.k();
         let (first, rest) = self.pieces().split_first()?;
-        let mut field = Field { d: first.distance(p), toward: first.toward(p), merging: 0.0, glass: first.glass };
+        let d = first.distance(p);
+        let mut field = Field { d, line: 0.0, toward: first.toward(p), merging: 0.0, glass: first.glass };
+        let mut pieces_line = first.glass.outline.coverage(d);
         for piece in rest {
             let di = piece.distance(p);
             let h = weight(field.d, di, k);
@@ -183,12 +195,17 @@ impl GlassGroup {
                 field.toward = lerp2(unit(field.toward), unit(piece.toward(p)), h);
             }
             field.glass = field.glass.mixed(&piece.glass, h as f32);
+            pieces_line = pieces_line.max(piece.glass.outline.coverage(di));
             field.d = lerp(field.d, di, h) - k * h * (1.0 - h);
             field.merging = field.merging.max(4.0 * h * (1.0 - h));
         }
+        let mut line_d = field.d;
         if field.merging > 0.0 {
-            field.toward = lerp2(unit(field.toward), self.gradient(p), (MERGE_NORMAL * field.merging).min(1.0));
+            let slope = self.slope(p);
+            field.toward = lerp2(unit(field.toward), unit(slope), (MERGE_NORMAL * field.merging).min(1.0));
+            line_d = field.d / slope.0.hypot(slope.1).max(LEAST_SLOPE);
         }
+        field.line = if field.glass.outline.merged { field.glass.outline.coverage(line_d) } else { pieces_line };
         Some(field)
     }
 
@@ -200,7 +217,7 @@ impl GlassGroup {
         for y in 0..height {
             for x in 0..width {
                 let field = self.field((x as f64 + 0.5, y as f64 + 0.5)).expect("the group has a piece");
-                data.push(packed(Look::of(&field.glass).pixel(under.at(y * width + x), field.toward, field.d, &field.glass)));
+                data.push(packed(Look::of(&field.glass).pixel_lined(under.at(y * width + x), field.toward, field.d, field.line, &field.glass)));
             }
         }
         Pixels { width, height, data }
@@ -210,11 +227,11 @@ impl GlassGroup {
         f64::from(self.spacing).max(LEAST_SPACING)
     }
 
-    fn gradient(&self, (x, y): (f64, f64)) -> (f64, f64) {
+    fn slope(&self, (x, y): (f64, f64)) -> (f64, f64) {
         let e = GRADIENT_STEP;
         let dx = self.distance((x + e, y)) - self.distance((x - e, y));
         let dy = self.distance((x, y + e)) - self.distance((x, y - e));
-        unit((dx, dy))
+        (dx / (2.0 * e), dy / (2.0 * e))
     }
 }
 
@@ -244,7 +261,7 @@ mod tests {
     use crate::glass::{Level, Role};
 
     fn regular() -> Glass {
-        Glass::preset(Role::Regular, Level::Tinted)
+        Glass { outline: super::super::Outline::default(), ..Glass::preset(Role::Regular, Level::Tinted) }
     }
 
     fn ground(width: usize, height: usize) -> Pixels {
@@ -319,7 +336,7 @@ mod tests {
         assert_eq!(full.len(), MOST_PIECES);
         assert_eq!(full.bounds(), Some([0.0, 0.0, 158.0, 8.0]));
         let bytes = full.to_uniform();
-        assert_eq!(bytes.len(), 1792);
+        assert_eq!(bytes.len(), 2304);
         let float = |i: usize| f32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap());
         assert_eq!([float(0), float(1), float(2), float(3), float(4), float(5)], [4.0, 4.0, 4.0, 4.0, 2.0, 2.0]);
         assert_eq!(float(PIECE_FLOATS), 14.0);
@@ -344,6 +361,48 @@ mod tests {
             assert_eq!(pixel(x, 30), [255, 64, 64, 64], "the old edge at x={x} stays plain and opaque");
         }
         assert!(pixel(107, 30)[1] > 64, "the new outside edge catches the light");
+    }
+
+    fn outlined_pair(merged: bool, width: f32) -> (Pixels, Pixels) {
+        let outline = super::super::Outline { width, color: [1.0, 0.0, 0.0, 1.0], merged };
+        let glass = Glass { highlight: super::super::Highlight::default(), lens: super::super::Lens::default(), outline, ..regular() };
+        let left = Piece::of_rect([10.0, 10.0, 40.0, 40.0], 20.0, 2.0, glass);
+        let source = Pixels { width: 104, height: 60, data: vec![0xff00_4000; 104 * 60] };
+        let pair = group(12.0, &[left, Piece::of_rect([54.0, 10.0, 40.0, 40.0], 20.0, 2.0, glass)]).paint_cpu(&source);
+        (pair, group(12.0, &[left]).paint_cpu(&source))
+    }
+
+    fn red(out: &Pixels, x: usize, y: usize) -> u32 {
+        channels(out.data[y * out.width + x])[1]
+    }
+
+    #[test]
+    fn a_merged_outline_follows_the_merged_edge_through_the_neck_and_not_the_old_edges() {
+        let (pair, single) = outlined_pair(true, 1.0);
+        for x in 40..=64 {
+            let column: Vec<u32> = (0..30).map(|y| red(&pair, x, y)).collect();
+            let lit = column.iter().filter(|&&r| r > 128).count();
+            assert!((1..=3).contains(&lit), "one thin, unbroken line crosses column {x} on top: {column:?}");
+        }
+        for (x, y) in [(49, 30), (54, 30), (30, 30), (74, 30)] {
+            assert_eq!(red(&pair, x, y), 0, "no outline inside at ({x}, {y})");
+        }
+        assert!(red(&single, 49, 30) > 128, "a lone piece outlines its own edge");
+    }
+
+    #[test]
+    fn piece_outlines_keep_each_old_edge_even_when_the_glass_merges() {
+        let (pair, _) = outlined_pair(false, 1.0);
+        assert!(red(&pair, 49, 30) > 128, "the left piece keeps its right edge");
+        assert!(red(&pair, 54, 30) > 128, "the right piece keeps its left edge");
+        assert_eq!(red(&pair, 52, 30), 0, "the neck between them is glass without a line");
+        assert!(channels(pair.data[30 * 104 + 52])[0] > 0, "the glass still flows through the neck");
+    }
+
+    #[test]
+    fn no_outline_draws_no_line() {
+        let (pair, single) = outlined_pair(false, 0.0);
+        assert!(pair.data.iter().chain(&single.data).all(|&p| channels(p)[1] == 0));
     }
 
     #[test]

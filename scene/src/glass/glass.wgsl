@@ -108,6 +108,21 @@ fn acde_glass_tone_darkened(rgb: vec3<f32>, white_point: f32, tint: vec4<f32>, s
     return clamp(tinted * (1.0 - darken) + vec3<f32>(shine), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
+fn acde_glass_outline_coverage(d: f32, width: f32, alpha: f32) -> f32 {
+    if width <= 0.0 {
+        return 0.0;
+    }
+    return clamp(width + 0.5 + d, 0.0, 1.0) * clamp(0.5 - d, 0.0, 1.0) * alpha;
+}
+
+fn acde_glass_lined(rgb: vec3<f32>, base_alpha: f32, line: f32, color: vec3<f32>) -> vec4<f32> {
+    return vec4<f32>(mix(rgb, color, line), max(base_alpha, line));
+}
+
+fn acde_glass_outlined(rgb: vec3<f32>, base_alpha: f32, d: f32, width: f32, outline: vec4<f32>) -> vec4<f32> {
+    return acde_glass_lined(rgb, base_alpha, acde_glass_outline_coverage(d, width, outline.a), outline.rgb);
+}
+
 fn acde_glass_inside(d: f32, smoothing: f32) -> f32 {
     return clamp(0.5 - d / (1.0 + 4.0 * smoothing), 0.0, 1.0);
 }

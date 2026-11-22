@@ -13,7 +13,7 @@ pub use preset::{Level, Role};
 pub const WGSL: &str = include_str!("glass.wgsl");
 
 pub const LAYERS: usize = 5;
-const WIRE_FLOATS: usize = 31;
+const WIRE_FLOATS: usize = 37;
 const MOST_LENGTH: f32 = 256.0;
 const FAR_EDGE: f64 = 0.33;
 
@@ -43,6 +43,26 @@ pub struct Highlight {
     pub angle: f32,
     pub amount: f32,
     pub width: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Outline {
+    pub width: f32,
+    pub color: [f32; 4],
+    pub merged: bool,
+}
+
+impl Outline {
+    pub fn band(width: f64, d: f64) -> f64 {
+        if width <= 0.0 {
+            return 0.0;
+        }
+        (width + 0.5 + d).clamp(0.0, 1.0) * (0.5 - d).clamp(0.0, 1.0)
+    }
+
+    pub fn coverage(self, d: f64) -> f32 {
+        Self::band(f64::from(self.width), d) as f32 * self.color[3]
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -105,6 +125,7 @@ pub struct Glass {
     pub tint: [f32; 4],
     pub lens: Lens,
     pub darken: f32,
+    pub outline: Outline,
 }
 
 impl Glass {
@@ -188,6 +209,21 @@ impl Glass {
             g.darken = number(t)?;
             Some(())
         });
+        read("acde-glass-outline", &mut |g, t| {
+            if t == "none" {
+                g.outline = Outline::default();
+                return Some(());
+            }
+            let (width, rest) = t.split_once(char::is_whitespace)?;
+            let rest = rest.trim();
+            let (color_text, merged) = match rest.rsplit_once(char::is_whitespace) {
+                Some((c, "merged")) => (c.trim(), true),
+                Some((c, "pieces")) => (c.trim(), false),
+                _ => (rest, false),
+            };
+            g.outline = Outline { width: px(width)?, color: color(color_text)?, merged };
+            Some(())
+        });
         Some(glass.clamped())
     }
 
@@ -219,6 +255,7 @@ impl Glass {
                 dispersion: if self.lens.dispersion.is_finite() { self.lens.dispersion.clamp(0.0, Lens::MOST_DISPERSION) } else { 0.0 },
             },
             darken: unit(self.darken),
+            outline: Outline { width: length(self.outline.width), color: self.outline.color.map(unit), merged: self.outline.merged },
         }
     }
 
@@ -232,6 +269,7 @@ impl Glass {
         g.lens.bezel *= f;
         g.lens.thickness *= f;
         g.highlight.width *= f;
+        g.outline.width *= f;
         g
     }
 
@@ -292,6 +330,12 @@ impl Glass {
             self.lens.bezel,
             self.highlight.width,
             self.lens.index,
+            self.outline.width,
+            self.outline.color[0],
+            self.outline.color[1],
+            self.outline.color[2],
+            self.outline.color[3],
+            if self.outline.merged { 1.0 } else { 0.0 },
         ]
     }
 
@@ -307,6 +351,7 @@ impl Glass {
             tint: [f[21], f[22], f[23], f[24]],
             lens: Lens { bezel: f[28], thickness: f[25], index: f[30], dispersion: f[26] },
             darken: f[27],
+            outline: Outline { width: f[31], color: [f[32], f[33], f[34], f[35]], merged: f[36] > 0.5 },
         }
     }
 
@@ -437,6 +482,10 @@ pub mod cpu {
         }
 
         pub(super) fn pixel(&self, under: [f32; 4], toward: (f64, f64), d: f64, glass: &Glass) -> [f32; 4] {
+            self.pixel_lined(under, toward, d, glass.outline.coverage(d), glass)
+        }
+
+        pub(super) fn pixel_lined(&self, under: [f32; 4], toward: (f64, f64), d: f64, line: f32, glass: &Glass) -> [f32; 4] {
             let inside = (0.5 - d / self.soft).clamp(0.0, 1.0) as f32;
             if inside <= 0.0 {
                 let glow = (1.0 - d / self.reach).clamp(0.0, 1.0) as f32 * glass.bleed.amount * glass.bleed.opacity;
@@ -445,8 +494,14 @@ pub mod cpu {
             let shine = self.highlight(toward, d) * glass.highlight.amount;
             let a = under[3];
             let straight = |v: f32| if a > 0.0 { (v / a).min(1.0) } else { 0.0 };
-            let [r, g, b] = tone([straight(under[0]), straight(under[1]), straight(under[2])], glass, shine);
-            let alpha = a.max(glass.tint[3]) * inside;
+            let toned = tone([straight(under[0]), straight(under[1]), straight(under[2])], glass, shine);
+            let mut k = 0;
+            let [r, g, b] = toned.map(|v| {
+                let c = glass.outline.color[k];
+                k += 1;
+                v + (c - v) * line
+            });
+            let alpha = a.max(glass.tint[3]).max(line) * inside;
             [r * alpha, g * alpha, b * alpha, alpha]
         }
 

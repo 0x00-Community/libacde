@@ -9,6 +9,7 @@ struct Params {
     color: vec4<f32>,
     matrix: mat4x4<f32>,
     bias: vec4<f32>,
+    outline: vec4<f32>,
 }
 
 @group(0) @binding(0) var src: texture_2d<f32>;
@@ -112,8 +113,9 @@ fn fs_glass(in: VsOut) -> @location(0) vec4<f32> {
     let straight = select(vec3<f32>(0.0), under.rgb / under.a, under.a > 0.0);
     let shine = acde_glass_highlight(p, half, d, g2.w, g1.w, g2.x);
     let rgb = acde_glass_tone_darkened(straight, g2.y, params.color, shine, lens.z);
-    let alpha = max(under.a, params.color.a) * inside;
-    return vec4<f32>(rgb * alpha, alpha);
+    let lined = acde_glass_outlined(rgb, max(under.a, params.color.a), d, params.shift.y, params.outline);
+    let alpha = lined.a * inside;
+    return vec4<f32>(lined.rgb * alpha, alpha);
 }
 
 @fragment

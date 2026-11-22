@@ -53,6 +53,16 @@
   混合 (第 i 层的权重是它的不透明度除以已混合各层之和), 再过一遍 `backdrop-filter` 的颜色矩阵 (`Pipe::Filter`), 最后 `fs_glass` 逐像素做折射取样、高光、白点、
   着色、平滑边缘和渗出; 着色器拼的是 acde-scene 的 `corner::WGSL` 和 `glass::WGSL`, 和合成器同一份函数. 参数经 `Params`: 矩阵前三列放折射、渗出与高光、
   白点与平滑, `bias` 是取样区域, `color` 是着色.
+  轮廓线 (2026-11-23, `Glass.outline: Outline {width, color, merged}`): 写法 `--acde-glass-outline: <宽度> <颜色> [pieces | merged] | none`
+  (宽度随缩放, 颜色同 `-tint`, 第三项缺省 `pieces`). 预设各档默认开, 1 px `rgb(255 255 255 / 0.5)`, pieces; 暗色那一套 (0.25) 先没有接: 玻璃解析时
+  拿不到页面深浅 (`Level` 只有档位, `Preference` 里也没有深浅), 等深浅进 `Preference` 再按它分两套. 线从边缘往里 `width` (抗锯齿 0.5 px, 边外为 0),
+  颜色按覆盖率盖在玻璃色上, 透明度取两者较大的. 两种画法:
+  - `pieces` (默认, 为了按钮区分度): 每块按自己的距离场画自己的轮廓, 取各块覆盖率的最大值; 融合时背景玻璃照样连成一团, 轮廓各画各的, 可以交叉.
+  - `merged`: 沿合成场整体外缘画, 用归一化距离 `d / max(|∇d|, 0.05)` (只在有块相互作用的地方算梯度, 其余就是 d), 脖子处平滑最小值把梯度压小
+    也不会把线画粗, 线连续; 原来每块的内部边界离合成边缘远, 不画.
+  单块两种一样. 线上格式 31→37 个 f32 (末六个是轮廓宽度、颜色和画法), 组每块 9 个 vec4 (2304 字节; 轮廓宽度在 `corner.w`, 颜色在 `outline`,
+  画法在 `mode.x`), 页面合成的 `Params` 多一个 vec4 (160 字节), 轮廓宽度在 `shift.y`. "逐位等于单块" 的几条测试都在轮廓关掉 (`none`) 时比; 组的
+  CPU 测试覆盖 merged 脖子连续、旧边界无线, pieces 旧边界都有线、脖子是玻璃无线, none 无线.
   预设表 (通透度档位, 2026-11-22, 总仓 `.scratch/libacde/glass-transparency-plan.md`; `glass/preset.rs`, 参数表只此一份): `Glass::preset(Role, Level)`,
   `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 不模糊、不染色、不渗出, 乘暗 0.05, 透镜斜面 34 px、厚度 22 px、折射率 1.5、色散 0.01 (用户 2026-11-23 在调参页定), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3)、`Tinted`
   (着色, 2, regular-2)、`Opaque` (减少透明度, 3: 重模糊加接近不透明的着色, `Glass::opaque(dark)` 按深浅给色, 预设取浅色). 名字和线上值都在 `Level`
@@ -71,7 +81,7 @@
   `acde_glass_group_field` 的合成场 d 和组梯度, 不再读单块的距离或角形; 两块相交后, 重叠内部原边界处保持不透明且没有亮线, 新外边界才有高光 (CPU 回归测试).
   一块的组回归测试继续对照 `cpu::paint`, 远离的另一块不改变这一块任何像素的回归测试也要过.
   模糊层全组一份, 取第一块的. WGSL (`group::WGSL`, 要先拼 `corner::WGSL` 和 `glass::WGSL`) 只引用一个模块级数组 `acde_glass_pieces`,
-  由使用方自己声明绑定: `var<uniform> acde_glass_pieces: array<AcdeGlassPiece, 16>`; 每块 7 个 vec4 (112 字节, `to_uniform` 给出整块 1792 字节):
+  由使用方自己声明绑定: `var<uniform> acde_glass_pieces: array<AcdeGlassPiece, 16>`; 每块 9 个 vec4 (144 字节, `to_uniform` 给出整块 2304 字节):
   `shape` (中心、半宽高)、`corner` (半径、指数、折射率)、`refraction`、`bleed` (渗出三项加高光角度)、`look` (高光强度、白点、平滑、高光宽度)、`tint`、`lens` (透镜厚度、色散、乘暗、斜面宽度). 用 uniform 定长数组
   不用存储缓冲: WebGL2 级别的 wgpu 限额里存储缓冲为 0 (https://wgpu.rs/doc/wgpu/struct.Limits.html `downlevel_webgl2_defaults`), uniform 块至少
   16384 字节 (https://registry.khronos.org/OpenGL-Refpages/es3.1/html/glGet.xhtml), 页面合成和合成器都能用. 块数和间距由使用方的参数传入

@@ -1,8 +1,9 @@
-use super::{Bleed, BlurLayer, Glass, Highlight, LAYERS, Lens, Refraction};
+use super::{Bleed, BlurLayer, Glass, Highlight, LAYERS, Lens, Outline, Refraction};
 
 const HIGHLIGHT_DEGREES: f32 = 330.0;
 const HIGHLIGHT_AMOUNT: f32 = 0.45;
 const HIGHLIGHT_WIDTH: f32 = 4.0;
+const OUTLINE: Outline = Outline { width: 1.0, color: [1.0, 1.0, 1.0, 0.5], merged: false };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Role {
@@ -98,6 +99,7 @@ impl Glass {
                 tint: [1.0, 1.0, 1.0, 0.0],
                 lens: Lens { bezel: 34.0, thickness: 22.0, index: 1.5, dispersion: 0.01 },
                 darken: 0.05,
+                outline: OUTLINE,
             },
             Level::Medium => Self {
                 refraction: Refraction { inner_amount: 0.4, inner_height: 10.0, outer_amount: 0.15, outer_height: 18.0 },
@@ -107,6 +109,7 @@ impl Glass {
                 white_point: 0.05,
                 smoothing: 0.6,
                 tint: [1.0, 1.0, 1.0, 0.05],
+                outline: OUTLINE,
                 ..Self::default()
             },
             Level::Tinted => Self {
@@ -117,6 +120,7 @@ impl Glass {
                 white_point: 0.12,
                 smoothing: 0.65,
                 tint: [1.0, 1.0, 1.0, 0.18],
+                outline: OUTLINE,
                 ..Self::default()
             },
             Level::Opaque => Self::opaque(false),
@@ -132,6 +136,7 @@ impl Glass {
             white_point: 0.0,
             smoothing: 0.5,
             tint: if dark { [0.11, 0.11, 0.12, 0.9] } else { [0.97, 0.97, 0.98, 0.9] },
+            outline: OUTLINE,
             ..Self::default()
         }
     }
@@ -163,6 +168,7 @@ mod tests {
             ("acde-glass-bleed", "0 0 0"),
             ("acde-glass-highlight", "330deg 0.45 4px"),
             ("acde-glass-darken", "0.05"),
+            ("acde-glass-outline", "1px rgb(255 255 255 / 0.5)"),
             ("acde-glass-white-point", "0"),
             ("acde-glass-smoothing", "0.35"),
             ("acde-glass-tint", "rgb(255 255 255 / 0)"),

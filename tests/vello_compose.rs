@@ -261,7 +261,7 @@ fn glass_over_stripes(bench: &mut Bench, backdrop: &Backdrop) -> Vec<[u8; 4]> {
 #[test]
 fn a_one_piece_glass_group_composes_like_the_single_glass_and_two_pieces_merge() {
     let mut bench = Bench::new();
-    let glass = Glass::preset(Role::Regular, Level::Clear);
+    let glass = Glass { outline: Default::default(), ..Glass::preset(Role::Regular, Level::Clear) };
     let rect = [16.0, 12.0, 40.0, 40.0];
     let single = Backdrop { rect, radius: 20.0, glass: Some(glass), ..Backdrop::default() };
     let mut one = GlassGroup::new(12.0);
