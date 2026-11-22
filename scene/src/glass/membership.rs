@@ -65,7 +65,7 @@ mod tests {
         let given = [("acde-glass-id", " dock-item "), ("acde-glass-union", "none")];
         let member = Membership::from_properties(Some((7, "10px")), properties(&given), |w| panic!("{w}")).unwrap();
         assert_eq!(member, Membership { container: Some(7), spacing: 10.0, union: None, id: Name::of("dock-item") });
-        assert_eq!(member.scaled(2.0).spacing, 24.0);
+        assert_eq!(member.scaled(2.0).spacing, 20.0);
     }
 
     #[test]

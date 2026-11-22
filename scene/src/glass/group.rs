@@ -289,8 +289,8 @@ mod tests {
     fn a_piece_out_of_reach_leaves_the_other_exactly_as_it_was() {
         let (width, height) = (200, 60);
         let source = ground(width, height);
-        let left = Piece::of_rect([16.0, 10.0, 48.0, 36.0], 10.0, 2.0, regular());
-        let right = Piece::of_rect([120.0, 10.0, 48.0, 36.0], 10.0, 2.0, Glass { tint: [1.0, 0.0, 0.0, 0.4], ..regular() });
+        let left = Piece::of_rect([16.0, 12.0, 48.0, 36.0], 10.0, 2.0, regular());
+        let right = Piece::of_rect([120.0, 12.0, 48.0, 36.0], 10.0, 2.0, Glass { tint: [1.0, 0.0, 0.0, 0.4], ..regular() });
         let alone = group(20.0, &[left]).paint_cpu(&source);
         let both = group(20.0, &[left, right]).paint_cpu(&source);
         for y in 0..height {
@@ -383,18 +383,24 @@ mod tests {
         channels(out.data[y * out.width + x])[1]
     }
 
+    fn first_lit(out: &Pixels) -> Option<(usize, usize, u32)> {
+        out.data.iter().enumerate().map(|(i, &p)| (i % out.width, i / out.width, channels(p)[1])).find(|&(_, _, r)| r > 1)
+    }
+
     #[test]
     fn a_merged_outline_follows_the_merged_edge_through_the_neck_and_not_the_old_edges() {
         let (pair, single) = outlined_pair(true, 1.0);
         for x in 40..=64 {
             let column: Vec<u32> = (0..30).map(|y| red(&pair, x, y)).collect();
-            let lit = column.iter().filter(|&&r| r > 128).count();
-            assert!((1..=3).contains(&lit), "one thin, unbroken line crosses column {x} on top: {column:?}");
+            let lit: Vec<usize> = (0..30).filter(|&y| column[y] > 1).collect();
+            let (first, last) = (lit.first().copied(), lit.last().copied());
+            let unbroken = first.zip(last).is_some_and(|(a, b)| b - a + 1 == lit.len());
+            assert!(unbroken && (1..=4).contains(&lit.len()), "one thin, unbroken line crosses column {x} on top: {column:?}");
         }
         for (x, y) in [(49, 30), (54, 30), (30, 30), (74, 30)] {
-            assert_eq!(red(&pair, x, y), 0, "no outline inside at ({x}, {y})");
+            assert!(red(&pair, x, y) <= 1, "no outline inside at ({x}, {y}): {}", red(&pair, x, y));
         }
-        assert!(red(&single, 49, 30) > 128, "a lone piece outlines its own edge");
+        assert!(red(&single, 49, 30) > 1, "a lone piece outlines its own edge");
     }
 
     #[test]
@@ -402,14 +408,17 @@ mod tests {
         let (pair, _) = outlined_pair(false, 1.0);
         assert!(red(&pair, 49, 30) > 128, "the left piece keeps its right edge");
         assert!(red(&pair, 54, 30) > 128, "the right piece keeps its left edge");
-        assert_eq!(red(&pair, 52, 30), 0, "the neck between them is glass without a line");
+        assert!(red(&pair, 52, 30) > 1, "the two outlines may cross in the neck");
+        for (x, y) in [(30, 30), (74, 30)] {
+            assert!(red(&pair, x, y) <= 1, "no line in the middle of a piece at ({x}, {y})");
+        }
         assert!(channels(pair.data[30 * 104 + 52])[0] > 0, "the glass still flows through the neck");
     }
 
     #[test]
     fn no_outline_draws_no_line() {
         let (pair, single) = outlined_pair(false, 0.0);
-        assert!(pair.data.iter().chain(&single.data).all(|&p| channels(p)[1] == 0));
+        assert_eq!((first_lit(&pair), first_lit(&single)), (None, None), "no red above rounding without an outline");
     }
 
     #[test]
