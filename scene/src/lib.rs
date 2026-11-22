@@ -1,8 +1,9 @@
 pub mod blur;
 mod compose;
 pub mod corner;
-pub mod glass;
 mod filter;
+pub mod glass;
+pub mod motion;
 mod scene;
 
 pub use compose::*;
