@@ -56,6 +56,22 @@ test('classList, dataset, style, attributes, reflection', async () => {
   })
 })
 
+test('headingOffset and headingReset reflect their attributes; headingOffset is clamped to 0..8', async () => {
+  using web = await page('<!doctype html><html><body><h1 id="h"></h1></body></html>')
+  const got = web.json<unknown[]>(`(() => {
+    const h = document.getElementById('h')
+    const out = [h.headingOffset, h.headingReset]
+    h.headingOffset = 3; out.push(h.getAttribute('headingoffset'), h.headingOffset)
+    h.setAttribute('headingoffset', '20'); out.push(h.headingOffset)
+    h.setAttribute('headingoffset', '-3'); out.push(h.headingOffset)
+    h.setAttribute('headingoffset', 'x'); out.push(h.headingOffset)
+    h.headingReset = true; out.push(h.getAttribute('headingreset'), h.headingReset)
+    h.headingReset = false; out.push(h.hasAttribute('headingreset'))
+    return out
+  })()`)
+  assert.deepEqual(got, [0, false, '3', 3, 8, 0, 0, '', true, false])
+})
+
 test('tree operations: before/after/replaceWith, cloneNode, contains, compareDocumentPosition, normalize, live lists', async () => {
   using web = await page('<!doctype html><html><body><ol id="o"><li id="one">1</li><li id="two">2</li></ol></body></html>')
   const result = web.json(`(() => {

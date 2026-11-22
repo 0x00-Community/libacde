@@ -45,6 +45,17 @@ export function long(proto: Proto, prop: string, fallback: number, attr = prop.t
   })
 }
 
+export function clampedUnsigned(proto: Proto, prop: string, [min, max]: readonly [number, number], fallback: number, attr = prop.toLowerCase()): void {
+  define(proto, prop, function () {
+    const raw = dom.getAttribute(this[ID], attr)
+    const n = raw === null ? NaN : parseInt(raw, 10)
+    return Number.isNaN(n) || n < 0 ? fallback : Math.min(max, Math.max(min, n))
+  }, function (value) {
+    const n = Number(value) >>> 0
+    setAttribute(this, attr, String(n <= 2147483647 ? n : fallback))
+  })
+}
+
 export function url(proto: Proto, prop: string, attr = prop.toLowerCase()): void {
   define(proto, prop, function () {
     const raw = dom.getAttribute(this[ID], attr)

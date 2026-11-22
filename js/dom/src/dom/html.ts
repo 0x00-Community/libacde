@@ -10,7 +10,7 @@ import { loads, resolveUrl } from './env'
 import { focus, focusable, setFocus } from './focus'
 import { metricGetters, metricsOf } from './layout'
 import { CDATASection, CharacterData, Comment, DocumentFragment, DocumentType, type HTMLCollection, liveCollection, mixin, Node, ProcessingInstruction, replaceAll, setTextContent, Text } from './node'
-import { bool, long, nullable, string, url, urlParts } from './reflect'
+import { bool, clampedUnsigned, long, nullable, string, url, urlParts } from './reflect'
 import { classes, construct, constructing, dom, existing, ID, lifecycle, nodeConstructing, wrap, inner } from './realm'
 import { CSSStyleSheet, inlineStyle, type CSSStyleDeclaration } from './style'
 import { followLink } from './window'
@@ -202,6 +202,8 @@ string(HTMLElement.prototype, 'inputMode', 'inputmode')
 string(HTMLElement.prototype, 'enterKeyHint', 'enterkeyhint')
 nullable(HTMLElement.prototype, 'popover')
 bool(HTMLElement.prototype, 'inert')
+clampedUnsigned(HTMLElement.prototype, 'headingOffset', [0, 8], 0, 'headingoffset')
+bool(HTMLElement.prototype, 'headingReset', 'headingreset')
 export interface HTMLElement extends HTMLOrSVGElementMixin {}
 
 function editable(element: number): boolean {
