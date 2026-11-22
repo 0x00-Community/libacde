@@ -34,19 +34,7 @@ impl Shared {
     }
 
     pub fn open() -> Result<Arc<Self>, String> {
-        let instance =
-            wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::PRIMARY, ..wgpu::InstanceDescriptor::new_without_display_handle() });
-        let adapter = pollster::block_on(instance.enumerate_adapters(wgpu::Backends::PRIMARY))
-            .into_iter()
-            .min_by_key(|a| match a.get_info().device_type {
-                wgpu::DeviceType::DiscreteGpu | wgpu::DeviceType::IntegratedGpu => 0,
-                wgpu::DeviceType::Cpu => 2,
-                _ => 1,
-            })
-            .ok_or("no GPU")?;
-        let desc = wgpu::DeviceDescriptor { label: Some("acde offscreen"), required_limits: adapter.limits(), ..Default::default() };
-        let (device, queue) = pollster::block_on(adapter.request_device(&desc)).map_err(|e| format!("opening {}: {e}", adapter.get_info().name))?;
-        Ok(Self::new(device, queue))
+        Ok(crate::gpu::Gpu::open("acde offscreen")?.2.shared.clone())
     }
 
     pub fn submit_lock(&self) -> MutexGuard<'_, ()> {

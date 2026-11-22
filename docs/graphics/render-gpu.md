@@ -124,7 +124,14 @@
   OpenGL ES 默认关: 开关 `ACDE_GL_ES=1` 由 acdes 的探测读, libacde 不读环境变量, 调了 `open(Backend::Gles, …)` 就开 (取证: 液态玻璃静止时还在出帧,
   开了之后静止时桌面进程 CPU 是 CPU 画页面时的十几倍; dopame 让它静止不出帧后再改默认).
   选适配器: 读 `/sys/class/drm/<节点名>/device/{vendor,device}`, 和 wgpu `AdapterInfo` 的 `vendor` / `device` 对上的用它; 对不上 (GL 后端常报 0) 时,
-  非软件适配器恰好一个就用它, 否则报错并列出全部适配器. EGL 无表面平台由 Mesa 自己挑设备, 不能按节点指定, 所以 GLES 下这个比对只是核对.
+  非软件适配器恰好一个就用它; 有几个时 (WSL 的 D3D12 设备没有 PCI 编号, 渲染节点挂在 faux_driver 下) 先挑名字含 `MESA_D3D12_DEFAULT_ADAPTER_NAME`
+  的 (Mesa 在 WSL 里按名字选卡的同一个变量), 再挑独显, 记一行 info. EGL 无表面平台由 Mesa 自己挑设备, 不能按节点指定, 所以 GLES 下这个比对只是核对.
+- 不合规的 Vulkan 驱动 (2026-11-22, 用户要 WSL 用真显卡): wgpu-hal 把一致性版本为 0 的驱动 (WSL 的 Dozen, 即 dzn) 藏起来, 除非实例带
+  `InstanceFlags::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER`; libacde 建实例的地方 (`gpu::adapters`、`vello::Device` 的枚举) 都带上它. 宿主窗口和
+  会话里自开设备的 `Gpu::open` / `Gpu::open_with(label, fits)` 按名字 (`MESA_D3D12_DEFAULT_ADAPTER_NAME`) → 合规独显 → 合规集显 → 不合规独显 →
+  不合规集显 → 其他 → 软件 (llvmpipe) 逐个试: 开不了设备就换下一个; 不合规的还要过 `fits` (宿主窗口传 `Vello::probe`, 在当前线程建一遍 vello
+  的管线), 不过也换下一个, 软件适配器始终是最后的退路, 换过时记一行 warn. 驱动在开设备时直接段错误 (有人报过 NVIDIA 上的 Dozen) 接不住,
+  这时用 `MESA_D3D12_DEFAULT_ADAPTER_NAME` 指定别的卡.
   `open(Backend::Gles, …)` 开好设备后在当前线程上、在 Validation 和 Internal 错误作用域里、包着 `catch_unwind` 建一次 vello 的全部管线
   (`Vello::on_this_thread`, vello 的 `num_init_threads = 1`: 错误作用域只管本线程, 多线程建管线时错误漏到未捕获的处理里会被 wgpu 当致命错误 panic),
   结果在 `fits_vello()`; 为假时调用方不给它装 vello 合成器, 画布留在 CPU 上. Vulkan 设备 `fits_vello()` 恒为真. GLES 设备没有 dma-buf 导入和
