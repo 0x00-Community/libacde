@@ -68,6 +68,7 @@ fn outside(n: f64) -> f64 {
 }
 
 fn shaped(value: f64, power: f64) -> f64 {
+    let value = snap(value);
     value.signum() * value.abs().powf(power)
 }
 
