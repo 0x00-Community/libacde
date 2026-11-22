@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::gpu::ColorMatrix;
@@ -7,7 +8,8 @@ use crate::gpu::FilterEffect;
 use crate::gpu::Scene;
 use crate::gpu::{LayerCommand, RenderCommand};
 use acde_scene::corner::Corners;
-use acde_scene::glass::Glass;
+use acde_scene::glass::group::{GlassGroup, Piece};
+use acde_scene::glass::{Glass, Membership};
 use kurbo::{Affine, BezPath, PathEl, Rect, Shape};
 
 use crate::render::commands::{Builder, Commands};
@@ -46,6 +48,8 @@ pub struct Backdrop {
     pub scale: f64,
     pub corners: Option<Corners>,
     pub glass: Option<Glass>,
+    pub group: Option<GlassGroup>,
+    membership: Option<Membership>,
     shaped: bool,
 }
 
@@ -75,6 +79,28 @@ impl Backdrop {
 
     pub fn glass(&self) -> Option<&Glass> {
         self.glass.as_ref()
+    }
+
+    pub fn group(&self) -> Option<&GlassGroup> {
+        self.group.as_ref()
+    }
+
+    pub fn compose(&self) -> crate::gpu::Backdrop {
+        let r = self.bounds.intersect(self.clip);
+        crate::gpu::Backdrop {
+            rect: [r.x0 as f32, r.y0 as f32, r.width().max(0.0) as f32, r.height().max(0.0) as f32],
+            radius: self.radius() as f32,
+            exponent: self.exponent() as f32,
+            glass: self.glass,
+            group: self.group,
+            effect: self.effect(),
+        }
+    }
+
+    fn piece(&self) -> Option<Piece> {
+        let b = self.bounds;
+        let rect = [b.x0 as f32, b.y0 as f32, b.width() as f32, b.height() as f32];
+        Some(Piece::of_rect(rect, self.radius() as f32, self.exponent() as f32, self.glass?))
     }
 
     pub fn blur(&self) -> f64 {
@@ -117,6 +143,61 @@ impl Backdrop {
 
     fn amount(m: &[f32; 20], build: fn(f32) -> ColorMatrix, guess: f32) -> Option<f32> {
         build(guess).0.iter().zip(m).all(|(a, b)| (a - b).abs() < 1e-3).then_some(guess)
+    }
+}
+
+static WARNED_FULL_GROUP: AtomicBool = AtomicBool::new(false);
+
+fn merge_glass(layers: &mut [Layer]) {
+    let members: Vec<(usize, Membership)> =
+        layers.iter().enumerate().filter_map(|(i, l)| l.backdrop.as_ref().filter(|b| b.glass.is_some()).and_then(|b| Some((i, b.membership?)))).collect();
+    let mut taken = vec![false; members.len()];
+    for start in 0..members.len() {
+        if !taken[start] {
+            let joined = joined_with(&members, &mut taken, start);
+            let spacing = joined.iter().map(|&k| members[k].1.spacing).fold(0.0, f32::max);
+            merge_into_first(layers, joined.iter().map(|&k| members[k].0), spacing);
+        }
+    }
+}
+
+fn joined_with(members: &[(usize, Membership)], taken: &mut [bool], start: usize) -> Vec<usize> {
+    taken[start] = true;
+    let mut joined = vec![start];
+    let mut next = 0;
+    while let Some(&at) = joined.get(next) {
+        for k in 0..members.len() {
+            if !taken[k] && members[k].1.joins(&members[at].1) {
+                taken[k] = true;
+                joined.push(k);
+            }
+        }
+        next += 1;
+    }
+    joined.sort_unstable();
+    joined
+}
+
+fn merge_into_first(layers: &mut [Layer], members: impl Iterator<Item = usize>, spacing: f32) {
+    let mut group = GlassGroup::new(spacing);
+    let mut merged = Vec::new();
+    for i in members {
+        let Some(piece) = layers[i].backdrop.as_ref().and_then(Backdrop::piece) else { continue };
+        if group.push(piece) {
+            merged.push(i);
+        } else if !WARNED_FULL_GROUP.swap(true, Ordering::Relaxed) {
+            log::warn!("glass: more than {} pieces merge together; the rest are drawn on their own", acde_scene::glass::group::MOST_PIECES);
+        }
+    }
+    let [first, rest @ ..] = merged.as_slice() else { return };
+    if rest.is_empty() {
+        return;
+    }
+    let area = |i: usize| layers[i].backdrop.as_ref().map(|b| (b.bounds, b.clip)).expect("a member has a backdrop");
+    let (bounds, clip) = rest.iter().map(|&i| area(i)).fold(area(*first), |(b, c), (bi, ci)| (b.union(bi), c.union(ci)));
+    rest.iter().for_each(|&i| layers[i].backdrop = None);
+    if let Some(b) = layers[*first].backdrop.as_mut() {
+        (b.group, b.bounds, b.clip) = (Some(group), bounds, clip);
     }
 }
 
@@ -202,6 +283,7 @@ impl<'a> Split<'a> {
             split.command(i, command, t);
         }
         split.cut();
+        merge_glass(&mut split.layers);
         Ok(split.layers)
     }
 
@@ -218,6 +300,8 @@ impl<'a> Split<'a> {
                     scale: self.scale(t * l.transform),
                     corners: l.shape.map(|s| Corners { radius: s.corners.radius * Self::linear(t * l.transform), ..s.corners }),
                     glass: l.shape.and_then(|s| s.glass).map(|g| g.scaled(Self::linear(t * l.transform))),
+                    group: None,
+                    membership: l.shape.and_then(|s| s.group).map(|m| m.scaled(Self::linear(t * l.transform))),
                     shaped: false,
                 };
                 self.cut();

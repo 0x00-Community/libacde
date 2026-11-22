@@ -14,6 +14,7 @@ pub struct Corners {
 pub struct LayerShape {
     pub corners: Corners,
     pub glass: Option<crate::glass::Glass>,
+    pub group: Option<crate::glass::Membership>,
 }
 
 pub fn exponent(k: f64) -> f64 {

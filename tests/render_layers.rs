@@ -24,7 +24,9 @@ const CSS: &str = "html, body { margin: 0; height: 100%; }
   .ds4 { filter: drop-shadow(0 0 4px black); }
   .ds10 { filter: drop-shadow(2px 3px 10px black); }
   .ds25 { filter: drop-shadow(0 0 25px black); }
-  .bl6 { filter: blur(6px); }";
+  .bl6 { filter: blur(6px); }
+  .merge { --acde-glass-merge: 16px; }
+  .pill { position: absolute; top: 20px; width: 60px; height: 40px; border-radius: 20px; backdrop-filter: blur(2px); --acde-glass: regular; }";
 
 struct Page {
     doc: Doc,
@@ -180,4 +182,29 @@ fn backdrop_blurs_combine_as_root_sum_of_squares() {
     assert!((b.blur() - 5.0).abs() < 1e-3, "blur {}", b.blur());
     assert!((b.effect().blur - 5.0).abs() < 1e-3, "blur {}", b.effect().blur);
     assert!(b.effect().matrix.is_none());
+}
+
+#[test]
+fn glass_merges_within_its_container_or_by_union_into_one_group() {
+    for (container, pill, groups) in [("merge", "", 1), ("", "", 2), ("", "--acde-glass-union: pair;", 1)] {
+        let page = Page::new(1.0);
+        let row = page.div(container);
+        for left in ["20px", "86px"] {
+            let id = page.doc.create_element("div").unwrap();
+            page.doc.set_attribute(id, "class", "pill").unwrap();
+            page.doc.set_attribute(id, "style", &format!("left: {left}; {pill}")).unwrap();
+            page.doc.append_child(row, id).unwrap();
+        }
+        let frame = page.frame();
+        let backdrops: Vec<_> = frame.plane.layers.iter().filter_map(|l| l.backdrop.as_ref()).collect();
+        assert_eq!(backdrops.len(), groups, "{container:?} {pill:?}");
+        if groups == 2 {
+            assert!(backdrops.iter().all(|b| b.group().is_none()));
+            continue;
+        }
+        let group = backdrops[0].group().expect("one group");
+        assert_eq!(group.len(), 2);
+        assert!(near(backdrops[0].bounds.width(), 126.0), "the group covers both pills: {:?}", backdrops[0].bounds);
+        assert_eq!(group.spacing, if container.is_empty() { 0.0 } else { 16.0 });
+    }
 }

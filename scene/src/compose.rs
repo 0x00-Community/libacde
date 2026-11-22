@@ -65,12 +65,24 @@ pub struct Backdrop {
     pub radius: f32,
     pub exponent: f32,
     pub glass: Option<crate::glass::Glass>,
+    pub group: Option<crate::glass::group::GlassGroup>,
     pub effect: Effect,
+}
+
+impl Default for Backdrop {
+    fn default() -> Self {
+        Self { rect: [0.0; 4], radius: 0.0, exponent: 2.0, glass: None, group: None, effect: Effect::default() }
+    }
 }
 
 impl Backdrop {
     pub fn levels(&self) -> u32 {
         self.effect.levels()
+    }
+
+    pub fn moved(self, (dx, dy): (f32, f32)) -> Self {
+        let [x, y, w, h] = self.rect;
+        Self { rect: [x + dx, y + dy, w, h], group: self.group.map(|g| g.moved((dx, dy))), ..self }
     }
 }
 

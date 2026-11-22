@@ -65,6 +65,17 @@ impl Level {
         }
     }
 
+    pub fn of(preference: super::Preference) -> Self {
+        match preference.reduced_transparency {
+            true => Self::Opaque,
+            false => Self::from_wire(preference.level),
+        }
+    }
+
+    pub fn preferred() -> Self {
+        Self::of(super::preference())
+    }
+
     pub fn for_role(self, role: Role) -> Self {
         match role {
             Role::Regular => self,
@@ -172,6 +183,9 @@ mod tests {
             assert_eq!(Glass::preset(Role::Regular, level).highlight, highlight());
             assert_eq!(Level::from_wire(level.to_wire()), level);
         }
+        let preference = |level: u32, reduced_transparency: bool| super::super::Preference { level, reduced_transparency };
+        assert_eq!(Level::of(preference(2, false)), Level::Tinted);
+        assert_eq!(Level::of(preference(1, true)), Level::Opaque);
         assert_eq!(Level::parse("tinted"), Some(Level::Tinted));
         assert_eq!(Level::from_wire(99), Level::Clear);
         assert_ne!(Glass::opaque(true).tint, Glass::opaque(false).tint);

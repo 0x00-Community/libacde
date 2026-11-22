@@ -2,8 +2,10 @@ use crate::blur::{Pixels, blur, channels, pack};
 use crate::corner::{self, Corners};
 
 pub mod group;
+mod membership;
 mod preset;
 
+pub use membership::{Membership, Name};
 pub use preset::{Level, Role};
 
 pub const WGSL: &str = include_str!("glass.wgsl");
