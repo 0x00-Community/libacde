@@ -72,7 +72,9 @@ impl LocalNet {
 
     fn path(&self, url: &Url) -> Option<PathBuf> {
         if url.scheme() == "file" {
-            return url.to_file_path().ok();
+            let path = url.to_file_path().ok()?;
+            let lent = self.resources.iter().flat_map(|r| r.dirs.iter().map(PathBuf::from));
+            return lent.chain(icon_dirs()).find_map(|d| within(&d, &path));
         }
         if url.origin() != self.base.origin() {
             return None;
@@ -83,8 +85,24 @@ impl LocalNet {
         if !rest.components().all(|c| matches!(c, Component::Normal(_))) {
             return None;
         }
-        resource.dirs.iter().map(|d| Path::new(d).join(rest)).find(|p| p.is_file())
+        resource.dirs.iter().find_map(|d| within(Path::new(d), &Path::new(d).join(rest)))
     }
+}
+
+fn icon_dirs() -> Vec<PathBuf> {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let data_home = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).or_else(|| home.as_ref().map(|h| h.join(".local/share")));
+    let data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+    let shares = data_home.into_iter().chain(data_dirs.split(':').filter(|d| !d.is_empty()).map(PathBuf::from));
+    let mut dirs: Vec<PathBuf> = shares.flat_map(|s| [s.join("icons"), s.join("pixmaps")]).collect();
+    dirs.extend(home.map(|h| h.join(".icons")));
+    dirs
+}
+
+fn within(dir: &Path, path: &Path) -> Option<PathBuf> {
+    let root = std::fs::canonicalize(dir).ok()?;
+    let real = std::fs::canonicalize(path).ok()?;
+    (real.starts_with(&root) && real.is_file()).then_some(real)
 }
 
 impl NetProvider for LocalNet {
@@ -136,5 +154,76 @@ impl NetProvider for LocalNet {
                 handler.failed(url.to_string());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!("acde-net-{name}-{}", std::process::id()));
+            _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(dir.join("lent")).unwrap();
+            std::fs::create_dir_all(dir.join("outside")).unwrap();
+            std::fs::write(dir.join("lent/ok.png"), b"ok").unwrap();
+            std::fs::write(dir.join("outside/secret"), b"secret").unwrap();
+            Self(dir)
+        }
+
+        fn net(&self) -> LocalNet {
+            let lent = self.0.join("lent").to_string_lossy().into_owned();
+            let resources = [Resource { prefix: "/media/".into(), dirs: vec![lent] }];
+            LocalNet::new(Url::parse("http://acde.local/").unwrap(), &resources, Arc::default(), None, Weak::new())
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn url(text: &str) -> Url {
+        Url::parse(text).unwrap()
+    }
+
+    #[test]
+    fn a_lent_file_is_read_and_dot_dot_is_not() {
+        let scratch = Scratch::new("plain");
+        let net = scratch.net();
+        assert!(net.path(&url("http://acde.local/media/ok.png")).is_some());
+        assert!(net.path(&url("http://acde.local/media/../outside/secret")).is_none());
+        assert!(net.path(&url("http://other.example/media/ok.png")).is_none());
+    }
+
+    #[test]
+    fn a_file_url_reads_only_lent_folders_and_icon_folders() {
+        let scratch = Scratch::new("file");
+        let net = scratch.net();
+        let file = |path: &Path| Url::from_file_path(path).unwrap();
+        assert!(net.path(&file(&scratch.0.join("lent/ok.png"))).is_some());
+        assert!(net.path(&file(&scratch.0.join("outside/secret"))).is_none());
+        assert!(net.path(&url("file:///etc/passwd")).is_none());
+        let icon = icon_dirs().into_iter().filter_map(|d| std::fs::read_dir(d).ok()).flatten().flatten().map(|e| e.path()).find(|p| p.is_file());
+        if let Some(icon) = icon {
+            assert!(net.path(&file(&icon)).is_some(), "an icon under an icon folder: {}", icon.display());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symbolic_link_out_of_the_lent_folder_is_not_followed() {
+        let scratch = Scratch::new("link");
+        std::os::unix::fs::symlink(scratch.0.join("outside/secret"), scratch.0.join("lent/escape")).unwrap();
+        std::os::unix::fs::symlink(scratch.0.join("outside"), scratch.0.join("lent/dir")).unwrap();
+        std::os::unix::fs::symlink(scratch.0.join("lent/ok.png"), scratch.0.join("lent/alias.png")).unwrap();
+        let net = scratch.net();
+        assert!(net.path(&url("http://acde.local/media/escape")).is_none());
+        assert!(net.path(&url("http://acde.local/media/dir/secret")).is_none());
+        assert!(net.path(&url("http://acde.local/media/alias.png")).is_some(), "a link that stays inside is fine");
     }
 }
