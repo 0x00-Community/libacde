@@ -568,6 +568,9 @@ impl Composer {
         let region = Self::region(outer, canvas.texture().size())?;
         let [_, _, w, h] = region;
         let mixed = self.mixed_blurs(encoder, canvas, region, glass, b.effect.blur);
+        if b.effect.matrix.is_none() {
+            return Some((region, mixed));
+        }
         let filtered = self.textures(w, h, 0, GLASS_TAG + 8).swap_remove(0);
         let (matrix, bias) = b.effect.columns();
         let params = Params { rect: [0.0, 0.0, w as f32, h as f32], matrix, bias, ..Default::default() };
@@ -656,9 +659,12 @@ impl Composer {
         fallback: f32,
     ) -> wgpu::TextureView {
         let [_, _, w, h] = region;
-        let mixed = self.textures(w, h, 0, GLASS_TAG).swap_remove(0);
         let layers: Vec<(usize, f32, f32)> = glass.blur.iter().enumerate().filter(|(_, l)| l.opacity > 0.0).map(|(i, l)| (i, l.radius, l.opacity)).collect();
         let layers = if layers.is_empty() { vec![(0, fallback, 1.0)] } else { layers };
+        if let [(i, radius, _)] = layers[..] {
+            return self.blur_tagged(encoder, canvas.texture(), region, radius, GLASS_TAG + 1 + i as u32);
+        }
+        let mixed = self.textures(w, h, 0, GLASS_TAG).swap_remove(0);
         let mut total = 0.0;
         for (n, (i, radius, opacity)) in layers.into_iter().enumerate() {
             let blurred = self.blur_tagged(encoder, canvas.texture(), region, radius, GLASS_TAG + 1 + i as u32);

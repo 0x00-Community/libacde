@@ -12,7 +12,7 @@ fn acde_glass_table_depth(row: u32, x: f32) -> f32 {
 fn acde_glass_lens_tabled(n: vec2<f32>, d: f32, half_short: f32, lens: vec4<f32>, index: f32, table: vec4<f32>, channel: u32) -> vec2<f32> {
     let bezel = min(max(lens.w, 0.5), max(half_short, 0.5));
     let e = -d;
-    if d > 0.0 || e >= bezel || lens.x <= 0.0 || index <= 1.0 {
+    if !acde_glass_bends(d, half_short, lens, index) {
         return vec2<f32>(0.0);
     }
     let fits = table.x >= 0.0 && abs(lens.x / bezel - table.y) <= 0.0001 * max(table.y, 1.0) && abs(index - table.z) <= 0.0001 && abs(lens.y - table.w) <= 0.0001;
@@ -32,7 +32,7 @@ fn acde_glass_lens_rgb_tabled(n: vec2<f32>, d: f32, half_short: f32, lens: vec4<
 }
 
 fn acde_glass_group_lens_tabled(f: AcdeGlassField, p: vec2<f32>, count: u32, spacing: f32, table: vec4<f32>) -> AcdeGlassBend {
-    if f.look.lens.x <= 0.0 || f.index <= 1.0 || f.d > 0.0 || -f.d >= f.look.lens.w {
+    if !acde_glass_bends(f.d, f.bevel, f.look.lens, f.index) {
         return AcdeGlassBend(vec2<f32>(0.0), vec2<f32>(0.0), vec2<f32>(0.0));
     }
     return acde_glass_lens_rgb_tabled(acde_glass_group_gradient(p, count, spacing), f.d, f.bevel, f.look.lens, f.index, table);

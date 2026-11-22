@@ -106,7 +106,10 @@ fn fs_glass(in: VsOut) -> @location(0) vec4<f32> {
     let lens = params.matrix[3];
     let region = params.bias;
     let at = px + acde_glass_offset(p, half, d, refraction);
-    let bend = acde_glass_lens_rgb_tabled(acde_glass_corner_gradient(p, half, radius, params.exponent), d, min(half.x, half.y), lens, params.shift.x, params.table);
+    var bend = AcdeGlassBend(vec2<f32>(0.0), vec2<f32>(0.0), vec2<f32>(0.0));
+    if acde_glass_bends(d, min(half.x, half.y), lens, params.shift.x) {
+        bend = acde_glass_lens_rgb_tabled(acde_glass_corner_gradient(p, half, radius, params.exponent), d, min(half.x, half.y), lens, params.shift.x, params.table);
+    }
     let under = glass_under(at, bend, region);
     let inside = acde_glass_inside(d, g2.z);
     if inside <= 0.0 {
