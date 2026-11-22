@@ -72,14 +72,15 @@ impl LocalNet {
 
     fn path(&self, url: &Url) -> Option<PathBuf> {
         if url.scheme() == "file" {
-            let path = url.to_file_path().ok()?;
-            let lent = self.resources.iter().flat_map(|r| r.dirs.iter().map(PathBuf::from));
-            return lent.chain(icon_dirs()).find_map(|d| within(&d, &path));
+            return self.file_path(url);
         }
         if url.origin() != self.base.origin() {
             return None;
         }
         let path = url.path();
+        if let Some(icon) = path.strip_prefix(ICONS) {
+            return icon_path(icon);
+        }
         let (resource, rest) = self.resources.iter().find_map(|r| Some((r, path.strip_prefix(r.prefix.as_str())?)))?;
         let rest = Path::new(rest.trim_start_matches('/'));
         if !rest.components().all(|c| matches!(c, Component::Normal(_))) {
@@ -87,6 +88,26 @@ impl LocalNet {
         }
         resource.dirs.iter().find_map(|d| within(Path::new(d), &Path::new(d).join(rest)))
     }
+}
+
+const ICONS: &str = "/acde-icons/";
+
+impl LocalNet {
+    fn file_path(&self, url: &Url) -> Option<PathBuf> {
+        if !crate::runtime::dev_mode() {
+            return None;
+        }
+        let path = url.to_file_path().ok()?;
+        self.resources.iter().flat_map(|r| r.dirs.iter().map(PathBuf::from)).find_map(|d| within(&d, &path))
+    }
+}
+
+fn icon_path(rest: &str) -> Option<PathBuf> {
+    let path = Path::new("/").join(rest);
+    if !Path::new(rest).components().all(|c| matches!(c, Component::Normal(_))) {
+        return None;
+    }
+    icon_dirs().iter().find_map(|d| within(d, &path))
 }
 
 fn icon_dirs() -> Vec<PathBuf> {
@@ -201,16 +222,29 @@ mod tests {
     }
 
     #[test]
-    fn a_file_url_reads_only_lent_folders_and_icon_folders() {
+    fn a_file_url_is_refused_outside_dev_mode() {
         let scratch = Scratch::new("file");
         let net = scratch.net();
         let file = |path: &Path| Url::from_file_path(path).unwrap();
-        assert!(net.path(&file(&scratch.0.join("lent/ok.png"))).is_some());
+        if !crate::runtime::dev_mode() {
+            assert!(net.path(&file(&scratch.0.join("lent/ok.png"))).is_none());
+        }
         assert!(net.path(&file(&scratch.0.join("outside/secret"))).is_none());
         assert!(net.path(&url("file:///etc/passwd")).is_none());
+    }
+
+    #[test]
+    fn acde_icons_reads_only_files_under_an_icon_folder() {
+        let scratch = Scratch::new("icons");
+        let net = scratch.net();
+        let icons = |path: &Path| url(&format!("http://acde.local/acde-icons{}", path.display()));
+        assert!(net.path(&url("http://acde.local/acde-icons/etc/passwd")).is_none());
+        assert!(net.path(&icons(&scratch.0.join("lent/ok.png"))).is_none(), "a lent folder is not an icon folder");
+        assert!(net.path(&url("http://acde.local/acde-icons/usr/share/icons/../../../etc/passwd")).is_none());
+        assert!(net.path(&url("http://other.example/acde-icons/usr/share/icons/x.png")).is_none());
         let icon = icon_dirs().into_iter().filter_map(|d| std::fs::read_dir(d).ok()).flatten().flatten().map(|e| e.path()).find(|p| p.is_file());
         if let Some(icon) = icon {
-            assert!(net.path(&file(&icon)).is_some(), "an icon under an icon folder: {}", icon.display());
+            assert_eq!(net.path(&icons(&icon)), std::fs::canonicalize(&icon).ok(), "an icon under an icon folder: {}", icon.display());
         }
     }
 
