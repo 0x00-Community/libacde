@@ -26,13 +26,23 @@ export interface WindowShadows {
   readonly unfocused: readonly ShadowLayer[]
 }
 
+export type MotionPreset = 'standard' | 'reduced'
+
+export interface Motion {
+  readonly preset: MotionPreset
+  readonly duration: number
+  readonly easing: string
+}
+
 export interface WindowLook {
-  readonly corners: WindowCorners
-  readonly shadows: WindowShadows
+  readonly corners?: WindowCorners
+  readonly shadows?: WindowShadows
+  readonly motion?: MotionPreset
 }
 
 declare module '../page' {
   interface AcdeDesktop {
     setWindowLook?(look: WindowLook | null): void
+    motion?(preset?: MotionPreset): Motion
   }
 }

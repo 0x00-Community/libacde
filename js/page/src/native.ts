@@ -93,7 +93,15 @@ export interface NativeSurface {
   setDoubleClick?(action: 'fill' | 'minimize' | 'none'): void
   setFrameTheme?(...args: number[]): void
   setWindowLook?(...args: number[]): void
+  motion?(preset?: string): MotionWire | null
   setPageDark?(dark: boolean): void
+}
+
+export interface MotionWire {
+  readonly preset: string
+  readonly wire: number
+  readonly duration: number
+  readonly easing: string
 }
 
 export interface ClipboardBytes {

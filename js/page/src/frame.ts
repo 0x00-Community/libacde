@@ -1,4 +1,4 @@
-import type { DoubleClickAction, FrameTheme, WindowLook } from '@acde/api'
+import type { DoubleClickAction, FrameTheme, Motion, MotionPreset, WindowLook } from '@acde/api'
 import type { AppManifest } from '@acde/api/manifest'
 import { FrameThemes, WindowLookReader } from './frametheme.ts'
 import type { NativeSurface } from './native'
@@ -54,14 +54,23 @@ export class Frame {
   }
 
   static desktop(
-    surface: Pick<NativeSurface, 'setDoubleClick' | 'setFrameTheme' | 'setWindowLook'>,
+    surface: Pick<NativeSurface, 'setDoubleClick' | 'setFrameTheme' | 'setWindowLook' | 'motion'>,
     warn: (line: string) => void = (line) => Log.write(Level.Warn, 'acde_host', line),
   ): {
     setDoubleClick(action: DoubleClickAction): void
     setFrameTheme(theme: FrameTheme | null): void
     setWindowLook(look: WindowLook | null): void
+    motion(preset?: MotionPreset): Motion
   } {
+    const motionOf = (preset: string) => surface.motion?.(preset) ?? null
+    let chosen = 'standard'
+    let current: Readonly<Record<string, unknown>> = Frame.NO_LOOK
     return {
+      motion: (preset) => {
+        const found = motionOf(preset ?? chosen)
+        if (!found) throw new TypeError(`motion: no motion preset ${JSON.stringify(preset)}`)
+        return { preset: found.preset as MotionPreset, duration: found.duration, easing: found.easing }
+      },
       setFrameTheme: (theme) => {
         const wire = FrameThemes.parse(theme)
         if (typeof wire === 'string') throw new TypeError(`setFrameTheme: ${wire}`)
@@ -69,16 +78,27 @@ export class Frame {
         surface.setFrameTheme?.(...wire.colors, wire.style, wire.side, wire.align)
       },
       setWindowLook: (look) => {
-        const wire = WindowLookReader.parse(look)
+        const merged = Frame.mergeLook(current, look)
+        const wire = WindowLookReader.parse(merged, motionOf)
         if (typeof wire === 'string') throw new TypeError(`setWindowLook: ${wire}`)
         if (wire.ignored.length) warn(`setWindowLook: ignored ${wire.ignored.join(', ')} (not known to this runtime)`)
         surface.setWindowLook?.(...wire.numbers)
+        current = merged === null ? Frame.NO_LOOK : (merged as Record<string, unknown>)
+        chosen = wire.motion
       },
       setDoubleClick: (action) => {
         if (!Frame.DOUBLE_CLICK.includes(action)) throw new TypeError(`setDoubleClick: no action ${String(action)} (${Frame.DOUBLE_CLICK.join(', ')})`)
         surface.setDoubleClick?.(action)
       },
     }
+  }
+
+  static readonly NO_LOOK: Readonly<Record<string, unknown>> = { corners: { radius: 0 }, shadows: { focused: [], unfocused: [] } }
+
+  static mergeLook(current: Readonly<Record<string, unknown>>, look: unknown): unknown {
+    if (typeof look !== 'object' || look === null || Array.isArray(look)) return look
+    const given = Object.entries(look).filter(([, value]) => value !== undefined)
+    return { ...current, ...Object.fromEntries(given) }
   }
 
   static scheme(page: SchemePage): string {

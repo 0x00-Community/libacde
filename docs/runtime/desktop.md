@@ -147,6 +147,11 @@
   未知的键忽略并记 warn, 坏颜色抛 TypeError. 规则见 `docs/runtime/webs.md`「窗框」.
 - 窗口的外圆角与阴影也只能声明: `acde:desktop.setWindowLook(look | null)` (SDK `WindowLook`: 圆角半径与 CSS 角形 (`round`、`squircle`、`superellipse(k)`), 聚焦 / 不聚焦两档 CSS 外阴影层),
   由合成器画, 窗口页面自己不再画外阴影和外圆角. 规则见 `docs/runtime/webs.md`「窗框」.
+  各键都可省: 只改给了的键, 没给的保持上一次的 (起初是方角、无阴影、`standard`; `setWindowLook(null)` 回到这个状态), 所以可以单独 `setWindowLook({motion})`.
+  `look.motion` 选窗口动画的档 (`'standard'` 缺省、`'reduced'`), 只能选档不能给数值; 档的定义只在 `acde_scene::motion` (见 `docs/graphics/render-gpu.md`「动画曲线」),
+  经 `WindowLook.motion` (Rust `acde_scene::motion::Preset`, 页面交出的数列最后一个是它的线上编号) 交给合成器.
+  `acde:desktop.motion(preset?)` 同步返回 `{preset, duration, easing}`: `duration` 毫秒, `easing` 是 CSS `linear(…)` 缓动 (24 段采样), 页面要和合成器的动画对齐时用它,
+  不另存数值; 不给 `preset` 时是上一次 `setWindowLook` 选的档 (没设过或设成 null 时 `standard`). 不认识的档名抛 TypeError. 取值来自原生 `surface.motion(name)` (`webnative.rs`).
 - 想让自己画标题栏的应用跟着桌面的主题, 由桌面自己经服务发布 (dopame 的做法), 运行时不管.
 
 ## 快捷键

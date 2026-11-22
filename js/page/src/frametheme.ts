@@ -1,3 +1,4 @@
+import type { MotionWire } from './native'
 import type { FrameTheme } from '@acde/api'
 
 export interface FrameThemeWire {
@@ -86,11 +87,14 @@ export class FrameThemes {
 export interface WindowLookWire {
   readonly numbers: readonly number[]
   readonly ignored: readonly string[]
+  readonly motion: string
 }
+
+export type MotionOf = (preset: string) => MotionWire | null
 
 type Fields = Record<string, unknown>
 
-const LOOK_KEYS = ['corners', 'shadows'] as const
+const LOOK_KEYS = ['corners', 'shadows', 'motion'] as const
 const LOOK_CORNERS = ['radius', 'shape'] as const
 const LOOK_STATES = ['focused', 'unfocused'] as const
 const LOOK_LAYER = ['x', 'y', 'blur', 'spread', 'color'] as const
@@ -116,10 +120,15 @@ export function cornerShape(what: string, raw: unknown): number | string {
 
 export class WindowLookReader {
   readonly #ignored: string[] = []
+  readonly #motionOf: MotionOf
 
-  static parse(raw: unknown): WindowLookWire | string {
-    if (raw === null || raw === undefined) return { numbers: [], ignored: [] }
-    return new WindowLookReader().#look(raw)
+  constructor(motionOf: MotionOf) {
+    this.#motionOf = motionOf
+  }
+
+  static parse(raw: unknown, motionOf: MotionOf): WindowLookWire | string {
+    if (raw === null || raw === undefined) return { numbers: [], ignored: [], motion: 'standard' }
+    return new WindowLookReader(motionOf).#look(raw)
   }
 
   #look(raw: unknown): WindowLookWire | string {
@@ -135,7 +144,11 @@ export class WindowLookReader {
       if (typeof layers === 'string') return layers
       numbers.push(layers.length / LOOK_LAYER.length, ...layers)
     }
-    return { numbers, ignored: this.#ignored }
+    const preset = look['motion'] ?? 'standard'
+    const motion = typeof preset === 'string' ? this.#motionOf(preset) : null
+    if (!motion) return `motion is not a motion preset of this runtime: ${JSON.stringify(preset)}`
+    numbers.push(motion.wire)
+    return { numbers, ignored: this.#ignored, motion: motion.preset }
   }
 
   #object(what: string, raw: unknown, keys: readonly string[], prefix: string): Fields | string {

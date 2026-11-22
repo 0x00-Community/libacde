@@ -75,6 +75,7 @@ pub struct WindowLook {
     pub superellipse: f64,
     pub focused: Vec<WindowShadow>,
     pub unfocused: Vec<WindowShadow>,
+    pub motion: acde_scene::motion::Preset,
 }
 
 impl WindowLook {
@@ -85,7 +86,8 @@ impl WindowLook {
         let (&[radius, superellipse], rest) = numbers.split_first_chunk::<2>()?;
         let (focused, rest) = Self::layers(rest)?;
         let (unfocused, rest) = Self::layers(rest)?;
-        rest.is_empty().then_some(Self { radius, superellipse, focused, unfocused })
+        let &[motion] = rest else { return None };
+        Some(Self { radius, superellipse, focused, unfocused, motion: acde_scene::motion::Preset::from_wire(motion as u32) })
     }
 
     fn layers(numbers: &[f64]) -> Option<(Vec<WindowShadow>, &[f64])> {
@@ -140,13 +142,17 @@ mod tests {
 
     #[test]
     fn a_window_look_comes_from_the_numbers_the_page_hands_over() {
-        let numbers = [12.0, 2.0, 1.0, 0.0, 8.0, 24.0, -4.0, f64::from(0x0000_0040u32), 0.0];
+        use acde_scene::motion::Preset;
+        let numbers = [12.0, 2.0, 1.0, 0.0, 8.0, 24.0, -4.0, f64::from(0x0000_0040u32), 0.0, 1.0];
         let look = WindowLook::from_numbers(&numbers).expect("a look");
         let shadow = WindowShadow { x: 0.0, y: 8.0, blur: 24.0, spread: -4.0, color: [0, 0, 0, 0x40] };
-        assert_eq!(look, WindowLook { radius: 12.0, superellipse: 2.0, focused: vec![shadow], unfocused: Vec::new() });
+        let expected = WindowLook { radius: 12.0, superellipse: 2.0, focused: vec![shadow], unfocused: Vec::new(), motion: Preset::Reduced };
+        assert_eq!(look, expected);
+        assert_eq!(WindowLook::from_numbers(&[1.0, 2.0, 0.0, 0.0, 0.0]).map(|l| l.motion), Some(Preset::Standard));
         assert_eq!(WindowLook::from_numbers(&numbers[..8]), None, "a layer cut short");
-        assert_eq!(WindowLook::from_numbers(&[1.0, 2.0, 0.0, 0.0, 7.0]), None, "numbers left over");
-        let five: Vec<f64> = [12.0, 2.0, 5.0].into_iter().chain([0.0; 25]).chain([0.0]).collect();
+        assert_eq!(WindowLook::from_numbers(&[1.0, 2.0, 0.0, 0.0]), None, "no motion");
+        assert_eq!(WindowLook::from_numbers(&[1.0, 2.0, 0.0, 0.0, 0.0, 7.0]), None, "numbers left over");
+        let five: Vec<f64> = [12.0, 2.0, 5.0].into_iter().chain([0.0; 25]).chain([0.0, 0.0]).collect();
         assert_eq!(WindowLook::from_numbers(&five), None, "more than four layers");
     }
 }

@@ -113,6 +113,7 @@ fn claim_surface(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, 
         "setDoubleClick" => set_double_click,
         "setFrameTheme" => set_frame_theme,
         "setWindowLook" => set_window_look,
+        "motion" => motion,
         "setPageDark" => set_page_dark,
         "setClipboard" => set_clipboard,
         "clipboardTypes" => clipboard_types,
@@ -375,6 +376,21 @@ fn set_window_look(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments
         },
     };
     with_surface(scope, |surface| surface.set_window_look(look));
+}
+
+const MOTION_SAMPLES: usize = 24;
+
+fn motion(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let name = if args.get(0).is_undefined() { "standard".to_string() } else { bind::arg_string(scope, &args, 0) };
+    let Some(preset) = acde_scene::motion::Preset::parse(&name) else { return rv.set_null() };
+    let curve = preset.curve();
+    let fields = [
+        ("preset", bind::string(scope, &name).into()),
+        ("wire", v8::Number::new(scope, f64::from(preset.to_wire())).into()),
+        ("duration", v8::Number::new(scope, curve.length() * 1000.0).into()),
+        ("easing", bind::string(scope, &curve.css(MOTION_SAMPLES)).into()),
+    ];
+    rv.set(bind::object(scope, &fields).into());
 }
 
 fn set_page_dark(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {

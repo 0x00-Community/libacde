@@ -2,6 +2,12 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { Frame } from '../src/frame.ts'
 
+const PRESETS: Record<string, { wire: number; duration: number }> = { standard: { wire: 0, duration: 514 }, reduced: { wire: 1, duration: 150 } }
+const motion = (preset?: string) => {
+  const found = PRESETS[preset ?? 'standard']
+  return found ? { preset: preset ?? 'standard', ...found, easing: 'linear(0, 1)' } : null
+}
+
 describe('Frame.desktop', () => {
   test('setDoubleClick hands each declared action to the runtime', () => {
     const calls: string[] = []
@@ -43,16 +49,47 @@ describe('Frame.desktop', () => {
 
   test('setWindowLook hands the checked look to the runtime as numbers, null as none', () => {
     const calls: number[][] = []
-    const desktop = Frame.desktop({ setWindowLook: (...args) => void calls.push(args) })
+    const desktop = Frame.desktop({ setWindowLook: (...args) => void calls.push(args), motion })
     const layer = { x: 0, y: 8, blur: 24, spread: -4, color: '#00000040' }
     desktop.setWindowLook({ corners: { radius: 12, shape: 'superellipse(2.5)' }, shadows: { focused: [layer], unfocused: [] } })
+    desktop.setWindowLook({ corners: { radius: 12 }, shadows: { focused: [], unfocused: [] }, motion: 'reduced' })
     desktop.setWindowLook(null)
-    assert.deepEqual(calls, [[12, 2.5, 1, 0, 8, 24, -4, 0x00000040, 0], []])
+    assert.deepEqual(calls, [[12, 2.5, 1, 0, 8, 24, -4, 0x00000040, 0, 0], [12, 1, 0, 0, 1], []])
+  })
+
+  test('setWindowLook changes only the keys it is given; null goes back to square, no shadows, standard', () => {
+    const calls: number[][] = []
+    const desktop = Frame.desktop({ setWindowLook: (...args) => void calls.push(args), motion })
+    desktop.setWindowLook({ motion: 'reduced' })
+    desktop.setWindowLook({ corners: { radius: 12, shape: 'squircle' } })
+    desktop.setWindowLook({ shadows: { focused: [{ x: 0, y: 2, blur: 4, spread: 0, color: '#000000ff' }], unfocused: [] } })
+    desktop.setWindowLook({ motion: 'standard' })
+    desktop.setWindowLook(null)
+    desktop.setWindowLook({ motion: 'reduced' })
+    assert.deepEqual(calls, [
+      [0, 1, 0, 0, 1],
+      [12, 2, 0, 0, 1],
+      [12, 2, 1, 0, 2, 4, 0, 0x000000ff, 0, 1],
+      [12, 2, 1, 0, 2, 4, 0, 0x000000ff, 0, 0],
+      [],
+      [0, 1, 0, 0, 1],
+    ])
+  })
+
+  test('motion() reads a preset from the runtime, by default the one of the last window look', () => {
+    const desktop = Frame.desktop({ setWindowLook: () => {}, motion })
+    assert.deepEqual(desktop.motion(), { preset: 'standard', duration: 514, easing: 'linear(0, 1)' })
+    desktop.setWindowLook({ corners: { radius: 0 }, shadows: { focused: [], unfocused: [] }, motion: 'reduced' })
+    assert.deepEqual(desktop.motion(), { preset: 'reduced', duration: 150, easing: 'linear(0, 1)' })
+    assert.equal(desktop.motion('standard').preset, 'standard')
+    desktop.setWindowLook(null)
+    assert.equal(desktop.motion().preset, 'standard')
+    assert.throws(() => desktop.motion('fast' as never), TypeError)
   })
 
   test('a bad window look is a TypeError and changes nothing', () => {
     const calls: number[][] = []
-    const desktop = Frame.desktop({ setWindowLook: (...args) => void calls.push(args) })
+    const desktop = Frame.desktop({ setWindowLook: (...args) => void calls.push(args), motion })
     const corners = { radius: 12, shape: 'squircle' as const }
     const layer = { x: 0, y: 0, blur: 4, spread: 0, color: '#000000ff' }
     const bad = (look: unknown, pattern: RegExp) =>
@@ -61,7 +98,7 @@ describe('Frame.desktop', () => {
     bad({ corners, shadows: { focused: [layer, layer, layer, layer, layer], unfocused: [] } }, /at most 4/)
     bad({ corners, shadows: { focused: [{ ...layer, color: 'black' }], unfocused: [] } }, /focused\[0\]\.color/)
     bad({ corners, shadows: { focused: [{ ...layer, blur: -1 }], unfocused: [] } }, /blur/)
-    bad({ corners }, /shadows/)
+    bad({ corners, shadows: { focused: [], unfocused: [] }, motion: 'fast' }, /motion/)
     assert.deepEqual(calls, [])
   })
 
