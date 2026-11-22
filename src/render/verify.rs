@@ -97,7 +97,7 @@ mod tests {
             clip: clip.to_path(0.1),
             filter: None,
             backdrop_filter: None,
-            corners: None,
+            shape: None,
         })
     }
 

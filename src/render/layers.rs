@@ -7,6 +7,7 @@ use crate::gpu::FilterEffect;
 use crate::gpu::Scene;
 use crate::gpu::{LayerCommand, RenderCommand};
 use acde_scene::corner::Corners;
+use acde_scene::glass::Glass;
 use kurbo::{Affine, BezPath, PathEl, Rect, Shape};
 
 use crate::render::commands::{Builder, Commands};
@@ -44,6 +45,7 @@ pub struct Backdrop {
     pub filter: Arc<Filter>,
     pub scale: f64,
     pub corners: Option<Corners>,
+    pub glass: Option<Glass>,
     shaped: bool,
 }
 
@@ -69,6 +71,10 @@ impl Backdrop {
 
     pub fn exponent(&self) -> f64 {
         self.corners.map_or(2.0, |c| c.exponent)
+    }
+
+    pub fn glass(&self) -> Option<&Glass> {
+        self.glass.as_ref()
     }
 
     pub fn blur(&self) -> f64 {
@@ -210,7 +216,8 @@ impl<'a> Split<'a> {
                     clip: self.clip(),
                     filter: l.backdrop_filter.clone().unwrap(),
                     scale: self.scale(t * l.transform),
-                    corners: l.corners.map(|c| Corners { radius: c.radius * (t * l.transform).determinant().abs().sqrt(), ..c }),
+                    corners: l.shape.map(|s| Corners { radius: s.corners.radius * Self::linear(t * l.transform), ..s.corners }),
+                    glass: l.shape.and_then(|s| s.glass).map(|g| g.scaled(Self::linear(t * l.transform))),
                     shaped: false,
                 };
                 self.cut();
@@ -339,6 +346,10 @@ impl<'a> Split<'a> {
     }
 
     fn scale(&self, t: Affine) -> f64 {
-        self.device * t.determinant().abs().sqrt()
+        self.device * Self::linear(t)
+    }
+
+    fn linear(t: Affine) -> f64 {
+        t.determinant().abs().sqrt()
     }
 }

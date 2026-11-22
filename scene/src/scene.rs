@@ -4,7 +4,7 @@ use kurbo::{Affine, BezPath, Rect, Shape, Stroke, Vec2};
 use peniko::{BlendMode, Brush, BrushRef, Color, Fill, FontData, Gradient, ImageBrush, ImageBrushRef, Style, StyleRef};
 
 use crate::Filter;
-use crate::corner::Corners;
+use crate::corner::LayerShape;
 
 pub type NormalizedCoord = i16;
 
@@ -97,7 +97,7 @@ pub trait PaintScene {
         backdrop_filter: Option<Arc<Filter>>,
     );
 
-    #[allow(clippy::too_many_arguments, reason = "a CSS layer and the corner shape of its element")]
+    #[allow(clippy::too_many_arguments, reason = "a CSS layer and the shape (corners, glass) of its element")]
     fn push_shaped_layer(
         &mut self,
         fill: Fill,
@@ -107,7 +107,7 @@ pub trait PaintScene {
         clip: &impl Shape,
         filter: Option<Arc<Filter>>,
         backdrop_filter: Option<Arc<Filter>>,
-        _corners: Corners,
+        _shape: LayerShape,
     ) {
         self.push_layer(fill, blend, alpha, transform, clip, filter, backdrop_filter);
     }
@@ -170,7 +170,7 @@ pub struct LayerCommand {
     pub clip: BezPath,
     pub filter: Option<Arc<Filter>>,
     pub backdrop_filter: Option<Arc<Filter>>,
-    pub corners: Option<Corners>,
+    pub shape: Option<LayerShape>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -238,8 +238,8 @@ impl RenderCommand {
 
     pub fn replay<P: PaintScene + ?Sized>(self, to: &mut P, by: Affine) {
         match self {
-            Self::PushLayer(c) => match c.corners {
-                Some(corners) => to.push_shaped_layer(c.fill, c.blend, c.alpha, by * c.transform, &c.clip, c.filter, c.backdrop_filter, corners),
+            Self::PushLayer(c) => match c.shape {
+                Some(shape) => to.push_shaped_layer(c.fill, c.blend, c.alpha, by * c.transform, &c.clip, c.filter, c.backdrop_filter, shape),
                 None => to.push_layer(c.fill, c.blend, c.alpha, by * c.transform, &c.clip, c.filter, c.backdrop_filter),
             },
             Self::PushClipLayer(c) => to.push_clip_layer(c.fill, by * c.transform, &c.clip),
@@ -304,7 +304,7 @@ impl PaintScene for Scene {
         backdrop_filter: Option<Arc<Filter>>,
     ) {
         let clip = clip.into_path(self.tolerance);
-        let layer = LayerCommand { fill, blend: blend.into(), alpha, transform, clip, filter, backdrop_filter, corners: None };
+        let layer = LayerCommand { fill, blend: blend.into(), alpha, transform, clip, filter, backdrop_filter, shape: None };
         self.commands.push(RenderCommand::PushLayer(layer));
     }
 
@@ -317,10 +317,10 @@ impl PaintScene for Scene {
         clip: &impl Shape,
         filter: Option<Arc<Filter>>,
         backdrop_filter: Option<Arc<Filter>>,
-        corners: Corners,
+        shape: LayerShape,
     ) {
         let clip = clip.into_path(self.tolerance);
-        let layer = LayerCommand { fill, blend: blend.into(), alpha, transform, clip, filter, backdrop_filter, corners: Some(corners) };
+        let layer = LayerCommand { fill, blend: blend.into(), alpha, transform, clip, filter, backdrop_filter, shape: Some(shape) };
         self.commands.push(RenderCommand::PushLayer(layer));
     }
 

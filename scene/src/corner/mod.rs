@@ -10,6 +10,12 @@ pub struct Corners {
     pub exponent: f64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LayerShape {
+    pub corners: Corners,
+    pub glass: Option<crate::glass::Glass>,
+}
+
 pub fn exponent(k: f64) -> f64 {
     k.exp2()
 }
@@ -42,17 +48,20 @@ pub fn equivalent_radius(radius: f64, k: f64) -> f64 {
 }
 
 pub fn coverage(point: (f64, f64), half: (f64, f64), radius: f64, exponent: f64) -> f32 {
+    (0.5 - distance(point, half, radius, exponent)).clamp(0.0, 1.0) as f32
+}
+
+pub fn distance(point: (f64, f64), half: (f64, f64), radius: f64, exponent: f64) -> f64 {
     let (x, y) = (point.0.abs(), point.1.abs());
     let radius = radius.clamp(0.0, half.0.min(half.1));
     let (cx, cy) = (half.0 - radius, half.1 - radius);
-    let distance = if radius > 0.0 && x > cx && y > cy {
+    if radius > 0.0 && x > cx && y > cy {
         let n = exponent.max(1.0);
         let (u, v) = ((x - cx) / radius, (y - cy) / radius);
         ((u.powf(n) + v.powf(n)).powf(1.0 / n) - 1.0) * radius
     } else {
         (x - half.0).max(y - half.1)
-    };
-    (0.5 - distance).clamp(0.0, 1.0) as f32
+    }
 }
 
 fn outside(n: f64) -> f64 {

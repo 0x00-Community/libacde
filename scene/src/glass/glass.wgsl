@@ -1,0 +1,34 @@
+fn acde_glass_normal(p: vec2<f32>, half: vec2<f32>) -> vec2<f32> {
+    let q = p / max(half, vec2<f32>(1.0, 1.0));
+    return q / max(length(q), 0.000001);
+}
+
+fn acde_glass_offset(p: vec2<f32>, half: vec2<f32>, d: f32, refraction: vec4<f32>) -> vec2<f32> {
+    let n = acde_glass_normal(p, half);
+    let inner = select(0.0, refraction.x * refraction.y * pow(1.0 + d / max(refraction.y, 0.001), 2.0), d <= 0.0 && -d < refraction.y);
+    let outer = select(0.0, -refraction.z * refraction.w * pow(1.0 - d / max(refraction.w, 0.001), 2.0), d > 0.0 && d < refraction.w);
+    return -n * (inner + outer);
+}
+
+fn acde_glass_highlight(p: vec2<f32>, half: vec2<f32>, d: f32, band: f32, angle: f32, amount: f32) -> f32 {
+    let b = max(band, 2.0);
+    if -d > b || d > 0.0 {
+        return 0.0;
+    }
+    let facing = max(dot(acde_glass_normal(p, half), vec2<f32>(cos(angle), sin(angle))), 0.0);
+    return facing * facing * (1.0 + d / b) * amount;
+}
+
+fn acde_glass_tone(rgb: vec3<f32>, white_point: f32, tint: vec4<f32>, shine: f32) -> vec3<f32> {
+    let lifted = rgb + (vec3<f32>(1.0) - rgb) * white_point;
+    let tinted = lifted * (1.0 - tint.a) + tint.rgb * tint.a;
+    return clamp(tinted + vec3<f32>(shine), vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+fn acde_glass_inside(d: f32, smoothing: f32) -> f32 {
+    return clamp(0.5 - d / (1.0 + 4.0 * smoothing), 0.0, 1.0);
+}
+
+fn acde_glass_bleed(d: f32, bleed: vec3<f32>) -> f32 {
+    return clamp(1.0 - d / max(bleed.y, 1.0), 0.0, 1.0) * bleed.x * bleed.z;
+}

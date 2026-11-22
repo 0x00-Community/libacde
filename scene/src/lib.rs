@@ -1,6 +1,7 @@
 pub mod blur;
 mod compose;
 pub mod corner;
+pub mod glass;
 mod filter;
 mod scene;
 

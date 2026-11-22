@@ -64,6 +64,7 @@ pub struct Backdrop {
     pub rect: [f32; 4],
     pub radius: f32,
     pub exponent: f32,
+    pub glass: Option<crate::glass::Glass>,
     pub effect: Effect,
 }
 
