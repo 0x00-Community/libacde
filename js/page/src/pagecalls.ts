@@ -11,6 +11,9 @@ type Env = WebInternals['env']
 type Chooser = NonNullable<Env['files']>
 type Picked = { readonly name: string; readonly path: string; readonly writable?: boolean }
 type Kind = 'file' | 'directory'
+type LentFile = { readonly name: string; readonly label: string; readonly writable: boolean }
+
+const LENT_FILE = 'lent-file:'
 
 export interface HandOver {
   handle(path: string, kind: Kind, writable: boolean): object | null
@@ -55,6 +58,7 @@ export class PageCalls implements HandOver {
   readonly #page: WebInternals
   readonly #granted = new Set<string>()
   readonly #folders = new Set<string>()
+  readonly #files = new Set<string>()
   readonly #setup: FolderSetup
   #warned = false
 
@@ -88,7 +92,8 @@ export class PageCalls implements HandOver {
   held(handle: unknown): { readonly path: string; readonly kind: Kind; readonly writable: boolean } | null {
     const picked = this.#page.handles.picked(handle)
     if (!picked) return null
-    const ok = this.#inFolder(picked.path) !== null || (picked.kind === 'file' && this.#granted.has(picked.path))
+    const file = picked.kind === 'file' && (this.#granted.has(picked.path) || this.#files.has(picked.path))
+    const ok = this.#inFolder(picked.path) !== null || file
     return ok ? { path: picked.path, kind: picked.kind, writable: picked.mode === 'readwrite' } : null
   }
 
@@ -98,6 +103,16 @@ export class PageCalls implements HandOver {
     const writable = (mode & 0o200) !== 0
     this.#setup.picker?.allowFile?.(path, writable)
     return { name: basename(path), path, writable }
+  }
+
+  #lent(file: LentFile): Picked {
+    const path = `${LENT_FILE}${file.name}`
+    this.#files.add(path)
+    return { name: file.label || file.name, path, writable: file.writable }
+  }
+
+  #lentFile(path: string): FolderPicker | null {
+    return this.#files.has(path) ? this.#setup.picker : null
   }
 
   #ranged(): Ranged | undefined {
@@ -125,13 +140,14 @@ export class PageCalls implements HandOver {
   }
 
   #chooser(): Chooser {
-    const grant = (path: string): Picked => this.#grant(path)
     const check = (file: Picked): string => {
       if (!this.#granted.has(file.path)) throw new Error('not a file the user picked')
       return file.path
     }
     const picker = this.#setup.picker
     const inFolder = (path: string): FolderPicker | null => this.#inFolder(path)
+    const reach = (path: string): FolderPicker | null => this.#inFolder(path) ?? this.#lentFile(path)
+    const lent = (file: LentFile): Picked => this.#lent(file)
     const folder = (dir: Picked): FolderPicker => {
       const found = inFolder(dir.path)
       if (!found) throw new Error('not in a folder the user picked')
@@ -140,12 +156,12 @@ export class PageCalls implements HandOver {
     const child = (dir: Picked, name: string): string => (dir.path === '/' ? `/${name}` : `${dir.path}/${name}`)
     return {
       open: async (options) => {
-        const paths = await this.#ask('open', options)
-        return Array.isArray(paths) && paths.length ? paths.map((path) => grant(String(path))) : null
+        const files = await this.#ask('open', options)
+        return Array.isArray(files) && files.length ? (files as LentFile[]).map(lent) : null
       },
       save: async (options) => {
-        const path = await this.#ask('save', options)
-        return typeof path === 'string' && path ? grant(path) : null
+        const file = (await this.#ask('save', options)) as LentFile | null
+        return file && typeof file.name === 'string' ? lent(file) : null
       },
       directory: async ({ mode }) => {
         if (!picker) return null
@@ -178,7 +194,7 @@ export class PageCalls implements HandOver {
       },
       remove: (dir, name, recursive) => folder(dir).remove(dir.path, name, recursive),
       read: async (file) => {
-        const from = inFolder(file.path)
+        const from = reach(file.path)
         if (from) return from.read(file.path)
         const path = check(file)
         if (!existsSync(path)) return null
@@ -186,7 +202,7 @@ export class PageCalls implements HandOver {
         return { bytes, lastModified: stat(path)?.mtimeMs ?? hostTime.wallNow() }
       },
       write: async (file, bytes) => {
-        const to = inFolder(file.path)
+        const to = reach(file.path)
         if (to) return to.write(file.path, bytes)
         writeFileSync(check(file), bytes)
       },

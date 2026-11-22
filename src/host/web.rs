@@ -229,27 +229,49 @@ fn handed(given: Option<serde_json::Value>) -> Vec<Option<std::os::fd::OwnedFd>>
 }
 
 pub(crate) fn lend(owner: &str, root: crate::runtime::LentRoot) -> Result<String, crate::runtime::FsError> {
-    WEBS.with(|w| w.borrow_mut().system.workspace.get_or_insert_with(crate::runtime::Workspace::new).lend(owner, root)).map_err(Into::into)
+    with_workspace(|workspace| workspace.lend(owner, root))
+}
+
+pub(crate) fn lend_file(owner: &str, file: crate::runtime::LentFile) -> Result<String, crate::runtime::FsError> {
+    with_workspace(|workspace| workspace.lend_file(owner, file))
+}
+
+fn with_workspace<T, E: Into<crate::runtime::FsError>>(work: impl FnOnce(&crate::runtime::Workspace) -> Result<T, E>) -> Result<T, crate::runtime::FsError> {
+    WEBS.with(|w| work(w.borrow_mut().system.workspace.get_or_insert_with(crate::runtime::Workspace::new))).map_err(Into::into)
 }
 
 #[cfg(unix)]
-fn adopt(owner: &str, lent: Lent, fds: &mut [Option<std::os::fd::OwnedFd>]) -> Option<String> {
+enum Adopted {
+    Folder(String),
+    File(String),
+}
+
+#[cfg(unix)]
+fn adopt(owner: &str, lent: Lent, fds: &mut [Option<std::os::fd::OwnedFd>]) -> Option<Adopted> {
+    use crate::runtime::{LentFile, LentRoot};
     let fd = fds.get_mut(lent.fd).and_then(Option::take)?;
-    if lent.kind != "directory" {
-        return None;
-    }
-    let root = crate::runtime::LentRoot::from_fd(lent.name, lent.label, lent.writable, fd);
-    lend(owner, root).inspect_err(|error| log::warn!("{owner}: a lent folder is refused: {}", error.message)).ok()
+    let (what, adopted) = match lent.kind.as_str() {
+        "directory" => ("folder", lend(owner, LentRoot::from_fd(lent.name, lent.label, lent.writable, fd)).map(Adopted::Folder)),
+        "file" => ("file", lend_file(owner, LentFile::from_fd(lent.name, lent.label, lent.writable, fd)).map(Adopted::File)),
+        _ => return None,
+    };
+    adopted.inspect_err(|error| log::warn!("{owner}: a lent {what} is refused: {}", error.message)).ok()
 }
 
 #[cfg(unix)]
-pub fn adopt_roots(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
-    use bind::IntoJs;
+pub fn adopt_lent(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     let mut given = bind::Args { scope: &mut *scope, args: &args };
     let (owner, lent, mut fds) = (given.string(0), given.json(1), handed(given.json(2)));
     let lent: Vec<Lent> = lent.and_then(|value| serde_json::from_value(value).ok()).unwrap_or_default();
-    let names: Vec<String> = lent.into_iter().filter_map(|lent| adopt(&owner, lent, &mut fds)).collect();
-    rv.set(names.js(scope));
+    let (mut folders, mut files) = (Vec::new(), Vec::new());
+    for adopted in lent.into_iter().filter_map(|lent| adopt(&owner, lent, &mut fds)) {
+        match adopted {
+            Adopted::Folder(name) => folders.push(name),
+            Adopted::File(name) => files.push(name),
+        }
+    }
+    let adopted = crate::js_object!(scope, {"folders" => folders, "files" => files});
+    rv.set(adopted.into());
 }
 
 pub fn unlend_root(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {

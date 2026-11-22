@@ -13,6 +13,7 @@ pub use access::files::{Files, LentRoot};
 pub(crate) use access::handed::claim as claim_handed;
 #[cfg(unix)]
 pub use access::handed::hand_fds;
+pub use access::lent::LentFile;
 use access::{admit, cache::RootCache, folder::valid_owner};
 pub(crate) use beneath::escaped;
 #[cfg(not(windows))]
@@ -46,7 +47,18 @@ impl<T: Serialize> IntoJson for Outcome<T> {
 pub(crate) struct Shared {
     pub(crate) fs: WorkspaceFs,
     lent: std::sync::Mutex<std::collections::HashMap<String, Vec<LentRoot>>>,
+    files: std::sync::Mutex<std::collections::HashMap<String, Vec<LentFile>>>,
     lendings: AtomicU64,
+}
+
+fn fresh_name(stem: &str, taken: impl Fn(&str) -> bool) -> String {
+    (1..).map(|n| if n == 1 { stem.to_owned() } else { format!("{stem}-{n}") }).find(|name| !taken(name)).unwrap_or_default()
+}
+
+fn forget<T>(known: &mut Vec<T>, gone: impl Fn(&T) -> bool) -> bool {
+    let before = known.len();
+    known.retain(|item| !gone(item));
+    before != known.len()
 }
 
 #[derive(Clone, Copy)]
@@ -76,7 +88,7 @@ impl Shared {
         let mut lent = self.lent.lock().unwrap_or_else(|e| e.into_inner());
         let roots = lent.entry(owner.to_owned()).or_default();
         let root = match root.name.is_empty() {
-            true => LentRoot { name: Self::fresh_name(roots), ..root },
+            true => LentRoot { name: fresh_name("work", |name| roots.iter().any(|root| root.name == name)), ..root },
             false => root,
         }
         .checked()?;
@@ -87,18 +99,36 @@ impl Shared {
         Ok(name)
     }
 
-    fn fresh_name(roots: &[LentRoot]) -> String {
-        let taken = |name: &str| roots.iter().any(|root| root.name == name);
-        (1..).map(|n| if n == 1 { "work".to_owned() } else { format!("work-{n}") }).find(|name| !taken(name)).unwrap_or_default()
+    fn lend_file(&self, owner: &str, file: LentFile) -> Outcome<String> {
+        if !valid_owner(owner) {
+            return Err(Failure::invalid("files are lent to an app"));
+        }
+        let mut lent = self.files.lock().unwrap_or_else(|e| e.into_inner());
+        let files = lent.entry(owner.to_owned()).or_default();
+        let file = match file.name.is_empty() {
+            true => LentFile { name: fresh_name("file", |name| files.iter().any(|file| file.name == name)), ..file },
+            false => file,
+        }
+        .checked()?;
+        let name = file.name.clone();
+        files.retain(|known| known.name != name);
+        files.push(file);
+        Ok(name)
+    }
+
+    fn lent_file(&self, owner: &str, name: &str) -> Option<LentFile> {
+        let lent = self.files.lock().unwrap_or_else(|e| e.into_inner());
+        lent.get(owner)?.iter().find(|file| file.name == name).cloned()
     }
 
     fn unlend(&self, owner: &str, name: &str) -> bool {
+        let mut files = self.files.lock().unwrap_or_else(|e| e.into_inner());
+        let file = files.get_mut(owner).is_some_and(|files| forget(files, |file| file.name == name));
+        drop(files);
         let mut lent = self.lent.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(roots) = lent.get_mut(owner) else { return false };
-        let before = roots.len();
-        roots.retain(|known| known.name != name);
+        let root = lent.get_mut(owner).is_some_and(|roots| forget(roots, |root| root.name == name));
         self.lendings.fetch_add(1, Ordering::Relaxed);
-        before != roots.len()
+        file || root
     }
 
     fn root_in(roots: &[FinderRoot], view: View, id: &str) -> Outcome<FinderRoot> {
@@ -214,7 +244,7 @@ impl FsCall {
 
 impl Shared {
     fn on(fs: WorkspaceFs) -> Self {
-        Self { fs, lent: Default::default(), lendings: AtomicU64::new(0) }
+        Self { fs, lent: Default::default(), files: Default::default(), lendings: AtomicU64::new(0) }
     }
 
     fn call(&self, call: &FsCall, view: View, roots: &[FinderRoot], writes: &Writes) -> Outcome<FsReply> {
@@ -364,6 +394,14 @@ impl Workspace {
 
     pub(crate) fn unlend(&self, owner: &str, name: &str) -> bool {
         self.shared.unlend(owner, name)
+    }
+
+    pub(crate) fn lend_file(&self, owner: &str, file: LentFile) -> Outcome<String> {
+        self.shared.lend_file(owner, file)
+    }
+
+    pub(crate) fn lent_file(&self, name: &str) -> Option<LentFile> {
+        self.shared.lent_file(self.owner.as_deref()?, name)
     }
 
     pub(crate) fn lent_root(&self, name: &str) -> Option<FinderRoot> {

@@ -57,8 +57,10 @@ interface SysNative {
   stopBackend?(pid: number, ms: number): boolean
   write?(pid: number, text: string): boolean
   endInput?(pid: number): void
-  adoptRoots?(app: string, lent: readonly Lent[], fds: readonly string[]): string[]
+  adoptLent?(app: string, lent: readonly Lent[], fds: readonly string[]): { readonly folders: string[]; readonly files: string[] }
   pickFolder?(app: string, title: string, writable: boolean): Promise<{ readonly name: string; readonly label: string } | null>
+  pickFiles?(app: string, title: string, multiple: boolean, filters: readonly FileFilter[]): Promise<{ readonly files: LentFile[] } | null>
+  pickSave?(app: string, title: string, name: string, filters: readonly FileFilter[]): Promise<LentFile | null>
   unlendRoot?(app: string, name: string): boolean
   spawnWeb(
     name: string,
@@ -83,6 +85,18 @@ export interface Lent {
   readonly kind: 'directory' | 'file'
   readonly writable: boolean
   readonly fd: number
+}
+
+export interface LentFile {
+  readonly name: string
+  readonly label: string
+  readonly writable: boolean
+}
+
+export interface FileFilter {
+  readonly name: string
+  readonly globs: readonly string[]
+  readonly mimes: readonly string[]
 }
 
 export interface WebGrants {

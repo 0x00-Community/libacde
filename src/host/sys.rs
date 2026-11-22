@@ -153,9 +153,11 @@ fn launcher<'s>(scope: &mut v8::PinScope<'s, '_>, argv: &[String]) -> v8::Local<
     crate::methods!(scope, obj,
         "unlendRoot" => crate::host::web::unlend_root,
         "pickFolder" => crate::host::picker::pick_folder,
+        "pickFiles" => crate::host::picker::pick_files,
+        "pickSave" => crate::host::picker::pick_save,
     );
     #[cfg(unix)]
-    bind::method(scope, obj, "adoptRoots", crate::host::web::adopt_roots);
+    bind::method(scope, obj, "adoptLent", crate::host::web::adopt_lent);
     obj
 }
 

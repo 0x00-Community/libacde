@@ -1,6 +1,6 @@
 import { installCore } from '@acde/dom/core'
 import type { WebInit } from '../../page/src/contract'
-import type { Lent, WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
+import type { FileFilter, Lent, LentFile, WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
 import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
 import { readDirOr, readTextOr } from '../../page/src/sys/fs'
 import { screenshotFile, xdgHome } from '../../page/src/sys/os'
@@ -14,7 +14,6 @@ import { FakeLock } from './app/lock'
 import { AppMenus } from './app/menus'
 import { PageCalls } from './app/page'
 import type { WireMenu } from '../../page/src/contract'
-import type { NativeFileChooser } from '../../page/src/native'
 import { API_LEVEL } from '@acde/api/manifest'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported, wallpaperOf } from './app/calls'
@@ -84,7 +83,6 @@ interface LauncherNatives extends Natives {
     readonly Shell?: { broker(options?: { title?: string }): LauncherShell }
     readonly Manager?: { connect(): ManagerLink }
     readonly DevTools?: NativeDevTools
-    readonly FileChooser?: { open(): Promise<NativeFileChooser> }
   }
 }
 
@@ -185,11 +183,11 @@ class Launcher {
     this.#title = session.label
     const menuKeys = manager ? (keys: readonly string[]) => this.#thread?.post({ type: 'menukeys', keys }) : null
     this.#menus = new AppMenus(this.#shell, () => this.#window, menuKeys)
-    const chooser = natives.native.FileChooser
     this.#pages = new PageCalls({
       label: session.label,
       language: () => SessionLanguage.of(process.env, sys().languages()).language,
-      chooser: () => chooser?.open() ?? null,
+      openFiles: (title: string, multiple: boolean, filters: readonly FileFilter[]) => this.#openFiles(title, multiple, filters),
+      saveFile: (title: string, name: string, filters: readonly FileFilter[]) => this.#saveFile(title, name, filters),
       folder: (title: string, writable: boolean) => this.#pickFolder(title, writable),
       unlend: (name: string) => this.#revoke(name),
       ...(this.#shell.notify && { notify: (title: string, body: string, subtitle: string) => this.#shell.notify!(title, body, subtitle) }),
@@ -684,16 +682,17 @@ class Launcher {
     if (!this.#unlend(name) && !this.manager) throw refused()
   }
 
-  #adopt(lent: unknown, fds: unknown): string[] {
+  #adopt(lent: unknown, fds: unknown): { readonly folders: string[]; readonly files: string[] } {
     const given = Array.isArray(fds) ? fds.filter((fd): fd is string => typeof fd === 'string') : []
-    if (!given.length) return []
-    return sys().adoptRoots?.(this.session.found?.app.id ?? '', Array.isArray(lent) ? lent : [], given) ?? []
+    const none = { folders: [], files: [] }
+    if (!given.length) return none
+    return sys().adoptLent?.(this.session.found?.app.id ?? '', Array.isArray(lent) ? lent : [], given) ?? none
   }
 
   #lend(lent: unknown, fds: unknown): string[] {
-    const added = this.#adopt(lent, fds)
-    if (added.length) this.#thread?.post({ type: 'fsroots', added, removed: [] })
-    return added
+    const { folders } = this.#adopt(lent, fds)
+    if (folders.length) this.#thread?.post({ type: 'fsroots', added: folders, removed: [] })
+    return folders
   }
 
   async #pickFolder(title: string, writable: boolean): Promise<{ readonly name: string; readonly label: string } | null> {
@@ -704,6 +703,29 @@ class Launcher {
     if (!lent) return null
     const [name] = this.#lend([lent], lent.fds)
     return name === undefined ? null : { name, label: lent.label || name }
+  }
+
+  async #openFiles(title: string, multiple: boolean, filters: readonly FileFilter[]): Promise<readonly LentFile[] | null> {
+    const app = this.session.found?.app.id
+    if (!app) return null
+    if (!this.manager) return (await sys().pickFiles?.(app, title, multiple, filters))?.files ?? null
+    const picked = (await this.manager.call('fs', 'pick', [{ kind: 'open', title, multiple, filters }])) as { files?: unknown; fds?: unknown } | null
+    const files = this.#adoptFiles(picked?.files, picked?.fds)
+    return files.length ? files : null
+  }
+
+  async #saveFile(title: string, name: string, filters: readonly FileFilter[]): Promise<LentFile | null> {
+    const app = this.session.found?.app.id
+    if (!app) return null
+    if (!this.manager) return (await sys().pickSave?.(app, title, name, filters)) ?? null
+    const lent = (await this.manager.call('fs', 'pick', [{ kind: 'save', title, name, filters }])) as (Lent & { readonly fds?: unknown }) | null
+    return lent ? (this.#adoptFiles([lent], lent.fds)[0] ?? null) : null
+  }
+
+  #adoptFiles(lent: unknown, fds: unknown): LentFile[] {
+    const entries = Array.isArray(lent) ? (lent as Lent[]) : []
+    const { files } = this.#adopt(entries, fds)
+    return entries.filter((entry) => files.includes(entry.name)).map(({ name, label, writable }) => ({ name, label: label || name, writable }))
   }
 
   #deliver(event: ManagerEvent): void {

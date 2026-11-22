@@ -63,7 +63,7 @@
   `desktops.choose`、`lock.*`) 回 `unsupported` (501).
   `window.setTitle` 记下标题 (语义树、`webs`、DevTools 目标用它); `window.setMenus` 交给宿主窗口 (`Shell.setMenus`, 菜单画在框上), 带 `shortcut`
   的菜单项注册成 `menu` 范围的快捷键, 宿主推来的 `menuselect` 和按下的菜单快捷键转成页面的 `window.menu` (`app/menus.ts`); `page.open` / `page.save`
-  (页面的打开、保存文件选择器) 用宿主的 `FileChooser`, `page.notify` 用 `Shell.notify` (`app/page.ts`); `page.download` 仍回 501.
+  (页面的打开、保存文件选择器) 用 `sys.pickFiles` / `sys.pickSave` (见 `docs/web/fs.md`「打开和保存文件」), `page.notify` 用 `Shell.notify` (`app/page.ts`); `page.download` 仍回 501.
 - **会话与桌面包** (`acde:session`、`acde:desktops`, libacde 工单 04): 页面胶水 (`RemoteBridge`) 给桌面页定义这两个模块, 应用页在
   `tier.shell` 含 `session` / `desktops` 时定义. `session.logout/reboot/poweroff/setLanguage(tag)`、`desktops.list()` (回
   `{desktops: DesktopInfo[], current}`)、`desktops.choose(id, remember?)` 经 rpc 转出, 有管家时原样 `manager.call`. 同步的

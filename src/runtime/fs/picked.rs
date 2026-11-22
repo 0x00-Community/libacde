@@ -1,4 +1,5 @@
 use super::FsError;
+use super::access::lent::LentFile;
 #[cfg(not(windows))]
 use super::path::NodePath;
 use super::path::same_folder;
@@ -19,6 +20,7 @@ pub struct PickedFolders {
 type Picked<T> = std::result::Result<T, FsError>;
 
 const LENT: &str = "lent:";
+const LENT_FILE: &str = "lent-file:";
 
 impl PickedFolders {
     pub fn lent_from(workspace: Option<super::Workspace>) -> Self {
@@ -41,6 +43,12 @@ impl PickedFolders {
             Some(known) => known.1 = writable,
             None => files.push((path.to_owned(), writable)),
         }
+    }
+
+    fn lent_file(&self, path: &str) -> Option<Picked<LentFile>> {
+        let name = path.strip_prefix(LENT_FILE)?;
+        let file = self.lent.as_ref().and_then(|workspace| workspace.lent_file(name));
+        Some(file.ok_or_else(|| Failure::http(403, "not a file lent to this app").into()))
     }
 
     fn locate(&self, path: &str) -> Outcome<(FinderRoot, String)> {
@@ -83,6 +91,9 @@ impl PickedFolders {
     }
 
     pub fn read(&self, path: &str) -> Picked<Option<Contents>> {
+        if let Some(file) = self.lent_file(path) {
+            return Ok(Some(file?.read()?));
+        }
         let (root, relative) = self.locate(path)?;
         match WorkspaceFs::read_bytes_in(&root, &relative) {
             Ok(contents) => Ok(Some(contents)),
@@ -92,14 +103,21 @@ impl PickedFolders {
     }
 
     pub fn write(&self, path: &str, data: &[u8]) -> Picked<()> {
+        if let Some(file) = self.lent_file(path) {
+            return Ok(file?.write(data)?);
+        }
         let (root, relative) = self.locate(path)?;
         WorkspaceFs::write_file_in(&root, &relative, data, &WriteOptions::default())?;
         Ok(())
     }
 
     pub fn read_range(&self, path: &str, offset: Option<u64>, length: Option<u64>, version: Option<String>) -> Picked<Option<Range>> {
+        let options = RangeOptions { if_version: version };
+        if let Some(file) = self.lent_file(path) {
+            return Ok(Some(file?.read_range(offset, length, &options)?));
+        }
         let (root, relative) = self.locate(path)?;
-        match WorkspaceFs::read_range_in(&root, &relative, offset, length, &RangeOptions { if_version: version }) {
+        match WorkspaceFs::read_range_in(&root, &relative, offset, length, &options) {
             Ok(range) => Ok(Some(range)),
             Err(failure) if failure.errno == Errno::Noent => Ok(None),
             Err(failure) => Err(failure.into()),
@@ -107,6 +125,9 @@ impl PickedFolders {
     }
 
     pub fn open_write(&self, path: &str, keep_existing_data: bool) -> Picked<Opened> {
+        if let Some(file) = self.lent_file(path) {
+            return Ok(self.writes.open_lent(&file?, keep_existing_data)?);
+        }
         let (root, relative) = self.locate(path)?;
         Ok(self.writes.open_in(&root, &relative, &OpenWrite { keep_existing_data, ..OpenWrite::default() })?)
     }
@@ -240,6 +261,32 @@ mod tests {
         let stranger = PickedFolders::lent_from(Some(all.files(crate::runtime::Files::new(&[], false), "stranger")));
         assert_eq!(code(stranger.read("lent:work/a.txt")), "EACCES");
         assert_eq!(code(PickedFolders::default().read("lent:work/a.txt")), "EACCES");
+        _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_lent_file_is_reached_by_its_name_and_written_on_commit() {
+        let base = scratch();
+        let path = base.join("note.txt");
+        std::fs::write(&path, b"old").unwrap();
+        let all = crate::runtime::fs::Workspace::at(&base);
+        assert_eq!(all.lend_file("viewer", LentFile::open(&path, true).unwrap()).unwrap(), "file");
+        assert_eq!(all.lend_file("viewer", LentFile::open(&path, false).unwrap()).unwrap(), "file-2");
+        let folders = PickedFolders::lent_from(Some(all.files(crate::runtime::Files::new(&[], false), "viewer")));
+        assert_eq!(folders.read("lent-file:file").unwrap().unwrap().data, b"old");
+        let opened = folders.open_write("lent-file:file", true).unwrap();
+        assert_eq!(opened.size, 3);
+        folders.truncate_write(&opened.id, Some(1)).unwrap();
+        folders.write_chunk(&opened.id, Some(1), b"k").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"old");
+        folders.commit_write(&opened.id).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"ok");
+        assert_eq!(code(folders.write("lent-file:file-2", b"x")), "EACCES");
+        assert_eq!(code(folders.open_write("lent-file:file-2", false)), "EACCES");
+        let stranger = PickedFolders::lent_from(Some(all.files(crate::runtime::Files::new(&[], false), "stranger")));
+        assert_eq!(code(stranger.read("lent-file:file")), "EACCES");
+        assert!(all.unlend("viewer", "file"));
+        assert_eq!(code(folders.read("lent-file:file")), "EACCES");
         _ = std::fs::remove_dir_all(base);
     }
 

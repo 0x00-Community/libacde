@@ -28,14 +28,14 @@ acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边�
 - JS 见不到描述符号: 应用进程里的管家客户端 (acdes `crates/manager/src/client.rs`) 收到帧上的描述符, 交给 `acde::runtime::hand_fds`
   (`fs/access/handed.rs`, 由 acdes 的 main.rs 经 `acde_manager::client::hand_fds_with` 登记) 收进进程内的登记表, 换回随机令牌 (uuid 字符串);
   JS 拿到的 `fds` 是这些令牌 (`string[]`). 令牌只出现在启动器的 JS 里: 管家客户端只装在启动器 isolate 的 natives 上,
-  页面 isolate 收不到管家帧. 收令牌的 `sys.adoptRoots` (连同 `sys.pickFolder`、`sys.unlendRoot`) 也只装在启动器的 `sys` 上 (src/host `sys.rs` 的 `launcher`),
+  页面 isolate 收不到管家帧. 收令牌的 `sys.adoptLent` (连同 `sys.pickFolder`、`sys.pickFiles`、`sys.pickSave`、`sys.unlendRoot`) 也只装在启动器的 `sys` 上 (src/host `sys.rs` 的 `launcher`),
   页面 isolate 的 `sys` (`sys::object`) 没有这几个方法. 登记表里放了 60 秒还没人领的描述符, 在下一次 `hand_fds` 时关掉并记一行 warn.
-- 拉起时: welcome 的 `lent` + `fds`, 启动器在起页面线程前交给 `sys.adoptRoots(应用编号, lent, fds)`.
+- 拉起时: welcome 的 `lent` + `fds`, 启动器在起页面线程前交给 `sys.adoptLent(应用编号, lent, fds)`.
 - 运行中: 管家推 `{type: 'lend', ...条目, fds}`, 启动器收下后给页面发 `fsroots {added}`; 带借出的打开请求是 `{type: 'request', request, lent, fds}`,
   启动器收下再把请求交给页面 (`window.request`), 请求里补 `root: <第一个收下的 name>`.
-- `sys.adoptRoots` (src/host `web.rs`, 只在 unix 上有) 先按 `fds` 里的令牌从登记表取走这一帧的全部描述符 (不认识的令牌得不到描述符),
-  再把 `kind: 'directory'` 的条目连同它的描述符登记 (`LentRoot::from_fd`, 句柄是 `cap_std::fs::Dir`), 回登记上的 `name`;
-  没被条目用到的、`kind: 'file'` 的、登记被拒的描述符随即关掉.
+- `sys.adoptLent` (src/host `web.rs`, 只在 unix 上有) 先按 `fds` 里的令牌从登记表取走这一帧的全部描述符 (不认识的令牌得不到描述符),
+  再把 `kind: 'directory'` 的条目登记成借出的根 (`LentRoot::from_fd`, 句柄是 `cap_std::fs::Dir`), `kind: 'file'` 的登记成借出的文件
+  (`LentFile::from_fd`, 见「打开和保存文件」), 回 `{folders, files}` (登记上的 `name`); 没被条目用到的、登记被拒的描述符随即关掉.
 - 登记的根放在进程内 (`fs/mod.rs` 的 `Shared.lent`, 按应用编号), 同一应用同名的后来的替换先前的, 进程结束就没了, 不记进批准.
   `roots()` 里排在私有文件夹和公共位置之后: `{id: name, label, source: 'lent', mode}`, `label` 为空时用 `name`; `writable` 为假时 `mode: 'read_only'`,
   写入一律 403 `EACCES` (由 libacde 守, 描述符本身不限读写). 按 `name` 当 root 用.
@@ -82,8 +82,8 @@ acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边�
   `WindowSelf`) 把它换成 `handle` 再交给页面, `entry` 不进页面. 来源可写 (`mode` 有属主写位; Windows 只读属性) 时句柄可写. `FileAccess.view` 是 `handle` 的
   应用 (第三方应用, 和只有 `fs: true` 的系统应用) 只拿 `{kind, handle, file?}`; 点名了公共位置的系统应用和没有 `fs` 的系统应用拿 `url` 加 `handle`;
   按路径的 `{root, path, file}` 加 `handle` 只给桌面页面.
-- 选择器: `showOpenFilePicker` 的文件只读 (只读属性) 时句柄是只读的, 别的可写; `showSaveFilePicker` 可写; `showDirectoryPicker` 照 `mode`.
-- 句柄怎么登记: 文件记在这个页面的 `PageCalls` (和打开选择器选中的文件一起; 整读整写走 acde-host `sys/fs`, 同时经 `natives.picker.allowFile` 记进
+- 选择器: `showOpenFilePicker` 的文件一律只读; `showSaveFilePicker` 可写; `showDirectoryPicker` 照 `mode`.
+- 句柄怎么登记: 选择器选中的文件见「打开和保存文件」. 拖放和交来的文件记在这个页面的 `PageCalls` (整读整写走 acde-host `sys/fs`, 同时经 `natives.picker.allowFile` 记进
   这个 web 的 `PickedFolders`, 只认这一个路径, 大文件的按需读和分块写走它), 文件夹经 `natives.picker.adopt` (src/host
   `picker.rs` `adopt`) 进这个 web 的 `PickedFolders`, 读写和选的文件夹一样不出这个文件夹、不跟随链接. acde-dom 经 `WebInternals.handles` (`of` / `picked` /
   `transfer`) 造句柄、认句柄、往 `DataTransfer` 里放; 页面自己 `new FileSystemFileHandle(...)` 造不出能读的句柄 (`PageCalls` 只认登记过的路径).
@@ -175,7 +175,7 @@ Linux 会话 (acdebin-system 的 `crates/window` `drop_performed`) 有本地文�
 取消或没有选择器是 `AbortError`, `requestPermission` 不弹窗; handle 只活到页面结束). 选中的文件夹一律成为借出的根 (见「临时借出的根」),
 页面和 libacde 都拿不到它的路径. 链路: acde-dom 的 `env.files.directory` → acde-host `pagecalls.ts` 的页面调用 `folder({title, writable})`
 → 启动器 (`launcher/src/app/page.ts` `PageCalls`, `main.ts` `#pickFolder`):
-- 会话里调管家 `fs.pick({kind: 'folder', title, writable})`, 应答 (借出条目和 `fds`) 交 `sys.adoptRoots`; 管家记住这次借出, 下次随 welcome 的 `lent` 回来.
+- 会话里调管家 `fs.pick({kind: 'folder', title, writable})`, 应答 (借出条目和 `fds`) 交 `sys.adoptLent`; 管家记住这次借出, 下次随 welcome 的 `lent` 回来.
 - 宿主窗口里没有管家, 调 `sys.pickFolder(应用编号, title, writable)` (src/host `picker.rs`): 选择器在 `acde-picker` 线程上开, 先取 `choose` 事先给的答复
   (acdev runtime 的 `src/chooser.rs`, 三种选择器都在这里定去哪): Linux 是 portal FileChooser (`directory: true`), macOS 是 hostwin 主线程上的
   `NSOpenPanel` sheet, Windows 是 `SHBrowseForFolderW`; 拿到的路径当场打开成目录句柄 (`LentRoot::open`), 名字由 libacde 取 (`work`、`work-2`…),
@@ -189,11 +189,22 @@ rename、删除、复制进去都是 403 `EACCES`, 检查在 `WorkspaceFs` 的�
 桌面没有应用编号, 选不了文件夹.
 
 **打开和保存文件**: `showOpenFilePicker` / `<input type=file>` / `showSaveFilePicker` (acde-dom `dom/picker.ts`、`dom/forms.ts`) → `env.files.open` /
-`save` → acde-host `pagecalls.ts` 的页面调用 `open` / `save` → Broker `#fileChooser()` 的 `native.FileChooser` 的 `openFile({title, multiple,
-directory, filters})` / `saveFile({title, name, filters})`, filter 是 `{name, globs, mimes}` (页面的 `types` / `accept` 换来的), 回路径列表 / 路径
-或 null (取消). 选中的文件只给这个页面读写 (`pagecalls.ts` 记着). 没有 `FileChooser` 时打一行 warn, 页面得到 `AbortError` / `cancel`.
-- 会话: runtime `portal.rs` 的 napi `FileChooser` (portal 的 `OpenFile` / `SaveFile`).
-- 宿主窗口: acdev runtime 的 `src/hostnative.rs` 换上自己的 `FileChooser`, 在 `acde-chooser` 线程上走 `chooser.rs`: 先取 `choose` 的答复; Linux 有窗口时
+`save` → acde-host `pagecalls.ts` 的页面调用 `open` / `save` → 启动器 (`launcher/src/app/page.ts` `PageCalls` 拼标题 `<应用名>: 打开/保存`、
+清理 filter, `main.ts` `#openFiles` / `#saveFile`), filter 是 `{name, globs, mimes}` (页面的 `types` / `accept` 换来的). 选中的文件交出的是
+文件描述符, 页面和 libacde 都拿不到路径; 取消时页面得到 `AbortError` / `cancel`.
+- 会话里调管家 `fs.pick({kind: 'open', title, multiple, filters})` → `{files: Lent[]}` + `fds` (只读描述符), `fs.pick({kind: 'save', title, name, filters})`
+  → 一个 `Lent` + 可写描述符; 应答交 `sys.adoptLent`. 管家打开要保存的文件用读写加创建、不截断 (`O_RDWR | O_CREAT`, 不带 `O_TRUNC`), 原文件在页面提交写入前不变.
+  用户选了一个原本不存在的文件名又放弃保存时, 管家已经建出的空文件留着 (和浏览器一样; libacde 拿着描述符也删不了它). 打开和保存都不记住.
+- 宿主窗口里没有管家, 调 `sys.pickFiles(应用编号, title, multiple, filters)` / `sys.pickSave(应用编号, title, name, filters)` (src/host `picker.rs`):
+  在 `acde-picker` 线程上调宿主的 `Platform::open_files` / `save_file`, 拿到的路径当场打开 (`LentFile::open`: 打开只读; 保存读写加创建、不截断), 路径不经 JS.
+- 两种都回 `{name, label, writable}` (打开是它的数组), 名字由管家给或 libacde 取 (`file`、`file-2`…), 登记在进程内 (`fs/mod.rs` 的 `Shared.files`,
+  按应用编号; 撤销 `unlend {name}` 同时查文件和文件夹). 页面的文件 handle 内部键是 `lent-file:<name>`, 读写都经 `natives.picker` 到 `PickedFolders`,
+  它按名字在这个应用的借出文件里找 (`Workspace::lent_file`), 别的应用的找不到 (403 `EACCES`); `writable` 为假时写入 403.
+- 借出的文件 (`fs/access/lent.rs` `LentFile`) 按位置读写 (`pread` / `pwrite`, Windows `seek_read` / `seek_write`), 不动共享的文件偏移; 整写是从 0 写入、
+  截到新长度、`sync_data`. `createWritable` 的分块写先写进系统临时目录里的草稿 (`.acde-lent-<uuid>.acde-part`, `keepExistingData` 时先拷入现有内容),
+  提交时拷回描述符、截到草稿长度、`sync_data` 后删草稿, 放弃只删草稿. 提交回写是原地写, 不是原子替换: 写到一半进程崩了文件会损坏, 这是用描述符的代价;
+  因为还是同一个文件, 属主、权限、ACL 都保留.
+- 选择面板 (宿主窗口里由 acdev 的 `Platform` 实现; 会话里由管家起): acdev runtime 的 `chooser.rs`: 先取 `choose` 的答复; Linux 有窗口时
   是 portal (runtime `open_files` / `save_file`, 和 napi 同一段); 别的交给 hostwin 主线程: macOS 是挂在宿主窗口上的 `NSOpenPanel` /
   `NSSavePanel` sheet; Windows 是 `platform/win32/dialog.rs` 的 `IFileOpenDialog` / `IFileSaveDialog`, 以宿主窗口为 owner (`multiple` 是
   `FOS_ALLOWMULTISELECT`, `directory` 是 `FOS_PICKFOLDERS`, 总是 `FOS_FORCEFILESYSTEM`, 返回盘符或 UNC 绝对路径, 取消回 `None`); headless 回错.

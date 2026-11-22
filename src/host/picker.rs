@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 
-use crate::runtime::{EntryKind, FsError, LentRoot, Opened, PickedFolders, Range, Workspace};
+use crate::model::{FileFilter, OpenRequest, SaveRequest};
+use crate::runtime::{EntryKind, FsError, LentFile, LentRoot, Opened, PickedFolders, Range, Workspace};
 
 use crate::host::{bind, offload};
 
@@ -227,14 +228,89 @@ fn lend_chosen(scope: &mut v8::PinScope, resolver: v8::Local<v8::PromiseResolver
         let label = root.label.clone();
         crate::host::web::lend(&owner, root).map(|name| Some((name, label))).map_err(|error| error.message)
     });
-    match lent {
-        Ok(Some((name, label))) => {
-            let picked = crate::js_object!(scope, {"name" => name, "label" => label});
-            resolver.resolve(scope, picked.into());
+    let picked = lent.map(|lent| match lent {
+        Some((name, label)) => crate::js_object!(scope, {"name" => name, "label" => label}).into(),
+        None => v8::null(scope).into(),
+    });
+    answer(scope, resolver, picked);
+}
+
+struct Files {
+    owner: String,
+    files: Vec<LentFile>,
+    save: bool,
+}
+
+type ChosenFiles = Result<Option<Files>, String>;
+
+#[derive(serde::Deserialize, Default)]
+#[serde(default)]
+struct Filter {
+    name: String,
+    globs: Vec<String>,
+    mimes: Vec<String>,
+}
+
+fn filters(given: Option<serde_json::Value>) -> Vec<FileFilter> {
+    let given: Vec<Filter> = given.and_then(|value| serde_json::from_value(value).ok()).unwrap_or_default();
+    given.into_iter().map(|Filter { name, globs, mimes }| FileFilter { name, globs, mimes }).collect()
+}
+
+fn opened(paths: Vec<String>, writable: bool) -> Result<Vec<LentFile>, String> {
+    paths.iter().map(|path| LentFile::open(path, writable).map_err(|error| format!("{path}: {error}"))).collect()
+}
+
+pub fn pick_files(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let mut given = bind::Args { scope: &mut *scope, args: &args };
+    let (owner, title, multiple, filters) = (given.string(0), given.string(1), given.flag(2).unwrap_or(false), filters(given.json(3)));
+    let request = OpenRequest { title, multiple, directory: false, filters };
+    let platform = crate::host::rt::current().platform();
+    let choose = move || -> ChosenFiles {
+        let Some(paths) = platform.open_files(request)? else { return Ok(None) };
+        Ok(Some(Files { owner, files: opened(paths, false)?, save: false }))
+    };
+    offload::run(scope, &mut rv, "acde-picker", choose, lend_files);
+}
+
+pub fn pick_save(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let mut given = bind::Args { scope: &mut *scope, args: &args };
+    let (owner, title, name, filters) = (given.string(0), given.string(1), given.string(2), filters(given.json(3)));
+    let request = SaveRequest { title, name, filters };
+    let platform = crate::host::rt::current().platform();
+    let choose = move || -> ChosenFiles {
+        let Some(path) = platform.save_file(request)? else { return Ok(None) };
+        Ok(Some(Files { owner, files: opened(vec![path], true)?, save: true }))
+    };
+    offload::run(scope, &mut rv, "acde-picker", choose, lend_files);
+}
+
+fn lend_files(scope: &mut v8::PinScope, resolver: v8::Local<v8::PromiseResolver>, chosen: ChosenFiles) {
+    let Ok(Some(Files { owner, files, save })) = chosen else {
+        let picked = chosen.map(|_| v8::null(scope).into());
+        return answer(scope, resolver, picked);
+    };
+    let mut lent = Vec::new();
+    for file in files {
+        let (label, writable) = (file.label.clone(), file.writable);
+        match crate::host::web::lend_file(&owner, file) {
+            Ok(name) => lent.push(crate::js_object!(scope, {"name" => name, "label" => label, "writable" => writable}).into()),
+            Err(error) => return answer(scope, resolver, Err(error.message)),
         }
-        Ok(None) => {
-            let null = v8::null(scope);
-            resolver.resolve(scope, null.into());
+    }
+    let picked = match save {
+        true => lent.first().copied().unwrap_or_else(|| v8::null(scope).into()),
+        false => {
+            let list = v8::Array::new_with_elements(scope, &lent);
+            crate::js_object!(scope, {"files" => v8::Local::<v8::Value>::from(list)}).into()
+        }
+    };
+    answer(scope, resolver, Ok(picked));
+}
+
+fn answer(scope: &mut v8::PinScope, resolver: v8::Local<v8::PromiseResolver>, picked: Result<v8::Local<v8::Value>, String>) {
+    match picked {
+        Ok(value) => {
+            resolver.resolve(scope, value);
         }
         Err(message) => {
             let text = bind::string(scope, &message);
