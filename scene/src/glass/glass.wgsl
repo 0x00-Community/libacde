@@ -26,10 +26,27 @@ fn acde_glass_highlight(p: vec2<f32>, half: vec2<f32>, d: f32, band: f32, angle:
     return acde_glass_shine(acde_glass_normal(p, half), d, band, angle, amount);
 }
 
+const ACDE_GLASS_EDGE_BOOST: f32 = 5.0;
+const ACDE_GLASS_EDGE_FALLOFF: f32 = 0.08;
+const ACDE_GLASS_MOST_SHIFT: f32 = 1.3;
+
+fn acde_glass_lens(n: vec2<f32>, d: f32, bevel: f32, strength: f32) -> vec2<f32> {
+    let b = max(bevel, 1.0);
+    let e = max(-d, 0.0);
+    let rim = 1.0 - clamp(e / b, 0.0, 1.0);
+    let boost = (1.0 + ACDE_GLASS_EDGE_BOOST * exp(-e / (ACDE_GLASS_EDGE_FALLOFF * b))) / (1.0 + ACDE_GLASS_EDGE_BOOST);
+    let shift = min(max(strength, 0.0) * rim * rim * rim * boost, ACDE_GLASS_MOST_SHIFT * b);
+    return select(-n * shift, vec2<f32>(0.0), d > 0.0);
+}
+
 fn acde_glass_tone(rgb: vec3<f32>, white_point: f32, tint: vec4<f32>, shine: f32) -> vec3<f32> {
+    return acde_glass_tone_darkened(rgb, white_point, tint, shine, 0.0);
+}
+
+fn acde_glass_tone_darkened(rgb: vec3<f32>, white_point: f32, tint: vec4<f32>, shine: f32, darken: f32) -> vec3<f32> {
     let lifted = rgb + (vec3<f32>(1.0) - rgb) * white_point;
     let tinted = lifted * (1.0 - tint.a) + tint.rgb * tint.a;
-    return clamp(tinted + vec3<f32>(shine), vec3<f32>(0.0), vec3<f32>(1.0));
+    return clamp(tinted * (1.0 - darken) + vec3<f32>(shine), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
 fn acde_glass_inside(d: f32, smoothing: f32) -> f32 {

@@ -1,7 +1,7 @@
-use super::{Bleed, BlurLayer, Glass, Highlight, LAYERS, Refraction};
+use super::{Bleed, BlurLayer, Glass, Highlight, LAYERS, Lens, Refraction};
 
 const HIGHLIGHT_DEGREES: f32 = 330.0;
-const HIGHLIGHT_AMOUNT: f32 = 0.5;
+const HIGHLIGHT_AMOUNT: f32 = 0.35;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Role {
@@ -77,13 +77,15 @@ impl Glass {
     pub fn preset(role: Role, level: Level) -> Self {
         match level.for_role(role) {
             Level::Clear => Self {
-                refraction: Refraction { inner_amount: 0.8, inner_height: 18.0, outer_amount: 0.35, outer_height: 30.0 },
-                blur: layers([(0.0, 1.0), (2.0, 0.6), (4.0, 0.4), (8.0, 0.2), (12.0, 0.1)]),
-                bleed: Bleed { amount: 0.4, radius: 18.0, opacity: 0.5 },
+                refraction: Refraction { inner_amount: 0.0, inner_height: 18.0, outer_amount: 0.0, outer_height: 0.0 },
+                blur: layers([(0.0, 1.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]),
+                bleed: Bleed::default(),
                 highlight: highlight(),
                 white_point: 0.0,
                 smoothing: 0.35,
                 tint: [1.0, 1.0, 1.0, 0.0],
+                lens: Lens { strength: 20.0, dispersion: 0.03 },
+                darken: 0.05,
             },
             Level::Medium => Self {
                 refraction: Refraction { inner_amount: 0.4, inner_height: 10.0, outer_amount: 0.15, outer_height: 18.0 },
@@ -93,6 +95,7 @@ impl Glass {
                 white_point: 0.05,
                 smoothing: 0.6,
                 tint: [1.0, 1.0, 1.0, 0.05],
+                ..Self::default()
             },
             Level::Tinted => Self {
                 refraction: Refraction { inner_amount: 0.35, inner_height: 10.0, outer_amount: 0.15, outer_height: 20.0 },
@@ -102,6 +105,7 @@ impl Glass {
                 white_point: 0.12,
                 smoothing: 0.65,
                 tint: [1.0, 1.0, 1.0, 0.18],
+                ..Self::default()
             },
             Level::Opaque => Self::opaque(false),
         }
@@ -116,6 +120,7 @@ impl Glass {
             white_point: 0.0,
             smoothing: 0.5,
             tint: if dark { [0.11, 0.11, 0.12, 0.9] } else { [0.97, 0.97, 0.98, 0.9] },
+            ..Self::default()
         }
     }
 }
@@ -137,13 +142,14 @@ mod tests {
     }
 
     #[test]
-    fn regular_glass_at_the_clear_level_is_the_clear_2_sample() {
+    fn regular_glass_at_the_clear_level_is_its_lens_sample() {
         let sample = [
             ("acde-glass", "clear"),
-            ("acde-glass-refraction", "0.8 18px 0.35 30px"),
-            ("acde-glass-blur", "0px 1, 2px 0.6, 4px 0.4, 8px 0.2, 12px 0.1"),
-            ("acde-glass-bleed", "0.4 18px 0.5"),
-            ("acde-glass-highlight", "330deg 0.5"),
+            ("acde-glass-refraction", "0 18px 0 0 20px 0.03"),
+            ("acde-glass-blur", "0px 1"),
+            ("acde-glass-bleed", "0 0 0"),
+            ("acde-glass-highlight", "330deg 0.35"),
+            ("acde-glass-darken", "0.05"),
             ("acde-glass-white-point", "0"),
             ("acde-glass-smoothing", "0.35"),
             ("acde-glass-tint", "rgb(255 255 255 / 0)"),

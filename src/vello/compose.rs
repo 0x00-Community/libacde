@@ -108,10 +108,8 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 impl Composer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("acde compose"),
-            source: wgpu::ShaderSource::Wgsl(format!("{}\n{}\n{}", crate::gpu::corner::WGSL, crate::gpu::glass::WGSL, include_str!("compose.wgsl")).into()),
-        });
+        let module =
+            device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("acde compose"), source: wgpu::ShaderSource::Wgsl(shader_source().into()) });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("acde compose"),
             entries: &[
@@ -516,9 +514,9 @@ impl Composer {
             glass.white_point,
             glass.smoothing,
             r.inner_height,
-            0.0,
-            0.0,
-            0.0,
+            glass.lens.strength,
+            glass.lens.dispersion,
+            glass.darken,
             0.0,
         ];
         let bias = [x as f32, y as f32, w as f32, h as f32];
@@ -566,5 +564,20 @@ impl Composer {
     pub fn blur_layers(&mut self, encoder: &mut wgpu::CommandEncoder, extent: (u32, u32), sigma: f32, tag: u32) -> Option<wgpu::TextureView> {
         let (_, layer, _) = self.layer.clone()?;
         Some(self.blur_tagged(encoder, &layer, [0, 0, extent.0, extent.1], sigma, tag + 1))
+    }
+}
+
+fn shader_source() -> String {
+    [crate::gpu::corner::WGSL, crate::gpu::glass::WGSL, include_str!("compose.wgsl")].join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_compose_shader_validates() {
+        let source = super::shader_source();
+        let module = naga::front::wgsl::parse_str(&source).unwrap_or_else(|e| panic!("{}", e.emit_to_string(&source)));
+        let flags = naga::valid::ValidationFlags::all();
+        naga::valid::Validator::new(flags, naga::valid::Capabilities::empty()).validate(&module).unwrap_or_else(|e| panic!("{e:?}"));
     }
 }

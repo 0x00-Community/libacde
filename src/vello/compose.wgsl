@@ -78,6 +78,17 @@ fn fs_backdrop(in: VsOut) -> @location(0) vec4<f32> {
     return c * mask;
 }
 
+fn glass_sample(at: vec2<f32>, region: vec4<f32>) -> vec4<f32> {
+    return textureSample(src, samp, clamp((at - region.xy) / region.zw, vec2<f32>(0.0), vec2<f32>(1.0)));
+}
+
+fn glass_under(at: vec2<f32>, shift: vec2<f32>, dispersion: f32, region: vec4<f32>) -> vec4<f32> {
+    let red = glass_sample(at + shift * (1.0 - dispersion), region);
+    let green = glass_sample(at + shift, region);
+    let blue = glass_sample(at + shift * (1.0 + dispersion), region);
+    return vec4<f32>(red.r, green.g, blue.b, green.a);
+}
+
 @fragment
 fn fs_glass(in: VsOut) -> @location(0) vec4<f32> {
     let px = in.pos.xy;
@@ -87,16 +98,18 @@ fn fs_glass(in: VsOut) -> @location(0) vec4<f32> {
     let refraction = params.matrix[0];
     let g1 = params.matrix[1];
     let g2 = params.matrix[2];
+    let lens = params.matrix[3];
     let region = params.bias;
     let at = px + acde_glass_offset(p, half, d, refraction);
-    let under = textureSample(src, samp, clamp((at - region.xy) / region.zw, vec2<f32>(0.0), vec2<f32>(1.0)));
+    let shift = acde_glass_lens(acde_glass_normal(p, half), d, min(half.x, half.y), lens.x);
+    let under = glass_under(at, shift, lens.y, region);
     let inside = acde_glass_inside(d, g2.z);
     if inside <= 0.0 {
         return under * acde_glass_bleed(d, g1.xyz);
     }
     let straight = select(vec3<f32>(0.0), under.rgb / under.a, under.a > 0.0);
     let shine = acde_glass_highlight(p, half, d, g2.w, g1.w, g2.x);
-    let rgb = acde_glass_tone(straight, g2.y, params.color, shine);
+    let rgb = acde_glass_tone_darkened(straight, g2.y, params.color, shine, lens.z);
     let alpha = max(under.a, params.color.a) * inside;
     return vec4<f32>(rgb * alpha, alpha);
 }

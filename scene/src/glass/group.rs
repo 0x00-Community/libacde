@@ -8,7 +8,7 @@ pub const WGSL: &str = include_str!("group.wgsl");
 pub const MOST_PIECES: usize = 16;
 pub const PIECE_BYTES: usize = PIECE_FLOATS * 4;
 pub const UNIFORM_BYTES: usize = MOST_PIECES * PIECE_BYTES;
-const PIECE_FLOATS: usize = 24;
+const PIECE_FLOATS: usize = 28;
 const LEAST_SPACING: f64 = 1e-4;
 const GRADIENT_STEP: f64 = 0.5;
 
@@ -76,6 +76,10 @@ impl Piece {
             g.tint[1],
             g.tint[2],
             g.tint[3],
+            g.lens.strength,
+            g.lens.dispersion,
+            g.darken,
+            0.0,
         ]
     }
 }
@@ -309,7 +313,7 @@ mod tests {
         assert_eq!(full.len(), MOST_PIECES);
         assert_eq!(full.bounds(), Some([0.0, 0.0, 158.0, 8.0]));
         let bytes = full.to_uniform();
-        assert_eq!(bytes.len(), 1536);
+        assert_eq!(bytes.len(), 1792);
         let float = |i: usize| f32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap());
         assert_eq!([float(0), float(1), float(2), float(3), float(4), float(5)], [4.0, 4.0, 4.0, 4.0, 2.0, 2.0]);
         assert_eq!(float(PIECE_FLOATS), 14.0);
