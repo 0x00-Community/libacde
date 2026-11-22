@@ -181,6 +181,13 @@ impl Engine {
         self.touch();
     }
 
+    pub(crate) fn set_reduced_motion(&mut self, reduced: bool) {
+        let preset = if reduced { acde_scene::motion::Preset::Reduced } else { acde_scene::motion::Preset::Standard };
+        if acde_scene::motion::set_system(preset) {
+            self.touch();
+        }
+    }
+
     pub(crate) fn set_glass(&mut self, preference: acde_scene::glass::Preference) {
         acde_scene::glass::set_preference(preference);
         if self.glass == preference {

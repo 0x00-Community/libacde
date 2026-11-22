@@ -40,7 +40,8 @@ describe('the single-app launcher', () => {
     const found = lookup({ '/w/package.json': pkg([app('hello')]) }).find('/w', [], '/')
     const navigator = { userAgent: '', platform: 'Linux x86_64' }
     const glass = { level: 1, reducedTransparency: false }
-    const init = webInit(found, 7n, { width: 800, height: 600, scale: 2, languages: { language: 'en-US' }, navigator, dark: true, glass })
+    const place = { width: 800, height: 600, scale: 2, languages: { language: 'en-US' }, navigator, dark: true, glass, reducedMotion: false }
+    const init = webInit(found, 7n, place)
     assert.deepEqual([init.kind, init.name, init.token, init.window, init.width, init.height], ['window', 'hello#1', 7n, 1, 1600, 1200])
     assert.deepEqual([init.dark, init.glass], [true, { level: 1, reducedTransparency: false }])
     assert.deepEqual([init.services, init.tier.shell, init.app?.id], [{}, [], 'hello'])

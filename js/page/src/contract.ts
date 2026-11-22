@@ -69,6 +69,7 @@ export interface WebInit {
   readonly screen?: { width: number; height: number; workArea?: { x: number; y: number; width: number; height: number } }
   readonly dark: boolean
   readonly glass?: { readonly level: number; readonly reducedTransparency: boolean }
+  readonly reducedMotion?: boolean
   readonly languages: Languages
   readonly navigator: { readonly userAgent: string; readonly platform: string }
   readonly services: Readonly<Record<string, ServiceShape>>
