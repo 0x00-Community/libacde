@@ -2,6 +2,7 @@ extern crate alloc;
 
 mod ffi;
 pub mod gpu;
+pub mod icons;
 mod host;
 pub mod log;
 pub mod media;

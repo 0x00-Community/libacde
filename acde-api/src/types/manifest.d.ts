@@ -1,7 +1,7 @@
 import type { FsRootName } from './places'
-import type { IconName, ShellModule } from './names'
+import type { IconName, LegacyIconName, ShellModule } from './names'
 
-export type { IconName, ShellModule }
+export type { IconName, LegacyIconName, ShellModule }
 
 export interface PackageManifest {
   readonly apiLevel?: number
@@ -35,7 +35,7 @@ export interface DesktopService {
 export interface AppManifest {
   readonly id: string
   readonly label: string
-  readonly icon: IconName | (string & {})
+  readonly icon: IconName
   readonly entry: string
   readonly capabilities?: Capabilities
   readonly heapMb?: number

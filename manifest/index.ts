@@ -1,6 +1,7 @@
 import type { AppBackend, AppManifest as AppEntry, Capabilities, PackageManifest } from '../acde-api/src/index'
 import { API_LEVEL, MIN_API_LEVEL } from './level.ts'
 import { FS_ROOTS, SHARED_PLACES } from './places.ts'
+import legacyIcons from '../acde-api/legacy-icons.json' with { type: 'json' }
 
 export type { Capabilities, PackageManifest } from '../acde-api/src/index'
 export type { CapabilityState, CapabilityStatus, PlatformSupport, RunningMode, WindowFeatures } from '../acde-api/src/index'
@@ -8,39 +9,9 @@ export { API_LEVEL, FS_ROOTS, MIN_API_LEVEL, SHARED_PLACES }
 export type { FsRootName, PlaceCapability, SharedPlace } from '../acde-api/src/index'
 export { PLATFORM_SUPPORT, RUNNING_MODES, platformSupport } from './platforms.ts'
 
-export const ICON_NAMES = [
-  'files',
-  'browser',
-  'editor',
-  'office',
-  'term',
-  'projects',
-  'dash',
-  'team',
-  'dopa',
-  'settings',
-  'store',
-  'app',
-  'timer',
-  'cards',
-  'list',
-  'chart',
-  'calc',
-  'music',
-  'video',
-  'photo',
-  'paint',
-  'game',
-  'chat',
-  'mail',
-  'calendar',
-  'code',
-  'book',
-  'map',
-  'weather',
-] as const
+export const LEGACY_ICONS: Readonly<Record<string, string>> = legacyIcons
 
-export type IconName = (typeof ICON_NAMES)[number]
+export const ICON_NAMES: readonly string[] = Object.keys(LEGACY_ICONS)
 
 export const SHELL_MODULES = ['windows', 'packages', 'session', 'desktops', 'inspect', 'desktop', 'setDefault', 'permissions', 'voice'] as const
 
@@ -97,7 +68,7 @@ export class Manifest {
   static readonly #PLACES: ReadonlySet<string> = new Set(SHARED_PLACES)
   static readonly #ROOTS: ReadonlySet<string> = new Set(FS_ROOTS)
   static readonly #MIME = /^[\w.+-]+\/([\w.+-]+|\*)$/
-  static readonly #ICON_NAMES: ReadonlySet<string> = new Set(ICON_NAMES)
+  static readonly #ICON_NAME = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/
   static readonly #ICON_IMAGE = /^\/(?!\/)[^\s\0?#]*\.(svg|png)$/i
 
   static places(caps: Capabilities): string[] {
@@ -130,8 +101,12 @@ export class Manifest {
     return Manifest.#PLACES.has(last) ? last : null
   }
 
-  static iconName(icon: string): icon is IconName {
-    return Manifest.#ICON_NAMES.has(icon)
+  static iconName(icon: string): boolean {
+    return Manifest.#ICON_NAME.test(icon)
+  }
+
+  static icon(icon: string): string {
+    return LEGACY_ICONS[icon] ?? icon
   }
 
   static iconImage(icon: string): boolean {
@@ -365,9 +340,14 @@ export class Manifest {
         errors.push(`${at}: backend.entry ${JSON.stringify(app.backend.entry)} is in no assets directory`)
       if (Manifest.iconImage(app.icon)) {
         if (!resolve(app.icon)) errors.push(`${at}: icon ${JSON.stringify(app.icon)} is in no assets directory`)
+      } else if (Object.hasOwn(LEGACY_ICONS, app.icon)) {
+        warnings.push(
+          `${at}: icon ${JSON.stringify(app.icon)} is an old Dopame icon name, taken for this version only: ` +
+            `write the freedesktop name ${JSON.stringify(LEGACY_ICONS[app.icon])}`,
+        )
       } else if (!Manifest.iconName(app.icon)) {
         warnings.push(
-          `${at}: icon ${JSON.stringify(app.icon)} is neither an icon name (${ICON_NAMES.join(', ')}) ` +
+          `${at}: icon ${JSON.stringify(app.icon)} is neither a freedesktop icon name (lower case, like accessories-calculator) ` +
             `nor an image (.svg or .png) under the assets, such as /app/${app.id}/icon.svg`,
         )
       }

@@ -58,7 +58,7 @@
 | `src/runtime/places.js` (`SHARED_PLACES`) | 共享位置的列表 (类型留下了) | `manifest/places.ts` |
 | `src/runtime/platforms.js` (`PLATFORM_SUPPORT`、`RUNNING_MODES`、`platformSupport()`) | 各平台、各跑法下有哪些模块 | `manifest/platforms.ts` |
 | `src/vite.js` (`@acde/api/vite`) | Vite 插件: 构建时把 `acde:*` 留作外部模块, dev 时换成会 reject 的替身 | acdev 的 `npm/src/vite-plugin.ts` (`acdev build` 用) |
-| `src/validate.ts` (`@acde/api/manifest`) | 清单校验 (`Manifest`、`ICON_NAMES`、`SHELL_MODULES`、`APP_MODULES`、能力列表、导入规则), Broker 和 `acdev check/build` 共用 | `manifest/index.ts` |
+| `src/validate.ts` (`@acde/api/manifest`) | 清单校验 (`Manifest`、`LEGACY_ICONS` (过渡用, 读 `legacy-icons.json`)、`ICON_NAMES` (就是它的键)、`SHELL_MODULES`、`APP_MODULES`、能力列表、导入规则), Broker 和 `acdev check/build` 共用 | `manifest/index.ts` |
 | `src/frame.ts` (`FrameThemes`) | 窗框主题的颜色、样式解析成传给原生的格式 | 没有 (运行时一侧的逻辑) |
 | `src/index.js` | 上面那些值的再导出 | 没有 |
 | `scripts/build.mjs` | esbuild 打 `dist/` 并检查产物 | 没有 |

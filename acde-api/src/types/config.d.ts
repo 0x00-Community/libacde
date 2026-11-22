@@ -13,7 +13,7 @@ export interface ConfigCommon {
 export interface WindowAppConfig {
   readonly id?: string
   readonly label?: string
-  readonly icon?: IconName | (string & {})
+  readonly icon?: IconName
   readonly entry?: string
   readonly capabilities?: Capabilities
   readonly optional?: readonly string[]

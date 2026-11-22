@@ -196,8 +196,11 @@
   `Launchable.ended`: `<运行时> app <id>: <原因>`. **`<运行时> app` 里以前的拒绝会再问一次** (`PermissionsHost.asksAgain`, 单应用模式为真): 记录里是
   `denied`、这一次运行还没问过的能力, `permit` 当作 `ask`, 问的时候删掉旧记录并记一行 `was denied … in an earlier run: asking again`; 这一次运行里答了「否」照旧不问第二次.
   单应用模式是开发者点名要跑这个应用, 又没有桌面的权限界面; 不这样的话拒绝一次之后这个应用在 `acdev dev` 里再也问不到, 而 `acdev revoke` 要有会话才能用, 只剩手改 `permissions.json`. 桌面和会话里记下的拒绝照旧有效.
-  `icon` 是 `ICON_NAMES` (`@acde/api/manifest`, 和 Dopame art 引擎 `APPS` 的名字一致, 加名字两边一起改) 之一, 或 assets 下以
+  `icon` 是 freedesktop 图标名 (Icon Naming Specification, 和 `.desktop` 的 `Icon=` 同一语义, 如 `accessories-calculator`; 2026-11-22 起, 由当前图标主题画), 或 assets 下以
   `.svg` / `.png` 结尾的同源 URL; 运行时原样交给桌面 (`acde.apps.list()`、`windowopen` 的 `icon`).
+  过渡 (只留一个版本): 原来 Dopame 自己的 29 个名字 (`files`、`calc` …) 照收, 清单校验给一条弃用警告并说出对应的标准名; 对照表只有一份,
+  `acde-api/legacy-icons.json` (随 SDK 发布), TS 的 `LEGACY_ICONS` / `Manifest.icon(name)` (`@acde/api/manifest`) 和 Rust 的 `acde::icons::standard`
+  都读它, 管家 (acdes) 交给桌面前用 `acde::icons::standard` 换成标准名, 所以桌面只认标准名. 名字的字符集按图标规范: 小写字母、数字, 用 `-` `.` `_` 分段.
 - **沙箱**: 每个 web 是独立的 isolate, 页面和 acde-host 的 web.js 在同一个 realm. ⚠ 这不是安全边界: 页面碰得到宿主给 web 的原生接口
   (`sys`: 环境变量、读写文件、spawn), 能 import `file:` 模块; 系统调用级的沙箱 (Landlock / seccomp) 还没加.
 - **内存和生命周期**: 堆超了只停这个 web (窗口的发 `windowcrash {reason: 'memory'}`, 桌面的重起). 关闭先问 `beforeclose` (3 秒不答就关),
