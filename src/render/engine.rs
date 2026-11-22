@@ -41,7 +41,7 @@ pub(crate) struct Engine {
     paint_cache: PaintCache,
     panels: Vec<(NodeId, u32, kurbo::Rect)>,
     panel_damage: std::collections::HashMap<u32, Damage>,
-    glass_motion: std::collections::HashMap<Option<u32>, acde_scene::glass::Appearance>,
+    glass_motion: std::collections::HashMap<Option<u32>, (acde_scene::glass::Appearance, Option<kurbo::Rect>)>,
     glass_moving: bool,
     verify: bool,
     from_cache: bool,
@@ -411,10 +411,16 @@ impl Engine {
     }
 
     fn animate_glass(&mut self, key: Option<u32>, plane: &mut Plane, now: f64) -> bool {
-        let appearance = self.glass_motion.entry(key).or_default();
-        let Some(area) = crate::render::layers::animate_glass(&mut plane.layers, appearance, now) else { return false };
-        plane.damaged(area.into());
-        true
+        let (appearance, last) = self.glass_motion.entry(key).or_default();
+        let area = crate::render::layers::animate_glass(&mut plane.layers, appearance, now);
+        let drawn = match (area, std::mem::replace(last, area)) {
+            (Some(a), Some(b)) => Some(a.union(b)),
+            (a, b) => a.or(b),
+        };
+        if let Some(drawn) = drawn {
+            plane.damaged(drawn.into());
+        }
+        area.is_some()
     }
 
     fn panel(&mut self, (id, rect, commands): (u32, kurbo::Rect, Commands), scale: f64) -> Panel {

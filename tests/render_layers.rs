@@ -233,4 +233,6 @@ fn a_named_glass_leaving_its_group_shrinks_away_over_frames() {
     let settled = page.frame();
     assert_eq!(pieces(&settled), 1);
     assert!(!settled.animating);
+    let d = settled.plane.damage;
+    assert!(d.x <= 86.0 && d.x + d.width >= 146.0, "the frame that drops the ghost repaints where it was: {d:?}");
 }
