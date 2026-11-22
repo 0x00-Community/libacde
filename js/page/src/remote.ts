@@ -9,7 +9,7 @@ import { Rpc } from './rpc'
 import { CapabilityCheck } from './broker/access/capabilities'
 import { Permits } from './broker/access/approval/permits'
 import type { Approval } from './broker/access/approval/permissions'
-import { lentKey, type HandOver } from './pagecalls'
+import type { HandOver } from './pagecalls'
 import type { CapabilityStatus } from '@acde/api/manifest'
 
 export class WindowList {
@@ -313,7 +313,7 @@ export class WindowSelf {
   #received(request: Record<string, unknown>): Record<string, unknown> {
     const { entry, ...rest } = request
     const given = entry as { name?: unknown; label?: unknown; kind?: unknown; writable?: unknown } | undefined
-    if (rest['kind'] !== 'open-file' || typeof given?.name !== 'string') return rest
+    if ((rest['kind'] !== 'open-file' && rest['kind'] !== 'open-folder') || typeof given?.name !== 'string') return rest
     const label = typeof given.label === 'string' ? given.label : given.name
     const kind = given.kind === 'directory' ? 'directory' : 'file'
     const handle = this.handOver?.lent({ name: given.name, label, kind, writable: given.writable === true })
@@ -401,13 +401,13 @@ export class RemoteBridge {
   readonly #refused: Readonly<Record<string, string>>
 
   #outgoing(arg: unknown): unknown {
-    if (typeof arg !== 'object' || arg === null || (arg as { kind?: unknown }).kind !== 'open-file') return arg
-    const { handle, held: _held, entry: _entry, ...request } = arg as Record<string, unknown>
+    const kind = typeof arg === 'object' && arg !== null ? (arg as { kind?: unknown }).kind : null
+    if (kind !== 'open-file' && kind !== 'open-folder') return arg
+    const { handle, lend: _lend, entry: _entry, handed: _handed, ...request } = arg as Record<string, unknown>
     if (handle === undefined) return request
-    const held = this.handOver?.held(handle)
-    if (!held) throw new TypeError('open-file: the handle is not a file or folder this page was given')
-    if (lentKey(held.path)) throw new TypeError('open-file: a picked, dropped or lent file or folder cannot be handed to another app yet')
-    return { ...request, held }
+    const handed = this.handOver?.handed(handle)
+    if (!handed) throw new TypeError(`${kind}: the handle is not a whole file or folder this page was given (picked, dropped or handed to it)`)
+    return { ...request, lend: [handed] }
   }
 
   #window(self: WindowSelf, windows: WindowList): unknown {

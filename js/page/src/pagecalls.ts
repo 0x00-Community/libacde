@@ -21,8 +21,10 @@ export function lentKey(path: string): boolean {
 export interface HandOver {
   lent(entry: LentEntry): object | null
   dropped(uris: string | null): Promise<readonly Dropped[]>
-  held(handle: unknown): { readonly path: string; readonly kind: Kind } | null
+  handed(handle: unknown): Handed | null
 }
+
+export type Handed = { readonly name: string; readonly writable?: false }
 
 export interface FolderPicker {
   entries(dir: string): Promise<{ name: string; kind: Kind }[]>
@@ -92,6 +94,14 @@ export class PageCalls implements HandOver {
     const file = picked.kind === 'file' && this.#files.has(picked.path)
     const ok = this.#inFolder(picked.path) !== null || file
     return ok ? { path: picked.path, kind: picked.kind, writable: picked.mode === 'readwrite' } : null
+  }
+
+  handed(handle: unknown): Handed | null {
+    const given = this.held(handle)
+    const prefix = given?.kind === 'file' ? LENT_FILE : LENT
+    const name = given?.path.startsWith(prefix) ? given.path.slice(prefix.length) : ''
+    if (!given || !name || name.includes('/')) return null
+    return given.writable ? { name } : { name, writable: false }
   }
 
   #lent(file: LentFile): Picked {

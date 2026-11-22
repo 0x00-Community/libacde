@@ -95,11 +95,14 @@ acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边�
 - 句柄怎么登记: 选中的、拖进来的、交来的文件和文件夹都是借出的条目 (键 `lent-file:<name>` / `lent:<name>`), 读写一律经 `natives.picker` 到这个 web 的
   `PickedFolders`, 不出这个文件夹、不跟随链接; 页面不再有按路径的文件句柄 (`picker.adopt`、`picker.allowFile` 已删; `PickedFolders::add` 只留给 Rust 内部的私有文件夹 `opfs`). acde-dom 经 `WebInternals.handles` (`of` / `picked` /
   `transfer`) 造句柄、认句柄、往 `DataTransfer` 里放; 页面自己 `new FileSystemFileHandle(...)` 造不出能读的句柄 (`PageCalls` 只认登记过的路径).
-- 交出去: 应用的 `acde.apps.open({kind: 'open-file', handle})` (或 `open(appId, …)`) 在 web 里把 `handle` 换成 `held: {path, kind, writable}`, 只认这个页面登记过的句柄
-  (否则 `TypeError`), 页面自己给的 `held` / `entry` 丢掉. Broker (`Opener.request`) 按 `held` 的路径打开, 交给系统默认程序时调用方的根加上这个文件所在的文件夹; 交出的是只读句柄时接收方也只拿到只读句柄.
-  这样第 1 级应用能把拖进来的、选中的、别人交给它的文件交给别的应用打开; 私有文件夹和公共位置里的文件还没有句柄 (要先经选择器).
-  借出的句柄 (键是 `lent:` / `lent-file:` 开头: 选来的、经管家交来的) 没有路径, 还不能这样交出, 也不能交给 `acde:office` 的 `state`: 两处都抛 `TypeError`
-  (`pagecalls.ts` `lentKey`). 要接上需要经管家把描述符转交给目标应用, 单独立项.
+- 交出去 (转交): 应用的 `acde.apps.open({kind: 'open-file' | 'open-folder', handle})` (或 `open(appId, …)`) 在 web 里 (`remote.ts` `#outgoing`, `PageCalls.handed`)
+  把 `handle` 换成 `lend: [{name, writable?}]`: `name` 是这个页面借到的条目名 (句柄键 `lent:` / `lent-file:` 后面那段), 只认整个借出的文件或文件夹,
+  借出文件夹里面的子项、私有文件夹里的文件和没登记过的句柄抛 `TypeError`; 句柄只读时带 `writable: false` (只能由可写变只读), 可写时不带 (沿用).
+  页面自己给的 `lend` / `entry` / `handed` 丢掉, 不再有按路径的 `held`. 会话里请求经启动器原样交给管家 `apps.open`: 管家核对名字确实借给了发起的进程,
+  按自己记的路径重新打开, 以目标应用自己的名字交过去 (见 acdes `docs/manager.md`「转交借来的东西」). 目标收到的请求带 `lend: [{name}]`, 条目和描述符在
+  welcome 或 `request` 事件的 `lent` 里; 启动器 (`Lending.entered`) 取第一个名字, 和 openPath 交来的一样换成 `entry` 交给页面, 页面造出句柄.
+  宿主窗口里没有管家, 单应用启动器不支持 `apps.open` (501), 也就没有转交.
+  借出的文件 (`lent-file:`) 还不能交给 `acde:office` 的 `state` (抛 `TypeError`, `pagecalls.ts` `lentKey`).
 
 工作区内的相对路径用 `/` 分隔. Windows 上拒绝反斜杠、数据流分隔符、保留设备名和以空格或点结尾的名称;
 判断解析后的路径是否在 root 内时按系统路径组件比较.

@@ -96,13 +96,21 @@ export class Lending {
   }
 
   static entered(request: Request | null | undefined, lent: unknown, adopted: Adopted): Request | null {
-    const entry = request?.['entry'] as { name?: unknown } | undefined
-    if (!request || typeof entry?.name !== 'string') return request ?? null
+    if (!request) return null
+    const { entry: _entry, lend: _lend, ...rest } = request
+    const name = Lending.#named(request)
+    if (name === null) return rest
     const taken = [...adopted.folders, ...adopted.files]
-    const found = Lending.#entries(lent).find((given) => given.name === entry.name && taken.includes(given.name))
-    const { entry: _entry, ...rest } = request
+    const found = Lending.#entries(lent).find((given) => given.name === name && taken.includes(given.name))
     if (!found) return rest
     return { ...rest, entry: { name: found.name, kind: found.kind, label: found.label || found.name, writable: found.writable } }
+  }
+
+  static #named(request: Request): string | null {
+    const entry = request['entry'] as { name?: unknown } | undefined
+    if (typeof entry?.name === 'string') return entry.name
+    const [handed] = Array.isArray(request['lend']) ? (request['lend'] as { name?: unknown }[]) : []
+    return typeof handed?.name === 'string' ? handed.name : null
   }
 
   #files(lent: unknown, fds: unknown): LentFile[] {
