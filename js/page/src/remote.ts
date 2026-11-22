@@ -406,7 +406,7 @@ export class RemoteBridge {
     const { handle, lend: _lend, entry: _entry, handed: _handed, ...request } = arg as Record<string, unknown>
     if (handle === undefined) return request
     const handed = this.handOver?.handed(handle)
-    if (!handed) throw new TypeError(`${kind}: the handle is not a whole file or folder this page was given (picked, dropped or handed to it)`)
+    if (!handed) throw new TypeError(`${kind}: the handle is not a file or folder this page was lent (picked, dropped or handed) or one inside it`)
     return { ...request, lend: [handed] }
   }
 

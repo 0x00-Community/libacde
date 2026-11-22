@@ -20,7 +20,7 @@ export interface HandOver {
   handed(handle: unknown): Handed | null
 }
 
-export type Handed = { readonly name: string; readonly writable?: false }
+export type Handed = { readonly name: string; readonly path?: string; readonly writable?: false }
 
 export interface FolderPicker {
   entries(dir: string): Promise<{ name: string; kind: Kind }[]>
@@ -87,22 +87,22 @@ export class PageCalls implements HandOver {
   handed(handle: unknown): Handed | null {
     const given = this.#entry(handle)
     if (!given) return null
-    return given.writable ? { name: given.name } : { name: given.name, writable: false }
+    return { name: given.name, ...(given.path && { path: given.path }), ...(!given.writable && { writable: false as const }) }
   }
 
   lentFile(handle: unknown): string | null {
     const given = this.#entry(handle)
-    return given?.kind === 'file' ? given.name : null
+    return given?.kind === 'file' && !given.path ? given.name : null
   }
 
-  #entry(handle: unknown): { readonly name: string; readonly kind: Kind; readonly writable: boolean } | null {
+  #entry(handle: unknown): { readonly name: string; readonly path: string; readonly kind: Kind; readonly writable: boolean } | null {
     const picked = this.#page.handles.picked(handle)
     if (!picked) return null
-    const file = picked.kind === 'file' && this.#files.has(picked.path)
-    const prefix = picked.kind === 'file' ? LENT_FILE : LENT
-    const lent = file || (picked.kind === 'directory' && this.#folders.has(picked.path))
-    const name = lent && picked.path.startsWith(prefix) ? picked.path.slice(prefix.length) : ''
-    return name ? { name, kind: picked.kind, writable: picked.mode === 'readwrite' } : null
+    const writable = picked.mode === 'readwrite'
+    if (picked.kind === 'file' && this.#files.has(picked.path)) return { name: picked.path.slice(LENT_FILE.length), path: '', kind: 'file', writable }
+    if (!picked.path.startsWith(LENT) || !this.#inFolder(picked.path)) return null
+    const [name = '', ...inner] = picked.path.slice(LENT.length).split('/')
+    return name ? { name, path: inner.join('/'), kind: picked.kind, writable } : null
   }
 
   #lent(file: LentFile): Picked {
