@@ -2,6 +2,8 @@ use kurbo::{Arc, Point, Vec2};
 
 pub const ROUND: f64 = 1.0;
 
+pub const WGSL: &str = include_str!("corner.wgsl");
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Corners {
     pub radius: f64,
