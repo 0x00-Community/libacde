@@ -116,7 +116,7 @@ impl Shared {
         Ok(name)
     }
 
-    fn lent_file(&self, owner: &str, name: &str) -> Option<LentFile> {
+    pub(crate) fn lent_file(&self, owner: &str, name: &str) -> Option<LentFile> {
         let lent = self.files.lock().unwrap_or_else(|e| e.into_inner());
         lent.get(owner)?.iter().find(|file| file.name == name).cloned()
     }

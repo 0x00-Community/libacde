@@ -1,4 +1,5 @@
 use super::documents::{OfficeFile, Source};
+use super::tokens::Origin;
 use crate::runtime::sync::Locked;
 use base64::Engine;
 use serde_json::{Value, json};
@@ -45,6 +46,13 @@ impl Session {
     pub fn touch(&mut self) {
         self.touched = Instant::now();
     }
+
+    pub fn origin(&self) -> Option<Origin> {
+        match &self.source {
+            Source::Root { owner, root } => Some(Origin { owner: owner.clone(), root: root.id.clone(), path: self.target.clone(), mtime_ms: self.expected_ms }),
+            Source::Lent { .. } => None,
+        }
+    }
 }
 
 pub type Shared = Arc<Mutex<Session>>;
@@ -70,20 +78,20 @@ impl EditSessions {
         self.inner.locked()
     }
 
-    fn fresh(key: String, id: &str, file: &OfficeFile) -> Shared {
+    fn fresh(key: String, id: &str, source: Source, path: &str, expected_ms: i64) -> Shared {
         Arc::new(Mutex::new(Session {
             key,
             id: id.to_owned(),
-            source: file.source.clone(),
-            path: file.path.clone(),
+            source,
+            path: path.to_owned(),
             state: SaveState::Open,
             saved_at: None,
             message: None,
             conflict_path: None,
             editors: 0,
             touched: Instant::now(),
-            expected_ms: file.modified_ms,
-            target: file.path.clone(),
+            expected_ms,
+            target: path.to_owned(),
         }))
     }
 
@@ -105,7 +113,7 @@ impl EditSessions {
             return current;
         }
         let key = Self::key(id, file.modified_ms, file.size);
-        let session = inner.by_key.get(&key).cloned().unwrap_or_else(|| Self::fresh(key.clone(), id, file));
+        let session = inner.by_key.get(&key).cloned().unwrap_or_else(|| Self::fresh(key.clone(), id, file.source.clone(), &file.path, file.modified_ms));
         {
             let mut s = session.locked();
             s.state = SaveState::Open;
@@ -119,6 +127,17 @@ impl EditSessions {
 
     pub fn get(&self, key: &str) -> Option<Shared> {
         self.inner().by_key.get(key).cloned()
+    }
+
+    pub fn resume(&self, key: &str, id: &str, source: Source, origin: &Origin) -> Shared {
+        let mut inner = self.inner();
+        if let Some(session) = inner.by_key.get(key) {
+            return Arc::clone(session);
+        }
+        let session = Self::fresh(key.to_owned(), id, source, &origin.path, origin.mtime_ms);
+        inner.by_key.insert(key.to_owned(), Arc::clone(&session));
+        inner.live.insert(id.to_owned(), key.to_owned());
+        session
     }
 
     pub fn close(&self, session: &mut Session) {

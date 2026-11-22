@@ -121,9 +121,12 @@ crate; `acde:` 模块、`@acde/api`、`acde_*` 协议、`ACDE_*` 环境变量、
   runtime `Workspace::finder_roots`): 第 1 级应用是 `private`、点名的公共位置和选的文件夹, 按 `id` 认, 不给路径; 没有 `fs` 的应用没有根. 没批准或撤销了的
   公共位置和文件夹和 `acde:fs` 一样经 `FileAccess.guard` 拒绝 403 `denied`、从 `state().roots` 去掉. `state(handle)` 打开借来的文件 (web 侧 `PageCalls.lentFile` 只认
   `lent-file:` 句柄, 交名字给原生 `office.openLent(name)` → runtime `OfficeCall::Lent`, 按本应用的借出名找 `LentFile`), 文稿的 `root` 是空的, 只读借出只能查看;
-  没有按路径打开的入口 (原 `office.open(path, writable)` 已删, 页面不能借它按任意路径读写). 打开的文稿按来源记会话 (`documents.rs` `Source::Root(FinderRoot)` /
-  `Source::Lent(LentFile)`, 会话的同一性是根目录的设备号与节点号加相对路径, 或借来文件的设备号与节点号), 编辑器的取文件和保存回调凭签名的票据, 票据里只有会话键,
-  按键找会话再经它的来源读写 (借来的文件夹有句柄没有路径, 也照样能开能存). 保存: 根里的文件按修改时间核对, 变了另存冲突副本; 借来的文件按修改时间核对后原地写,
-  变了不覆盖、报保存失败 (没有地方放冲突副本). 运行时重启后旧会话的回调找不到会话, 回 404.
+  没有按路径打开的入口 (原 `office.open(path, writable)` 已删, 页面不能借它按任意路径读写). 打开的文稿按来源记会话 (`documents.rs` `Source::Root {owner, root}` /
+  `Source::Lent {owner, file}`, 会话的同一性是根目录的设备号与节点号加相对路径, 或应用编号加借来文件的设备号与节点号和是否可写), 编辑器的取文件和保存回调凭签名的票据 (加密, 页面读不出内容): 票据里有会话键,
+  根里的文稿另带来源 `{owner, root, path, mtimeMs}` (应用编号、根的 `id`、相对路径, 不带绝对路径). 按键找会话再经它的来源读写 (借来的文件夹有句柄没有路径, 也照样能开能存);
+  运行时重启后会话没了, 根里的文稿按票据的来源重建: 在这个应用的 `Workspace` (`OfficeService::for_web` 时按应用编号记下) 里按根的 `id` 找回根, 在句柄下打开.
+  借来的文件重启后句柄已不在, 回调回 404, 编辑器里没存的修改要用户另存. 保存: 根里的文件按修改时间核对, 变了另存冲突副本; 借来的文件按修改时间核对后原地写,
+  变了不覆盖、报保存失败 (没有地方放冲突副本). 借来的文件每次读写前核对它仍借给这个应用 (同一个名字、同一个 `Arc`), 撤销 (`unlend`) 之后已开的会话立刻读写不了,
+  保存记为失败 (410, 日志写明已被收回).
 - **还没做的**: 窗口 / 应用 / 会话表还在 Broker 的 JS 里 (`acde:windows` / `acde:apps` / `acde:window` / `acde:session` 经 RPC);
   桌面包服务的调用经 Broker; 外部内存 (ArrayBuffer、文档、GPU 缓冲) 不按 isolate 记账.

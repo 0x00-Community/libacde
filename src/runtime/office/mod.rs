@@ -7,7 +7,7 @@ mod settings;
 mod tokens;
 
 use crate::runtime::failure::{Failure, Outcome};
-use crate::runtime::fs::LentFile;
+use crate::runtime::fs::Workspace;
 use crate::runtime::fs::path::NodePath;
 use crate::runtime::fs::workspace::FinderRoot;
 use crate::runtime::js::JsText;
@@ -15,13 +15,14 @@ use crate::runtime::sync::Locked;
 use blank::BlankKind;
 use bridge::Handlers;
 use docserver::DocumentServer;
-use documents::{MAX_DOCUMENT_BYTES, OfficeFile, OfficeFiles, SaveResult};
+use documents::{MAX_DOCUMENT_BYTES, OfficeFile, OfficeFiles, SaveResult, Source};
 use serde_json::{Value, json};
 use sessions::{EditSessions, SaveState, Session, Shared as SessionRef};
 use settings::OfficeSettings;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tokens::{Jwt, TicketKind, Tickets};
+use tokens::{Jwt, Ticket, TicketKind, Tickets};
 
 struct Credentials {
     jwt: Jwt,
@@ -32,6 +33,7 @@ struct Service {
     settings: OfficeSettings,
     files: OfficeFiles,
     sessions: EditSessions,
+    workspaces: Mutex<HashMap<String, Workspace>>,
     secrets: Mutex<Option<Arc<Credentials>>>,
     cached: Mutex<Option<(Instant, Value)>>,
     bridge_error: Mutex<Option<String>>,
@@ -106,10 +108,13 @@ impl Service {
         Ok(())
     }
 
-    fn lent(&self, roots: &[FinderRoot], file: Option<LentFile>) -> Outcome<Value> {
-        let mut props = self.blank(roots, None);
-        let opened =
-            file.ok_or_else(|| Failure::http(404, "not a file lent to this app")).and_then(OfficeFiles::lent).and_then(|file| self.show(&mut props, file));
+    fn lent(&self, scope: Option<&Workspace>, name: &str) -> Outcome<Value> {
+        let mut props = self.blank(&Self::roots(scope)?, None);
+        let opened = scope
+            .and_then(|workspace| workspace.lent_file(name))
+            .ok_or_else(|| Failure::http(404, "not a file lent to this app"))
+            .and_then(|file| OfficeFiles::open(Source::Lent { owner: Self::owner(scope), file }, ""))
+            .and_then(|file| self.show(&mut props, file));
         match opened {
             Err(failure) if failure.status == 500 => Err(failure),
             Err(failure) => {
@@ -120,9 +125,18 @@ impl Service {
         }
     }
 
-    fn props(&self, roots: &[FinderRoot], root: Option<&str>, dir: Option<&str>, path: Option<&str>) -> Outcome<Value> {
-        let found = Self::found(roots, root);
-        let mut props = self.blank(roots, found.as_ref());
+    fn roots(scope: Option<&Workspace>) -> Outcome<Vec<FinderRoot>> {
+        scope.map_or_else(|| Ok(Vec::new()), Workspace::finder_roots)
+    }
+
+    fn owner(scope: Option<&Workspace>) -> String {
+        scope.and_then(Workspace::owner).unwrap_or_default().to_owned()
+    }
+
+    fn props(&self, scope: Option<&Workspace>, root: Option<&str>, dir: Option<&str>, path: Option<&str>) -> Outcome<Value> {
+        let roots = Self::roots(scope)?;
+        let found = Self::found(&roots, root);
+        let mut props = self.blank(&roots, found.as_ref());
         if root.is_some() && found.is_none() {
             props["error"] = "not a Runtime workspace".into();
             return Ok(props);
@@ -132,7 +146,7 @@ impl Service {
         };
         let loaded = (|| -> Outcome<()> {
             match path {
-                Some(path) => self.show(&mut props, OfficeFiles::file_in(found.clone(), path)?)?,
+                Some(path) => self.show(&mut props, OfficeFiles::open(Source::Root { owner: Self::owner(scope), root: found.clone() }, path)?)?,
                 None => {
                     let (path, entries, truncated) = self.files.list_in(found.clone(), dir.unwrap_or(""))?;
                     props["dir"] = path.into();
@@ -157,8 +171,11 @@ impl Service {
             return Err(Failure::http(503, error));
         }
         let base = &self.settings.bridge_url;
-        let key = session.locked().key.clone();
-        let issue = |kind| credentials.tickets.issue(kind, &key);
+        let (key, origin) = {
+            let s = session.locked();
+            (s.key.clone(), s.origin())
+        };
+        let issue = |kind| credentials.tickets.issue(kind, &key, origin.as_ref());
         let edit = file.editable;
         let mut editor = json!({
             "mode": if edit { "edit" } else { "view" },
@@ -208,6 +225,17 @@ impl Service {
         self.sessions.get(key).ok_or_else(|| Failure::http(404, "no open document with this key"))
     }
 
+    fn reopened(&self, ticket: &Ticket) -> Outcome<SessionRef> {
+        let Some(origin) = ticket.origin.as_ref().filter(|_| self.sessions.get(&ticket.key).is_none()) else {
+            return self.session(&ticket.key);
+        };
+        let gone = || Failure::http(404, "the document's folder is no longer one of this app's roots");
+        let workspace = self.workspaces.locked().get(&origin.owner).cloned().ok_or_else(gone)?;
+        let root = workspace.finder_roots()?.into_iter().find(|root| root.id == origin.root).ok_or_else(gone)?;
+        let source = Source::Root { owner: origin.owner.clone(), root };
+        Ok(self.sessions.resume(&ticket.key, &source.identity(&origin.path)?, source, origin))
+    }
+
     fn save_failure(failure: &Failure) -> String {
         if failure.status == 403 {
             return format!("这个工作区不能写：{}", failure.message);
@@ -248,7 +276,7 @@ impl Service {
             if !data.starts_with(b"PK\x03\x04") {
                 return Err(Failure::http(502, "Document Server returned something that is not an Office file"));
             }
-            let result = OfficeFiles::save(&s.source, &s.target, &data, s.expected_ms)?;
+            let result = self.files.save(&s.source, &s.target, &data, s.expected_ms)?;
             Self::saved(&mut s, result);
             Ok(())
         })();
@@ -278,7 +306,7 @@ impl Handlers for Bridged {
         credentials.jwt.verify_header(authorization)?;
         let ticket = credentials.tickets.consume(ticket)?;
         let (source, path, expected_ms) = {
-            let s = service.session(&ticket.key)?;
+            let s = service.reopened(&ticket)?;
             let s = s.locked();
             (s.source.clone(), s.target.clone(), s.expected_ms)
         };
@@ -286,7 +314,7 @@ impl Handlers for Bridged {
         if file.modified_ms != expected_ms {
             return Err(Failure::http(409, "the file changed after the editor was opened; reload the page"));
         }
-        Ok((file.name.clone(), OfficeFiles::read(&file)?))
+        Ok((file.name.clone(), service.files.read(&file)?))
     }
 
     fn callback(&self, ticket: &str, authorization: Option<&str>, body: &[u8]) -> Outcome<()> {
@@ -305,7 +333,7 @@ impl Handlers for Bridged {
         if payload.get("key").and_then(Value::as_str) != Some(ticket.key.as_str()) {
             return Err(Failure::token_refused("callback for another document"));
         }
-        let session = service.session(&ticket.key)?;
+        let session = service.reopened(&ticket)?;
         let status = payload.get("status").and_then(|s| s.as_f64().or_else(|| s.as_str()?.parse().ok())).unwrap_or(f64::NAN);
         let editors = payload.get("users").and_then(Value::as_array).map_or(0, Vec::len);
         log::info!("callback status {status} for {} ({editors} editor(s))", session.locked().target);
@@ -376,6 +404,7 @@ impl Service {
             files: OfficeFiles(finder),
             bridge: Mutex::default(),
             sessions: EditSessions::default(),
+            workspaces: Mutex::default(),
             secrets: Mutex::default(),
             cached: Mutex::default(),
             bridge_error: Mutex::new(Some("not started".into())),
@@ -401,12 +430,11 @@ impl Service {
         Ok(service)
     }
 
-    fn call(&self, call: OfficeCall, scope: Option<&crate::runtime::fs::Workspace>) -> Outcome<Value> {
-        let roots = || scope.map_or_else(|| Ok(Vec::new()), crate::runtime::fs::Workspace::finder_roots);
+    fn call(&self, call: OfficeCall, scope: Option<&Workspace>) -> Outcome<Value> {
         match call {
             OfficeCall::Server => Ok(self.status(true)),
-            OfficeCall::State { root, dir, path } => self.props(&roots()?, root.as_deref(), dir.as_deref(), path.as_deref()),
-            OfficeCall::Lent { name } => self.lent(&roots()?, scope.and_then(|workspace| workspace.lent_file(&name))),
+            OfficeCall::State { root, dir, path } => self.props(scope, root.as_deref(), dir.as_deref(), path.as_deref()),
+            OfficeCall::Lent { name } => self.lent(scope, &name),
             OfficeCall::Status { key } => Ok(self.session(&key)?.locked().status()),
             OfficeCall::Save { body } => {
                 let SaveBody { key } = fields(body)?;
@@ -426,7 +454,8 @@ impl Service {
                     return Err(Failure::invalid("all fields must be non-empty strings"));
                 }
                 let name = name.map(|n| n.js_trim().to_owned()).filter(|n| !n.is_empty());
-                let found = Self::found(&roots()?, Some(&root)).ok_or_else(|| Failure::http(403, format!("{root} is not one of this app's roots")))?;
+                let found =
+                    Self::found(&Self::roots(scope)?, Some(&root)).ok_or_else(|| Failure::http(403, format!("{root} is not one of this app's roots")))?;
                 let path = OfficeFiles::create(&found, &dir, kind, name.as_deref())?;
                 Ok(json!({"path": path}))
             }
@@ -435,14 +464,17 @@ impl Service {
 }
 
 #[derive(Clone)]
-pub struct OfficeService(Arc<Service>, Option<crate::runtime::fs::Workspace>);
+pub struct OfficeService(Arc<Service>, Option<Workspace>);
 
 impl OfficeService {
-    pub fn open(workspace: &crate::runtime::fs::Workspace) -> std::result::Result<Self, String> {
+    pub fn open(workspace: &Workspace) -> std::result::Result<Self, String> {
         Service::start(workspace.shared_fs()).map(|service| Self(service, None)).map_err(|f| f.message)
     }
 
-    pub fn for_web(&self, files: Option<crate::runtime::fs::Workspace>) -> Self {
+    pub fn for_web(&self, files: Option<Workspace>) -> Self {
+        if let Some(workspace) = &files {
+            self.0.workspaces.locked().insert(workspace.owner().unwrap_or_default().to_owned(), workspace.clone());
+        }
         Self(Arc::clone(&self.0), files)
     }
 

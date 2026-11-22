@@ -15,28 +15,28 @@ const VIEWABLE: [(&str, &str); 8] =
 
 #[derive(Clone)]
 pub enum Source {
-    Root(FinderRoot),
-    Lent(LentFile),
+    Root { owner: String, root: FinderRoot },
+    Lent { owner: String, file: LentFile },
 }
 
 impl Source {
     pub fn identity(&self, path: &str) -> Outcome<String> {
         Ok(match self {
-            Source::Root(root) => {
+            Source::Root { root, .. } => {
                 let (device, inode) = root.identity()?;
                 format!("root {device}:{inode}\0{path}")
             }
-            Source::Lent(file) => {
+            Source::Lent { owner, file } => {
                 let (device, inode) = file.identity()?;
-                format!("lent {device}:{inode} {}", if file.writable { "rw" } else { "r" })
+                format!("lent {owner} {device}:{inode} {}", if file.writable { "rw" } else { "r" })
             }
         })
     }
 
     fn shown(&self) -> (&str, &str) {
         match self {
-            Source::Root(root) => (&root.id, &root.label),
-            Source::Lent(_) => ("", ""),
+            Source::Root { root, .. } => (&root.id, &root.label),
+            Source::Lent { .. } => ("", ""),
         }
     }
 }
@@ -103,22 +103,17 @@ impl OfficeFiles {
     }
 
     pub fn open(source: Source, path: &str) -> Outcome<OfficeFile> {
-        match source {
-            Source::Root(root) => Self::file_in(root, path),
-            Source::Lent(file) => Self::lent(file),
+        match &source {
+            Source::Root { root, .. } => {
+                let (path, _, info) = WorkspaceFs::opened(root, path)?;
+                Self::described(source, path, info.len(), info.modified_ms())
+            }
+            Source::Lent { file, .. } => {
+                let (info, label, writable) = (file.file.metadata()?, file.label.clone(), file.writable);
+                let described = Self::described(source, label, info.len(), info.modified_ms())?;
+                Ok(if writable { described } else { Self::read_only(described) })
+            }
         }
-    }
-
-    pub fn file_in(root: FinderRoot, relative: &str) -> Outcome<OfficeFile> {
-        let (path, _, info) = WorkspaceFs::opened(&root, relative)?;
-        Self::described(Source::Root(root), path, info.len(), info.modified_ms())
-    }
-
-    pub fn lent(file: LentFile) -> Outcome<OfficeFile> {
-        let info = file.file.metadata()?;
-        let (label, writable) = (file.label.clone(), file.writable);
-        let described = Self::described(Source::Lent(file), label, info.len(), info.modified_ms())?;
-        Ok(if writable { described } else { Self::read_only(described) })
     }
 
     fn described(source: Source, path: String, size: u64, modified_ms: i64) -> Outcome<OfficeFile> {
@@ -136,11 +131,19 @@ impl OfficeFiles {
         Ok(OfficeFile { source, path, name, ext, document_type, size, modified_ms, editable: reason.is_none(), read_only_reason: reason })
     }
 
-    pub fn read(file: &OfficeFile) -> Outcome<Vec<u8>> {
+    pub fn read(&self, file: &OfficeFile) -> Outcome<Vec<u8>> {
         match &file.source {
-            Source::Root(root) => Ok(WorkspaceFs::raw_in(root, &file.path)?.1),
-            Source::Lent(lent) => Ok(lent.read()?.data),
+            Source::Root { root, .. } => Ok(WorkspaceFs::raw_in(root, &file.path)?.1),
+            Source::Lent { owner, file: lent } => Ok(self.live(owner, lent)?.read()?.data),
         }
+    }
+
+    fn live<'a>(&self, owner: &str, file: &'a LentFile) -> Outcome<&'a LentFile> {
+        if self.0.lent_file(owner, &file.name).is_some_and(|known| Arc::ptr_eq(&known.file, &file.file)) {
+            return Ok(file);
+        }
+        log::warn!("office: {} was taken back from {owner}; not reading or writing it any more", file.label);
+        Err(Failure::http(410, format!("{} 已被收回", file.label)))
     }
 
     pub fn list_in(&self, root: FinderRoot, relative: &str) -> Outcome<(String, Vec<OfficeEntry>, bool)> {
@@ -191,10 +194,10 @@ impl OfficeFiles {
         Ok(Self::write_free(root, &path, &kind.create())?.0)
     }
 
-    pub fn save(source: &Source, relative: &str, data: &[u8], expected_ms: i64) -> Outcome<SaveResult> {
+    pub fn save(&self, source: &Source, relative: &str, data: &[u8], expected_ms: i64) -> Outcome<SaveResult> {
         match source {
-            Source::Root(root) => Self::save_in(root, relative, data, expected_ms),
-            Source::Lent(file) => Self::save_lent(file, data, expected_ms),
+            Source::Root { root, .. } => Self::save_in(root, relative, data, expected_ms),
+            Source::Lent { owner, file } => Self::save_lent(self.live(owner, file)?, data, expected_ms),
         }
     }
 
@@ -227,48 +230,66 @@ mod tests {
     use crate::runtime::fs::{Files, Workspace};
     use std::fs;
 
-    #[test]
-    fn level_1_roots_open_and_create_documents_and_lent_files_hide_their_path() {
-        let home = std::env::temp_dir().join(format!("acde-office-roots-{}", std::process::id()));
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let home = std::env::temp_dir().join(format!("acde-office-{name}-{}", std::process::id()));
         _ = fs::remove_dir_all(&home);
         fs::create_dir_all(home.join("Documents")).unwrap();
+        home
+    }
+
+    fn lent(all: &Workspace, path: &std::path::Path, writable: bool) -> Source {
+        let name = all.lend_file("writer", LentFile::open(&path.to_string_lossy(), writable).unwrap()).unwrap();
+        Source::Lent { owner: "writer".into(), file: all.shared_fs().lent_file("writer", &name).unwrap() }
+    }
+
+    #[test]
+    fn level_1_roots_open_and_create_documents_and_lent_files_hide_their_path() {
+        let home = scratch("roots");
         let text = home.to_string_lossy().into_owned();
-        let app = Workspace::at(&text).files(Files::new(&["documents".to_owned()], false), "writer");
-        let roots = app.finder_roots().unwrap();
+        let all = Workspace::at(&text);
+        let roots = all.files(Files::new(&["documents".to_owned()], false), "writer").finder_roots().unwrap();
         assert_eq!(roots.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["private", "documents"]);
         assert!(!serde_json::to_string(&roots).unwrap().contains(&text), "roots carry no paths");
         for root in &roots {
             let path = OfficeFiles::create(root, "", BlankKind::Docx, Some("report")).unwrap();
             assert_eq!(path, "report.docx");
             assert_eq!(OfficeFiles::create(root, "", BlankKind::Docx, Some("report")).unwrap(), "report 2.docx");
-            let file = OfficeFiles::file_in(root.clone(), &path).unwrap();
+            let file = OfficeFiles::open(Source::Root { owner: "writer".into(), root: root.clone() }, &path).unwrap();
             assert!(file.editable);
             assert_eq!(file.view()["root"], root.id.as_str());
             assert!(!file.view().to_string().contains(&text), "{}", file.view());
         }
         assert!(OfficeFiles::create(&roots[1], "../..", BlankKind::Docx, None).is_err());
-        let report = home.join("Documents/report.docx").to_string_lossy().into_owned();
-        let lent = OfficeFiles::lent(LentFile::open(&report, true).unwrap()).unwrap();
-        assert_eq!((lent.view()["root"].as_str(), lent.path.as_str()), (Some(""), "report.docx"));
-        assert!(!lent.view().to_string().contains(&text), "{}", lent.view());
-        assert!(lent.editable);
-        let read_only = OfficeFiles::lent(LentFile::open(&report, false).unwrap()).unwrap();
+        let report = home.join("Documents/report.docx");
+        let file = OfficeFiles::open(lent(&all, &report, true), "").unwrap();
+        assert_eq!((file.view()["root"].as_str(), file.path.as_str()), (Some(""), "report.docx"));
+        assert!(!file.view().to_string().contains(&text), "{}", file.view());
+        assert!(file.editable);
+        let read_only = OfficeFiles::open(lent(&all, &report, false), "").unwrap();
         assert!(!read_only.editable && read_only.read_only_reason.is_some());
         _ = fs::remove_dir_all(&home);
     }
 
     #[test]
-    fn a_lent_file_is_saved_in_place_only_while_unchanged() {
-        let path = std::env::temp_dir().join(format!("acde-office-lent-{}.docx", std::process::id()));
+    fn a_lent_file_is_saved_in_place_only_while_unchanged_and_still_lent() {
+        let home = scratch("lent");
+        let path = home.join("Documents/plan.docx");
         fs::write(&path, b"first").unwrap();
-        let file = OfficeFiles::lent(LentFile::open(&path.to_string_lossy(), true).unwrap()).unwrap();
-        let saved = OfficeFiles::save(&file.source, &file.path, b"second", file.modified_ms).unwrap();
+        let all = Workspace::at(&home.to_string_lossy());
+        let files = OfficeFiles(all.shared_fs());
+        let file = OfficeFiles::open(lent(&all, &path, true), "").unwrap();
+        let saved = files.save(&file.source, &file.path, b"second", file.modified_ms).unwrap();
         assert!(!saved.conflict);
         assert_eq!(fs::read(&path).unwrap(), b"second");
-        let stale = OfficeFiles::save(&file.source, &file.path, b"third", saved.modified_ms - 1).err().map(|failure| failure.errno);
+        let stale = files.save(&file.source, &file.path, b"third", saved.modified_ms - 1).err().map(|failure| failure.errno);
         assert_eq!(stale, Some(Errno::Conflict));
-        assert_eq!(fs::read(&path).unwrap(), b"second");
         assert_eq!(file.source.identity("").unwrap(), file.source.identity("other").unwrap());
-        _ = fs::remove_file(path);
+        let Source::Lent { file: taken, .. } = &file.source else { unreachable!() };
+        assert!(all.unlend("writer", &taken.name));
+        let refused = files.save(&file.source, &file.path, b"fourth", saved.modified_ms).err().map(|failure| failure.status);
+        assert_eq!(refused, Some(410));
+        assert!(files.read(&file).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"second");
+        _ = fs::remove_dir_all(&home);
     }
 }
