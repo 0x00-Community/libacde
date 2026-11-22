@@ -1,7 +1,7 @@
 use core::f64::consts::TAU;
 
 const RESPONSE: f64 = 0.35;
-const SETTLED: f64 = 0.001;
+const SETTLING: f64 = 9.233_413_476_451_586;
 const REDUCED_FADE: f64 = 0.15;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -78,18 +78,10 @@ impl Curve {
 
     pub fn length(&self) -> f64 {
         match *self {
-            Self::Spring { response } => settling(response),
+            Self::Spring { response } => SETTLING * response / TAU,
             Self::Eased { seconds, .. } => seconds.max(0.0),
         }
     }
-}
-
-fn settling(response: f64) -> f64 {
-    let mut x: f64 = 1.0;
-    while (1.0 + x) * (-x).exp() > SETTLED {
-        x += 0.01;
-    }
-    x * response / TAU
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -118,7 +110,11 @@ impl Ease {
         Self::NAMED.get(value as usize).map_or(Self::LINEAR, |(_, ease)| *ease)
     }
 
-    pub fn to_wire(name: &str) -> Option<u32> {
+    pub fn to_wire(self) -> u32 {
+        Self::NAMED.iter().position(|(_, ease)| *ease == self).map_or(0, |at| at as u32)
+    }
+
+    pub fn wire_of(name: &str) -> Option<u32> {
         Self::NAMED.iter().position(|(n, _)| *n == name).map(|at| at as u32)
     }
 
@@ -151,6 +147,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_settling_point_is_where_the_spring_is_within_a_thousandth() {
+        let left = (1.0 + SETTLING) * (-SETTLING).exp();
+        assert!((left - 0.001).abs() < 1e-12, "{left}");
+    }
+
+    #[test]
     fn the_standard_spring_settles_in_about_half_a_second_without_overshoot() {
         let curve = Preset::Standard.curve();
         assert!((0.45..0.55).contains(&curve.length()), "{}", curve.length());
@@ -181,7 +183,8 @@ mod tests {
         let ease = Ease::named("ease-in-out").unwrap();
         assert!((ease.at(0.5) - 0.5).abs() < 1e-6);
         assert!(ease.at(0.2) < 0.2);
-        assert_eq!(Ease::from_wire(Ease::to_wire("ease-out").unwrap()), Ease::named("ease-out").unwrap());
+        assert_eq!(Ease::from_wire(Ease::wire_of("ease-out").unwrap()), Ease::named("ease-out").unwrap());
+        assert_eq!(Ease::named("ease-in").unwrap().to_wire(), Ease::wire_of("ease-in").unwrap());
         assert_eq!(Ease::from_wire(99), Ease::LINEAR);
         assert!((Ease::LINEAR.at(0.3) - 0.3).abs() < 1e-6);
     }
