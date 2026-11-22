@@ -59,6 +59,10 @@ pub fn read_asset(url: &str) -> Option<Vec<u8>> {
     std::fs::read(asset_file(url)?).ok()
 }
 
+pub fn open_asset(url: &str) -> Option<std::fs::File> {
+    std::fs::File::open(asset_file(url)?).ok()
+}
+
 pub fn read_source_map(url: &str) -> Option<Vec<u8>> {
     std::fs::read(ASSETS.with(|a| a.borrow().file(url, true))?).ok()
 }

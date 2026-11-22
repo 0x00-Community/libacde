@@ -714,17 +714,21 @@ struct Open {
 
 fn open_video(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     let (media, node) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1));
-    let Some(bytes) = bind::bytes(args.get(2)) else {
-        return bind::throw_type_error(scope, "audio.openVideo: not bytes");
+    let source: crate::media::Source = match bind::bytes(args.get(2)) {
+        Some(bytes) => Arc::<[u8]>::from(bytes).into(),
+        None if args.get(2).is_string() => match crate::host::dom::open_asset(&bind::arg_string(scope, &args, 2)) {
+            Some(file) => file.into(),
+            None => return rv.set_null(),
+        },
+        None => return bind::throw_type_error(scope, "audio.openVideo: neither bytes nor a URL"),
     };
     let Some(web) = web() else {
         return bind::throw_error(scope, "NotSupportedError: no audio output");
     };
     let time = Arc::new(AtomicU64::new(0f64.to_bits()));
     with_state(|s| s.media.insert(media, time.clone()));
-    let bytes: Arc<[u8]> = bytes.into();
     let open = move || -> Result<Open, String> {
-        let player = Arc::new(crate::media::Player::open(bytes)?);
+        let player = Arc::new(crate::media::Player::open(source)?);
         let video = player.info().video;
         let epoch = player.epoch();
         let first = if video { player.first_frame(Duration::from_secs(10)) } else { None };

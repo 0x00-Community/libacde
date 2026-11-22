@@ -1,5 +1,5 @@
 use std::sync::mpsc::sync_channel;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use block2::RcBlock;
@@ -20,15 +20,16 @@ use objc2_core_video::{
 };
 use objc2_foundation::{NSArray, NSData, NSDictionary, NSError, NSNumber, NSString, NSURL};
 
-use crate::media::{Backend, Frame, Info, Pcm, Pull, RATE};
+use crate::media::{Backend, Frame, Info, Pcm, Pull, RATE, Source};
 
 pub(crate) const BGRA: u32 = u32::from_be_bytes(*b"BGRA");
 pub(crate) const LINEAR_PCM: u32 = u32::from_be_bytes(*b"lpcm");
+const CHUNK: u64 = 4 << 20;
 
 define_class!(
     #[unsafe(super(NSObject))]
     #[name = "AcdeMediaLoader"]
-    #[ivars = (Arc<[u8]>, Retained<NSString>)]
+    #[ivars = (Source, Retained<NSString>)]
     struct Loader;
 
     unsafe impl NSObjectProtocol for Loader {}
@@ -36,17 +37,22 @@ define_class!(
     unsafe impl AVAssetResourceLoaderDelegate for Loader {
         #[unsafe(method(resourceLoader:shouldWaitForLoadingOfRequestedResource:))]
         fn should_wait(&self, _loader: &AVAssetResourceLoader, request: &AVAssetResourceLoadingRequest) -> bool {
-            let (bytes, kind) = self.ivars();
+            let (source, kind) = self.ivars();
+            let length = source.len();
             unsafe {
                 if let Some(info) = request.contentInformationRequest() {
                     info.setContentType(Some(kind));
-                    info.setContentLength(bytes.len() as i64);
+                    info.setContentLength(length as i64);
                     info.setByteRangeAccessSupported(true);
                 }
                 if let Some(data) = request.dataRequest() {
-                    let start = (data.requestedOffset().max(0) as usize).min(bytes.len());
-                    let end = if data.requestsAllDataToEndOfResource() { bytes.len() } else { start.saturating_add(data.requestedLength().max(0) as usize).min(bytes.len()) };
-                    data.respondWithData(&NSData::with_bytes(&bytes[start..end]));
+                    let start = data.requestedOffset().max(0) as u64;
+                    let wanted = if data.requestsAllDataToEndOfResource() { length.saturating_sub(start) } else { data.requestedLength().max(0) as u64 };
+                    let mut chunk = vec![0; wanted.min(CHUNK) as usize];
+                    match source.fill_at(start, &mut chunk) {
+                        Ok(n) => data.respondWithData(&NSData::with_bytes(&chunk[..n])),
+                        Err(e) => log::warn!("media: reading the source failed: {e}"),
+                    }
                 }
                 request.finishLoading();
             }
@@ -56,8 +62,8 @@ define_class!(
 );
 
 impl Loader {
-    fn new(bytes: Arc<[u8]>, kind: Retained<NSString>) -> Retained<Self> {
-        let this = Self::alloc().set_ivars((bytes, kind));
+    fn new(source: Source, kind: Retained<NSString>) -> Retained<Self> {
+        let this = Self::alloc().set_ivars((source, kind));
         unsafe { msg_send![super(this), init] }
     }
 }
@@ -135,9 +141,9 @@ fn seconds(time: CMTime) -> f64 {
     unsafe { time.seconds() }
 }
 
-pub(crate) fn open(bytes: Arc<[u8]>) -> Result<(Box<dyn Backend>, Info), String> {
-    let kind = container(&bytes)?;
-    let loader = Loader::new(bytes, NSString::from_str(kind));
+pub(crate) fn open(source: Source) -> Result<(Box<dyn Backend>, Info), String> {
+    let kind = container(&source.head())?;
+    let loader = Loader::new(source, NSString::from_str(kind));
     let queue = DispatchQueue::new("acde.media.loader", None);
     let url = NSURL::URLWithString(&NSString::from_str("acde-media://media/source")).ok_or("no media URL")?;
     let options = NSDictionary::from_retained_objects(
