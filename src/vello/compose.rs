@@ -107,7 +107,7 @@ impl Composer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("acde compose"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("compose.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(format!("{}\n{}", crate::gpu::corner::WGSL, include_str!("compose.wgsl")).into()),
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("acde compose"),
