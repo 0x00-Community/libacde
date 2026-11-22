@@ -756,7 +756,7 @@ export class Inspect {
       const node = Inspect.#node(window, n.id, n, n.states, n.rect, [])
       return { ...node, tag: n.tag, visible: n.visible && !window.hidden, ...(n.attributes && { attributes: n.attributes }) }
     })
-    return { window: window.ref, count: found.count, nodes }
+    return { window: window.ref, count: found.count, nodes, windows: [window] }
   }
 
   async #tree(window: InspectWindow, node: number | null, limit: number, offscreen = false, invisible = false): Promise<Tree> {

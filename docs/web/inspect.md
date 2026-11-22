@@ -36,7 +36,7 @@
   可以在别的窗口) 在源上按下、量目标 (`point`, 可能滚动; 目标被别的窗口盖住时松开并回错)、分 10 步每步 16 ms 移过去再松开, 页面的指针拖动和
   HTML5 拖放 (也跨窗口) 都靠它. 窗口 ref 能 focus / restore / minimize / close / key. `open(name)` 按 id、名字找应用或原生程序起它. `query({selector, window?, ref?, limit?, attributes?})` →
   窗口 ref 还能 fill / fullscreen (`setState` 设成 `filled` / `fullscreen`), restore 把这两种设回 `normal`; 桌面和铺满宿主的窗口不行.
-  `{window, count, nodes}`: 在窗口 (默认焦点窗口) 或某个元素下按 CSS 选择器找, 节点是 `InspectMatch` (`InspectNode` 加 `tag`、`visible`, 给了
+  `{window, count, nodes, windows}` (`windows` 只有被查的那个窗口, 形状同快照的 `windows`): 在窗口 (默认焦点窗口) 或某个元素下按 CSS 选择器找, 节点是 `InspectMatch` (`InspectNode` 加 `tag`、`visible`, 给了
   `attributes` (最多 20 个属性名) 再加 `attributes: {名字: 值或 null}`), ref
   能直接给 act (不在语义树里的元素也行: `point` 按 render 节点 id 找元素).
 - **不在屏幕上的窗口** (`inspect.ts` 的 `Inspect.#offScreen`, 只有这一处): `windows` 里每个窗口的 `state` 是运行时的窗口状态 (宿主窗口的行自带;

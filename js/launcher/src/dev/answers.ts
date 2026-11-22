@@ -23,6 +23,7 @@ export interface Query {
   readonly window: string
   readonly count: number
   readonly nodes: readonly InspectMatch[]
+  readonly windows: readonly InspectWindow[]
 }
 
 export interface Snapshot {
