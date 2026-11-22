@@ -52,7 +52,7 @@
   着色、平滑边缘和渗出; 着色器拼的是 acde-scene 的 `corner::WGSL` 和 `glass::WGSL`, 和合成器同一份函数. 参数经 `Params`: 矩阵前三列放折射、渗出与高光、
   白点与平滑, `bias` 是取样区域, `color` 是着色.
   预设表 (通透度档位, 2026-11-22, 总仓 `.scratch/libacde/glass-transparency-plan.md`; `glass/preset.rs`, 参数表只此一份): `Glass::preset(Role, Level)`,
-  `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 不模糊、不染色、不渗出, 乘暗 0.05, 透镜强度 16 px、宽度 6 px、色散 0.03, 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3)、`Tinted`
+  `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 不模糊、不染色、不渗出, 乘暗 0.05, 透镜强度 60 px、宽度 6 px、色散 0.05 (边缘彩边约 3 px), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3)、`Tinted`
   (着色, 2, regular-2)、`Opaque` (减少透明度, 3: 重模糊加接近不透明的着色, `Glass::opaque(dark)` 按深浅给色, 预设取浅色). 名字和线上值都在 `Level`
   (`parse` / `from_wire` / `to_wire`, 照 `motion::Preset`), 认不得的线上值当通透. regular 取当前档, clear 再通透一档 (`Level::clearer`, 到通透为止,
   不透明不变). 高光各档一律 `330deg 0.35` (用户 2026-11-22 定). `Glass::from_properties_at(level, …)` 按档位取预设再盖分项;
@@ -76,7 +76,9 @@
   https://github.com/ShengzhiWu/liquid-glass , 演示 https://shengzhiwu.github.io/liquid-glass ; 只借做法, 没有拷代码): 中间不模糊、不加白, 颜色只乘
   `1 − darken` (它是 0.95); 边缘那圈"发光"不是高光, 是只在很窄一圈边缘的强折射把背后亮的颜色挤成一条细线 (它的放大按场值 `exp(−20·(sum − 0.7))`,
   离阈值一点就几乎为 0); 红绿蓝分三次取样出彩边 (它是 485 / 500 / 515, 即绿色上下各 3%). 我们在距离场上做: e 是到边缘的距离, w 是宽度,
-  位移 `−n · min(strength · (1 − min(e / w, 1))³, b)` (b 是半短边, 组里按权重混合), 边缘处正好是 `strength`, 离边 w 以上严格为 0, 区域外也为 0;
+  取样深度 `s(e) = w + (S − w) · (1 − e/w)²` (S = `min(strength, 1.8 b)`, b 是半短边, 组里按权重混合), 位移 `−n · (s − e)`: 边缘处取到 S 深处,
+  往里单调回落, 离边 w 以上严格为 0, 区域外也为 0. 带内只有几像素, 却把 w 到 S 这一段背景压进去 (样张 2026-11-22 v5: 16 px 时压缩不够, 看得出倒过来的字,
+  像重影; 参考的边缘位移是几百像素量级, 压成一条亮线), 取样单调所以不会对折出两份; S 不超过 1.8 b, 取样留在玻璃里面, 不越到区域外被夹成拉丝;
   n 取距离场的梯度 (中心差分 0.5 px; 单块是 `acde_glass_corner_gradient`, 组是合成场的梯度), 在直边上垂直于边、在圆角上沿径向. 不用"中心指向该点"
   那个法线: 它在长条中段是斜的, 第一版 (496fbc2) 用它加上宽衰减, 把中间的字和色块拉成波浪、出重影. 位移朝里取样, 相当于凸透镜放大. 色散: 红、蓝分别取
   `(1 ∓ dispersion)` 倍的位移 (`compose.wgsl` `glass_under`). 它的元球是硬阈值, 我们照旧用平滑边缘抗锯齿. 写法: `--acde-glass-lens: <强度> <宽度> [<色散>]`

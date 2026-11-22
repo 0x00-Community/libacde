@@ -34,10 +34,15 @@ fn acde_glass_corner_gradient(p: vec2<f32>, half: vec2<f32>, radius: f32, expone
     return g / max(length(g), 0.000001);
 }
 
+const ACDE_GLASS_LENS_REACH: f32 = 1.8;
+
 fn acde_glass_lens(n: vec2<f32>, d: f32, bevel: f32, lens: vec4<f32>) -> vec2<f32> {
-    let rim = 1.0 - clamp(-d / max(lens.w, 0.5), 0.0, 1.0);
-    let shift = min(max(lens.x, 0.0) * rim * rim * rim, max(bevel, 0.0));
-    return select(-n * shift, vec2<f32>(0.0), d > 0.0);
+    let width = max(lens.w, 0.5);
+    let e = max(-d, 0.0);
+    let deepest = max(min(lens.x, ACDE_GLASS_LENS_REACH * max(bevel, 1.0)), width);
+    let rim = 1.0 - clamp(e / width, 0.0, 1.0);
+    let shift = width + (deepest - width) * rim * rim - e;
+    return select(-n * shift, vec2<f32>(0.0), d > 0.0 || e >= width || lens.x <= 0.0);
 }
 
 fn acde_glass_tone(rgb: vec3<f32>, white_point: f32, tint: vec4<f32>, shine: f32) -> vec3<f32> {
