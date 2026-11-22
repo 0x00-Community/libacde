@@ -10,12 +10,13 @@ export interface AppearanceChange {
   readonly dark?: boolean
   readonly glass?: number
   readonly reducedTransparency?: boolean
+  readonly reducedMotion?: boolean
 }
 
 export interface AppearancePortal {
   open(): Promise<{
     dark(): Promise<boolean>
-    glass(): Promise<{ glass: number; reducedTransparency: boolean }>
+    glass(): Promise<{ glass: number; reducedTransparency: boolean; reducedMotion: boolean }>
     watch(callback: (change: AppearanceChange) => void): void
   }>
 }

@@ -40,6 +40,10 @@ impl Dom {
         _ = self.update(|e| e.set_dark(on));
     }
 
+    pub fn set_reduced_motion(&self, reduced: bool) {
+        _ = self.update(|e| e.set_reduced_motion(reduced));
+    }
+
     pub fn set_glass(&self, level: u32, reduced_transparency: bool) {
         _ = self.update(|e| e.set_glass(acde_scene::glass::Preference { level, reduced_transparency }));
     }

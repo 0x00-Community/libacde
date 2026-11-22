@@ -20,6 +20,7 @@ const REQUEST: &str = "org.freedesktop.portal.Request";
 const SETTINGS: &str = "org.freedesktop.portal.Settings";
 const APPEARANCE: &str = "org.freedesktop.appearance";
 const COLOR_SCHEME: &str = "color-scheme";
+const REDUCED_MOTION: &str = "reduced-motion";
 const ACDE_APPEARANCE: &str = "org.acde.appearance";
 const GLASS: &str = "glass";
 const REDUCED_TRANSPARENCY: &str = "reduced-transparency";
@@ -186,6 +187,7 @@ fn number(value: &Variant<'_>) -> Option<u32> {
 fn appearance_change(namespace: &str, key: &str, value: &Variant<'_>) -> Option<serde_json::Value> {
     match (namespace, key) {
         (APPEARANCE, COLOR_SCHEME) => Some(serde_json::json!({ "dark": dark_scheme(value) })),
+        (APPEARANCE, REDUCED_MOTION) => Some(serde_json::json!({ "reducedMotion": number(value) == Some(1) })),
         (ACDE_APPEARANCE, GLASS) => Some(serde_json::json!({ "glass": number(value).unwrap_or(0) })),
         (ACDE_APPEARANCE, REDUCED_TRANSPARENCY) => Some(serde_json::json!({ "reducedTransparency": number(value) == Some(1) })),
         _ => None,
@@ -213,8 +215,12 @@ impl Appearance {
     }
 
     fn read_glass(connection: &Connection) -> serde_json::Value {
-        let read = |key| Self::setting(connection, ACDE_APPEARANCE, key).ok().and_then(|value| number(&value));
-        serde_json::json!({ "glass": read(GLASS).unwrap_or(0), "reducedTransparency": read(REDUCED_TRANSPARENCY) == Some(1) })
+        let read = |namespace, key| Self::setting(connection, namespace, key).ok().and_then(|value| number(&value));
+        serde_json::json!({
+            "glass": read(ACDE_APPEARANCE, GLASS).unwrap_or(0),
+            "reducedTransparency": read(ACDE_APPEARANCE, REDUCED_TRANSPARENCY) == Some(1),
+            "reducedMotion": read(APPEARANCE, REDUCED_MOTION) == Some(1),
+        })
     }
 
     fn changes(connection: &Connection) -> zbus::Result<MessageIterator> {
@@ -239,13 +245,13 @@ impl Appearance {
         blocking(move || Self::read(&connection).map_err(bus)).await
     }
 
-    #[napi(ts_return_type = "Promise<{ glass: number; reducedTransparency: boolean }>")]
+    #[napi(ts_return_type = "Promise<{ glass: number; reducedTransparency: boolean; reducedMotion: boolean }>")]
     pub async fn glass(&self) -> Result<serde_json::Value> {
         let connection = self.connection.clone();
         blocking(move || Ok(Self::read_glass(&connection))).await
     }
 
-    #[napi(ts_args_type = "callback: (change: { dark?: boolean; glass?: number; reducedTransparency?: boolean }) => void")]
+    #[napi(ts_args_type = "callback: (change: { dark?: boolean; glass?: number; reducedTransparency?: boolean; reducedMotion?: boolean }) => void")]
     pub fn watch(&self, env: Env, callback: Unknown<'_>) -> Result<()> {
         self.watch.watch(&env, callback, |sink| {
             let signals = Self::changes(&self.connection).map_err(bus)?;
@@ -471,6 +477,7 @@ mod tests {
         assert_eq!(appearance_change(APPEARANCE, GLASS, &Variant::U32(2)), None, "not in the freedesktop namespace");
         assert_eq!(appearance_change(APPEARANCE, COLOR_SCHEME, &Variant::U32(1)), Some(serde_json::json!({ "dark": true })));
         assert_eq!(appearance_change(ACDE_APPEARANCE, "other", &Variant::U32(1)), None);
+        assert_eq!(appearance_change(APPEARANCE, REDUCED_MOTION, &Variant::U32(1)), Some(serde_json::json!({ "reducedMotion": true })));
     }
 
     #[test]
