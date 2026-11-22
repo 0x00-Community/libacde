@@ -55,6 +55,8 @@ blitz-traits = { workspace = true, default-features = true }
 html5ever = "=0.40.1"
 data-url = "=0.3.2"
 png = "=0.18.1"
+# render: canvas measureText ink bounds from glyph boxes (the version blitz-dom uses)
+skrifa = "=0.44.0"
 bytemuck = "=1.25.2"
 kurbo = "=0.13.1"
 peniko = "=0.6.1"

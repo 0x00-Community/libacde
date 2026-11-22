@@ -964,17 +964,44 @@ impl Canvas {
             .fold((0.0, 0.0), |(a, d), m| (f64::max(a, m.ascent.into()), f64::max(d, m.descent.into())))
     }
 
+    fn ink(line: &blitz_dom::parley::Line<blitz_dom::node::TextBrush>) -> Option<Rect> {
+        use skrifa::MetadataProvider;
+        let baseline = line.metrics().baseline;
+        let mut ink: Option<Rect> = None;
+        for item in line.items() {
+            let blitz_dom::parley::PositionedLayoutItem::GlyphRun(run) = item else { continue };
+            let r = run.run();
+            let font = r.font();
+            let Ok(face) = skrifa::FontRef::from_index(font.data.as_ref(), font.index) else { continue };
+            let bits: &[i16] = bytemuck::cast_slice(r.normalized_coords());
+            let coords: Vec<_> = bits.iter().map(|c| skrifa::instance::NormalizedCoord::from_bits(*c)).collect();
+            let metrics = face.glyph_metrics(skrifa::instance::Size::new(r.font_size()), coords.as_slice());
+            for g in run.positioned_glyphs() {
+                let Some(b) = metrics.bounds(skrifa::GlyphId::new(g.id)) else { continue };
+                if b.x_max <= b.x_min || b.y_max <= b.y_min {
+                    continue;
+                }
+                let y = g.y - baseline;
+                let rect = Rect::new(f64::from(g.x + b.x_min), f64::from(y - b.y_max), f64::from(g.x + b.x_max), f64::from(y - b.y_min));
+                ink = Some(ink.map_or(rect, |i| i.union(rect)));
+            }
+        }
+        ink
+    }
+
     pub(crate) fn measure(doc: &mut BaseDocument, font: &str, text: &str) -> crate::render::TextMetrics {
         let font = Font::parse(font).unwrap_or_default();
         let layout = doc.layout_canvas_text(text, &font.family, font.size, font.weight, font.italic);
         let width = f64::from(layout.width());
-        let (ascent, descent) = layout.lines().next().map_or((0.0, 0.0), |l| Self::extents(&l));
+        let line = layout.lines().next();
+        let (ascent, descent) = line.as_ref().map_or((0.0, 0.0), Self::extents);
+        let ink = line.as_ref().and_then(Self::ink).unwrap_or(Rect::ZERO);
         crate::render::TextMetrics {
             width,
-            actual_bounding_box_left: 0.0,
-            actual_bounding_box_right: width,
-            actual_bounding_box_ascent: ascent,
-            actual_bounding_box_descent: descent,
+            actual_bounding_box_left: -ink.x0,
+            actual_bounding_box_right: ink.x1,
+            actual_bounding_box_ascent: -ink.y0,
+            actual_bounding_box_descent: ink.y1,
             font_bounding_box_ascent: ascent,
             font_bounding_box_descent: descent,
         }

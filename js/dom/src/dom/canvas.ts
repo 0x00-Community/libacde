@@ -40,6 +40,14 @@ export class TextMetrics {
 }
 tag(TextMetrics)
 
+function aligned(m: ArrayLike<number> | undefined, s: { align: string, baseline: string, direction: string }): number[] {
+  const [w = 0, l = 0, r = 0, a = 0, d = 0, fa = 0, fd = 0] = Array.from(m ?? [])
+  const rtl = s.direction === 'rtl'
+  const dx = s.align === 'center' ? -w / 2 : s.align === 'left' || (s.align === 'start' && !rtl) || (s.align === 'end' && rtl) ? 0 : -w
+  const dy = { top: fa, hanging: fa * 0.8, middle: (fa - fd) / 2, ideographic: -fd, bottom: -fd }[s.baseline] ?? 0
+  return [w, l - dx, r + dx, a - dy, d + dy, fa - dy, fd + dy]
+}
+
 export const canvasSources = {
   present(_canvas: Element): void {},
   resolve(image: unknown): unknown {
@@ -632,7 +640,7 @@ export class CanvasContext2d {
     this.#text(1, text, x, y, maxWidth)
   }
   measureText(text: string): TextMetrics {
-    return new TextMetrics(dom.measureText(this.canvas[ID], this.#state.font, String(text)))
+    return new TextMetrics(aligned(dom.measureText(this.canvas[ID], this.#state.font, String(text)), this.#state))
   }
   drawImage(source: Element, ...a: number[]): void {
     this.#check()

@@ -196,6 +196,38 @@ fn text_is_drawn_and_measured_like_dom_text() {
 }
 
 #[test]
+fn measure_text_actual_bounding_box_is_the_ink() {
+    let page = Page::new();
+    let doc = &page.doc;
+    let xo = doc.measure_text(page.canvas, "30px sans-serif", "xo").unwrap();
+    let eg = doc.measure_text(page.canvas, "30px sans-serif", "\u{c9}g").unwrap();
+    assert!(xo.actual_bounding_box_ascent < xo.font_bounding_box_ascent - 5.0, "{xo:?}");
+    assert!(xo.actual_bounding_box_descent < 2.0, "{xo:?}");
+    assert!(eg.actual_bounding_box_ascent > xo.actual_bounding_box_ascent + 6.0, "{eg:?}");
+    assert!(eg.actual_bounding_box_descent > 4.0, "{eg:?}");
+    assert!(xo.actual_bounding_box_right <= xo.width + 1.0 && xo.actual_bounding_box_right > xo.width - 6.0, "{xo:?}");
+    assert!(xo.actual_bounding_box_left < 0.0 && xo.actual_bounding_box_left > -6.0, "{xo:?}");
+    let blank = doc.measure_text(page.canvas, "30px sans-serif", " ").unwrap();
+    assert_eq!((blank.actual_bounding_box_ascent, blank.actual_bounding_box_right), (0.0, 0.0));
+    Ops::default().op(11, &[]).str("30px sans-serif").fill_style(RED).op(44, &[]).u8(0).str("xo").op_args(&[10.0, 35.0, f32::NAN]).apply(doc, page.canvas);
+    let px = page.pixels();
+    let (mut top, mut bottom) = (u32::MAX, 0);
+    for y in 0..50 {
+        for x in 0..100 {
+            if Page::red(&px, x, y) {
+                top = top.min(y);
+                bottom = bottom.max(y);
+            }
+        }
+    }
+    let (ink_top, ink_bottom) = (35.0 - xo.actual_bounding_box_ascent, 35.0 + xo.actual_bounding_box_descent);
+    assert!(
+        (f64::from(top) - ink_top).abs() <= 1.5 && (f64::from(bottom) + 1.0 - ink_bottom).abs() <= 1.5,
+        "pixels {top}..{bottom} ink {ink_top}..{ink_bottom}"
+    );
+}
+
+#[test]
 fn to_data_url_is_a_png() {
     let page = Page::new();
     Ops::default().fill_style(RED).fill_rect(0.0, 0.0, 10.0, 10.0).apply(&page.doc, page.canvas);
