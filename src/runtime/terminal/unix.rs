@@ -291,7 +291,7 @@ impl Wake {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::super::Terminals;
-    use super::super::tests::{Seen, WAIT, failed, invalid, missing, open};
+    use super::super::tests::{READY, STARTUP, Seen, WAIT, failed, invalid, is_ready, missing, open, started};
     use super::*;
 
     #[test]
@@ -300,6 +300,8 @@ mod tests {
         let id = open(&t);
         assert_eq!(id.len(), 36);
         let s = Seen::follow(&t, &id);
+        t.input(id.clone(), READY.into()).unwrap();
+        s.until("the shell", STARTUP, |log| is_ready(&log.0));
         assert_eq!(t.input(id.clone(), "echo he\"\"llo; pwd\n".into()).unwrap(), json!({"ok": true}));
         let home = std::env::home_dir().unwrap().to_string_lossy().into_owned();
         s.until("echo", WAIT, |log| log.0.contains("hello") && log.0.contains(&home));
@@ -328,7 +330,7 @@ mod tests {
     #[test]
     fn backlog_signals_and_hang_up() {
         let t = Terminals::new();
-        let id = open(&t);
+        let id = started(&t);
         t.input(id.clone(), "echo early-$((6*7)); exit 3\n".into()).unwrap();
         std::thread::sleep(Duration::from_millis(1500));
         let s = Seen::follow(&t, &id);
@@ -337,12 +339,12 @@ mod tests {
         std::thread::sleep(Duration::from_millis(50));
         assert_eq!(failed(t.input(id, "x".into())), missing());
 
-        let id = open(&t);
+        let id = started(&t);
         let s = Seen::follow(&t, &id);
         t.input(id, "kill -9 $$\n".into()).unwrap();
         assert_eq!(s.exited(), json!({"type": "exit", "code": null, "signal": 9}));
 
-        let id = open(&t);
+        let id = started(&t);
         let s = Seen::follow(&t, &id);
         t.input(id.clone(), "exec /bin/sh -c \"trap '' HUP; echo TRAPPED; while :; do sleep 1; done\"\n".into()).unwrap();
         s.until("trap set", WAIT, |log| log.0.contains("TRAPPED\r\n"));
