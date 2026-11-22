@@ -38,18 +38,64 @@ fn acde_glass_corner_gradient(p: vec2<f32>, half: vec2<f32>, radius: f32, expone
     return g / max(length(g), 0.000001);
 }
 
-const ACDE_GLASS_LENS_MOST_STRENGTH: f32 = 100.0;
-const ACDE_GLASS_LENS_MOST_PULL: f32 = 0.95;
-const ACDE_GLASS_LENS_MOST_STEEPNESS: f32 = 20.0;
+const ACDE_GLASS_LENS_STEPS: u32 = 64u;
+const ACDE_GLASS_LENS_LEAST_SLOPE: f32 = 0.1;
 
-fn acde_glass_lens(n: vec2<f32>, d: f32, bevel: f32, lens: vec4<f32>) -> vec2<f32> {
-    let width = min(max(lens.w, 0.5), max(bevel, 0.5));
-    let t = clamp(-d / width, 0.0, 1.0);
-    let k = clamp(lens.x, 0.0, ACDE_GLASS_LENS_MOST_STRENGTH) / ACDE_GLASS_LENS_MOST_STRENGTH;
-    let pull = ACDE_GLASS_LENS_MOST_PULL * k;
-    let power = 1.0 + ACDE_GLASS_LENS_MOST_STEEPNESS * k;
-    let shift = width * pull * (1.0 - pow(1.0 - t, power) - t);
-    return select(-n * shift, vec2<f32>(0.0), d > 0.0 || -d >= width || lens.x <= 0.0);
+fn acde_glass_bezel_height(x: f32) -> f32 {
+    let u = 1.0 - clamp(x, 0.0, 1.0);
+    return pow(max(1.0 - u * u * u * u, 0.0), 0.25);
+}
+
+fn acde_glass_bezel_slope(x: f32) -> f32 {
+    let u = 1.0 - clamp(x, 0.000001, 1.0);
+    return u * u * u * pow(max(1.0 - u * u * u * u, 0.000001), -0.75);
+}
+
+fn acde_glass_bent_depth(x: f32, ratio: f32, index: f32) -> f32 {
+    let into = atan(ratio * acde_glass_bezel_slope(x));
+    let out = asin(clamp(sin(into) / index, -1.0, 1.0));
+    return x + ratio * acde_glass_bezel_height(x) * tan(into - out);
+}
+
+fn acde_glass_lens_node(j: u32, ratio: f32, index: f32) -> f32 {
+    return acde_glass_bent_depth(f32(j) / f32(ACDE_GLASS_LENS_STEPS), ratio, index);
+}
+
+fn acde_glass_lens_depth(x: f32, ratio: f32, index: f32) -> f32 {
+    let at = clamp(x, 0.0, 1.0) * f32(ACDE_GLASS_LENS_STEPS);
+    let i = min(u32(floor(at)), ACDE_GLASS_LENS_STEPS - 1u);
+    var best = mix(acde_glass_lens_node(i, ratio, index), acde_glass_lens_node(i + 1u, ratio, index), at - f32(i));
+    for (var j = i + 1u; j <= ACDE_GLASS_LENS_STEPS; j++) {
+        let ahead = f32(j) / f32(ACDE_GLASS_LENS_STEPS) - x;
+        best = min(best, acde_glass_lens_node(j, ratio, index) - ACDE_GLASS_LENS_LEAST_SLOPE * ahead);
+    }
+    return best;
+}
+
+fn acde_glass_lens(n: vec2<f32>, d: f32, half_short: f32, lens: vec4<f32>, index: f32) -> vec2<f32> {
+    let bezel = min(max(lens.w, 0.5), max(half_short, 0.5));
+    let e = -d;
+    if d > 0.0 || e >= bezel || lens.x <= 0.0 || index <= 1.0 {
+        return vec2<f32>(0.0);
+    }
+    let source = bezel * acde_glass_lens_depth(e / bezel, lens.x / bezel, index);
+    return -n * (source - e);
+}
+
+struct AcdeGlassBend {
+    red: vec2<f32>,
+    green: vec2<f32>,
+    blue: vec2<f32>,
+}
+
+fn acde_glass_lens_rgb(n: vec2<f32>, d: f32, half_short: f32, lens: vec4<f32>, index: f32) -> AcdeGlassBend {
+    let green = acde_glass_lens(n, d, half_short, lens, index);
+    if lens.y <= 0.0 {
+        return AcdeGlassBend(green, green, green);
+    }
+    let red = acde_glass_lens(n, d, half_short, lens, index - lens.y);
+    let blue = acde_glass_lens(n, d, half_short, lens, index + lens.y);
+    return AcdeGlassBend(red, green, blue);
 }
 
 fn acde_glass_tone(rgb: vec3<f32>, white_point: f32, tint: vec4<f32>, shine: f32) -> vec3<f32> {

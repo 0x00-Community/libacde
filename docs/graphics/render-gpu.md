@@ -46,7 +46,7 @@
   `-tint` 的颜色认 `#rgb`、`#rgba`、`#rrggbb`、`#rrggbbaa` 与 `rgb(r g b / a)`) 时, blitz-paint (`render/glass.rs`) 从计算样式取这几个
   自定义属性的文本, 交 `acde_scene::glass::Glass::from_properties` 解析 (解析只此一处; 写错的分项留空并记 warn), 和角形一起作为 `LayerShape` 随
   `push_shaped_layer` 带出. `render::Backdrop::glass()` 给出它 (长度已乘图层变换的缩放), `gpu::Backdrop` 多一个 `glass` 字段. 玻璃的算法、线上格式
-  (`to_wire` / `from_wire`, 30 个小端 f32; 第 26–30 个是透镜强度、色散、乘暗、透镜宽度、高光宽度, 只收到前 25 个的旧对端按 0 处理)、`scaled` / `reach`、CPU 简化版 (`glass::cpu::paint`: 最小和最大两层模糊按两层的不透明度归一、在预乘空间混合, 区域外的渗出是预乘底色乘渗出系数, 和 GPU 一致; 高光、白点、着色按直通色算; 不做折射) 和
+  (`to_wire` / `from_wire`, 31 个小端 f32; 第 26–31 个是透镜厚度、色散、乘暗、斜面宽度、高光宽度、折射率, 只收到前 25 个的旧对端按 0 处理)、`scaled` / `reach`、CPU 简化版 (`glass::cpu::paint`: 最小和最大两层模糊按两层的不透明度归一、在预乘空间混合, 区域外的渗出是预乘底色乘渗出系数, 和 GPU 一致; 高光、白点、着色按直通色算; 不做折射) 和
   逐像素的 WGSL (`glass::WGSL`, 要先拼 `corner::WGSL`) 都在 acde-scene; CPU 的盒式模糊也只此一份 (`acde_scene::blur`, 原 acompositor `frost.rs` 原样搬来).
   合成器经 `acompositor_backdrop_v1` 版本 3 的 `add_glass_area` 收玻璃 (acdes). 进程内的 GPU 合成 (`src/vello/compose.rs`, 宿主窗口用) 也画玻璃
   (2026-11-22): 取样区域是元素外扩 `reach()`; 五层里不透明度大于 0 的每层用现有的模糊管线 (`blur_tagged`) 各模糊一次, 按 `Pipe::Mix` 依次插值成按不透明度归一的
@@ -54,7 +54,7 @@
   着色、平滑边缘和渗出; 着色器拼的是 acde-scene 的 `corner::WGSL` 和 `glass::WGSL`, 和合成器同一份函数. 参数经 `Params`: 矩阵前三列放折射、渗出与高光、
   白点与平滑, `bias` 是取样区域, `color` 是着色.
   预设表 (通透度档位, 2026-11-22, 总仓 `.scratch/libacde/glass-transparency-plan.md`; `glass/preset.rs`, 参数表只此一份): `Glass::preset(Role, Level)`,
-  `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 不模糊、不染色、不渗出, 乘暗 0.05, 透镜强度 60、宽度 256 px (着色器限到半短边, 即整块凸透镜)、色散 0.01 (用户 2026-11-23 在调参页定), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3)、`Tinted`
+  `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 不模糊、不染色、不渗出, 乘暗 0.05, 透镜斜面 34 px、厚度 22 px、折射率 1.5、色散 0.01 (用户 2026-11-23 在调参页定), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3)、`Tinted`
   (着色, 2, regular-2)、`Opaque` (减少透明度, 3: 重模糊加接近不透明的着色, `Glass::opaque(dark)` 按深浅给色, 预设取浅色). 名字和线上值都在 `Level`
   (`parse` / `from_wire` / `to_wire`, 照 `motion::Preset`), 认不得的线上值当通透. regular 取当前档, clear 再通透一档 (`Level::clearer`, 到通透为止,
   不透明不变). 高光各档一律 `330deg 0.45 4px` (用户 2026-11-23 在调参页定). `Glass::from_properties_at(level, …)` 按档位取预设再盖分项;
@@ -72,7 +72,7 @@
   一块的组回归测试继续对照 `cpu::paint`, 远离的另一块不改变这一块任何像素的回归测试也要过.
   模糊层全组一份, 取第一块的. WGSL (`group::WGSL`, 要先拼 `corner::WGSL` 和 `glass::WGSL`) 只引用一个模块级数组 `acde_glass_pieces`,
   由使用方自己声明绑定: `var<uniform> acde_glass_pieces: array<AcdeGlassPiece, 16>`; 每块 7 个 vec4 (112 字节, `to_uniform` 给出整块 1792 字节):
-  `shape` (中心、半宽高)、`corner` (半径、指数)、`refraction`、`bleed` (渗出三项加高光角度)、`look` (高光强度、白点、平滑、高光宽度)、`tint`、`lens` (透镜强度、色散、乘暗、透镜宽度). 用 uniform 定长数组
+  `shape` (中心、半宽高)、`corner` (半径、指数、折射率)、`refraction`、`bleed` (渗出三项加高光角度)、`look` (高光强度、白点、平滑、高光宽度)、`tint`、`lens` (透镜厚度、色散、乘暗、斜面宽度). 用 uniform 定长数组
   不用存储缓冲: WebGL2 级别的 wgpu 限额里存储缓冲为 0 (https://wgpu.rs/doc/wgpu/struct.Limits.html `downlevel_webgl2_defaults`), uniform 块至少
   16384 字节 (https://registry.khronos.org/OpenGL-Refpages/es3.1/html/glGet.xhtml), 页面合成和合成器都能用. 块数和间距由使用方的参数传入
   `acde_glass_group_field(p, count, spacing)`; `acde_glass_group_offset` / `acde_glass_group_shade` 按场做折射偏移和着色, 和单块的 `fs_glass` 是同一套函数
@@ -81,18 +81,20 @@
   https://github.com/ShengzhiWu/liquid-glass , 演示 https://shengzhiwu.github.io/liquid-glass ; 只借做法, 没有拷代码): 中间不模糊、不加白, 颜色只乘
   `1 − darken` (它是 0.95); 边缘那圈"发光"不是高光, 是只在很窄一圈边缘的强折射把背后亮的颜色挤成一条细线 (它的放大按场值 `exp(−20·(sum − 0.7))`,
   离阈值一点就几乎为 0); 红绿蓝分三次取样出彩边 (它是 485 / 500 / 515, 即绿色上下各 3%). 我们在距离场上做: e 是到边缘的距离, w 是宽度,
-  带内归一化 `t = e/w` (w 不大于半短边), 源深度 `g = w·f(t)`, `f(t) = t + s·(1 − (1 − t)^q − t)`; 强度 `k = strength/100` (0–100, 超出夹住),
-  `s = 0.95k`, `q = 1 + 20k`. f(0)=0, f(1)=1, 位移 `−n·(g−e)`, e 超过 w 严格为 0. `f′(t) = 1 − s + s·q·(1 − t)^(q−1) ≥ 1 − s ≥ 0.05`,
-  所以源坐标始终严格单调, 不会翻转或旋转背景 (用户明确不要参考那样越过中心的倒像). 边缘压缩比 `f′(0) = 1 + s(q − 1)`, 最大 20 时约 20; 中心附近
-  `f′(1) = 1 − s`, 最大强度时放大约 20 倍. strength 0 严格恒等, 1 时最大位移小于 0.25 px. 映射的单调条件照镜头畸变映射的通行做法
-  (OpenLensIO https://ris-pub.smpte.org/res/OpenLensIO_v0_9_0.pdf ; 多项式径向映射 https://salivity.github.io/glsl/article/glsl-lens-distortion-with-polynomial-radial-warps ).
-  `Lens::source_depth` 是 CPU 同公式, 单测覆盖强度 0、1、40、60、99、100 及超出值, 多种宽度与半短边, 每种采样 1000 段断言严格递增, 并断言最大强度时边缘
-  压缩比大于 15、全程导数不小于 0.05、中心恒定;
+  斜面透镜 (2026-11-23 用户定方向: 照苹果, 中间平、清楚、不动, 只在边缘一圈斜面弯折, 不翻转; 取代 b210a8a 的"整块放大"): 剖面照 kube.io
+  (https://kube.io/blog/liquid-glass-css-svg/ ), x = e/w ∈ [0, 1] (e 到边距离, w 斜面宽度, 不大于半短边), 高度 `y = ⁴√(1 − (1 − x)⁴)` (凸超椭圆),
+  x ≥ 1 平坦, 位移严格为 0. 斜率 `y′ = (1 − x)³ (1 − (1 − x)⁴)^(−3/4)` 用解析式 (原文中心差分). 入射光垂直于背景, 表面法线与竖直的夹角
+  `θ1 = atan(r·y′)` (r = 厚度/w), 斯涅尔定律 `sin θ1 = n·sin θ2`, 折射光与竖直的夹角 `θ1 − θ2`; 落点按"光从表面高度 h = 厚度·y 落到背景"算,
+  朝内偏移 `h·tan(θ1 − θ2)` (原文没给这一步的公式, 由 acdev-lead 推得, 等价于原文按剖面求出位移再沿边扫一圈). 源深度 `g(e) = e + 偏移`.
+  保序: 外缘附近曲面陡, 偏移会先升后降, 若 g 下降就会对折出倒像. 所以把 g 在 64 段上取"右侧下包络" `ĝ(x) = min_{u ≥ x} (g(u) − 0.1 (u − x))`
+  (节点之间线性插值), ĝ′ ≥ 0.1 处处成立、ĝ ≤ g、在 x = 1 处等于 1, 所以严格单调、不越过斜面、也不越过中心. 强度来自厚度 (越厚越弯),
+  折射率 1 或厚度 0 时严格恒等. 色散: 红、绿、蓝各用折射率 `n − Δ`、`n`、`n + Δ` 算一遍 (`acde_glass_lens_rgb`), 三条都单调.
+  `Lens::source_depth` 是 CPU 同算法; 单测对默认值、大厚度 (200 px)、窄斜面 (2、4 px)、宽斜面 (256 px, 夹到半短边)、折射率 1–3 与三种半短边各采样
+  2000 段, 断言严格递增且不越过中心, 断言平坦区 (e ≥ w) 严格不动, 默认值最大偏移大于 2 px, 厚度 0 和折射率 1 恒等.
   n 取距离场的梯度 (中心差分 0.5 px; 单块是 `acde_glass_corner_gradient`, 组是合成场的梯度), 在直边上垂直于边、在圆角上沿径向. 不用"中心指向该点"
-  那个法线: 它在长条中段是斜的, 第一版 (496fbc2) 用它加上宽衰减, 把中间的字和色块拉成波浪、出重影. 位移朝里取样, 相当于凸透镜放大. 色散: 红、蓝分别取
-  `(1 ∓ dispersion)` 倍的位移 (`compose.wgsl` `glass_under`). 它的元球是硬阈值, 我们照旧用平滑边缘抗锯齿. 写法: `--acde-glass-lens: <强度> <宽度> [<色散>]`
-  (强度是 0–100 的百分比, 可带 `%`, 不随缩放; 宽度是长度, 随缩放; 不写色散沿用预设; 2026-11-23 改, 原来强度是 px), `--acde-glass-darken: <数>`. 强度为 0 时三次取样落在同一点, 结果和没有透镜时逐位相同. 页面合成
-  (`fs_glass`, 参数放 `Params.matrix` 第四列: 强度、色散、乘暗、宽度) 与组的 WGSL (`acde_glass_lens`、`acde_glass_group_lens`、`acde_glass_tone_darkened`)
+  那个法线: 它在长条中段是斜的, 第一版 (496fbc2) 用它加上宽衰减, 把中间的字和色块拉成波浪、出重影. 位移朝里取样. 三通道各自的位移由 `glass_under` 分别取样. 它的元球是硬阈值, 我们照旧用平滑边缘抗锯齿. 写法: `--acde-glass-lens: <斜面宽度> <厚度> [<折射率>] [<色散>]`
+  (斜面宽度、厚度是长度, 随缩放; 折射率 0–3, 1 及以下即无透镜; 色散 Δ 是折射率差, 0–0.1; 后两项不写沿用预设. 2026-11-23 定的最终语义), `--acde-glass-darken: <数>`. 强度为 0 时三次取样落在同一点, 结果和没有透镜时逐位相同. 页面合成
+  (`fs_glass`, 参数放 `Params.matrix` 第四列: 厚度、色散、乘暗、斜面宽度; 折射率放 `Params.shift.x`; 组里每块的折射率放 `corner.z`) 与组的 WGSL (`acde_glass_lens`、`acde_glass_group_lens`、`acde_glass_tone_darkened`)
   同一套函数; 组只在边缘一圈内求梯度.
   CPU 版只做乘暗, 不做透镜.
   页面怎么成组 (2026-11-22): 容器写 `--acde-glass-merge: <长度>` (对应苹果 `GlassEffectContainer(spacing:)`), 元素写 `--acde-glass-union: <名字>`

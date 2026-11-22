@@ -96,7 +96,7 @@ impl Glass {
                 white_point: 0.0,
                 smoothing: 0.35,
                 tint: [1.0, 1.0, 1.0, 0.0],
-                lens: Lens { strength: 60.0, width: 256.0, dispersion: 0.01 },
+                lens: Lens { bezel: 34.0, thickness: 22.0, index: 1.5, dispersion: 0.01 },
                 darken: 0.05,
             },
             Level::Medium => Self {
@@ -158,7 +158,7 @@ mod tests {
         let sample = [
             ("acde-glass", "clear"),
             ("acde-glass-refraction", "0 18px 0 0"),
-            ("acde-glass-lens", "60 256px 0.01"),
+            ("acde-glass-lens", "34px 22px 1.5 0.01"),
             ("acde-glass-blur", "0px 1"),
             ("acde-glass-bleed", "0 0 0"),
             ("acde-glass-highlight", "330deg 0.45 4px"),

@@ -83,10 +83,10 @@ fn glass_sample(at: vec2<f32>, region: vec4<f32>) -> vec4<f32> {
     return textureSample(src, samp, clamp((at - region.xy) / region.zw, vec2<f32>(0.0), vec2<f32>(1.0)));
 }
 
-fn glass_under(at: vec2<f32>, shift: vec2<f32>, dispersion: f32, region: vec4<f32>) -> vec4<f32> {
-    let red = glass_sample(at + shift * (1.0 - dispersion), region);
-    let green = glass_sample(at + shift, region);
-    let blue = glass_sample(at + shift * (1.0 + dispersion), region);
+fn glass_under(at: vec2<f32>, bend: AcdeGlassBend, region: vec4<f32>) -> vec4<f32> {
+    let red = glass_sample(at + bend.red, region);
+    let green = glass_sample(at + bend.green, region);
+    let blue = glass_sample(at + bend.blue, region);
     return vec4<f32>(red.r, green.g, blue.b, green.a);
 }
 
@@ -103,8 +103,8 @@ fn fs_glass(in: VsOut) -> @location(0) vec4<f32> {
     let lens = params.matrix[3];
     let region = params.bias;
     let at = px + acde_glass_offset(p, half, d, refraction);
-    let shift = acde_glass_lens(acde_glass_corner_gradient(p, half, radius, params.exponent), d, min(half.x, half.y), lens);
-    let under = glass_under(at, shift, lens.y, region);
+    let bend = acde_glass_lens_rgb(acde_glass_corner_gradient(p, half, radius, params.exponent), d, min(half.x, half.y), lens, params.shift.x);
+    let under = glass_under(at, bend, region);
     let inside = acde_glass_inside(d, g2.z);
     if inside <= 0.0 {
         return under * acde_glass_bleed(d, g1.xyz);
@@ -122,7 +122,7 @@ fn fs_glass_group(in: VsOut) -> @location(0) vec4<f32> {
     let count = u32(params.shift.x);
     let f = acde_glass_group_field(px, count, params.shift.y);
     let at = px + acde_glass_group_offset(f);
-    let under = glass_under(at, acde_glass_group_lens(f, px, count, params.shift.y), f.look.lens.y, params.bias);
+    let under = glass_under(at, acde_glass_group_lens(f, px, count, params.shift.y), params.bias);
     return acde_glass_group_shade(under, f);
 }
 

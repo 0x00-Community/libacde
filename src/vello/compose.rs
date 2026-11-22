@@ -574,13 +574,22 @@ impl Composer {
             glass.white_point,
             glass.smoothing,
             light.width,
-            glass.lens.strength,
+            glass.lens.thickness,
             glass.lens.dispersion,
             glass.darken,
-            glass.lens.width,
+            glass.lens.bezel,
         ];
         let bias = [x as f32, y as f32, w as f32, h as f32];
-        let params = Params { rect: b.rect, radius: b.radius, exponent: b.exponent, color: glass.tint, matrix, bias, ..Default::default() };
+        let params = Params {
+            rect: b.rect,
+            radius: b.radius,
+            exponent: b.exponent,
+            shift: [glass.lens.index, 0.0],
+            color: glass.tint,
+            matrix,
+            bias,
+            ..Default::default()
+        };
         self.pass(encoder, canvas, false, &[Draw { pipe: Pipe::Glass, src: &filtered, params, scissor: Some(region), mix: None, group: None }]);
     }
 

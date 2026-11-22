@@ -24,6 +24,7 @@ struct AcdeGlassField {
     toward: vec2<f32>,
     merging: f32,
     bevel: f32,
+    index: f32,
     look: AcdeGlassLook,
 }
 
@@ -72,6 +73,7 @@ fn acde_glass_group_field(p: vec2<f32>, count: u32, spacing: f32) -> AcdeGlassFi
     var toward = (p - first.shape.xy) / max(first.shape.zw, vec2<f32>(1.0, 1.0));
     var look = acde_glass_piece_look(0u);
     var bevel = min(first.shape.z, first.shape.w);
+    var index = first.corner.z;
     var merging = 0.0;
     for (var i = 1u; i < min(count, ACDE_GLASS_MOST_PIECES); i++) {
         let piece = acde_glass_pieces[i];
@@ -85,24 +87,25 @@ fn acde_glass_group_field(p: vec2<f32>, count: u32, spacing: f32) -> AcdeGlassFi
         }
         look = acde_glass_look_mix(look, acde_glass_piece_look(i), h);
         bevel = mix(bevel, min(piece.shape.z, piece.shape.w), h);
+        index = mix(index, piece.corner.z, h);
         d = mix(d, di, h) - k * h * (1.0 - h);
         merging = max(merging, 4.0 * h * (1.0 - h));
     }
     if merging > 0.0 {
         toward = mix(toward / max(length(toward), 0.000001), acde_glass_group_gradient(p, count, spacing), min(1.0, ACDE_GLASS_MERGE_NORMAL * merging));
     }
-    return AcdeGlassField(d, toward, merging, bevel, look);
+    return AcdeGlassField(d, toward, merging, bevel, index, look);
 }
 
 fn acde_glass_group_offset(f: AcdeGlassField) -> vec2<f32> {
     return acde_glass_offset_along(f.toward / max(length(f.toward), 0.000001), f.d, f.look.refraction);
 }
 
-fn acde_glass_group_lens(f: AcdeGlassField, p: vec2<f32>, count: u32, spacing: f32) -> vec2<f32> {
+fn acde_glass_group_lens(f: AcdeGlassField, p: vec2<f32>, count: u32, spacing: f32) -> AcdeGlassBend {
     if f.look.lens.x <= 0.0 || f.d > 0.0 || -f.d >= f.look.lens.w {
-        return vec2<f32>(0.0);
+        return AcdeGlassBend(vec2<f32>(0.0), vec2<f32>(0.0), vec2<f32>(0.0));
     }
-    return acde_glass_lens(acde_glass_group_gradient(p, count, spacing), f.d, f.bevel, f.look.lens);
+    return acde_glass_lens_rgb(acde_glass_group_gradient(p, count, spacing), f.d, f.bevel, f.look.lens, f.index);
 }
 
 fn acde_glass_group_shade(under: vec4<f32>, f: AcdeGlassField) -> vec4<f32> {
