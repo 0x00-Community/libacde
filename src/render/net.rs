@@ -82,8 +82,7 @@ impl LocalNet {
             return icon_path(icon);
         }
         let (resource, rest) = self.resources.iter().find_map(|r| Some((r, path.strip_prefix(r.prefix.as_str())?)))?;
-        let rest = decoded(rest)?;
-        resource.dirs.iter().find_map(|d| within(Path::new(d), &Path::new(d).join(&rest)))
+        resource_file(&resource.dirs, rest)
     }
 }
 
@@ -108,10 +107,18 @@ fn icon_path_among(dirs: &[PathBuf], rest: &str) -> Option<PathBuf> {
     dirs.iter().find_map(|d| within(d, &path))
 }
 
+pub(crate) fn resource_file(dirs: &[String], rest: &str) -> Option<PathBuf> {
+    let rest = decoded(rest)?;
+    if rest.components().any(|c| c.as_os_str().to_string_lossy().starts_with('.')) {
+        return None;
+    }
+    dirs.iter().find_map(|d| within(Path::new(d), &Path::new(d).join(&rest)))
+}
+
 fn decoded(rest: &str) -> Option<PathBuf> {
     let path = Url::parse(&format!("file:///{}", rest.trim_start_matches('/'))).ok()?.to_file_path().ok()?;
     let rest = path.strip_prefix("/").ok()?.to_path_buf();
-    rest.components().all(|c| matches!(c, Component::Normal(_))).then_some(rest)
+    (rest.components().next().is_some() && rest.components().all(|c| matches!(c, Component::Normal(_)))).then_some(rest)
 }
 
 fn icon_dirs() -> Vec<PathBuf> {
@@ -224,6 +231,9 @@ mod tests {
         std::fs::write(scratch.0.join("lent/a b.png"), b"ab").unwrap();
         assert!(net.path(&url("http://acde.local/media/a%20b.png")).is_some(), "the path is percent-decoded");
         assert!(net.path(&url("http://acde.local/media/%2e%2e/outside/secret")).is_none());
+        std::fs::write(scratch.0.join("lent/.env"), b"secret").unwrap();
+        assert!(net.path(&url("http://acde.local/media/.env")).is_none(), "a hidden file is not served");
+        assert!(net.path(&url("http://acde.local/media/")).is_none());
         assert!(net.path(&url("http://acde.local/media/../outside/secret")).is_none());
         assert!(net.path(&url("http://other.example/media/ok.png")).is_none());
     }
@@ -256,6 +266,11 @@ mod tests {
         assert!(encoded.contains("%20") && encoded.contains("%E5"), "{encoded}");
         let decoded = icon_path_among(&[scratch.0.join("share/icons")], &encoded);
         assert_eq!(decoded, std::fs::canonicalize(dir.join("图标.png")).ok(), "a percent-encoded path is decoded first");
+        let hidden = scratch.0.join(".icons");
+        std::fs::create_dir_all(&hidden).unwrap();
+        std::fs::write(hidden.join("x.png"), b"png").unwrap();
+        let rest = hidden.join("x.png").to_string_lossy().trim_start_matches('/').to_owned();
+        assert!(icon_path_among(&[hidden.clone()], &rest).is_some(), "~/.icons is an icon folder, its dot is fine");
         let icon = icon_dirs().into_iter().filter_map(|d| std::fs::read_dir(d).ok()).flatten().flatten().map(|e| e.path()).find(|p| p.is_file());
         if let Some(icon) = icon {
             assert_eq!(net.path(&icons(&icon)), std::fs::canonicalize(&icon).ok(), "an icon under an icon folder: {}", icon.display());
