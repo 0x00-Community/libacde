@@ -12,7 +12,7 @@ import { contexts as gpuContexts, type GPUCanvasContext } from '../gpu/index'
 import { webglContexts, type WebGLContextBase } from '../webgl/index'
 import { base64 } from '../core/encoding'
 import { canvases, type CanvasContext2d, type CanvasElement } from './canvas'
-import { ATTRIBUTE_CHANGED, flags, parsedHooks, setAttribute, tokenList, type DOMTokenList, type Element } from './element'
+import { ATTRIBUTE_CHANGED, parsedHooks, setAttribute, tokenList, type DOMTokenList, type Element } from './element'
 import { clonedHooks, type Node } from './node'
 import { frames, loads, resolveUrl } from './env'
 import { deliverSheet, HTMLElement, register } from './html'
@@ -125,8 +125,7 @@ export function deliverLoads(): boolean {
     }
     loading.delete(id)
     if (state === ImageState.NoSource) continue
-    let target = held
-    if (!target && flags.inlineHandlers && (dom.hasAttribute(id, 'onload') || dom.hasAttribute(id, 'onerror'))) target = wrap<Element>(id)!
+    const target = held ?? wrap<Element>(id)
     if (!target) continue
     fire(target, new Event(state === ImageState.Loaded ? 'load' : 'error'))
   }
