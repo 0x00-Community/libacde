@@ -26,16 +26,17 @@ fn acde_glass_highlight(p: vec2<f32>, half: vec2<f32>, d: f32, band: f32, angle:
     return acde_glass_shine(acde_glass_normal(p, half), d, band, angle, amount);
 }
 
-const ACDE_GLASS_EDGE_BOOST: f32 = 5.0;
-const ACDE_GLASS_EDGE_FALLOFF: f32 = 0.08;
-const ACDE_GLASS_MOST_SHIFT: f32 = 1.3;
+fn acde_glass_corner_gradient(p: vec2<f32>, half: vec2<f32>, radius: f32, exponent: f32) -> vec2<f32> {
+    let e = vec2<f32>(0.5, 0.0);
+    let dx = acde_corner_distance(p + e.xy, half, radius, exponent) - acde_corner_distance(p - e.xy, half, radius, exponent);
+    let dy = acde_corner_distance(p + e.yx, half, radius, exponent) - acde_corner_distance(p - e.yx, half, radius, exponent);
+    let g = vec2<f32>(dx, dy);
+    return g / max(length(g), 0.000001);
+}
 
-fn acde_glass_lens(n: vec2<f32>, d: f32, bevel: f32, strength: f32) -> vec2<f32> {
-    let b = max(bevel, 1.0);
-    let e = max(-d, 0.0);
-    let rim = 1.0 - clamp(e / b, 0.0, 1.0);
-    let boost = (1.0 + ACDE_GLASS_EDGE_BOOST * exp(-e / (ACDE_GLASS_EDGE_FALLOFF * b))) / (1.0 + ACDE_GLASS_EDGE_BOOST);
-    let shift = min(max(strength, 0.0) * rim * rim * rim * boost, ACDE_GLASS_MOST_SHIFT * b);
+fn acde_glass_lens(n: vec2<f32>, d: f32, bevel: f32, lens: vec4<f32>) -> vec2<f32> {
+    let rim = 1.0 - clamp(-d / max(lens.w, 0.5), 0.0, 1.0);
+    let shift = min(max(lens.x, 0.0) * rim * rim * rim, max(bevel, 0.0));
     return select(-n * shift, vec2<f32>(0.0), d > 0.0);
 }
 

@@ -94,14 +94,15 @@ fn fs_glass(in: VsOut) -> @location(0) vec4<f32> {
     let px = in.pos.xy;
     let half = params.rect.zw * 0.5;
     let p = px - params.rect.xy - half;
-    let d = acde_corner_distance(p, half, min(params.radius, min(half.x, half.y)), params.exponent);
+    let radius = min(params.radius, min(half.x, half.y));
+    let d = acde_corner_distance(p, half, radius, params.exponent);
     let refraction = params.matrix[0];
     let g1 = params.matrix[1];
     let g2 = params.matrix[2];
     let lens = params.matrix[3];
     let region = params.bias;
     let at = px + acde_glass_offset(p, half, d, refraction);
-    let shift = acde_glass_lens(acde_glass_normal(p, half), d, min(half.x, half.y), lens.x);
+    let shift = acde_glass_lens(acde_glass_corner_gradient(p, half, radius, params.exponent), d, min(half.x, half.y), lens);
     let under = glass_under(at, shift, lens.y, region);
     let inside = acde_glass_inside(d, g2.z);
     if inside <= 0.0 {

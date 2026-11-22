@@ -11,7 +11,7 @@ pub use preset::{Level, Role};
 pub const WGSL: &str = include_str!("glass.wgsl");
 
 pub const LAYERS: usize = 5;
-const WIRE_FLOATS: usize = 28;
+const WIRE_FLOATS: usize = 29;
 const MOST_LENGTH: f32 = 256.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -44,6 +44,7 @@ pub struct Highlight {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Lens {
     pub strength: f32,
+    pub width: f32,
     pub dispersion: f32,
 }
 
@@ -83,16 +84,16 @@ impl Glass {
             }
         };
         read("acde-glass-refraction", &mut |g, t| {
-            let parts: Vec<&str> = t.split_whitespace().collect();
-            let [a, b, c, d] = *parts.get(..4)? else { return None };
-            let refraction = Refraction { inner_amount: number(a)?, inner_height: px(b)?, outer_amount: number(c)?, outer_height: px(d)? };
-            g.lens = match parts[4..] {
-                [] => g.lens,
-                [strength] => Lens { strength: px(strength)?, ..g.lens },
-                [strength, dispersion] => Lens { strength: px(strength)?, dispersion: number(dispersion)? },
+            let [a, b, c, d] = words::<4>(t)?;
+            g.refraction = Refraction { inner_amount: number(a)?, inner_height: px(b)?, outer_amount: number(c)?, outer_height: px(d)? };
+            Some(())
+        });
+        read("acde-glass-lens", &mut |g, t| {
+            g.lens = match *t.split_whitespace().collect::<Vec<_>>() {
+                [strength, width] => Lens { strength: px(strength)?, width: px(width)?, ..g.lens },
+                [strength, width, dispersion] => Lens { strength: px(strength)?, width: px(width)?, dispersion: number(dispersion)? },
                 _ => return None,
             };
-            g.refraction = refraction;
             Some(())
         });
         read("acde-glass-blur", &mut |g, t| {
@@ -154,7 +155,7 @@ impl Glass {
             white_point: unit(self.white_point),
             smoothing: unit(self.smoothing),
             tint: self.tint.map(unit),
-            lens: Lens { strength: length(self.lens.strength), dispersion: unit(self.lens.dispersion) },
+            lens: Lens { strength: length(self.lens.strength), width: length(self.lens.width), dispersion: unit(self.lens.dispersion) },
             darken: unit(self.darken),
         }
     }
@@ -167,6 +168,7 @@ impl Glass {
         g.blur.iter_mut().for_each(|l| l.radius *= f);
         g.bleed.radius *= f;
         g.lens.strength *= f;
+        g.lens.width *= f;
         g
     }
 
@@ -224,6 +226,7 @@ impl Glass {
             self.lens.strength,
             self.lens.dispersion,
             self.darken,
+            self.lens.width,
         ]
     }
 
@@ -237,7 +240,7 @@ impl Glass {
             white_point: f[19],
             smoothing: f[20],
             tint: [f[21], f[22], f[23], f[24]],
-            lens: Lens { strength: f[25], dispersion: f[26] },
+            lens: Lens { strength: f[25], width: f[28], dispersion: f[26] },
             darken: f[27],
         }
     }
@@ -505,22 +508,22 @@ mod tests {
     }
 
     #[test]
-    fn the_lens_rides_on_the_refraction_and_an_older_wire_has_none() {
-        let given = [("acde-glass", "regular"), ("acde-glass-refraction", "0.5 12px 0.2 20px 24px 0.04"), ("acde-glass-darken", "0.05")];
+    fn the_lens_has_its_own_property_and_an_older_wire_has_none() {
+        let given = [("acde-glass", "regular"), ("acde-glass-lens", "24px 6px 0.04"), ("acde-glass-darken", "0.05")];
         let glass = Glass::from_properties_at(Level::Tinted, properties(&given), |w| panic!("{w}")).unwrap();
-        assert_eq!(glass.lens, Lens { strength: 24.0, dispersion: 0.04 });
+        assert_eq!(glass.lens, Lens { strength: 24.0, width: 6.0, dispersion: 0.04 });
         assert_eq!(glass.darken, 0.05);
-        assert_eq!(glass.scaled(2.0).lens.strength, 48.0);
+        assert_eq!((glass.scaled(2.0).lens.strength, glass.scaled(2.0).lens.width), (48.0, 12.0));
         let older = &glass.to_wire()[..25 * 4];
         assert_eq!((Glass::from_wire(older).lens, Glass::from_wire(older).darken), (Lens::default(), 0.0));
         let clear = Glass::preset(Role::Clear, Level::Clear);
-        let strength_only = [("acde-glass", "clear"), ("acde-glass-refraction", "0 18px 0 0 9px")];
-        let read = Glass::from_properties(properties(&strength_only), |w| panic!("{w}")).unwrap();
-        assert_eq!(read.lens, Lens { strength: 9.0, dispersion: clear.lens.dispersion });
+        let without_dispersion = [("acde-glass", "clear"), ("acde-glass-lens", "9px 4px")];
+        let read = Glass::from_properties(properties(&without_dispersion), |w| panic!("{w}")).unwrap();
+        assert_eq!(read.lens, Lens { strength: 9.0, width: 4.0, dispersion: clear.lens.dispersion });
         let warned = std::cell::Cell::new(0);
-        let bad = [("acde-glass", "clear"), ("acde-glass-refraction", "0.4 10px 0.1 8px 9em")];
+        let bad = [("acde-glass", "clear"), ("acde-glass-lens", "9px 4em"), ("acde-glass-refraction", "0.4 10px 0.1 8px 9px")];
         let read = Glass::from_properties(properties(&bad), |_| warned.set(warned.get() + 1)).unwrap();
-        assert_eq!((read.refraction, read.lens, warned.get()), (clear.refraction, clear.lens, 1));
+        assert_eq!((read.refraction, read.lens, warned.get()), (clear.refraction, clear.lens, 2));
     }
 
     #[test]

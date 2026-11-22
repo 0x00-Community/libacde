@@ -517,7 +517,7 @@ impl Composer {
             glass.lens.strength,
             glass.lens.dispersion,
             glass.darken,
-            0.0,
+            glass.lens.width,
         ];
         let bias = [x as f32, y as f32, w as f32, h as f32];
         let params = Params { rect: b.rect, radius: b.radius, exponent: b.exponent, color: glass.tint, matrix, bias, ..Default::default() };

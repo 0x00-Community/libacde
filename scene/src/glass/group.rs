@@ -79,7 +79,7 @@ impl Piece {
             g.lens.strength,
             g.lens.dispersion,
             g.darken,
-            0.0,
+            g.lens.width,
         ]
     }
 }
@@ -342,7 +342,7 @@ mod tests {
 @fragment
 fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     let f = acde_glass_group_field(pos.xy, 3u, 12.0);
-    let under = vec4<f32>(acde_glass_group_offset(f), 0.0, 1.0);
+    let under = vec4<f32>(acde_glass_group_offset(f) + acde_glass_group_lens(f, pos.xy, 3u, 12.0), 0.0, 1.0);
     return acde_glass_group_shade(under, f);
 }";
         validate(&[crate::corner::WGSL, super::super::WGSL, WGSL, user].join("\n"));

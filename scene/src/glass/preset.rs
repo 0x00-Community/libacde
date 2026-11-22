@@ -95,7 +95,7 @@ impl Glass {
                 white_point: 0.0,
                 smoothing: 0.35,
                 tint: [1.0, 1.0, 1.0, 0.0],
-                lens: Lens { strength: 20.0, dispersion: 0.03 },
+                lens: Lens { strength: 16.0, width: 6.0, dispersion: 0.03 },
                 darken: 0.05,
             },
             Level::Medium => Self {
@@ -156,7 +156,8 @@ mod tests {
     fn regular_glass_at_the_clear_level_is_its_lens_sample() {
         let sample = [
             ("acde-glass", "clear"),
-            ("acde-glass-refraction", "0 18px 0 0 20px 0.03"),
+            ("acde-glass-refraction", "0 18px 0 0"),
+            ("acde-glass-lens", "16px 6px 0.03"),
             ("acde-glass-blur", "0px 1"),
             ("acde-glass-bleed", "0 0 0"),
             ("acde-glass-highlight", "330deg 0.35"),

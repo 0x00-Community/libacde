@@ -97,8 +97,11 @@ fn acde_glass_group_offset(f: AcdeGlassField) -> vec2<f32> {
     return acde_glass_offset_along(f.toward / max(length(f.toward), 0.000001), f.d, f.look.refraction);
 }
 
-fn acde_glass_group_lens(f: AcdeGlassField) -> vec2<f32> {
-    return acde_glass_lens(f.toward / max(length(f.toward), 0.000001), f.d, f.bevel, f.look.lens.x);
+fn acde_glass_group_lens(f: AcdeGlassField, p: vec2<f32>, count: u32, spacing: f32) -> vec2<f32> {
+    if f.look.lens.x <= 0.0 || f.d > 0.0 || -f.d >= f.look.lens.w {
+        return vec2<f32>(0.0);
+    }
+    return acde_glass_lens(acde_glass_group_gradient(p, count, spacing), f.d, f.bevel, f.look.lens);
 }
 
 fn acde_glass_group_shade(under: vec4<f32>, f: AcdeGlassField) -> vec4<f32> {
