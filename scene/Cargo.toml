@@ -9,3 +9,6 @@ publish = ["ac"]
 [dependencies]
 kurbo = "=0.13.1"
 peniko = "=0.6.1"
+
+[dev-dependencies]
+naga = { version = "=30.0.2", features = ["wgsl-in"] }

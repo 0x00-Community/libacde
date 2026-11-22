@@ -324,4 +324,23 @@ mod tests {
         let one = group(4.0, &[Piece::of_rect([1.0, 2.0, 3.0, 4.0], 0.0, 2.0, regular())]).moved((10.0, 20.0));
         assert_eq!(one.bounds(), Some([11.0, 22.0, 3.0, 4.0]));
     }
+
+    fn validate(source: &str) {
+        let module = naga::front::wgsl::parse_str(source).unwrap_or_else(|e| panic!("{}", e.emit_to_string(source)));
+        let flags = naga::valid::ValidationFlags::all();
+        naga::valid::Validator::new(flags, naga::valid::Capabilities::empty()).validate(&module).unwrap_or_else(|e| panic!("{e:?}"));
+    }
+
+    #[test]
+    fn the_glass_wgsl_validates_and_the_group_with_its_pieces_declared_by_the_user() {
+        validate(&[crate::corner::WGSL, super::super::WGSL].join("\n"));
+        let user = "@group(0) @binding(0) var<uniform> acde_glass_pieces: array<AcdeGlassPiece, ACDE_GLASS_MOST_PIECES>;
+@fragment
+fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    let f = acde_glass_group_field(pos.xy, 3u, 12.0);
+    let under = vec4<f32>(acde_glass_group_offset(f), 0.0, 1.0);
+    return acde_glass_group_shade(under, f);
+}";
+        validate(&[crate::corner::WGSL, super::super::WGSL, WGSL, user].join("\n"));
+    }
 }
