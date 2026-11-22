@@ -3,6 +3,7 @@ mod compose;
 pub mod corner;
 mod filter;
 pub mod glass;
+pub mod material;
 pub mod motion;
 mod scene;
 

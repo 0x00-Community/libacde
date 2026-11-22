@@ -71,6 +71,13 @@
   (`parse` / `from_wire` / `to_wire`, 照 `motion::Preset`), 认不得的线上值当通透. regular 取当前档, clear 再通透一档 (`Level::clearer`, 到通透为止,
   不透明不变). 高光各档一律 `330deg 0.45 4px` (用户 2026-11-23 在调参页定). `Glass::from_properties_at(level, …)` 按档位取预设再盖分项;
   `from_properties` 是默认档 (通透).
+  材质表 (2026-11-23, 总仓 `.scratch/libacde/glass-material-api.md` 末节; `acde_scene::material`): 窗口级材质按名字登记, 不是封闭的枚举. 名字是 `[a-z0-9._-]`、不超过 64 字节
+  (`Material::valid`, `MOST_NAME`); 内置 `glass` (液态玻璃, 取 `Glass::preset_in(role, 档位, 深浅)`)、`blur` (背景模糊加着色, 没有透镜、高光、轮廓和折射, `Glass::blur(档位, 深浅)`)、
+  `none` (不画) 第一次用表时登记. `Material::lookup(name)` 查表, `register(name, look)` 留给以后的自定义效果 (名字不合规或已占用回 None; 画法 `Look` 是
+  `#[non_exhaustive]`). `Material::resolve(name, warn)` 给合成器、宿主窗口和页面胶水用: 空名是 `none`, 查不到按 `none` 画, 每个名字只 warn 一次.
+  `glass(role, preference)` 按档位、深浅、减少透明度取参数 (结构复用 `Glass`; 减少透明度时 blur 着色不透明度为 1, glass 是 `Opaque` 档),
+  `with_overrides(role, preference, overrides)` 再经 `Glass::with_overrides` 盖分项 (线上格式, NaN 不覆盖), blur 和 glass 同一个入口.
+  blur 各档: 通透 6/12 px、着色 0.15, 适中 10/20/32 px、0.35, 着色 16/32/48 px、0.6, 不透明 24/48 px、1; 浅色着 (0.97, 0.97, 0.98), 深色着 (0.11, 0.11, 0.12), 和 `Glass::opaque` 同色.
   玻璃组 (融合, 2026-11-22, 总仓 `.scratch/libacde/glass-merge-plan.md`; `acde_scene::glass::group`): `GlassGroup` 是最多 `MOST_PIECES` (16) 块
   `Piece {center, half, radius, exponent, glass}` 加间距 `spacing`, 满了 `push` 回 false (调用方让多出的块不参加融合, 各画各的, 记一次 warn).
   各块的距离场按 Inigo Quilez 的多项式平滑最小值合成 (https://iquilezles.org/articles/smin/ , `h = clamp(0.5 + 0.5 (d − dᵢ) / k)`,
