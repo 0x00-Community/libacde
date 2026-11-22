@@ -329,8 +329,10 @@ pub mod cpu {
                 return under.map(|v| v * glow);
             }
             let shine = self.highlight(p, half, d) * glass.highlight.amount;
-            let [r, g, b] = tone([under[0], under[1], under[2]], glass, shine);
-            let alpha = under[3].max(glass.tint[3]) * inside;
+            let a = under[3];
+            let straight = |v: f32| if a > 0.0 { (v / a).min(1.0) } else { 0.0 };
+            let [r, g, b] = tone([straight(under[0]), straight(under[1]), straight(under[2])], glass, shine);
+            let alpha = a.max(glass.tint[3]) * inside;
             [r * alpha, g * alpha, b * alpha, alpha]
         }
 
@@ -346,12 +348,8 @@ pub mod cpu {
     }
 
     fn mix(a: [u32; 4], b: [u32; 4], t: f32) -> [f32; 4] {
-        let straight = |[a, r, g, b]: [u32; 4]| {
-            let alpha = a as f32 / 255.0;
-            let un = |v: u32| if alpha > 0.0 { (v as f32 / 255.0 / alpha).min(1.0) } else { 0.0 };
-            [un(r), un(g), un(b), alpha]
-        };
-        let (a, b) = (straight(a), straight(b));
+        let rgba = |[a, r, g, b]: [u32; 4]| [r, g, b, a].map(|v| v as f32 / 255.0);
+        let (a, b) = (rgba(a), rgba(b));
         [0, 1, 2, 3].map(|k| a[k] * (1.0 - t) + b[k] * t)
     }
 
@@ -433,6 +431,17 @@ mod tests {
         assert_eq!(twice.refraction.outer_height, 40.0);
         assert_eq!(twice.blur[4].radius, 80.0);
         assert_eq!(glass.reach(), 120.0);
+    }
+
+    #[test]
+    fn the_bleed_keeps_the_premultiplied_colour_of_what_is_under() {
+        let margin = 8;
+        let half_white = 0x8080_8080;
+        let source = Pixels { width: 40, height: 30, data: vec![half_white; 40 * 30] };
+        let corners = Corners { radius: 0.0, exponent: 2.0 };
+        let out = cpu::paint(&source, margin, corners, &Glass::preset("regular").unwrap());
+        let [a, r, ..] = channels(out.data[15 * 40 + 2]);
+        assert!(a > 0 && r <= a, "premultiplied: colour {r} within alpha {a}");
     }
 
     #[test]

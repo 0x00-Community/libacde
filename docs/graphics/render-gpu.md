@@ -39,7 +39,7 @@
   `--acde-glass-refraction`、`-blur`、`-bleed`、`-highlight`、`-white-point`、`-smoothing`、`-tint` 盖在预设上) 时, blitz-paint (`render/glass.rs`) 从计算样式取这几个
   自定义属性的文本, 交 `acde_scene::glass::Glass::from_properties` 解析 (解析只此一处; 写错的分项留空并记 warn), 和角形一起作为 `LayerShape` 随
   `push_shaped_layer` 带出. `render::Backdrop::glass()` 给出它 (长度已乘图层变换的缩放), `gpu::Backdrop` 多一个 `glass` 字段. 玻璃的算法、线上格式
-  (`to_wire` / `from_wire`, 25 个小端 f32)、`scaled` / `reach`、CPU 简化版 (`glass::cpu::paint`: 最小和最大两层模糊、渗出、高光、白点、着色, 不做折射) 和
+  (`to_wire` / `from_wire`, 25 个小端 f32)、`scaled` / `reach`、CPU 简化版 (`glass::cpu::paint`: 最小和最大两层模糊按两层的不透明度归一、在预乘空间混合, 区域外的渗出是预乘底色乘渗出系数, 和 GPU 一致; 高光、白点、着色按直通色算; 不做折射) 和
   逐像素的 WGSL (`glass::WGSL`, 要先拼 `corner::WGSL`) 都在 acde-scene; CPU 的盒式模糊也只此一份 (`acde_scene::blur`, 原 acompositor `frost.rs` 原样搬来).
   合成器经 `acompositor_backdrop_v1` 版本 3 的 `add_glass_area` 收玻璃 (acdes). 进程内的 GPU 合成 (`src/vello/compose.rs`) 这一版仍按普通磨砂画, 不画玻璃.
   (也给出窗口之间毛玻璃的取样外扩 `margin`): 偏移在约 0.5–1.3 之间连续调 (一层时从 0 起, 五层时最多到 2), 强度随 sigma 连续变,
