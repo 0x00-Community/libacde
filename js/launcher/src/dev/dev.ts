@@ -75,6 +75,16 @@ export class DevChannel {
     this.#dark = dark
   }
 
+  get dark(): boolean {
+    return this.#emulated ?? this.#dark
+  }
+
+  follow(dark: boolean): void {
+    if (this.#dark === dark) return
+    this.#dark = dark
+    if (this.#emulated === null) this.#host.page()?.post({ type: 'colorscheme', dark })
+  }
+
   take(post: unknown): boolean {
     const route = (post as { devroute?: unknown } | null)?.devroute
     if (typeof route === 'number') {
@@ -319,9 +329,9 @@ export class DevChannel {
         throw Object.assign(new Error(`emulate: colorScheme is light, dark or null, not ${JSON.stringify(scheme)}`), { status: 400 })
       }
       this.#emulated = scheme === null ? null : scheme === 'dark'
-      this.#host.page()?.post({ type: 'colorscheme', dark: this.#emulated ?? this.#dark })
+      this.#host.page()?.post({ type: 'colorscheme', dark: this.dark })
     }
-    return { colorScheme: (this.#emulated ?? this.#dark) ? 'dark' : 'light', emulated: this.#emulated !== null }
+    return { colorScheme: this.dark ? 'dark' : 'light', emulated: this.#emulated !== null }
   }
 
   #choose(args: Record<string, unknown>): Record<string, unknown> {

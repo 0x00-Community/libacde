@@ -58,7 +58,8 @@ Bun 的本代目录在默认 base 下, DACL 读回只有 SYSTEM 和当前用户,
 内存, 见 `docs/web/storage.md`「网页存储」)、`ACDE_AUTOSTART=1/0`、`ACDE_DEBUG_DIR`、`ACDEV_DEBUG` (启动失败时 stderr 打整个调用栈; 不设、空或 `0` 时只打一行 `acdev: <message>`, 不带 `Error:`, 和 acdev 的 `Output.debug` 同一条规则)、`ACDE_BUS_NAMES=1/0`、`ACDE_COLOR_SCHEME=light/dark`、`ACDE_SIZE`、
 `ACDE_DEV`、`ACDE_HOST_DUMP`、`ACDE_HOST_FAULT`、`ACDE_HUD=1` (宿主窗口开着帧率面板起来, 见 acdev `docs/hostwin.md`「帧率面板」)、`ACDE_HEADLESS=1`、`ACDE_SCALE` (headless 的缩放)、`ACDE_AUDIO=null`; shell 的见 `docs/graphics/render-gpu.md`「shell」.
 
-- **配色** (`appearance.ts`): `ACDE_COLOR_SCHEME`, 否则 portal 的 `org.freedesktop.appearance` `color-scheme`, 变了发给所有 web (`matchMedia` 发 change).
+- **配色** (launcher `js/launcher/src/app/appearance.ts`): `ACDE_COLOR_SCHEME` (light / dark), 否则 portal 的 `org.freedesktop.appearance` `color-scheme` (原生 `Appearance`, 只有 Linux; 读不到时浅色),
+  进页面的初始化参数 `dark`, 变了发 `colorscheme` 给页面 (`matchMedia` 发 change). 开发通道的 `emulate` 设了值时它优先, 设回 null 时回到系统的值.
   **语言** (`language.ts`): 按 `LANGUAGE` / `LC_ALL` / `LC_MESSAGES` / `LANG`; 都没设时用系统的首选语言 (sys `languages()`, hostwin `system/languages.rs`:
   Windows `GetUserPreferredUILanguages`、macOS `NSLocale.preferredLanguages`, Linux 读系统区域 `/etc/locale.conf` 或 `/etc/default/locale`, #147);
   还是没有时 `en-US` (acde-dom 的默认同样是 `en-US`). `acde:session` 的 `setLanguage(tag)` 写 `locale.conf` 并发 `languagechange`.
