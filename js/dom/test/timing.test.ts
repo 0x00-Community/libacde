@@ -273,3 +273,16 @@ test('an image with a fractional intrinsic size (an SVG 1706.667 wide) reports w
   web.dom._imageDone(img, [1706.667, 0.4, 1])
   assert.deepEqual(web.json(`(() => { const i = document.getElementById('img'); return [i.naturalWidth, i.naturalHeight] })()`), [1707, 0])
 })
+
+test('an image put in by innerHTML and never touched by script still fires load and error, as in a browser', async () => {
+  using web = await page('<!doctype html><html><body></body></html>')
+  web.run(`globalThis.seen = []
+    for (const type of ['load', 'error']) document.addEventListener(type, (e) => seen.push(type + ' ' + e.target.id), true)
+    document.body.innerHTML = '<img id="ok" src="/ok.png"><img id="bad" src="/missing.png">'`)
+  const root = web.dom.document()
+  web.dom._imageDone(web.dom.querySelector(root, '#ok'), [16, 16, 1])
+  web.dom._imageDone(web.dom.querySelector(root, '#bad'), [0, 0, 2])
+  web.frame()
+  assert.deepEqual(web.json('seen'), ['load ok', 'error bad'])
+})
+
