@@ -9,6 +9,7 @@ mod bundle;
 mod caches;
 mod capture;
 mod child;
+mod crypto;
 mod device;
 #[cfg(target_os = "linux")]
 mod devices;

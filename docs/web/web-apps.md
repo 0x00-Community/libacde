@@ -304,7 +304,13 @@
     (`this port carries JSON only (…)`); 编成 JSON 后超过 262144 字节也抛 `DataCloneError` (`message is N bytes, over the 262144-byte limit of this port`).
     收到的消息不是 JSON 或超长时发 `messageerror`, 端口不关.
   - 全局对象上没有任何私有字段, 也没有额外的 `acde:` 模块.
-- **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`)、从文件读的页面 (`PageSource.html`) 只认 `.html` 入口 (`.xhtml` 文件不按 XML 解析)、页面按响应的字符编码解码 (现在总按 UTF-8)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、`SharedWorker` 和 Service Worker、`crypto.subtle`、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
+- **`crypto.subtle`** (acde-dom `core/crypto.ts` `SubtleCrypto`, src/host `crypto.rs`): 只有 `digest(algorithm, data)`, SHA-1 / SHA-256 / SHA-384 /
+  SHA-512. 照 WebCrypto: `algorithm` 是字符串或 `{name}`, 名字按 ASCII 不分大小写规范化, 不认识的 reject `NotSupportedError`, `{}` (没有 `name`)、
+  `data` 不是 `ArrayBuffer` / 视图 (共享或可变长的也不行)、参数不够、`this` 不是 `SubtleCrypto` 都 reject `TypeError`, 不同步抛.
+  `data` 在调用时复制 (之后改原数组不影响结果), 在 `acde-digest` 线程池 (2 个线程, 第一次用时建, `offload::Pool`) 算, 结果是新的 `ArrayBuffer`.
+  `crypto.subtle` 是 `Crypto` 原型上的取值器, 每次同一个对象 (`[SameObject]`); 全局有 `SubtleCrypto` 接口, `new SubtleCrypto()` 是
+  `TypeError: Illegal constructor` (同浏览器). 页面和 worker 都有 (`installCore`). sha1 用 `sha1` 包 (digest 0.10), 其余用 `sha2` (digest 0.11).
+- **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`)、从文件读的页面 (`PageSource.html`) 只认 `.html` 入口 (`.xhtml` 文件不按 XML 解析)、页面按响应的字符编码解码 (现在总按 UTF-8)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、`SharedWorker` 和 Service Worker、`crypto.subtle` 除 `digest` 以外的方法 (`encrypt` / `sign` / `importKey` / `generateKey` / `deriveBits` … 都不在 `SubtleCrypto.prototype` 上, 也没有 `CryptoKey`)、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
 - **指针事件** (https://w3c.github.io/pointerevents/, acde-dom `dom/input.ts` / `dom/events.ts`, 2026-11-21): 只有鼠标: `pointerId` 1, `pointerType`
   `'mouse'`, `isPrimary` true, `width` / `height` 1, `pressure` 按着按钮时 0.5、否则 0 (规范给鼠标的值), `tiltX` / `tiltY` / `twist` /
   `tangentialPressure` 0. `pointermove` 按帧派发 (`docs/runtime/webs.md`「输入」), 两次派发之间宿主送来的每个位置都留着: 派发的事件是

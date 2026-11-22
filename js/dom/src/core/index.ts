@@ -3,7 +3,7 @@ import { AbortController, AbortSignal } from './abort'
 import { Blob, File, FileReader } from './blob'
 import { installClone } from './clone'
 import { createConsole } from './console'
-import { Crypto } from './crypto'
+import { Crypto, SubtleCrypto } from './crypto'
 import { atob, btoa, TextDecoder, TextEncoder } from './encoding'
 import { CloseEvent, CustomEvent, ErrorEvent, Event, EventTarget, MessageEvent, ProgressEvent, PromiseRejectionEvent } from './event'
 import { DOMException, QuotaExceededError } from './exception'
@@ -27,7 +27,7 @@ export function installCore(global: typeof globalThis, native: HostNative, optio
     reportError: (error: unknown) => report(error),
     atob, btoa,
     URL, URLSearchParams, TextEncoder, TextDecoder,
-    Crypto, Performance, PerformanceEntry, PerformanceMark, PerformanceMeasure,
+    Crypto, SubtleCrypto, Performance, PerformanceEntry, PerformanceMark, PerformanceMeasure,
     AbortController, AbortSignal,
     Event, EventTarget, CustomEvent, ErrorEvent, MessageEvent, ProgressEvent, CloseEvent, PromiseRejectionEvent,
     DOMException, QuotaExceededError,

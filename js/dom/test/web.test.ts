@@ -107,6 +107,65 @@ test('encoding, URL, structuredClone, crypto, atob, MessageChannel, AbortSignal.
   assert.deepEqual(web.host.logs, [[0, 'logged x 5 { k: [ 1 ] }'], [1, '<body>']])
 })
 
+test('crypto.subtle.digest: SHA-1/256/384/512 off the page thread, input copied at call time, WebCrypto errors; nothing else', async () => {
+  using web = await page()
+  const result = await web.run<Promise<string>>(`(async () => {
+    const out = {}
+    const hex = (buffer) => [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, '0')).join('')
+    const abc = new TextEncoder().encode('abc')
+    out.same = crypto.subtle === crypto.subtle
+    out.iface = [crypto.subtle instanceof SubtleCrypto, Object.prototype.toString.call(crypto.subtle), typeof SubtleCrypto]
+    try { new SubtleCrypto(); out.construct = 'made' } catch (e) { out.construct = e instanceof TypeError }
+    out.others = ['encrypt', 'decrypt', 'sign', 'verify', 'generateKey', 'importKey', 'exportKey', 'deriveBits', 'deriveKey', 'wrapKey', 'unwrapKey']
+      .filter((name) => name in crypto.subtle)
+    out.sha1 = hex(await crypto.subtle.digest('SHA-1', abc))
+    out.sha256 = hex(await crypto.subtle.digest({ name: 'sha-256' }, abc.buffer))
+    out.sha384 = hex(await crypto.subtle.digest('Sha-384', new DataView(abc.buffer)))
+    out.sha512 = (await crypto.subtle.digest('SHA-512', abc)).byteLength
+    const big = new Uint8Array(1 << 20).fill(7)
+    const pending = crypto.subtle.digest('SHA-256', big)
+    out.promise = typeof pending.then === 'function'
+    big.fill(0)
+    out.copied = hex(await pending) === hex(await crypto.subtle.digest('SHA-256', new Uint8Array(1 << 20).fill(7)))
+    const why = (p) => p.then(() => 'resolved', (e) => [e.constructor.name, e.name])
+    out.errors = [
+      await why(crypto.subtle.digest('MD5', abc)),
+      await why(crypto.subtle.digest({ name: 'SHA-256 ' }, abc)),
+      await why(crypto.subtle.digest({}, abc)),
+      await why(crypto.subtle.digest('SHA-256', 'abc')),
+      await why(crypto.subtle.digest('MD5', 'abc')),
+      await why(crypto.subtle.digest('SHA-256')),
+      await why(crypto.subtle.digest.call({}, 'SHA-256', abc)),
+    ]
+    let thrown = false
+    try { crypto.subtle.digest('MD5', 1).catch(() => {}) } catch { thrown = true }
+    out.thrown = thrown
+    return JSON.stringify(out)
+  })()`)
+  assert.deepEqual(JSON.parse(result), {
+    same: true,
+    iface: [true, '[object SubtleCrypto]', 'function'],
+    construct: true,
+    others: [],
+    sha1: 'a9993e364706816aba3e25717850c26c9cd0d89d',
+    sha256: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+    sha384: 'cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7',
+    sha512: 64,
+    promise: true,
+    copied: true,
+    errors: [
+      ['DOMException', 'NotSupportedError'],
+      ['DOMException', 'NotSupportedError'],
+      ['TypeError', 'TypeError'],
+      ['TypeError', 'TypeError'],
+      ['TypeError', 'TypeError'],
+      ['TypeError', 'TypeError'],
+      ['TypeError', 'TypeError'],
+    ],
+    thrown: false,
+  })
+})
+
 test('MessagePort: closing one end fires close at the other, once; later messages are dropped; unstarted ports queue', async () => {
   using web = await page()
   const result = await web.run<Promise<string>>(`(async () => {

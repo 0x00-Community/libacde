@@ -43,6 +43,7 @@ pub fn object<'s>(scope: &mut v8::PinScope<'s, '_>) -> v8::Local<'s, v8::Object>
         "runMicrotasks" => run_microtasks,
         "randomBytes" => random_bytes,
         "randomUUID" => random_uuid,
+        "digest" => crate::host::crypto::digest,
         "queueMicrotask" => queue_microtask,
         "onTaskEnd" => on_task_end,
         "setReporter" => set_reporter,

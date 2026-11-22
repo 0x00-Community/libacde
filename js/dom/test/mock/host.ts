@@ -1,4 +1,4 @@
-import { randomFillSync, randomUUID } from 'node:crypto'
+import { createHash, randomFillSync, randomUUID } from 'node:crypto'
 import { deserialize, serialize } from 'node:v8'
 import vm from 'node:vm'
 import type { HostNative } from '../../src/native.ts'
@@ -150,5 +150,17 @@ export class MockHost implements HostNative {
   }
   randomUUID(): string {
     return randomUUID()
+  }
+  digest(algorithm: string, data: ArrayBuffer | ArrayBufferView): Promise<ArrayBuffer> {
+    const bytes = ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice() : new Uint8Array(data).slice()
+    const name = { 'SHA-1': 'sha1', 'SHA-256': 'sha256', 'SHA-384': 'sha384', 'SHA-512': 'sha512' }[algorithm]
+    if (!name) throw new TypeError(`digest: unknown algorithm ${algorithm}`)
+    const view = this.context ? vm.runInContext('(n) => new Uint8Array(n)', this.context) as (n: number) => Uint8Array : (n: number) => new Uint8Array(n)
+    return new Promise((resolve) => setTimeout(() => {
+      const hash = createHash(name).update(bytes).digest()
+      const out = view(hash.length)
+      out.set(hash)
+      resolve(out.buffer as ArrayBuffer)
+    }, 0))
   }
 }

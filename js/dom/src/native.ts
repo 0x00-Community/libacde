@@ -280,6 +280,7 @@ export interface HostNative {
   deserialize(bytes: Uint8Array): unknown
   randomBytes(buffer: Uint8Array): void
   randomUUID(): string
+  digest(algorithm: string, data: ArrayBuffer | ArrayBufferView): Promise<ArrayBuffer>
 }
 
 export interface GpuNative {
