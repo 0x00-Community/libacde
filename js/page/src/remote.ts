@@ -358,7 +358,10 @@ export class RemoteBridge {
     const tier = {
       packages: () => ({ ...Rpc.calls(() => rpc, 'packages', 'refresh', 'install', 'natives', 'runNative'), on: windows.notices.for('apps', ['changed']) }),
       launch: () => ({ ...Rpc.calls(() => rpc, 'launch', 'start', 'embed', 'close'), list: windows.api.list, on: windows.api.on }),
-      session: () => ({ own: () => init.session?.own === true, ...Rpc.calls(() => rpc, 'session', 'lock', 'logout', 'reboot', 'poweroff', 'setLanguage') }),
+      session: () => ({
+        own: () => init.session?.own === true,
+        ...Rpc.calls(() => rpc, 'session', 'lock', 'logout', 'reboot', 'poweroff', 'setLanguage', 'others', 'switchUser'),
+      }),
       desktops: () => Rpc.calls(() => rpc, 'desktops', 'list', 'choose'),
     }
     if (init.lock) {

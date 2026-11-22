@@ -3,11 +3,13 @@ import type { AcdeOffice } from './office'
 import type { AcdePermissions } from './permissions'
 import type { SharedPlace } from './places'
 import type { AcdeLock } from './lock/index'
+import type { AcdeSession } from './session/index'
 
 export type * from './events'
 export type * from './office'
 export type * from './permissions'
 export type * from './lock/index'
+export type * from './session/index'
 
 export interface FinderRoot {
   id: string
@@ -365,15 +367,6 @@ export interface DesktopInfo {
 export interface AcdeDesktops {
   list(): Promise<{ desktops: DesktopInfo[]; current: string }>
   choose(id: string, remember?: boolean): Promise<void>
-}
-
-export interface AcdeSession {
-  own(): boolean
-  lock(): Promise<void>
-  logout(): Promise<void>
-  reboot(): Promise<void>
-  poweroff(): Promise<void>
-  setLanguage(tag: string): Promise<void>
 }
 
 export interface InspectNode {
