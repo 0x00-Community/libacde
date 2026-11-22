@@ -287,6 +287,10 @@
   8.2–8.5 ms); 一直在画的窗口不受影响.
   宿主窗口 (M4, 1323×808@2x, 空闲 30 s) 进程的 GPU 部分: 只有文字的页面 239.6 → 53.3 MiB, 用了离屏画布 (`putImageData` / `getImageData`) 409.0 → 53.6 MiB,
   铺满窗口的 WebGPU canvas 336.1 → 89.4 MiB; 剩下的是窗口大小的页面纹理、草稿和合成器画布.
+  「闲」要按 vello 算: 页面只有 WebGPU canvas 在变时, 前端可以不经 vello 出帧 (`vello::Hole` 找出场景里那张不透明、一对一、整像素的 GPU 图片和
+  它的矩形, `Hole::above` 给出盖在它上面的命令, `Kept` 判断这一帧除了图片是哪一张以外和上一帧是否相同; `Composer::place_from` 从任意纹理贴),
+  宿主窗口的出帧线程这样做 (acdev `docs/hostwin.md`「只有 WebGPU canvas 变了的帧」), 中间缓冲因此在 canvas 动着时也能放掉. WebGPU canvas 的
+  `present` 按 `alphaMode` 标 `GpuImage::set_opaque`. 会话的 `Raster` 还没有这条路.
 - 帧预算: 120 fps 下每帧 8 ms. 盯 acde-dom `test/cost.test.ts` / `test/caches.test.ts`、shell / DomNative 的 `stats`、`drive.sh perf`; 提交里写测到的数.
 - WebGPU (`navigator.gpu`, Linux 和 macOS; Windows 上还关着 (没编过也没跑过, 见 acdev #56)): src/host `webgpu/`, 跑在光栅化线程的设备上; 回调由 `acde-gpu-poll` 线程非阻塞轮询 (每帧路径上不用
   `poll(Wait)`, 它拿着 snatch 读锁会卡住别的线程的提交). WebGL 也只经 wgpu, 见 `docs/graphics/webgl.md`.

@@ -496,6 +496,11 @@ impl Composer {
         self.draw(encoder, canvas, &[Op::Place { origin, at, clip }]);
     }
 
+    pub fn place_from(&mut self, encoder: &mut wgpu::CommandEncoder, canvas: &wgpu::TextureView, src: &wgpu::TextureView, origin: [u32; 2], clip: [u32; 4]) {
+        let params = Params { rect: [origin[0] as f32, origin[1] as f32, 0.0, 0.0], ..Default::default() };
+        self.pass(encoder, canvas, false, &[Draw { pipe: Pipe::Place, src, params, scissor: Some(clip), mix: None, group: None }]);
+    }
+
     pub fn draw(&mut self, encoder: &mut wgpu::CommandEncoder, canvas: &wgpu::TextureView, ops: &[Op]) {
         let Some((_, _, layer)) = self.layer.clone() else { return };
         let size = canvas.texture().size();

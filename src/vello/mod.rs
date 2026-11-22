@@ -3,6 +3,7 @@ mod compose;
 #[cfg(target_os = "linux")]
 mod device;
 mod fonts;
+mod hole;
 mod offscreen;
 #[cfg(target_os = "linux")]
 mod raster;
@@ -17,6 +18,7 @@ pub use blur_plan::Blur;
 pub use compose::{Composer, Op};
 #[cfg(target_os = "linux")]
 pub use device::{Backend, Device, Exported, Fence};
+pub use hole::{Hole, Kept};
 #[cfg(not(target_os = "linux"))]
 pub use offscreen::Exported;
 pub use offscreen::{GpuImage, ImageSet, Overrides, Shared};

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::Duration;
 
@@ -153,6 +153,7 @@ pub struct GpuImage {
     set: Weak<ImageSet>,
     generation: AtomicU64,
     copied: AtomicU64,
+    opaque: AtomicBool,
 }
 
 impl AsRef<[u8]> for GpuImage {
@@ -172,7 +173,15 @@ impl GpuImage {
 
     pub fn with_export(texture: wgpu::Texture, exported: Option<Exported>, set: &Arc<ImageSet>) -> Arc<Self> {
         let id = peniko::Blob::<u8>::new(Arc::new(Vec::<u8>::new())).id();
-        let image = Arc::new(Self { texture, exported, id, set: Arc::downgrade(set), generation: AtomicU64::new(0), copied: AtomicU64::new(0) });
+        let image = Arc::new(Self {
+            texture,
+            exported,
+            id,
+            set: Arc::downgrade(set),
+            generation: AtomicU64::new(0),
+            copied: AtomicU64::new(0),
+            opaque: AtomicBool::new(false),
+        });
         set.0.lock().unwrap_or_else(|e| e.into_inner()).insert(id, Arc::downgrade(&image));
         image
     }
@@ -211,8 +220,16 @@ impl GpuImage {
         self.copied.load(Ordering::Acquire) >= self.generation()
     }
 
-    fn mark_copied(&self, generation: u64) {
+    pub fn mark_copied(&self, generation: u64) {
         self.copied.fetch_max(generation, Ordering::Release);
+    }
+
+    pub fn opaque(&self) -> bool {
+        self.opaque.load(Ordering::Acquire)
+    }
+
+    pub fn set_opaque(&self, opaque: bool) {
+        self.opaque.store(opaque, Ordering::Release);
     }
 }
 

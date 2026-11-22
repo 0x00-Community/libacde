@@ -314,6 +314,7 @@ super::natives! {
                 }
             };
             gpu.submit([encoder.finish()]);
+            image.set_opaque(!c.premultiplied);
             image.painted();
             if let Some(i) = c.images.iter().position(|i| Arc::ptr_eq(i, &image)) {
                 let shown = c.images.remove(i);
