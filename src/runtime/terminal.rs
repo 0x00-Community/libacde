@@ -366,6 +366,36 @@ mod tests {
     }
 
     pub(super) const WAIT: Duration = Duration::from_secs(5);
+    pub(super) const STARTUP: Duration = Duration::from_secs(30);
+    pub(super) const READY: &str = "echo SHELL-READY-$((40+2))\n";
+
+    pub(super) fn is_ready(text: &str) -> bool {
+        text.contains("SHELL-READY-42")
+    }
+
+    pub(super) fn started(t: &Terminals) -> String {
+        let id = open(t);
+        let ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let text = Arc::new(Mutex::new(String::new()));
+        let (seen, sink) = (ready.clone(), text.clone());
+        let listened = t.listen(&id, move |events| {
+            let mut text = sink.locked();
+            for event in events.as_array().into_iter().flatten() {
+                text.push_str(event["data"].as_str().unwrap_or_default());
+            }
+            let done = is_ready(&text);
+            seen.store(done, std::sync::atomic::Ordering::SeqCst);
+            !done
+        });
+        listened.unwrap();
+        t.input(id.clone(), READY.into()).unwrap();
+        let end = Instant::now() + STARTUP;
+        while !ready.load(std::sync::atomic::Ordering::SeqCst) {
+            assert!(Instant::now() < end, "the shell did not start: {:?}", text.locked());
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        id
+    }
 
     #[test]
     fn requests_are_checked() {
