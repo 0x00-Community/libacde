@@ -217,6 +217,10 @@
 `window.visible(visible)` (`WindowSelf.onVisible` → `setVisible`): `document.visibilityState` 跟着变并发 `visibilitychange`. 页面 hidden 时
 `requestAnimationFrame` 的回调不跑, 帧跑完也不再为它们要下一帧, 和浏览器的后台标签页一样; 回到 visible 时等着的回调在下一帧跑 (acde-dom `index.ts` 的 `frame`).
 
+**图标主题变了** (2026-11-22): 管家给桌面推 `{type: 'iconschanged', theme}` 并重发服务表; 页面里是 `acde:icons` 的 `on('changed', ({theme}) => …)`
+(`Host.NOTICES` → `icons:changed`), `acde:icons.theme()` 读的是服务表里最新的同步值, 事件先到时先按事件里的 `theme` 改掉 (`RemoteBridge.SERVICE_EVENTS`
+列出带事件的服务, 现在只有 `icons`).
+
 **会话里的菜单快捷键** (2026-11-20): 宿主上菜单快捷键经 `shell.shortcut(combo, 'menu', window)` 在合成器登记; 会话里应用进程没有桌面协议, 登记不上.
 所以有管家时, 应用的 `window.setMenus` 照旧交给管家, 启动器另外记下菜单的快捷键表 (`AppMenus.remember`), 以 `{type: 'menukeys', keys}` 发给页面线程;
 页面的 Host 在 keydown 时先按 `chordMatches` 比对 (`mod` 在 macOS 是 Meta, 别处是 Ctrl), 命中就不再派发给页面, 改发 `{menukey}` 给启动器, 启动器调页面的 `window.menu(menu, item)`.
