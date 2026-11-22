@@ -1,5 +1,6 @@
 import type { InspectAction, InspectArg, InspectMatch, InspectNode, InspectWindow, WindowState } from '@acde/api'
 import { Outline, type Line } from './outline'
+import { looked, type ActResult, type InspectStep, type Query, type QueryOptions, type Snapshot, type SnapshotOptions } from './answers'
 import { chordCodes, keyCode } from '../../../page/src/keys'
 import type { PageNode, PagePoint, PageQuery, PageTree } from '../../../page/src/pageinspect'
 import type { Rpc } from '../../../page/src/rpc'
@@ -58,48 +59,6 @@ export interface InspectHost {
   accessibility(): Promise<NativeAccessibility | null>
   records(): readonly number[]
   ref?(window: number): string | null
-}
-
-interface SnapshotOptions {
-  readonly window?: string
-  readonly ref?: string
-  readonly all?: boolean
-  readonly diff?: boolean
-  readonly limit?: number
-  readonly find?: string
-  readonly tree?: boolean
-  readonly offscreen?: boolean
-}
-
-interface QueryOptions {
-  readonly selector: string
-  readonly window?: string
-  readonly ref?: string
-  readonly limit?: number
-  readonly attributes?: readonly string[]
-}
-
-interface Query {
-  readonly window: string
-  readonly count: number
-  readonly nodes: readonly InspectMatch[]
-}
-
-interface Snapshot {
-  readonly text: string
-  readonly windows: readonly InspectWindow[]
-  readonly trees: Readonly<Record<string, readonly InspectNode[]>>
-}
-
-interface InspectStep {
-  readonly ref: string
-  readonly action: InspectAction
-  readonly text?: InspectArg
-}
-
-interface ActResult {
-  readonly ok: boolean
-  readonly text: string
 }
 
 interface NativeNode {
@@ -341,7 +300,7 @@ export class Inspect {
       if (focused && focused.id !== last.id) await this.#settle(focused)
     }
     const after = moved ? await this.snapshot({ diff: true }) : await this.snapshot({ window: last.ref, diff: true })
-    return { ok: !failed, text: `${said.join('\n')}${moved ? ' (the windows changed)' : ''}\n\n${after.text}` }
+    return { ok: !failed, text: `${said.join('\n')}${moved ? ' (the windows changed)' : ''}\n\n${after.text}`, ...looked(after) }
   }
 
   async open(name: string): Promise<ActResult> {
@@ -352,7 +311,7 @@ export class Inspect {
       const focused = this.windows().find((w) => w.focus && !w.hidden)
       if (focused) await this.#settle(focused)
       const after = await this.snapshot({})
-      return { ok: true, text: `${opened}\n\n${after.text}` }
+      return { ok: true, text: `${opened}\n\n${after.text}`, ...looked(after) }
     } catch (error) {
       return { ok: false, text: (error as Error).message ?? String(error) }
     }
@@ -797,7 +756,7 @@ export class Inspect {
       const node = Inspect.#node(window, n.id, n, n.states, n.rect, [])
       return { ...node, tag: n.tag, visible: n.visible && !window.hidden, ...(n.attributes && { attributes: n.attributes }) }
     })
-    return { window: window.ref, count: found.count, nodes }
+    return { window: window.ref, count: found.count, nodes, windows: [window] }
   }
 
   async #tree(window: InspectWindow, node: number | null, limit: number, offscreen = false, invisible = false): Promise<Tree> {
