@@ -5,7 +5,7 @@
 ## render (`src/render`, Rust 接口)
 
 - `Document::new(width, height, scale, &Options {base_url, resources: [Resource {prefix, dirs}], default_lang, verify_paint, svg_text_path,
-  dark, name})`: 尺寸是物理像素. 同源资源按最长前缀在 dirs 里找, `file:` 直接读盘, 不联网, 读不到回空. `Document` 发句柄:
+  dark, name})`: 尺寸是物理像素. 同源资源按最长前缀在 dirs 里找 (`render/net.rs` `LocalNet::path`): 路径只许普通的段 (挡 `..`), 再把文件和借出的目录都解开符号链接 (`canonicalize`), 解开后的文件不在那个目录里就当没有 (2026-11-22: 借出的文件夹里指向外面的链接, 如 `~/Pictures/x` → `~/.ssh/id`, 原来照读); `file:` 直接读盘, 不联网, 读不到回空. `Document` 发句柄:
   `dom()` (JS 线程)、`handle()` (出帧方).
 - 线程: 文档由 JS 线程和 `acde-render` 线程共用 (一把锁).
 - DOM: `Dom` 实现 acde-dom 的 `DomNative` (契约 `web/packages/acde-dom/src/native.ts`, 同名 snake_case). 节点 id 是 u32 不复用, `<html>` 是 0;

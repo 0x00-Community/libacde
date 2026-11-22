@@ -83,8 +83,14 @@ impl LocalNet {
         if !rest.components().all(|c| matches!(c, Component::Normal(_))) {
             return None;
         }
-        resource.dirs.iter().map(|d| Path::new(d).join(rest)).find(|p| p.is_file())
+        resource.dirs.iter().find_map(|d| within(Path::new(d), &Path::new(d).join(rest)))
     }
+}
+
+fn within(dir: &Path, path: &Path) -> Option<PathBuf> {
+    let root = std::fs::canonicalize(dir).ok()?;
+    let real = std::fs::canonicalize(path).ok()?;
+    (real.starts_with(&root) && real.is_file()).then_some(real)
 }
 
 impl NetProvider for LocalNet {
@@ -136,5 +142,62 @@ impl NetProvider for LocalNet {
                 handler.failed(url.to_string());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!("acde-net-{name}-{}", std::process::id()));
+            _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(dir.join("lent")).unwrap();
+            std::fs::create_dir_all(dir.join("outside")).unwrap();
+            std::fs::write(dir.join("lent/ok.png"), b"ok").unwrap();
+            std::fs::write(dir.join("outside/secret"), b"secret").unwrap();
+            Self(dir)
+        }
+
+        fn net(&self) -> LocalNet {
+            let lent = self.0.join("lent").to_string_lossy().into_owned();
+            let resources = [Resource { prefix: "/media/".into(), dirs: vec![lent] }];
+            LocalNet::new(Url::parse("http://acde.local/").unwrap(), &resources, Arc::default(), None, Weak::new())
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn url(text: &str) -> Url {
+        Url::parse(text).unwrap()
+    }
+
+    #[test]
+    fn a_lent_file_is_read_and_dot_dot_is_not() {
+        let scratch = Scratch::new("plain");
+        let net = scratch.net();
+        assert!(net.path(&url("http://acde.local/media/ok.png")).is_some());
+        assert!(net.path(&url("http://acde.local/media/../outside/secret")).is_none());
+        assert!(net.path(&url("http://other.example/media/ok.png")).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symbolic_link_out_of_the_lent_folder_is_not_followed() {
+        let scratch = Scratch::new("link");
+        std::os::unix::fs::symlink(scratch.0.join("outside/secret"), scratch.0.join("lent/escape")).unwrap();
+        std::os::unix::fs::symlink(scratch.0.join("outside"), scratch.0.join("lent/dir")).unwrap();
+        std::os::unix::fs::symlink(scratch.0.join("lent/ok.png"), scratch.0.join("lent/alias.png")).unwrap();
+        let net = scratch.net();
+        assert!(net.path(&url("http://acde.local/media/escape")).is_none());
+        assert!(net.path(&url("http://acde.local/media/dir/secret")).is_none());
+        assert!(net.path(&url("http://acde.local/media/alias.png")).is_some(), "a link that stays inside is fine");
     }
 }
