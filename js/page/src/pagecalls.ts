@@ -12,11 +12,18 @@ type Chooser = NonNullable<Env['files']>
 type Picked = { readonly name: string; readonly path: string; readonly writable?: boolean }
 type Kind = 'file' | 'directory'
 type LentFile = { readonly name: string; readonly label: string; readonly writable: boolean }
+export type LentEntry = LentFile & { readonly kind: Kind }
 
+const LENT = 'lent:'
 const LENT_FILE = 'lent-file:'
+
+export function lentKey(path: string): boolean {
+  return path.startsWith(LENT) || path.startsWith(LENT_FILE)
+}
 
 export interface HandOver {
   handle(path: string, kind: Kind, writable: boolean): object | null
+  lent(entry: LentEntry): object | null
   held(handle: unknown): { readonly path: string; readonly kind: Kind } | null
 }
 
@@ -87,6 +94,14 @@ export class PageCalls implements HandOver {
       this.#log(`handing over ${kind}: ${(error as Error).message}`)
       return null
     }
+  }
+
+  lent(entry: LentEntry): object | null {
+    const mode = entry.writable ? 'readwrite' : 'read'
+    if (entry.kind === 'file') return this.#page.handles.of(this.#lent(entry), 'file', mode)
+    const path = `${LENT}${entry.name}`
+    this.#folders.add(path)
+    return this.#page.handles.of({ name: entry.label || entry.name, path }, 'directory', mode)
   }
 
   held(handle: unknown): { readonly path: string; readonly kind: Kind; readonly writable: boolean } | null {
@@ -172,7 +187,7 @@ export class PageCalls implements HandOver {
           const title = `${this.#setup.label ?? strings.desktop}: ${prompt}`
           const lent = (await this.#rpc.call('page', 'folder', [{ title, writable }])) as { name?: unknown; label?: unknown } | null
           if (!lent || typeof lent.name !== 'string' || !lent.name) return null
-          const path = `lent:${lent.name}`
+          const path = `${LENT}${lent.name}`
           this.#folders.add(path)
           return { name: typeof lent.label === 'string' && lent.label ? lent.label : lent.name, path }
         } catch (error) {

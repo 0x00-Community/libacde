@@ -1,6 +1,6 @@
 import { installCore } from '@acde/dom/core'
 import type { WebInit } from '../../page/src/contract'
-import type { FileFilter, Lent, LentFile, WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
+import type { FileFilter, Lent, WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
 import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
 import { readDirOr, readTextOr } from '../../page/src/sys/fs'
 import { screenshotFile, xdgHome } from '../../page/src/sys/os'
@@ -13,6 +13,7 @@ import { AppLookup, DesktopLookup, desktopInit, webInit, type Found, type Place 
 import { FakeLock } from './app/lock'
 import { AppMenus } from './app/menus'
 import { PageCalls } from './app/page'
+import { Lending } from './app/lending'
 import type { WireMenu } from '../../page/src/contract'
 import { API_LEVEL } from '@acde/api/manifest'
 import { LaunchArgs } from './args'
@@ -166,6 +167,7 @@ class Launcher {
   #title: string
   readonly #menus: AppMenus
   readonly #pages: PageCalls
+  readonly #lending: Lending
   readonly #devtools: DevToolsEndpoint
   #inspect: Inspect | null = null
   readonly #guest: GuestWindows | null
@@ -183,13 +185,14 @@ class Launcher {
     this.#title = session.label
     const menuKeys = manager ? (keys: readonly string[]) => this.#thread?.post({ type: 'menukeys', keys }) : null
     this.#menus = new AppMenus(this.#shell, () => this.#window, menuKeys)
+    this.#lending = new Lending({ manager, app: () => this.session.found?.app.id, post: (message) => this.#thread?.post(message) })
     this.#pages = new PageCalls({
       label: session.label,
       language: () => SessionLanguage.of(process.env, sys().languages()).language,
-      openFiles: (title: string, multiple: boolean, filters: readonly FileFilter[]) => this.#openFiles(title, multiple, filters),
-      saveFile: (title: string, name: string, filters: readonly FileFilter[]) => this.#saveFile(title, name, filters),
-      folder: (title: string, writable: boolean) => this.#pickFolder(title, writable),
-      unlend: (name: string) => this.#revoke(name),
+      openFiles: (title: string, multiple: boolean, filters: readonly FileFilter[]) => this.#lending.openFiles(title, multiple, filters),
+      saveFile: (title: string, name: string, filters: readonly FileFilter[]) => this.#lending.saveFile(title, name, filters),
+      folder: (title: string, writable: boolean) => this.#lending.folder(title, writable),
+      unlend: (name: string) => this.#lending.revoke(name),
       ...(this.#shell.notify && { notify: (title: string, body: string, subtitle: string) => this.#shell.notify!(title, body, subtitle) }),
     })
     const relay = managerRelay(manager)
@@ -293,13 +296,15 @@ class Launcher {
     const grant = this.#grant()
     this.#window = grant.window
     const { session } = this
+    const welcome = this.manager?.welcome
+    const adopted = this.#lending.adopt(welcome?.lent, welcome?.fds)
+    const request = Lending.entered(session.request, welcome?.lent, adopted)
     const init = this.#desktop
       ? desktopInit(session.page!, session.resources, grant.token, this.#place(), session.tier!, session.services)
-      : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request: session.request, services: session.services }, grant.window)
+      : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request, services: session.services }, grant.window)
     this.#backend?.start()
     if (session.grants?.office) Launcher.#openOffice()
     if (this.#desktop && this.manager && session.grants?.devices) sys().startDevices?.()
-    this.#adopt(this.manager?.welcome.lent, this.manager?.welcome.fds)
     this.#spawn({ ...init, name: this.#webName(init.name) })
     this.#watchRemovable()
   }
@@ -656,8 +661,8 @@ class Launcher {
       else if (event.type === 'devreload') void this.#devReload(event['hot'] === true)
       else if (event.type === 'invoke') this.#thread?.post({ rpc: 'invoke', fn: event['fn'], args: event['args'] ?? [] })
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
-      else if (event.type === 'lend' && !this.#desktop) this.#lend([event as unknown as Lent], event['fds'])
-      else if (event.type === 'unlend' && !this.#desktop) this.#unlend(String(event['name'] ?? ''))
+      else if (event.type === 'lend' && !this.#desktop) this.#lending.lend([event as unknown as Lent], event['fds'])
+      else if (event.type === 'unlend' && !this.#desktop) this.#lending.unlend(String(event['name'] ?? ''))
       else if (event.type === 'menuinvoke' && !this.#desktop) void this.#rpc?.call('window', 'menu', [event['menu'], event['item']]).catch(() => undefined)
       else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event as ShellEvent))
     }
@@ -668,70 +673,8 @@ class Launcher {
     this.#thread?.post({ type: 'services', services: this.#services })
   }
 
-  #unlend(name: string): boolean {
-    const app = this.session.found?.app.id
-    if (!app || !name || !sys().unlendRoot?.(app, name)) return false
-    this.#thread?.post({ type: 'fsroots', removed: [name] })
-    return true
-  }
-
-  async #revoke(name: string): Promise<void> {
-    const refused = () => Object.assign(new TypeError(`${name} is not a folder lent to this app`), { status: 400, code: 'EINVAL' })
-    if (!this.session.found) throw refused()
-    if (this.manager) await this.manager.call('fs', 'unlend', [{ name }])
-    if (!this.#unlend(name) && !this.manager) throw refused()
-  }
-
-  #adopt(lent: unknown, fds: unknown): { readonly folders: string[]; readonly files: string[] } {
-    const given = Array.isArray(fds) ? fds.filter((fd): fd is string => typeof fd === 'string') : []
-    const none = { folders: [], files: [] }
-    if (!given.length) return none
-    return sys().adoptLent?.(this.session.found?.app.id ?? '', Array.isArray(lent) ? lent : [], given) ?? none
-  }
-
-  #lend(lent: unknown, fds: unknown): string[] {
-    const { folders } = this.#adopt(lent, fds)
-    if (folders.length) this.#thread?.post({ type: 'fsroots', added: folders, removed: [] })
-    return folders
-  }
-
-  async #pickFolder(title: string, writable: boolean): Promise<{ readonly name: string; readonly label: string } | null> {
-    const app = this.session.found?.app.id
-    if (!app) return null
-    if (!this.manager) return (await sys().pickFolder?.(app, title, writable)) ?? null
-    const lent = (await this.manager.call('fs', 'pick', [{ kind: 'folder', title, writable }])) as (Lent & { readonly fds?: unknown }) | null
-    if (!lent) return null
-    const [name] = this.#lend([lent], lent.fds)
-    return name === undefined ? null : { name, label: lent.label || name }
-  }
-
-  async #openFiles(title: string, multiple: boolean, filters: readonly FileFilter[]): Promise<readonly LentFile[] | null> {
-    const app = this.session.found?.app.id
-    if (!app) return null
-    if (!this.manager) return (await sys().pickFiles?.(app, title, multiple, filters))?.files ?? null
-    const picked = (await this.manager.call('fs', 'pick', [{ kind: 'open', title, multiple, filters }])) as { files?: unknown; fds?: unknown } | null
-    const files = this.#adoptFiles(picked?.files, picked?.fds)
-    return files.length ? files : null
-  }
-
-  async #saveFile(title: string, name: string, filters: readonly FileFilter[]): Promise<LentFile | null> {
-    const app = this.session.found?.app.id
-    if (!app) return null
-    if (!this.manager) return (await sys().pickSave?.(app, title, name, filters)) ?? null
-    const lent = (await this.manager.call('fs', 'pick', [{ kind: 'save', title, name, filters }])) as (Lent & { readonly fds?: unknown }) | null
-    return lent ? (this.#adoptFiles([lent], lent.fds)[0] ?? null) : null
-  }
-
-  #adoptFiles(lent: unknown, fds: unknown): LentFile[] {
-    const entries = Array.isArray(lent) ? (lent as Lent[]) : []
-    const { files } = this.#adopt(entries, fds)
-    return entries.filter((entry) => files.includes(entry.name)).map(({ name, label, writable }) => ({ name, label: label || name, writable }))
-  }
-
   #deliver(event: ManagerEvent): void {
-    const request = event['request'] as Record<string, unknown> | undefined
-    const [root] = this.#lend(event['lent'], event['fds'])
-    const handed = root === undefined ? request : { ...request, root }
+    const handed = this.#lending.request(event)
     void this.#rpc?.call('window', 'request', [handed]).catch(() => undefined)
   }
 

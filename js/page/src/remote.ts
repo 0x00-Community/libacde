@@ -9,7 +9,7 @@ import { Rpc } from './rpc'
 import { CapabilityCheck } from './broker/access/capabilities'
 import { Permits } from './broker/access/approval/permits'
 import type { Approval } from './broker/access/approval/permissions'
-import type { HandOver } from './pagecalls'
+import { lentKey, type HandOver } from './pagecalls'
 import type { CapabilityStatus } from '@acde/api/manifest'
 
 export class WindowList {
@@ -312,9 +312,11 @@ export class WindowSelf {
 
   #received(request: Record<string, unknown>): Record<string, unknown> {
     const { entry, ...rest } = request
-    const given = entry as { path?: unknown; kind?: unknown; writable?: unknown } | undefined
-    if (rest['kind'] !== 'open-file' || typeof given?.path !== 'string') return rest
-    const handle = this.handOver?.handle(given.path, given.kind === 'directory' ? 'directory' : 'file', given.writable === true)
+    const given = entry as { name?: unknown; label?: unknown; kind?: unknown; writable?: unknown } | undefined
+    if (rest['kind'] !== 'open-file' || typeof given?.name !== 'string') return rest
+    const label = typeof given.label === 'string' ? given.label : given.name
+    const kind = given.kind === 'directory' ? 'directory' : 'file'
+    const handle = this.handOver?.lent({ name: given.name, label, kind, writable: given.writable === true })
     return handle ? { ...rest, handle } : rest
   }
 
@@ -404,6 +406,7 @@ export class RemoteBridge {
     if (handle === undefined) return request
     const held = this.handOver?.held(handle)
     if (!held) throw new TypeError('open-file: the handle is not a file or folder this page was given')
+    if (lentKey(held.path)) throw new TypeError('open-file: a picked, dropped or lent file or folder cannot be handed to another app yet')
     return { ...request, held }
   }
 

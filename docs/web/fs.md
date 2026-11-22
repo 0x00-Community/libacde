@@ -32,7 +32,10 @@ acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边�
   页面 isolate 的 `sys` (`sys::object`) 没有这几个方法. 登记表里放了 60 秒还没人领的描述符, 在下一次 `hand_fds` 时关掉并记一行 warn.
 - 拉起时: welcome 的 `lent` + `fds`, 启动器在起页面线程前交给 `sys.adoptLent(应用编号, lent, fds)`.
 - 运行中: 管家推 `{type: 'lend', ...条目, fds}`, 启动器收下后给页面发 `fsroots {added}`; 带借出的打开请求是 `{type: 'request', request, lent, fds}`,
-  启动器收下再把请求交给页面 (`window.request`), 请求里补 `root: <第一个收下的 name>`.
+  启动器收下再把请求交给页面 (`window.request`), 请求里补 `root: <第一个收下的文件夹 name>`.
+- openPath 交来的文件: 请求是 `{kind: 'open-file', file: <label>, entry: {name}}`, 条目在同一帧的 `lent` 里 (未运行的应用在 welcome 的 `lent` 里).
+  启动器收下后按 `entry.name` 找到条目, 把 `entry` 换成 `{name, kind, label, writable}` 交给页面 (`main.ts` `#entered`), 找不到就去掉 `entry`;
+  页面 (`remote.ts` `#received`) 按名字造句柄 (`PageCalls.lent`: 文件键 `lent-file:<name>`, 文件夹键 `lent:<name>`).
 - `sys.adoptLent` (src/host `web.rs`, 只在 unix 上有) 先按 `fds` 里的令牌从登记表取走这一帧的全部描述符 (不认识的令牌得不到描述符),
   再把 `kind: 'directory'` 的条目登记成借出的根 (`LentRoot::from_fd`, 句柄是 `cap_std::fs::Dir`), `kind: 'file'` 的登记成借出的文件
   (`LentFile::from_fd`, 见「打开和保存文件」), 回 `{folders, files}` (登记上的 `name`); 没被条目用到的、登记被拒的描述符随即关掉.
@@ -90,6 +93,8 @@ acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边�
 - 交出去: 应用的 `acde.apps.open({kind: 'open-file', handle})` (或 `open(appId, …)`) 在 web 里把 `handle` 换成 `held: {path, kind, writable}`, 只认这个页面登记过的句柄
   (否则 `TypeError`), 页面自己给的 `held` / `entry` 丢掉. Broker (`Opener.request`) 按 `held` 的路径打开, 交给系统默认程序时调用方的根加上这个文件所在的文件夹; 交出的是只读句柄时接收方也只拿到只读句柄.
   这样第 1 级应用能把拖进来的、选中的、别人交给它的文件交给别的应用打开; 私有文件夹和公共位置里的文件还没有句柄 (要先经选择器).
+  借出的句柄 (键是 `lent:` / `lent-file:` 开头: 选来的、经管家交来的) 没有路径, 还不能这样交出, 也不能交给 `acde:office` 的 `state`: 两处都抛 `TypeError`
+  (`pagecalls.ts` `lentKey`). 要接上需要经管家把描述符转交给目标应用, 单独立项.
 
 工作区内的相对路径用 `/` 分隔. Windows 上拒绝反斜杠、数据流分隔符、保留设备名和以空格或点结尾的名称;
 判断解析后的路径是否在 root 内时按系统路径组件比较.

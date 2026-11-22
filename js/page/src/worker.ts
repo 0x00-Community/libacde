@@ -23,7 +23,7 @@ import { DevRoutes, type DevRoute } from './devroutes'
 import { DevState, type DevSnapshot } from './devstate'
 import { Level, Log } from './log'
 import { PageSource } from './page'
-import { PageCalls, type FolderPicker } from './pagecalls'
+import { lentKey, PageCalls, type FolderPicker } from './pagecalls'
 import { PageInspect } from './pageinspect'
 import { Pinned } from './pinned'
 import { RemoteBridge, WindowList, WindowSelf } from './remote'
@@ -336,6 +336,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
       if (root === undefined || root === null || typeof root === 'string') return office.state(root, ...rest)
       const held = calls.held(root)
       if (!held || held.kind !== 'file') return Promise.reject(new TypeError('acde:office state: not a file handle this page was given'))
+      if (lentKey(held.path)) return Promise.reject(new TypeError('acde:office state: a picked, dropped or lent file cannot be opened in office yet'))
       return office.open(held.path, held.writable)
     }
     const labelled = async (...args: Parameters<typeof state>) => {
