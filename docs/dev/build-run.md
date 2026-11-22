@@ -62,7 +62,8 @@ Bun 的本代目录在默认 base 下, DACL 读回只有 SYSTEM 和当前用户,
   进页面的初始化参数 `dark`, 变了发 `colorscheme` 给页面 (`matchMedia` 发 change). 开发通道的 `emulate` 设了值时它优先, 设回 null 时回到系统的值.
   **玻璃通透度** (2026-11-22, 总仓 `.scratch/libacde/glass-transparency-plan.md`): 同一个门户读取器还读 acdes 自家命名空间 `org.acde.appearance` 的 `glass` (档位号, 0 通透、1 适中、2 着色, 以后加档往后排) 和
   `reduced-transparency` (0 / 1), 读不到时按 0 和否; 进初始化参数 `glass: {level, reducedTransparency}`, 变了发 `{type: 'glass', level, reducedTransparency}`; 页面交 `dom.setGlass`,
-  渲染器记进进程级的 `acde_scene::glass::preference()` 并整页重画, 解析 `--acde-glass` 时按它取预设.
+  渲染器记进进程级的 `acde_scene::glass::preference()` 并整页重画, 解析 `--acde-glass` 时按它取预设. `Preference.dark` 是页面当前的深浅
+  (`setDark` / 初始化参数 `dark`, 即门户的 `color-scheme` 或开发通道的模拟), 预设里按深浅分的值 (如轮廓颜色) 按它取.
   **减少动态效果**: 标准门户 `org.freedesktop.appearance` 的 `reduced-motion` 也由它读, 进初始化参数 `reducedMotion`, 变了发 `{type: 'motion', reduced}`; 页面交 `dom.setReducedMotion`,
   渲染器记进进程级的 `acde_scene::motion::system()` (`Reduced` / `Standard`), 玻璃出现、消失这类形状动画按它取曲线.
   **语言** (`language.ts`): 按 `LANGUAGE` / `LC_ALL` / `LC_MESSAGES` / `LANG`; 都没设时用系统的首选语言 (sys `languages()`, hostwin `system/languages.rs`:

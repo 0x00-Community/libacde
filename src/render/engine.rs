@@ -84,7 +84,7 @@ impl Engine {
             dirty: true,
             stats: Stats::default(),
             damage: Damage::default(),
-            glass: acde_scene::glass::preference(),
+            glass: acde_scene::glass::Preference { dark: options.dark, ..acde_scene::glass::preference() },
             paint_cache: PaintCache::default(),
             panels: Vec::new(),
             panel_damage: Default::default(),
@@ -182,6 +182,11 @@ impl Engine {
     }
 
     pub(crate) fn set_glass(&mut self, preference: acde_scene::glass::Preference) {
+        let dark = self.doc.viewport().color_scheme == ColorScheme::Dark;
+        self.adopt_glass(acde_scene::glass::Preference { dark, ..preference });
+    }
+
+    fn adopt_glass(&mut self, preference: acde_scene::glass::Preference) {
         acde_scene::glass::set_preference(preference);
         if self.glass == preference {
             return;
@@ -200,6 +205,7 @@ impl Engine {
         let mut viewport = self.doc.viewport().clone();
         viewport.color_scheme = scheme;
         self.doc.set_viewport(viewport);
+        self.adopt_glass(acde_scene::glass::Preference { dark: on, ..self.glass });
         self.touch();
     }
 
