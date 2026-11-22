@@ -295,6 +295,16 @@ impl Glass {
         Self::from_floats(floats).clamped()
     }
 
+    pub fn with_overrides(base: &Self, overrides: &[f32]) -> Self {
+        let mut floats = base.floats();
+        for (slot, value) in floats.iter_mut().zip(overrides) {
+            if !value.is_nan() {
+                *slot = *value;
+            }
+        }
+        Self::from_floats(floats).clamped()
+    }
+
     fn floats(&self) -> [f32; WIRE_FLOATS] {
         let r = self.refraction;
         let b = self.blur;
@@ -697,6 +707,22 @@ mod tests {
         let back = Glass::from_wire(&changed.to_wire());
         assert_eq!(Glass { outline: glass.outline, ..back }, glass);
         assert_eq!(back.outline, changed.outline);
+    }
+
+    #[test]
+    fn overrides_replace_only_what_is_not_nan_and_are_clamped() {
+        let base = Glass::preset(Role::Regular, Level::Clear);
+        assert_eq!(Glass::with_overrides(&base, &[f32::NAN; WIRE_FLOATS]), base);
+        assert_eq!(Glass::with_overrides(&base, &[]), base);
+        let mut some = [f32::NAN; WIRE_FLOATS];
+        (some[19], some[27]) = (0.3, 0.1);
+        let changed = Glass::with_overrides(&base, &some);
+        assert_eq!((changed.white_point, changed.darken), (0.3, 0.1));
+        assert_eq!(Glass { white_point: base.white_point, darken: base.darken, ..changed }, base);
+        let mut wild = [f32::NAN; WIRE_FLOATS + 3];
+        (wild[19], wild[1], wild[17], wild[WIRE_FLOATS]) = (7.0, -5.0, f32::INFINITY, 1.0);
+        let clamped = Glass::with_overrides(&base, &wild);
+        assert_eq!((clamped.white_point, clamped.refraction.inner_height, clamped.highlight.angle), (1.0, 0.0, 0.0));
     }
 
     #[test]
