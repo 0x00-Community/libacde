@@ -139,7 +139,7 @@ impl Glass {
         if name == "none" || name.is_empty() {
             return None;
         }
-        let Some(mut glass) = Role::parse(name).map(|role| Self::preset(role, level)) else {
+        let Some(mut glass) = Role::parse(name).map(|role| Self::preset_in(role, level, preference().dark)) else {
             warn(format!("--acde-glass: no glass called {name:?} (none, regular, clear)"));
             return None;
         };

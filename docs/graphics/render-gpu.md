@@ -54,8 +54,9 @@
   着色、平滑边缘和渗出; 着色器拼的是 acde-scene 的 `corner::WGSL` 和 `glass::WGSL`, 和合成器同一份函数. 参数经 `Params`: 矩阵前三列放折射、渗出与高光、
   白点与平滑, `bias` 是取样区域, `color` 是着色.
   轮廓线 (2026-11-23, `Glass.outline: Outline {width, color, merged}`): 写法 `--acde-glass-outline: <宽度> <颜色> [pieces | merged] | none`
-  (宽度随缩放, 颜色同 `-tint`, 第三项缺省 `pieces`). 预设各档默认开, 1 px `rgb(255 255 255 / 0.5)`, pieces; 暗色那一套 (0.25) 先没有接: 玻璃解析时
-  拿不到页面深浅 (`Level` 只有档位, `Preference` 里也没有深浅), 等深浅进 `Preference` 再按它分两套. 线从边缘往里 `width` (抗锯齿 0.5 px, 边外为 0),
+  (宽度随缩放, 颜色同 `-tint`, 第三项缺省 `pieces`). 预设各档默认开, 1 px pieces, 亮色页面 `rgb(255 255 255 / 0.5)`、暗色页面 `rgb(255 255 255 / 0.25)`:
+  `Glass::preset_in(role, level, dark)` 按 `preference().dark` 取 (渲染器在页面深浅变化时写进去并整页重画), `preset(role, level)` 是亮色; 不透明档
+  的着色也跟着深浅. 线从边缘往里 `width` (抗锯齿 0.5 px, 边外为 0),
   颜色按覆盖率盖在玻璃色上, 透明度取两者较大的. 两种画法:
   - `pieces` (默认, 为了按钮区分度): 每块按自己的距离场画自己的轮廓, 取各块覆盖率的最大值; 融合时背景玻璃照样连成一团, 轮廓各画各的, 可以交叉.
   - `merged`: 沿合成场整体外缘画, 用归一化距离 `d / max(|∇d|, 0.05)` (只在有块相互作用的地方算梯度, 其余就是 d), 脖子处平滑最小值把梯度压小

@@ -4,6 +4,7 @@ const HIGHLIGHT_DEGREES: f32 = 330.0;
 const HIGHLIGHT_AMOUNT: f32 = 0.45;
 const HIGHLIGHT_WIDTH: f32 = 4.0;
 const OUTLINE: Outline = Outline { width: 1.0, color: [1.0, 1.0, 1.0, 0.5], merged: false };
+const DARK_OUTLINE: Outline = Outline { color: [1.0, 1.0, 1.0, 0.25], ..OUTLINE };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Role {
@@ -88,6 +89,15 @@ impl Level {
 
 impl Glass {
     pub fn preset(role: Role, level: Level) -> Self {
+        Self::preset_in(role, level, false)
+    }
+
+    pub fn preset_in(role: Role, level: Level, dark: bool) -> Self {
+        let glass = Self::table_preset(role, level, dark);
+        Self { outline: if dark { DARK_OUTLINE } else { OUTLINE }, ..glass }
+    }
+
+    fn table_preset(role: Role, level: Level, dark: bool) -> Self {
         match level.for_role(role) {
             Level::Clear => Self {
                 refraction: Refraction { inner_amount: 0.8, inner_height: 18.0, outer_amount: 0.0, outer_height: 0.0 },
@@ -123,7 +133,7 @@ impl Glass {
                 outline: OUTLINE,
                 ..Self::default()
             },
-            Level::Opaque => Self::opaque(false),
+            Level::Opaque => Self::opaque(dark),
         }
     }
 
@@ -197,6 +207,17 @@ mod tests {
         assert_eq!(Level::parse("tinted"), Some(Level::Tinted));
         assert_eq!(Level::from_wire(99), Level::Clear);
         assert_ne!(Glass::opaque(true).tint, Glass::opaque(false).tint);
+    }
+
+    #[test]
+    fn the_default_outline_is_dimmer_on_a_dark_page() {
+        for level in [Level::Clear, Level::Medium, Level::Tinted, Level::Opaque] {
+            assert_eq!(Glass::preset_in(Role::Regular, level, false).outline.color, [1.0, 1.0, 1.0, 0.5]);
+            let dark = Glass::preset_in(Role::Regular, level, true);
+            assert_eq!(dark.outline, Outline { color: [1.0, 1.0, 1.0, 0.25], ..OUTLINE });
+            assert_eq!(Glass { outline: OUTLINE, ..dark }.lens, Glass::preset(Role::Regular, level).lens);
+        }
+        assert_eq!(Glass::preset_in(Role::Regular, Level::Opaque, true).tint, Glass::opaque(true).tint);
     }
 
     #[test]
