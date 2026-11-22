@@ -64,10 +64,12 @@
   各块的距离场按 Inigo Quilez 的多项式平滑最小值合成 (https://iquilezles.org/articles/smin/ , `h = clamp(0.5 + 0.5 (d − dᵢ) / k)`,
   `d = mix(d, dᵢ, h) − k h (1 − h)`, k 是间距): 只在两块的距离差小于 k 处起作用, 所以间隙不小于 k 时各块的轮廓原样不动, 小于 k 时开始鼓出,
   小于 k/2 时连成一片. 各块的参数 (除模糊层以外的全部玻璃参数) 按同一权重 h 混合, 做法同 www 的 `public/landing/proto/h/liquid.js` (它又参照
-  Liquid Glass Studio, MIT, https://github.com/iyinchao/liquid-glass-studio ; 只借思路, 没有拷代码). 法线: 一块的组用单块玻璃原来的法线 (中心指向该点, 按半宽归一), 结果和单块玻璃逐位相同; 两块及以上的组在整个融合形状上都用合成场的梯度
-  (中心差分, 步长 0.5 px), 所以高光、边缘折射和透镜沿融合后的整体外轮廓, 不会留在各块原来的位置. `fs_glass_group` 的透明度、平滑边、高光与透镜全部只读
+  Liquid Glass Studio, MIT, https://github.com/iyinchao/liquid-glass-studio ; 只借思路, 没有拷代码). 法线: 一块的组用单块玻璃原来的法线 (中心指向该点, 按半宽归一), 结果和单块玻璃逐位相同; 两块及以上的组, 在有块相互作用的地方
+  (`merging = max 4h(1 − h)` 大于 0, 即两块距离差小于间距 k) 用合成场的梯度 (中心差分, 步长 0.5 px; 权重 `min(1, 4·merging)`, h 约在 0.07–0.93 之间即全用梯度),
+  所以融合处的高光、边缘折射和透镜沿融合后的整体外轮廓; 离别块不小于 k 的地方 h 严格为 0 或 1, 场值、参数、法线都是那一块自己的, 结果和单块逐位相同
+  (2026-11-23 改: e0eb46f 在整个组都用数值梯度, 远处那块的高光和单块的解析法线差一个末位, 远离的块不再逐位不变). `fs_glass_group` 的透明度、平滑边、高光与透镜全部只读
   `acde_glass_group_field` 的合成场 d 和组梯度, 不再读单块的距离或角形; 两块相交后, 重叠内部原边界处保持不透明且没有亮线, 新外边界才有高光 (CPU 回归测试).
-  `merging = max 4h(1 − h)` 仍记录接触程度供调试, 不再混合法线. 一块的组回归测试继续对照 `cpu::paint`.
+  一块的组回归测试继续对照 `cpu::paint`, 远离的另一块不改变这一块任何像素的回归测试也要过.
   模糊层全组一份, 取第一块的. WGSL (`group::WGSL`, 要先拼 `corner::WGSL` 和 `glass::WGSL`) 只引用一个模块级数组 `acde_glass_pieces`,
   由使用方自己声明绑定: `var<uniform> acde_glass_pieces: array<AcdeGlassPiece, 16>`; 每块 7 个 vec4 (112 字节, `to_uniform` 给出整块 1792 字节):
   `shape` (中心、半宽高)、`corner` (半径、指数)、`refraction`、`bleed` (渗出三项加高光角度)、`look` (高光强度、白点、平滑、高光宽度)、`tint`、`lens` (透镜强度、色散、乘暗、透镜宽度). 用 uniform 定长数组

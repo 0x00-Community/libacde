@@ -1,4 +1,5 @@
 const ACDE_GLASS_MOST_PIECES: u32 = 16u;
+const ACDE_GLASS_MERGE_NORMAL: f32 = 4.0;
 
 struct AcdeGlassPiece {
     shape: vec4<f32>,
@@ -87,8 +88,8 @@ fn acde_glass_group_field(p: vec2<f32>, count: u32, spacing: f32) -> AcdeGlassFi
         d = mix(d, di, h) - k * h * (1.0 - h);
         merging = max(merging, 4.0 * h * (1.0 - h));
     }
-    if count > 1u {
-        toward = acde_glass_group_gradient(p, count, spacing);
+    if merging > 0.0 {
+        toward = mix(toward / max(length(toward), 0.000001), acde_glass_group_gradient(p, count, spacing), min(1.0, ACDE_GLASS_MERGE_NORMAL * merging));
     }
     return AcdeGlassField(d, toward, merging, bevel, look);
 }

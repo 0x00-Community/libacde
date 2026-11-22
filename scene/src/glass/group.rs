@@ -11,6 +11,7 @@ pub const UNIFORM_BYTES: usize = MOST_PIECES * PIECE_BYTES;
 const PIECE_FLOATS: usize = 28;
 const LEAST_SPACING: f64 = 1e-4;
 const GRADIENT_STEP: f64 = 0.5;
+const MERGE_NORMAL: f64 = 4.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Piece {
@@ -185,8 +186,8 @@ impl GlassGroup {
             field.d = lerp(field.d, di, h) - k * h * (1.0 - h);
             field.merging = field.merging.max(4.0 * h * (1.0 - h));
         }
-        if self.count > 1 {
-            field.toward = self.gradient(p);
+        if field.merging > 0.0 {
+            field.toward = lerp2(unit(field.toward), self.gradient(p), (MERGE_NORMAL * field.merging).min(1.0));
         }
         Some(field)
     }
