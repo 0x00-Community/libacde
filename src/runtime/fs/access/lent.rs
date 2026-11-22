@@ -3,8 +3,10 @@ use crate::runtime::fs::ranged::{MAX_CHUNK, Range, RangeOptions};
 use crate::runtime::fs::save;
 use crate::runtime::fs::workspace::{Contents, ModifiedMs};
 use std::fs::File;
-use std::io::{self, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::sync::Arc;
+
+const BUFFER: usize = 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub struct LentFile {
@@ -77,11 +79,35 @@ impl LentFile {
 
     pub(crate) fn pour(&self, scratch: &mut File) -> io::Result<()> {
         scratch.seek(SeekFrom::Start(0))?;
-        let mut into = &*self.file;
-        into.seek(SeekFrom::Start(0))?;
-        let size = io::copy(scratch, &mut into)?;
-        into.set_len(size)?;
-        into.sync_data()
+        let mut buffer = vec![0; BUFFER];
+        let mut offset = 0;
+        loop {
+            let read = match scratch.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(read) => read,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(error),
+            };
+            write_all_at(&self.file, &buffer[..read], offset)?;
+            offset += read as u64;
+        }
+        self.file.set_len(offset)?;
+        self.file.sync_data()
+    }
+
+    pub(crate) fn copy_into(&self, scratch: &mut File) -> io::Result<u64> {
+        let mut buffer = vec![0; BUFFER];
+        let mut offset = 0;
+        loop {
+            let read = match read_at(&self.file, &mut buffer, offset) {
+                Ok(0) => return Ok(offset),
+                Ok(read) => read,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(error),
+            };
+            scratch.write_all(&buffer[..read])?;
+            offset += read as u64;
+        }
     }
 }
 

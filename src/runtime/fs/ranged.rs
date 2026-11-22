@@ -259,7 +259,7 @@ impl Writes {
         let scratch = std::env::temp_dir().join(format!(".acde-lent-{}{PART}", uuid::Uuid::new_v4().simple()));
         let mut file = std::fs::OpenOptions::new().read(true).write(true).create_new(true).open(&scratch)?;
         let copied = match keep_existing_data {
-            true => (&*into.file).seek(SeekFrom::Start(0)).and_then(|_| std::io::copy(&mut &*into.file, &mut file)),
+            true => into.copy_into(&mut file),
             false => Ok(0),
         };
         let size = match copied {
