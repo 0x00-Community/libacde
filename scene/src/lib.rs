@@ -1,4 +1,5 @@
 mod compose;
+pub mod corner;
 mod filter;
 mod scene;
 

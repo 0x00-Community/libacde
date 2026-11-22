@@ -4,6 +4,7 @@ use kurbo::{Affine, BezPath, Rect, Shape, Stroke, Vec2};
 use peniko::{BlendMode, Brush, BrushRef, Color, Fill, FontData, Gradient, ImageBrush, ImageBrushRef, Style, StyleRef};
 
 use crate::Filter;
+use crate::corner::Corners;
 
 pub type NormalizedCoord = i16;
 
@@ -96,6 +97,21 @@ pub trait PaintScene {
         backdrop_filter: Option<Arc<Filter>>,
     );
 
+    #[allow(clippy::too_many_arguments, reason = "a CSS layer and the corner shape of its element")]
+    fn push_shaped_layer(
+        &mut self,
+        fill: Fill,
+        blend: impl Into<BlendMode>,
+        alpha: f32,
+        transform: Affine,
+        clip: &impl Shape,
+        filter: Option<Arc<Filter>>,
+        backdrop_filter: Option<Arc<Filter>>,
+        _corners: Corners,
+    ) {
+        self.push_layer(fill, blend, alpha, transform, clip, filter, backdrop_filter);
+    }
+
     fn push_clip_layer(&mut self, fill: Fill, transform: Affine, clip: &impl Shape);
 
     fn pop_layer(&mut self);
@@ -154,6 +170,7 @@ pub struct LayerCommand {
     pub clip: BezPath,
     pub filter: Option<Arc<Filter>>,
     pub backdrop_filter: Option<Arc<Filter>>,
+    pub corners: Option<Corners>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -221,7 +238,10 @@ impl RenderCommand {
 
     pub fn replay<P: PaintScene + ?Sized>(self, to: &mut P, by: Affine) {
         match self {
-            Self::PushLayer(c) => to.push_layer(c.fill, c.blend, c.alpha, by * c.transform, &c.clip, c.filter, c.backdrop_filter),
+            Self::PushLayer(c) => match c.corners {
+                Some(corners) => to.push_shaped_layer(c.fill, c.blend, c.alpha, by * c.transform, &c.clip, c.filter, c.backdrop_filter, corners),
+                None => to.push_layer(c.fill, c.blend, c.alpha, by * c.transform, &c.clip, c.filter, c.backdrop_filter),
+            },
             Self::PushClipLayer(c) => to.push_clip_layer(c.fill, by * c.transform, &c.clip),
             Self::PopLayer => to.pop_layer(),
             Self::Stroke(c) => to.stroke(&c.style, by * c.transform, &c.brush, c.brush_transform, &c.shape),
@@ -284,7 +304,24 @@ impl PaintScene for Scene {
         backdrop_filter: Option<Arc<Filter>>,
     ) {
         let clip = clip.into_path(self.tolerance);
-        self.commands.push(RenderCommand::PushLayer(LayerCommand { fill, blend: blend.into(), alpha, transform, clip, filter, backdrop_filter }));
+        let layer = LayerCommand { fill, blend: blend.into(), alpha, transform, clip, filter, backdrop_filter, corners: None };
+        self.commands.push(RenderCommand::PushLayer(layer));
+    }
+
+    fn push_shaped_layer(
+        &mut self,
+        fill: Fill,
+        blend: impl Into<BlendMode>,
+        alpha: f32,
+        transform: Affine,
+        clip: &impl Shape,
+        filter: Option<Arc<Filter>>,
+        backdrop_filter: Option<Arc<Filter>>,
+        corners: Corners,
+    ) {
+        let clip = clip.into_path(self.tolerance);
+        let layer = LayerCommand { fill, blend: blend.into(), alpha, transform, clip, filter, backdrop_filter, corners: Some(corners) };
+        self.commands.push(RenderCommand::PushLayer(layer));
     }
 
     fn push_clip_layer(&mut self, fill: Fill, transform: Affine, clip: &impl Shape) {
