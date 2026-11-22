@@ -295,6 +295,9 @@ fn color(text: &str) -> Option<[f32; 4]> {
     Some([channel(r)?, channel(g)?, channel(b)?, alpha.clamp(0.0, 1.0)])
 }
 
+mod preference;
+pub use preference::{Preference, preference, set_preference};
+
 pub mod cpu {
     use super::*;
 

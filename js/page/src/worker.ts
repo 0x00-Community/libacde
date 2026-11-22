@@ -90,6 +90,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   let language = init.languages?.language
   const look = { resources: init.resources, dark: init.dark === true }
   const dom = natives.createDocument(init.width, init.height, init.scale, look)
+  if (init.glass) dom.setGlass?.(init.glass.level, init.glass.reducedTransparency)
   const surface = natives.claimSurface(init.token, { frame: init.kind === 'window' ? Frame.height(init.app) : 0 })
   const title = (text: string) => surface.setTitle(text || (init.app?.label ?? init.name))
   title('')
@@ -208,6 +209,8 @@ export default async function boot(natives: WebNatives): Promise<void> {
       type?: string
       services?: Record<string, ServiceShape>
       dark?: boolean
+      level?: number
+      reducedTransparency?: boolean
       reduced?: boolean
       language?: string
       languages?: string[]
@@ -242,6 +245,8 @@ export default async function boot(natives: WebNatives): Promise<void> {
       case 'colorscheme':
         dom.setDark?.(m.dark === true)
         return page.mediaChanged()
+      case 'glass':
+        return dom.setGlass?.(m.level ?? 0, m.reducedTransparency === true)
       case 'devhot':
         return devhot()
       case 'services':

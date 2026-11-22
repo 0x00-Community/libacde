@@ -37,6 +37,7 @@ pub(crate) struct Engine {
     pub(crate) dirty: bool,
     stats: Stats,
     damage: Damage,
+    glass: acde_scene::glass::Preference,
     paint_cache: PaintCache,
     panels: Vec<(NodeId, u32, kurbo::Rect)>,
     panel_damage: std::collections::HashMap<u32, Damage>,
@@ -83,6 +84,7 @@ impl Engine {
             dirty: true,
             stats: Stats::default(),
             damage: Damage::default(),
+            glass: acde_scene::glass::preference(),
             paint_cache: PaintCache::default(),
             panels: Vec::new(),
             panel_damage: Default::default(),
@@ -169,6 +171,17 @@ impl Engine {
         viewport.window_size = (width, height);
         viewport.hidpi_scale = scale;
         self.doc.set_viewport(viewport);
+        self.touch();
+    }
+
+    pub(crate) fn set_glass(&mut self, preference: acde_scene::glass::Preference) {
+        acde_scene::glass::set_preference(preference);
+        if self.glass == preference {
+            return;
+        }
+        self.glass = preference;
+        self.paint_cache.clear();
+        self.damage = Damage::default();
         self.touch();
     }
 
