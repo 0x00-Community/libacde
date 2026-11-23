@@ -656,6 +656,15 @@ natives! {
         text!(property = scope, args, 0); text!(value = scope, args, 1);
         dom.css_supports_declaration(&property, &value)
     }
+    "inlineStyleEdit" => fn inline_style_edit(scope, args, dom) {
+        let id = id(scope, &args, 0);
+        let edits = bind::strings(scope, args.get(1)).unwrap_or_default();
+        dom.inline_style_edit(id, &edits)
+    }
+    "inlineStyleText" => fn inline_style_text(scope, args, dom) {
+        let id = id(scope, &args, 0); text!(text = scope, args, 1);
+        dom.inline_style_text(id, &text)
+    }
     "styleText" => fn style_text(scope, args, dom) { text!(text = scope, args, 0); Ok(dom.style_text(&text)) }
     "styleNames" => fn style_names(scope, args, dom) { text!(text = scope, args, 0); Ok(dom.style_names(&text)) }
     "styleGet" => fn style_get(scope, args, dom) {

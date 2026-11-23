@@ -594,6 +594,15 @@ export class MockDom implements DomNative {
     this.supported.push(['condition', condition])
     return /display:\s*grid/.test(condition)
   }
+  inlineStyleEdit(id: number, edits: string[]): string | null {
+    const before = serializeStyle(parseStyle(this._node(id).getAttribute('style') ?? ''))
+    let text = before
+    for (let i = 0; i + 2 < edits.length; i += 3) text = this.styleSet(text, edits[i]!, edits[i + 1]!, edits[i + 2] === '1' ? 1 : 0) ?? text
+    return text === before ? null : text
+  }
+  inlineStyleText(_id: number, text: string): string | null {
+    return this.styleText(text)
+  }
   styleText(text: string): string {
     return serializeStyle(parseStyle(text))
   }

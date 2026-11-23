@@ -96,6 +96,14 @@ export function inlineDeclaration(style: CSSStyleDeclaration, name: string): { v
 }
 
 export function editInline(style: CSSStyleDeclaration, edits: Iterable<readonly [name: string, value: string, important: boolean]>): void {
+  const element = style[STATE].element
+  if (element) {
+    const flat: string[] = []
+    for (const [name, value, important] of edits) flat.push(name, value, important ? '1' : '0')
+    const text = flat.length ? dom.inlineStyleEdit(element[ID], flat) : null
+    if (text !== null) store(style, text)
+    return
+  }
   const before = sourceOf(style)
   let text = before
   for (const [name, value, important] of edits) text = dom.styleSet(text, name, value, important ? 1 : 0) ?? text
@@ -136,7 +144,7 @@ export class CSSStyleDeclaration {
   set cssText(text: string) {
     writable(this)
     const s = this[STATE]
-    const serialized = dom.styleText(String(text))
+    const serialized = (s.element && dom.inlineStyleText(s.element[ID], String(text))) ?? dom.styleText(String(text))
     if (s.element) {
       setAttribute(s.element, 'style', serialized)
       s.textVersion = version

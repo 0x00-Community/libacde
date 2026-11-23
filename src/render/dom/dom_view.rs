@@ -182,6 +182,27 @@ impl Dom {
         blitz_dom::css_property_is_supported(name)
     }
 
+    pub fn inline_style_edit(&self, id: u32, edits: &[String]) -> Result<Option<String>> {
+        let edits: Vec<blitz_dom::InlineEdit<'_>> = edits
+            .chunks_exact(3)
+            .filter_map(|edit| match edit {
+                [name, value, important] => Some(blitz_dom::InlineEdit::Set(name, value, important == "1")),
+                _ => None,
+            })
+            .collect();
+        self.write(|e| {
+            let node = e.n(id)?;
+            Ok(e.doc.edit_inline_style(node, &edits))
+        })
+    }
+
+    pub fn inline_style_text(&self, id: u32, text: &str) -> Result<Option<String>> {
+        self.write(|e| {
+            let node = e.n(id)?;
+            Ok(e.doc.edit_inline_style(node, &[blitz_dom::InlineEdit::Text(text)]))
+        })
+    }
+
     pub fn style_text(&self, text: &str) -> String {
         blitz_dom::acss::style_attr_serialize(text)
     }

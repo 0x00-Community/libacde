@@ -155,6 +155,8 @@ export interface DomNative {
   cssSupportsDeclaration(property: string, value: string): boolean
   cssRegisterProperty(name: string, syntax: string, inherits: number, hasInitial: number, initial: string): number
   cssPropertySupported(name: string): boolean
+  inlineStyleEdit(id: number, edits: string[]): string | null
+  inlineStyleText(id: number, text: string): string | null
   styleText(text: string): string
   styleNames(text: string): string[]
   styleGet(text: string, name: string): string
