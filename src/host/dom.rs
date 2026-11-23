@@ -763,7 +763,8 @@ natives! {
     }
     "measureText" => fn measure_text(scope, args, dom) {
         let id = id(scope, &args, 0); text!(font = scope, args, 1); text!(text = scope, args, 2);
-        dom.measure_text(id, &font, &text).map(|m| Floats(vec![
+        let (letter, word, units) = (f(scope, &args, 3), f(scope, &args, 4), bind::arg_u32(scope, &args, 5) as u8);
+        dom.measure_text_spaced(id, &font, &text, letter, word, units).map(|m| Floats(vec![
             m.width,
             m.actual_bounding_box_left,
             m.actual_bounding_box_right,

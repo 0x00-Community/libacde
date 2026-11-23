@@ -282,6 +282,25 @@ export class CanvasPattern {
 
 type Style = string | CanvasGradient | CanvasPattern | object
 
+interface Spacing {
+  letter: number
+  word: number
+  units: number
+}
+
+const LENGTH = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)(px|em|rem|pt|pc|in|cm|mm|q)?$/i
+const PX: Record<string, number> = { px: 1, rem: 16, pt: 4 / 3, pc: 16, in: 96, cm: 96 / 2.54, mm: 96 / 25.4, q: 96 / 101.6 }
+
+function parseLength(v: unknown): { text: string; value: number; em: boolean } | null {
+  const m = LENGTH.exec(String(v).trim())
+  if (!m) return null
+  const n = Number(m[1])
+  const unit = (m[2] ?? '').toLowerCase()
+  if (!Number.isFinite(n) || (!unit && n !== 0)) return null
+  const u = unit || 'px'
+  return { text: `${n}${u}`, value: u === 'em' ? n : n * PX[u]!, em: u === 'em' }
+}
+
 interface State {
   m: Matrix
   fill: Style
@@ -295,6 +314,9 @@ interface State {
   alpha: number
   gco: string
   font: string
+  letterSpacing: string
+  wordSpacing: string
+  spacing: Spacing
   align: string
   baseline: string
   direction: string
@@ -321,7 +343,7 @@ function styleVersion(style: Style): number {
 }
 
 const Sub = {
-  Save: 1, Restore: 2, SetTransform: 3, FillStyle: 4, StrokeStyle: 5, LineWidth: 6, Line: 7, Dash: 8, Alpha: 9, Composite: 10, Font: 11, Text: 12, Shadow: 13, Filter: 14,
+  Save: 1, Restore: 2, SetTransform: 3, FillStyle: 4, StrokeStyle: 5, LineWidth: 6, Line: 7, Dash: 8, Alpha: 9, Composite: 10, Font: 11, Text: 12, Shadow: 13, Filter: 14, Spacing: 15,
   BeginPath: 20, MoveTo: 21, LineTo: 22, Quadratic: 23, Bezier: 24, Arc: 25, ArcTo: 26, Ellipse: 27, Rect: 28, RoundRect: 29, ClosePath: 30, SvgPath: 31,
   Fill: 40, Stroke: 41, Clip: 42, Rects: 43, DrawText: 44, DrawImage: 45, PutImageData: 46,
 } as const
@@ -356,7 +378,7 @@ export class CanvasContext2d {
   }
 
   static #initial(): State {
-    return { m: [1, 0, 0, 1, 0, 0], fill: '#000000', stroke: '#000000', lineWidth: 1, cap: 'butt', join: 'miter', miter: 10, dash: [], dashOffset: 0, alpha: 1, gco: 'source-over', font: '10px sans-serif', align: 'start', baseline: 'alphabetic', direction: 'inherit', shadow: { color: 'rgba(0, 0, 0, 0)', rgba: [0, 0, 0, 0], blur: 0, x: 0, y: 0 }, filter: 'none', filters: [] }
+    return { m: [1, 0, 0, 1, 0, 0], fill: '#000000', stroke: '#000000', lineWidth: 1, cap: 'butt', join: 'miter', miter: 10, dash: [], dashOffset: 0, alpha: 1, gco: 'source-over', font: '10px sans-serif', letterSpacing: '0px', wordSpacing: '0px', spacing: { letter: 0, word: 0, units: 0 }, align: 'start', baseline: 'alphabetic', direction: 'inherit', shadow: { color: 'rgba(0, 0, 0, 0)', rgba: [0, 0, 0, 0], blur: 0, x: 0, y: 0 }, filter: 'none', filters: [] }
   }
 
   #changed(bits: number): void {
@@ -483,6 +505,28 @@ export class CanvasContext2d {
   }
   set font(v: string) {
     this.#set('font', v, FONT, () => typeof v === 'string' && v.trim())
+  }
+  get letterSpacing(): string {
+    return this.#state.letterSpacing
+  }
+  set letterSpacing(v: string) {
+    this.#spacing('letter', v)
+  }
+  get wordSpacing(): string {
+    return this.#state.wordSpacing
+  }
+  set wordSpacing(v: string) {
+    this.#spacing('word', v)
+  }
+  #spacing(which: 'letter' | 'word', v: unknown): void {
+    const length = parseLength(v)
+    const key = which === 'letter' ? 'letterSpacing' : 'wordSpacing'
+    if (!length || length.text === this.#state[key]) return
+    const bit = which === 'letter' ? 1 : 2
+    const old = this.#state.spacing
+    this.#state[key] = length.text
+    this.#state.spacing = { ...old, [which]: length.value, units: length.em ? old.units | bit : old.units & ~bit }
+    this.#changed(FONT)
   }
   get textAlign(): string {
     return this.#state.align
@@ -640,7 +684,8 @@ export class CanvasContext2d {
     this.#text(1, text, x, y, maxWidth)
   }
   measureText(text: string): TextMetrics {
-    return new TextMetrics(aligned(dom.measureText(this.canvas[ID], this.#state.font, String(text)), this.#state))
+    const sp = this.#state.spacing
+    return new TextMetrics(aligned(dom.measureText(this.canvas[ID], this.#state.font, String(text), sp.letter, sp.word, sp.units), this.#state))
   }
   drawImage(source: Element, ...a: number[]): void {
     this.#check()
@@ -785,7 +830,7 @@ export class CanvasContext2d {
     if (send & DASH) out.u8(Sub.Dash).u32(s.dash.length).f32(...s.dash, s.dashOffset)
     if (send & ALPHA) out.u8(Sub.Alpha).f32(s.alpha)
     if (send & GCO) out.u8(Sub.Composite).u8(COMPOSITES.indexOf(s.gco))
-    if (send & FONT) out.u8(Sub.Font).str(s.font)
+    if (send & FONT) out.u8(Sub.Font).str(s.font).u8(Sub.Spacing).f32(s.spacing.letter, s.spacing.word).u8(s.spacing.units)
     if (send & SHADOW) {
       const sh = s.shadow
       out.u8(Sub.Shadow).f32(...sh.rgba, sh.blur, sh.x, sh.y)

@@ -6,7 +6,7 @@ use blitz_dom::node::{ImageData, SpecialElementData, TextInputData};
 use blitz_dom::ElementState;
 use blitz_dom::{BaseDocument, Node, NodeData, NodeId, QualName, ns};
 
-use crate::render::canvas::Canvas;
+use crate::render::canvas::{Canvas, Spacing};
 use crate::render::caret::{Caret, utf16_to_byte};
 use crate::render::engine::Engine;
 use crate::render::geometry::Geometry;

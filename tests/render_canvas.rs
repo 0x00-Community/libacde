@@ -467,3 +467,71 @@ fn an_opaque_fill_over_the_whole_canvas_hides_what_was_under_it_and_a_translucen
     let q = pixel(doc, c, 60.0, 40.0);
     assert!(q[2] > 100 && q[1] > 100, "{q:?}");
 }
+
+#[test]
+fn letter_and_word_spacing_widen_measure_and_drawing() {
+    let page = Page::new();
+    let doc = &page.doc;
+    let font = "20px monospace";
+    let plain = doc.measure_text(page.canvas, font, "abcd").unwrap().width;
+    let wide = doc.measure_text_spaced(page.canvas, font, "abcd", 10.0, 0.0, 0).unwrap().width;
+    let tight = doc.measure_text_spaced(page.canvas, font, "abcd", -2.0, 0.0, 0).unwrap().width;
+    let em = doc.measure_text_spaced(page.canvas, font, "abcd", 0.5, 0.0, 1).unwrap().width;
+    assert!((wide - plain - 40.0).abs() < 0.01, "letter 10px: {plain} -> {wide}");
+    assert!((tight - plain + 8.0).abs() < 0.01, "letter -2px: {plain} -> {tight}");
+    assert!((em - wide).abs() < 0.01, "0.5em of 20px is 10px: {em} vs {wide}");
+    let words = doc.measure_text(page.canvas, font, "a b c").unwrap().width;
+    let spaced = doc.measure_text_spaced(page.canvas, font, "a b c", 0.0, 20.0, 0).unwrap().width;
+    assert!((spaced - words - 40.0).abs() < 0.01, "word 20px over two spaces: {words} -> {spaced}");
+
+    let measured = doc.measure_text_spaced(page.canvas, font, "MMMM", 6.0, 0.0, 0).unwrap();
+    Ops::default()
+        .op(11, &[])
+        .str(font)
+        .op(15, &[6.0, 0.0])
+        .u8(0)
+        .fill_style(RED)
+        .op(44, &[])
+        .u8(0)
+        .str("MMMM")
+        .op_args(&[5.0, 30.0, f32::NAN])
+        .apply(doc, page.canvas);
+    let px = page.pixels();
+    let (mut left, mut right) = (u32::MAX, 0);
+    for y in 0..50 {
+        for x in 0..100 {
+            if Page::red(&px, x, y) {
+                left = left.min(x);
+                right = right.max(x);
+            }
+        }
+    }
+    let (ink_left, ink_right) = (5.0 - measured.actual_bounding_box_left, 5.0 + measured.actual_bounding_box_right);
+    assert!(
+        (f64::from(left) - ink_left).abs() <= 1.5 && (f64::from(right) + 1.0 - ink_right).abs() <= 1.5,
+        "pixels {left}..{right} ink {ink_left}..{ink_right} ({measured:?})"
+    );
+    let unspaced = doc.measure_text(page.canvas, font, "MMMM").unwrap();
+    assert!(measured.actual_bounding_box_right - unspaced.actual_bounding_box_right > 17.0, "{measured:?} vs {unspaced:?}");
+}
+
+#[test]
+fn a_new_font_keeps_the_spacing() {
+    let page = Page::new();
+    let doc = &page.doc;
+    Ops::default()
+        .op(15, &[8.0, 0.0])
+        .u8(0)
+        .op(11, &[])
+        .str("20px monospace")
+        .fill_style(RED)
+        .op(44, &[])
+        .u8(0)
+        .str("MM")
+        .op_args(&[5.0, 30.0, f32::NAN])
+        .apply(doc, page.canvas);
+    let px = page.pixels();
+    let right = (0..100).filter(|&x| (0..50).any(|y| Page::red(&px, x, y))).max().unwrap_or(0);
+    let spaced = doc.measure_text_spaced(page.canvas, "20px monospace", "MM", 8.0, 0.0, 0).unwrap();
+    assert!((f64::from(right) + 1.0 - (5.0 + spaced.actual_bounding_box_right)).abs() <= 1.5, "right {right} vs {spaced:?}");
+}

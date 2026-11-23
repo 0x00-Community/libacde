@@ -389,7 +389,14 @@ impl Dom {
     }
 
     pub fn measure_text(&self, id: u32, font: &str, text: &str) -> Result<TextMetrics> {
-        self.on(id, |e, _| Canvas::measure(&mut e.doc, font, text))
+        self.measure_text_spaced(id, font, text, 0.0, 0.0, 0)
+    }
+
+    /// `measureText` with the context's `letterSpacing` / `wordSpacing`: lengths in canvas pixels,
+    /// or in `em` when bit 1 (letter) / bit 2 (word) of `units` is set.
+    pub fn measure_text_spaced(&self, id: u32, font: &str, text: &str, letter: f64, word: f64, units: u8) -> Result<TextMetrics> {
+        let spacing = Spacing::new(letter, word, units);
+        self.on(id, |e, _| Canvas::measure(&mut e.doc, font, text, spacing))
     }
 
     pub fn to_data_url(&self, id: u32, _type: &str) -> Result<String> {

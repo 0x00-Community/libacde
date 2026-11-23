@@ -192,7 +192,7 @@ export interface DomNative {
   setLoader(load: ((id: number, url: string, destination: string, cors: string, served?: boolean, cached?: boolean) => void) | null): void
   loaded(id: number, bytes: Uint8Array | null, opaque: boolean): void
   canvas(id: number, commands: Uint8Array): void
-  measureText(id: number, font: string, text: string): Float64Array
+  measureText(id: number, font: string, text: string, letterSpacing?: number, wordSpacing?: number, spacingUnits?: number): Float64Array
   toDataURL(id: number, type: string): string
   getImageData(id: number, x: number, y: number, width: number, height: number): Uint8Array
   capture(

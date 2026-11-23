@@ -46,11 +46,34 @@ pub(crate) struct Font {
     size: f32,
     weight: f32,
     italic: bool,
+    spacing: Spacing,
 }
 
 impl Default for Font {
     fn default() -> Self {
-        Self { family: "sans-serif".into(), size: 10.0, weight: 400.0, italic: false }
+        Self { family: "sans-serif".into(), size: 10.0, weight: 400.0, italic: false, spacing: Spacing::default() }
+    }
+}
+
+/// `letterSpacing` / `wordSpacing` of a 2D context: lengths in canvas pixels, or in `em` of the
+/// current font when the matching bit of `units` is set (1 = letter, 2 = word).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct Spacing {
+    letter: f32,
+    word: f32,
+    letter_em: bool,
+    word_em: bool,
+}
+
+impl Spacing {
+    pub(crate) fn new(letter: f64, word: f64, units: u8) -> Self {
+        let clean = |v: f64| if v.is_finite() { v as f32 } else { 0.0 };
+        Self { letter: clean(letter), word: clean(word), letter_em: units & 1 != 0, word_em: units & 2 != 0 }
+    }
+
+    fn px(self, size: f32) -> (f32, f32) {
+        let resolve = |v: f32, em: bool| if em { v * size } else { v };
+        (resolve(self.letter, self.letter_em), resolve(self.word, self.word_em))
     }
 }
 
@@ -418,9 +441,10 @@ impl Canvas {
                 10 => self.state.blend = Self::blend(r.u8()?),
                 11 => {
                     if let Some(font) = Font::parse(r.str()?) {
-                        self.state.font = font;
+                        self.state.font = Font { spacing: self.state.font.spacing, ..font };
                     }
                 }
+                15 => self.state.font.spacing = Spacing::new(r.f()?, r.f()?, r.u8()?),
                 14 => self.state.filter = Self::filter(&mut r)?,
                 12 => {
                     self.state.align = r.u8()?;
@@ -897,7 +921,8 @@ impl Canvas {
 
     fn text(&mut self, doc: &mut BaseDocument, text: &str, at: Point, max: f64, stroke: bool) {
         let font = self.state.font.clone();
-        let layout = doc.layout_canvas_text(text, &font.family, font.size, font.weight, font.italic);
+        let (letter, word) = font.spacing.px(font.size);
+        let layout = doc.layout_canvas_text(text, &font.family, font.size, font.weight, font.italic, letter, word);
         let width = f64::from(layout.width());
         let Some(line) = layout.lines().next() else { return };
         let (ascent, descent) = Self::extents(&line);
@@ -1011,9 +1036,10 @@ impl Canvas {
         ink
     }
 
-    pub(crate) fn measure(doc: &mut BaseDocument, font: &str, text: &str) -> crate::render::TextMetrics {
+    pub(crate) fn measure(doc: &mut BaseDocument, font: &str, text: &str, spacing: Spacing) -> crate::render::TextMetrics {
         let font = Font::parse(font).unwrap_or_default();
-        let layout = doc.layout_canvas_text(text, &font.family, font.size, font.weight, font.italic);
+        let (letter, word) = spacing.px(font.size);
+        let layout = doc.layout_canvas_text(text, &font.family, font.size, font.weight, font.italic, letter, word);
         let width = f64::from(layout.width());
         let line = layout.lines().next();
         let (ascent, descent) = line.as_ref().map_or((0.0, 0.0), Self::extents);
