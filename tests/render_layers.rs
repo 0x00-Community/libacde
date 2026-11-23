@@ -292,6 +292,10 @@ fn glass_inside_glass_is_its_own_layer_and_wrappers_make_none() {
         glass_in(&page, wrapper, &format!("left: {left}; top: 20px"));
     }
     assert_eq!(glass_groups(&page), [2, 2], "the bar merges with its neighbour, its two buttons with each other, never across");
+    let frame = page.frame();
+    let mut names: Vec<&str> = frame.plane.layers.iter().filter_map(|l| l.backdrop.as_ref()?.group_name.as_deref()).collect();
+    names.sort_unstable();
+    assert_eq!(names, ["g0", "g1"], "each connected group gets its own name within the surface");
 }
 
 #[test]

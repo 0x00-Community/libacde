@@ -129,7 +129,9 @@
   值时算作外层一个. 同一个 `--acde-glass-union` 名字不看 DOM 层级、大小与形状, 因此调参页要让大胶囊、小胶囊和圆钮融合时统一写 `--acde-glass-union: tuner`. 单测把三种形状放在三个不同的父节点下, 最终仍是一个三块的 GlassGroup. 玻璃分层 (用户 2026-11-23): 每块页面玻璃属于一层, 层是离它最近的、自己也是玻璃 (有 `backdrop-filter` 且解析出系统玻璃) 的祖先元素的节点号,
   没有这样的祖先就是顶层 0 (`Membership.layer`, blitz-paint `glass_layer` 推断); 不是玻璃的包装元素 (`li`、布局用的 `div`) 不产生新层. 只有同一层的玻璃才可能
   融合 (`Membership::joins` 先比层, 再看同容器或同 union 名): 工具条和它里面的按钮即使在同一容器、写同一 union 名也不合, 按钮之间照常合.
-  页面层也不和窗口层 (窗口材质) 融合, 不跨窗口; 原定的 `--acde-glass-group` 已取消. 名字存成 FNV-1a 64 位散列 (`Name`), `none` 和空串当没写. 没有容器也没有 union 名字的玻璃不成组. src/render `Split` 切完图层后
+  页面层也不和窗口层 (窗口材质) 融合, 不跨窗口; 原定的 `--acde-glass-group` 已取消. 送合成器时 (`acompositor_backdrop_v1` v4 `add_glass_area_grouped`, 页面层, 组名只在本表面内有效) 组名用 `render::Backdrop.group_name`:
+  `merge_glass` 按连通组 (同层, 且同容器或同 union 名) 依次编号 `g0`、`g1`…, 只在这一帧这张平面内唯一, 不用会话级组名; 合成器按 (页面层, 表面, 组名) 登记.
+  libacde 自己还没有发这条请求的路径 (会话里由 acdes 的窗口客户端发), 前端照这个名字发即可. 名字存成 FNV-1a 64 位散列 (`Name`), `none` 和空串当没写. 没有容器也没有 union 名字的玻璃不成组. src/render `Split` 切完图层后
   (`merge_glass`): 同一容器或同一 union 名字 (`Membership::joins`, 可传递) 的玻璃图层, 按绘制顺序把各块 (`Backdrop::piece`: 外框、半径、指数、玻璃) 放进
   第一块那层的 `Backdrop.group`, 外框和裁剪取各块的并集, 其余几块的图层去掉 backdrop (只剩内容). 间距取组内最大 (只靠 union 成组时为 0, 各块不鼓出).
   超过 16 块时多出的块各画各的, 记一次 warn. 只有一块的成员也成一组 (一块的组和单块画出来相同, G4 有对照测试), 好让出现、消失的动画有处可放. 底图在第一块的位置取一次, 所以后面几块之前画的内容 (多半没有) 不会出现在玻璃里.
