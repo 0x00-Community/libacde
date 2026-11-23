@@ -1,5 +1,5 @@
 import { API_LEVEL, Manifest, type AppManifest, type PackageManifest } from '@acde/api/manifest'
-import type { DesktopManifest } from '@acde/api'
+import type { DesktopManifest, WallTone } from '@acde/api'
 import type { WebInit, WebTier } from '../../../page/src/contract'
 import type { Languages } from '../../../page/src/language'
 import { PageSource } from '../../../page/src/page'
@@ -24,6 +24,7 @@ export interface Place {
   readonly navigator: { readonly userAgent: string; readonly platform: string }
   readonly dark: boolean
   readonly accent: string | null
+  readonly wallTone: WallTone
   readonly glass: { readonly level: number; readonly reducedTransparency: boolean }
   readonly reducedMotion: boolean
 }
@@ -117,6 +118,7 @@ function common(token: bigint, window: number, place: Place, services: WebInit['
     scale: place.scale,
     dark: place.dark,
     accent: place.accent,
+    wallTone: place.wallTone,
     glass: place.glass,
     reducedMotion: place.reducedMotion,
     languages: place.languages,

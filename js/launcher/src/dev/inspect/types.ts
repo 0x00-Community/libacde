@@ -19,6 +19,7 @@ export interface ShellWindow {
   readonly modal?: boolean
   readonly minimize?: boolean
   readonly stage?: boolean
+  readonly output?: string
 }
 
 export interface InjectEvent {

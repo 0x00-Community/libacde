@@ -28,7 +28,7 @@ import { GuestWindows } from './dev/guest'
 import { standalone } from './standalone'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
-import { fixedScheme, followAppearance, type AppearanceChange, type AppearancePortal, type Glass } from './app/appearance'
+import { fixedScheme, followAppearance, type AppearanceChange, type AppearancePortal, type Glass, WallToneOf } from './app/appearance'
 import { PagePort } from './manager/pageport'
 import { LentCallbacks } from './manager/lent'
 import type { AnchorWire } from '../../page/src/pinanchor'
@@ -137,6 +137,8 @@ class Launcher {
   #glass: Glass = { level: 0, reducedTransparency: false }
   #reducedMotion = false
   #accent: string | null = null
+  readonly #walls = new WallToneOf(() => this.#shell.windows().find((r) => (r.window ?? r.id) === this.#window)?.output ?? null,
+    (tone) => this.#thread?.post({ type: 'walltone', tone }))
 
   constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
     this.#shell = Launcher.shell(natives, session.label)
@@ -277,12 +279,13 @@ class Launcher {
     }
   }
 
-  get #look(): Pick<Place, 'dark' | 'accent' | 'glass' | 'reducedMotion'> {
-    return { dark: this.#dev.dark, accent: this.#accent, glass: this.#glass, reducedMotion: this.#reducedMotion }
+  get #look(): Pick<Place, 'dark' | 'accent' | 'wallTone' | 'glass' | 'reducedMotion'> {
+    return { dark: this.#dev.dark, accent: this.#accent, wallTone: this.#walls.tone, glass: this.#glass, reducedMotion: this.#reducedMotion }
   }
 
-  #appearance({ dark, accent, glass, reducedTransparency, reducedMotion }: AppearanceChange): void {
+  #appearance({ dark, accent, glass, reducedTransparency, reducedMotion, wallTones, primaryOutput }: AppearanceChange): void {
     if (dark !== undefined) this.#dev.follow(dark)
+    this.#walls.take({ wallTones, primaryOutput })
     if (accent !== undefined && accent !== this.#accent) {
       this.#accent = accent
       this.#thread?.post({ type: 'accent', color: accent })
@@ -638,6 +641,7 @@ class Launcher {
       else if (event.type === 'devreload') void this.#devReload(event['title'] === 'hot')
       else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event))
     }
+    this.#walls.check()
   }
 
   #toDesktop(event: ShellEvent): void {

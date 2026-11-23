@@ -73,6 +73,10 @@ Bun 的本代目录在默认 base 下, DACL 读回只有 SYSTEM 和当前用户,
   三个分量都在 0..1 时转成 `#rrggbb`, 否则 (门户约定 -1 或越界表示没设) 是 `null`; 进初始化参数 `accent`, 变了发 `{type: 'accent', color}`; 页面交 `dom.setAccent`,
   `engine.set_accent` 写进视口 (blitz `Viewport.accent` → acss `Device.accent`), 系统颜色 `AccentColor` 取它、`AccentColorText` 按对比度取白或黑, 变了整页重算样式,
   `getComputedStyle` 立即读到; 没设或没有门户时两者是默认值 (`#0075ff`、白; 深色 `#99c8ff`、黑). CSS 里没有对应的媒体查询; 要分清没设和选了默认色、或要在变化时做事的页面用 `acde:window` 的 `accent()` / `on('accent')` (见 `docs/acde-api.md`).
+  **壁纸亮暗** (2026-11-23): 同一个读取器还读 `org.acde.appearance` 的 `wall-tone` (`a{su}`, 屏幕名 → 0 未知、1 亮、2 暗) 和 `primary-output` (`s`, 主屏名),
+  原生 `Appearance.walls()` 一次取两项, 变化随 `watch` 来 (`wallTones`、`primaryOutput`). 启动器的 `WallToneOf` (`appearance.ts`) 按自己窗口在 `shell.windows()` 那一行的 `output`
+  取值, 这块屏没有值时用主屏, 都没有是 `null`; 门户变了、或每批窗口事件之后 (窗口可能换了屏) 重算, 值变了才发 `{type: 'walltone', tone}`, 页面交 `acde:window` 的
+  `wallTone()` / `on('wallTone')` (见 `docs/acde-api.md`). 宿主会话没有门户, 一直是 `null`.
   **语言** (`language.ts`): 按 `LANGUAGE` / `LC_ALL` / `LC_MESSAGES` / `LANG`; 都没设时用系统的首选语言 (sys `languages()`, hostwin `system/languages.rs`:
   Windows `GetUserPreferredUILanguages`、macOS `NSLocale.preferredLanguages`, Linux 读系统区域 `/etc/locale.conf` 或 `/etc/default/locale`, #147);
   还是没有时 `en-US` (acde-dom 的默认同样是 `en-US`). `acde:session` 的 `setLanguage(tag)` 写 `locale.conf` 并发 `languagechange`.

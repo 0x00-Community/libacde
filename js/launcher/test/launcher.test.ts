@@ -6,6 +6,7 @@ import { LaunchArgs } from '../src/args.ts'
 import { route, unsupported } from '../src/app/calls.ts'
 import { nativeArgs, rejectingCalls, sessionOf, windowGrant, windowSize, withCallbacks, withoutUndefined, type Welcome } from '../src/manager/manager.ts'
 import { WindowSnapshots } from '../src/app/events.ts'
+import { WallToneOf } from '../src/app/appearance.ts'
 import { backendUp, Callbacks, incomingCall, released, ServiceHost, shapeOf } from '../src/manager/service.ts'
 import { LentCallbacks } from '../src/manager/lent.ts'
 import { Rpc } from '../../page/src/rpc.ts'
@@ -42,11 +43,11 @@ describe('the single-app launcher', () => {
     const found = lookup({ '/w/package.json': pkg([app('hello')]) }).find('/w', [], '/')
     const navigator = { userAgent: '', platform: 'Linux x86_64' }
     const glass = { level: 1, reducedTransparency: false }
-    const look = { dark: true, accent: '#ffd60a', glass, reducedMotion: false }
+    const look = { dark: true, accent: '#ffd60a', wallTone: 'light' as const, glass, reducedMotion: false }
     const place = { width: 800, height: 600, scale: 2, languages: { language: 'en-US' }, navigator, ...look }
     const init = webInit(found, 7n, place)
     assert.deepEqual([init.kind, init.name, init.token, init.window, init.width, init.height], ['window', 'hello#1', 7n, 1, 1600, 1200])
-    assert.deepEqual([init.dark, init.accent, init.glass], [true, '#ffd60a', { level: 1, reducedTransparency: false }])
+    assert.deepEqual([init.dark, init.accent, init.wallTone, init.glass], [true, '#ffd60a', 'light', { level: 1, reducedTransparency: false }])
     assert.deepEqual([init.services, init.tier.shell, init.app?.id], [{}, [], 'hello'])
   })
 
@@ -490,5 +491,34 @@ describe('callbacks a page lends to desktop services', () => {
       console.error = error
     }
     assert.deepEqual(errors, ['acde: stale'])
+  })
+})
+
+describe('the wall tone of the window', () => {
+  test('is the tone of its output, then of the primary output, then null', () => {
+    const tones = { 'HDMI-1': 'light', 'DP-2': 'dark', 'eDP-1': null } as const
+    assert.equal(WallToneOf.pick(tones, 'DP-2', 'HDMI-1'), 'dark')
+    assert.equal(WallToneOf.pick(tones, 'eDP-1', 'HDMI-1'), null, 'an output whose tone is unknown is not replaced by the primary')
+    assert.equal(WallToneOf.pick(tones, 'VGA-9', 'HDMI-1'), 'light')
+    assert.equal(WallToneOf.pick(tones, null, 'DP-2'), 'dark')
+    assert.equal(WallToneOf.pick(tones, null, null), null)
+    assert.equal(WallToneOf.pick({}, 'DP-2', 'DP-2'), null)
+  })
+
+  test('tells a change once, when the tones arrive and when the window goes to another output', () => {
+    let output: string | null = 'HDMI-1'
+    const told: unknown[] = []
+    const walls = new WallToneOf(() => output, (tone) => void told.push(tone))
+    walls.take({})
+    walls.take({ wallTones: { 'HDMI-1': 'light', 'DP-2': 'dark' }, primaryOutput: 'HDMI-1' })
+    walls.check()
+    output = 'DP-2'
+    walls.check()
+    walls.take({ primaryOutput: 'DP-2' })
+    output = null
+    walls.check()
+    walls.take({ wallTones: { 'HDMI-1': 'light' } })
+    assert.deepEqual(told, ['light', 'dark', null])
+    assert.equal(walls.tone, null)
   })
 })
