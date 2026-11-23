@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { DevChannel, type DevHost, type DevTarget } from '../src/dev/dev.ts'
+import { bindNatives } from '../../page/src/sys/natives.ts'
+
+bindNatives({ host: {}, sys: { platform: 'linux', argv: [], pid: 1, stderr: () => undefined } } as never)
 
 function channel(evaluate: (code: string) => unknown = () => null, production = false) {
   const answers: { id: number; ok: boolean; payload: unknown }[] = []
