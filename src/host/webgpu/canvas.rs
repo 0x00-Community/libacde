@@ -16,6 +16,7 @@ pub struct Context {
     format: wgpu::TextureFormat,
     usage: wgpu::TextureUsages,
     premultiplied: bool,
+    display_p3: bool,
     view_formats: Vec<wgpu::TextureFormat>,
     images: Vec<Arc<GpuImage>>,
     page: Option<(wgpu::Texture, wgpu::BindGroup)>,
@@ -32,7 +33,7 @@ struct Current {
 
 impl Context {
     fn direct(&self) -> bool {
-        self.format == wgpu::TextureFormat::Rgba8Unorm && !self.premultiplied
+        self.format == wgpu::TextureFormat::Rgba8Unorm && !self.premultiplied && !self.display_p3
     }
 
     fn free_image(&mut self, gpu: &Gpu, size: (u32, u32), usage: wgpu::TextureUsages, view_formats: &[wgpu::TextureFormat]) -> Arc<GpuImage> {
@@ -81,6 +82,8 @@ struct Passes {
     opaque: wgpu::RenderPipeline,
     keep: wgpu::RenderPipeline,
     unpremultiply: wgpu::RenderPipeline,
+    keep_p3: wgpu::RenderPipeline,
+    unpremultiply_p3: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
 }
 
@@ -104,6 +107,21 @@ const SHADER: &str = r"
     let c = textureLoad(source, vec2i(at.xy), 0);
     if c.a <= 0.0 { return vec4f(0.0); }
     return vec4f(c.rgb / c.a, c.a);
+}
+fn p3_to_srgb(c: vec3f) -> vec3f {
+    let e = clamp(c, vec3f(0.0), vec3f(1.0));
+    let l = select(pow((e + 0.055) / 1.055, vec3f(2.4)), e / 12.92, e <= vec3f(0.04045));
+    let m = mat3x3f(vec3f(1.2249401, -0.0420569, -0.0196376), vec3f(-0.2249404, 1.0420571, -0.0786361), vec3f(0.0, 0.0, 1.0982735));
+    let s = clamp(m * l, vec3f(0.0), vec3f(1.0));
+    return select(1.055 * pow(s, vec3f(1.0 / 2.4)) - 0.055, s * 12.92, s <= vec3f(0.0031308));
+}
+@fragment fn keep_p3(@builtin(position) at: vec4f) -> @location(0) vec4f {
+    return vec4f(p3_to_srgb(textureLoad(source, vec2i(at.xy), 0).rgb), 1.0);
+}
+@fragment fn unpremultiply_p3(@builtin(position) at: vec4f) -> @location(0) vec4f {
+    let c = textureLoad(source, vec2i(at.xy), 0);
+    if c.a <= 0.0 { return vec4f(0.0); }
+    return vec4f(p3_to_srgb(c.rgb / c.a), c.a);
 }
 ";
 
@@ -165,6 +183,8 @@ impl Passes {
             opaque: pipeline("opaque", &none, wgpu::ColorWrites::ALPHA),
             keep: pipeline("keep", &with_source, wgpu::ColorWrites::ALL),
             unpremultiply: pipeline("unpremultiply", &with_source, wgpu::ColorWrites::ALL),
+            keep_p3: pipeline("keep_p3", &with_source, wgpu::ColorWrites::ALL),
+            unpremultiply_p3: pipeline("unpremultiply_p3", &with_source, wgpu::ColorWrites::ALL),
             layout,
         }
     }
@@ -233,7 +253,11 @@ super::natives! {
         enter(device);
         with_state(|s| {
             let front = s.canvases.remove(&node).and_then(|c| c.front);
-            s.canvases.insert(node, Context { device, format: config.format, usage, premultiplied, view_formats: config.view_formats, images: Vec::new(), page: None, current: None, front });
+            let display_p3 = config.color_space == desc::CanvasColorSpace::DisplayP3;
+            s.canvases.insert(
+                node,
+                Context { device, format: config.format, usage, premultiplied, display_p3, view_formats: config.view_formats, images: Vec::new(), page: None, current: None, front },
+            );
         });
         Ok(().into())
     }
@@ -315,7 +339,19 @@ super::natives! {
                     let image = c.free_image(&gpu, size, wgpu::TextureUsages::empty(), &[]);
                     let Some((_, group)) = &c.page else { return Ok(None) };
                     let pipeline = if c.premultiplied { &passes.unpremultiply } else { &passes.keep };
-                    pass(&mut encoder, &image.texture, false, Some((pipeline, Some(group))));
+                    if c.display_p3 {
+                        let wide = image.wide().filter(|t| (t.width(), t.height()) == size).unwrap_or_else(|| {
+                            let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC;
+                            texture(&gpu, size, wgpu::TextureFormat::Rgba8Unorm, usage, &[])
+                        });
+                        pass(&mut encoder, &wide, false, Some((pipeline, Some(group))));
+                        image.set_wide(Some(wide));
+                        let converted = if c.premultiplied { &passes.unpremultiply_p3 } else { &passes.keep_p3 };
+                        pass(&mut encoder, &image.texture, false, Some((converted, Some(group))));
+                    } else {
+                        image.set_wide(None);
+                        pass(&mut encoder, &image.texture, false, Some((pipeline, Some(group))));
+                    }
                     image
                 }
             };

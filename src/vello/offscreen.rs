@@ -141,6 +141,10 @@ impl ImageSet {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).values().filter_map(Weak::upgrade).collect()
     }
 
+    pub fn any_wide(&self) -> bool {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).values().filter_map(Weak::upgrade).any(|i| i.wide().is_some())
+    }
+
     fn is_empty(&self) -> bool {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).is_empty()
     }
@@ -155,6 +159,7 @@ pub struct GpuImage {
     copied: AtomicU64,
     opaque: AtomicBool,
     unsettled: Mutex<Option<Settle>>,
+    wide: Mutex<Option<wgpu::Texture>>,
 }
 
 type Settle = Box<dyn FnOnce() + Send>;
@@ -185,6 +190,7 @@ impl GpuImage {
             copied: AtomicU64::new(0),
             opaque: AtomicBool::new(false),
             unsettled: Mutex::new(None),
+            wide: Mutex::new(None),
         });
         set.0.lock().unwrap_or_else(|e| e.into_inner()).insert(id, Arc::downgrade(&image));
         image
@@ -245,6 +251,14 @@ impl GpuImage {
         if let Some(settle) = settle {
             settle();
         }
+    }
+
+    pub fn wide(&self) -> Option<wgpu::Texture> {
+        self.wide.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn set_wide(&self, texture: Option<wgpu::Texture>) {
+        *self.wide.lock().unwrap_or_else(|e| e.into_inner()) = texture;
     }
 }
 

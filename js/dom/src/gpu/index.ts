@@ -671,8 +671,10 @@ export class GPUCanvasContext {
   configure(d: Dict): void {
     const device = d.device as GPUDevice
     if (!(device instanceof GPUDevice)) throw new TypeError('configure: device is not a GPUDevice')
-    const config: Dict = { ...d, usage: d.usage ?? 0x10, alphaMode: d.alphaMode ?? 'opaque', viewFormats: Array.from((d.viewFormats ?? []) as Iterable<string>), colorSpace: d.colorSpace ?? 'srgb', toneMapping: d.toneMapping ?? { mode: 'standard' } }
-    guard(() => native.configure(this.#node, device[ID], JSON.stringify({ format: config.format, usage: config.usage, alphaMode: config.alphaMode, viewFormats: config.viewFormats })))
+    const colorSpace = d.colorSpace === undefined ? 'srgb' : String(d.colorSpace)
+    if (colorSpace !== 'srgb' && colorSpace !== 'display-p3') throw new TypeError(`configure: '${colorSpace}' is not a valid value for enumeration PredefinedColorSpace`)
+    const config: Dict = { ...d, usage: d.usage ?? 0x10, alphaMode: d.alphaMode ?? 'opaque', viewFormats: Array.from((d.viewFormats ?? []) as Iterable<string>), colorSpace, toneMapping: d.toneMapping ?? { mode: 'standard' } }
+    guard(() => native.configure(this.#node, device[ID], JSON.stringify({ format: config.format, usage: config.usage, alphaMode: config.alphaMode, viewFormats: config.viewFormats, colorSpace })))
     this.#config = config
     this.#texture = null
   }

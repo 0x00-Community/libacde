@@ -721,6 +721,16 @@ pub struct CanvasConfig {
     pub alpha_mode: AlphaMode,
     #[serde(default)]
     pub view_formats: Vec<TextureFormat>,
+    #[serde(default)]
+    pub color_space: CanvasColorSpace,
+}
+
+#[derive(Deserialize, Default, PartialEq, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+pub enum CanvasColorSpace {
+    #[default]
+    Srgb,
+    DisplayP3,
 }
 
 fn render_attachment() -> u32 {
