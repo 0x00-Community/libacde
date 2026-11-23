@@ -88,25 +88,37 @@ if (existsSync(RESULTS))
       const r = JSON.parse(line) as Result
       done.set(r.url, r)
     }
-list = list.filter((t) => {
-  const r = done.get(t.url)
-  return !r || values.rerun || (values.retry && (r.status === 'CRASH' || r.status === 'HANG'))
-})
-if (Number(values.limit) > 0) list = list.slice(0, Number(values.limit))
 
+// Shards are cut from the whole selection, before finished tests are dropped, so a resumed shard keeps the
+// tests it had and the shards of one selection never overlap, whichever machine runs which shard.
 const groups = new Map<string, Test[]>()
 for (const t of list) {
   const key = `${t.kind}:${t.url.split('?')[0]!.split('/').slice(1, -1).slice(0, 2).join('/')}`
   if (!groups.has(key)) groups.set(key, [])
   groups.get(key)!.push(t)
 }
-const queue: [string, Test[]][] = []
 const shardOf = (key: string) => [...key].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7) % SHARDS
+const mine: [string, Test[]][] = []
 for (const [key, tests] of groups)
   for (let i = 0; i < tests.length; i += CHUNK) {
     const chunk = `${key}#${i / CHUNK}`
-    if (shardOf(chunk) === SHARD - 1) queue.push([chunk, tests.slice(i, i + CHUNK)])
+    if (shardOf(chunk) === SHARD - 1) mine.push([chunk, tests.slice(i, i + CHUNK)])
   }
+// every test this run is meant to have a result for; `expectations check` reports the ones without one
+const SELECTED = join(OUT, 'selected.json')
+const before = existsSync(SELECTED) ? (JSON.parse(readFileSync(SELECTED, 'utf8')) as string[]) : []
+writeFileSync(SELECTED, JSON.stringify([...new Set([...before, ...mine.flatMap(([, tests]) => tests.map((t) => t.url))])].sort()) + '\n')
+const pending = (t: Test) => {
+  const r = done.get(t.url)
+  return !r || values.rerun || (values.retry && (r.status === 'CRASH' || r.status === 'HANG'))
+}
+let budget = Number(values.limit) > 0 ? Number(values.limit) : Infinity
+const queue: [string, Test[]][] = []
+for (const [chunk, tests] of mine) {
+  const left = tests.filter(pending).slice(0, Math.max(0, budget))
+  budget -= left.length
+  if (left.length) queue.push([chunk, left])
+}
 queue.sort((a, b) => b[1].length - a[1].length)
 const total = queue.reduce((n, [, tests]) => n + tests.length, 0)
 let finished = 0
@@ -121,6 +133,7 @@ const meta = {
   started: new Date().toISOString(),
   workers: WORKERS,
   dirs: values.dirs || null,
+  shard: values.shard,
   platform: process.platform,
 }
 writeFileSync(join(OUT, 'meta.json'), JSON.stringify(meta, null, 2) + '\n')
