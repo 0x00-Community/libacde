@@ -57,6 +57,10 @@
   `w1 is minimized; act restore on it first` (drag 的目标是 `cannot drop: w1 is minimized; …`, 在源上按下之前就查), 什么都不注入: 以前按它最小化前的位置点下去, 点到的是
   下面的窗口, 还回 `clicked …`. focus / type / settext / key 先给窗口焦点, 运行时给最小化的窗口焦点就是让它回到之前的状态. `restore` (和窗口的 `focus`)
   先取消隐藏再给焦点, 两条路离开屏幕的窗口都回来.
+- **像素** (`shot`、`input`, 2026-11-23): 没有元素树的窗口 (游戏、OpenGL / Vulkan 程序、不报 AT-SPI 的原生程序) 按像素看和操作. 只在 acdes 会话里有,
+  由管家自己答 (不经页面, 见 acdes `docs/manager.md` 的 `inspect.shot`): `shot(window, {max?})` 回那扇窗自己画面的 PNG (base64, 长边缩到 `max`, 默认 1280)
+  和窗口的逻辑矩形; `input(window, events)` 按窗口逻辑坐标发 move / down / up / wheel、相对移动 `motion {dx, dy}` (游戏锁住指针时转视角)、
+  按住与松开键 (`keydown` / `keyup`)、`text`、`wait`. 类型 `InspectPixelInput`、`InspectShot`.
 - **原生窗口** (runtime `atspi.rs`, napi `Accessibility`, Linux 会话): 读 AT-SPI2. 起服务时把 `org.a11y.Status.IsEnabled` 设成 true; GTK3 总上报,
   Qt 要开关为 true 且在真的显示平台上. `tree(pid, title, limit)` 按 pid 找应用、按标题挑顶层窗口, 角色规范成 ARIA 风格; act 先试 AT-SPI 的
   Action / EditableText / GrabFocus, 不行按坐标. 检查 `src/runtime/tests/atspi-check.sh`.

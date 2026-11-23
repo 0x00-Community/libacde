@@ -58,6 +58,25 @@ export type InspectAction =
 
 export type InspectArg = string | number | readonly string[] | null
 
+export type InspectPixelInput =
+  | { readonly type: 'move'; readonly x: number; readonly y: number }
+  | { readonly type: 'motion'; readonly dx: number; readonly dy: number }
+  | { readonly type: 'down' | 'up'; readonly x?: number; readonly y?: number; readonly button?: 'left' | 'right' | 'middle' }
+  | { readonly type: 'wheel'; readonly x?: number; readonly y?: number; readonly dx?: number; readonly dy?: number }
+  | { readonly type: 'keydown' | 'keyup'; readonly key: string }
+  | { readonly type: 'text'; readonly text: string }
+  | { readonly type: 'wait'; readonly ms: number }
+
+export type InspectShot =
+  | {
+    readonly ok: true
+    readonly png: string
+    readonly width: number
+    readonly height: number
+    readonly window: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
+  }
+  | { readonly ok: false; readonly text: string }
+
 export interface AcdeInspect {
   snapshot(options?: {
     window?: string
@@ -74,6 +93,11 @@ export interface AcdeInspect {
     steps: readonly { ref: string; action: InspectAction; text?: InspectArg }[],
   ): Promise<{ ok: boolean; text: string }>
   open(name: string): Promise<{ ok: boolean; text: string }>
+  shot(window: string | number, options?: { max?: number }): Promise<InspectShot>
+  input(
+    window: string | number,
+    events: readonly InspectPixelInput[],
+  ): Promise<{ ok: true; done: boolean; textSkipped: number } | { ok: false; text: string; code?: string; app?: string }>
   query(options: {
     selector: string
     window?: string
