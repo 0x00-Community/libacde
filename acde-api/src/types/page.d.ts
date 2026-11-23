@@ -529,7 +529,7 @@ export interface PinAnchor {
   readonly adjust?: readonly ('flip' | 'slide')[]
 }
 
-export type PinClosed = 'parent-closed' | 'refused' | 'unpinned'
+export type PinClosed = 'parent-closed' | 'refused' | 'unpinned' | 'dismissed'
 
 export interface PinOptions {
   readonly margin?: number
@@ -537,6 +537,8 @@ export interface PinOptions {
   readonly keyboard?: PanelKeyboard
   readonly anchor?: PinAnchor
   readonly userOnly?: boolean
+  readonly popup?: boolean
+  readonly parent?: PinnedPanel
 }
 
 export interface PinnedPanel {
@@ -545,6 +547,7 @@ export interface PinnedPanel {
   reserve(reserve: PanelReserve | null): void
   anchor?(next: PinAnchor): void
   readonly closed?: Promise<PinClosed>
+  readonly popup: boolean
 }
 
 export type DoubleClickAction = 'fill' | 'minimize' | 'none'
