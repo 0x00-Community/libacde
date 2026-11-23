@@ -205,6 +205,7 @@
   过渡 (只留一个版本): 原来 Dopame 自己的 29 个名字 (`files`、`calc` …) 照收, 清单校验给一条弃用警告并说出对应的标准名; 对照表只有一份,
   `acde-api/legacy-icons.json` (随 SDK 发布), TS 的 `LEGACY_ICONS` / `Manifest.icon(name)` (`@acde/api/manifest`) 和 Rust 的 `acde::icons::standard`
   都读它, 管家 (acdes) 交给桌面前用 `acde::icons::standard` 换成标准名, 所以桌面只认标准名. 名字的字符集按图标规范: 小写字母、数字, 用 `-` `.` `_` 分段.
+  对照的取法 (2026-11-23 改): 旧的是应用名, 就对到图标命名规范 (Icon Naming Specification 第 4 节) 里应用 (表 4)、类别 (表 5) 或设备 (表 6) 的名字, 不对到文件类型图标 (`*-x-generic`); 规范没有音乐、视频、照片应用的专名, 而 `paint` 已占了 `applications-graphics`, 为让每个旧名各得一个不同的标准名 (桌面主题按标准名画应用插画), `music` 取类别 `applications-multimedia`, `video`、`photo` 取设备 `camera-video`、`camera-photo`.
 - **沙箱**: 每个 web 是独立的 isolate, 页面和 acde-host 的 web.js 在同一个 realm. ⚠ 这不是安全边界: 页面碰得到宿主给 web 的原生接口
   (`sys`: 环境变量、读写文件、spawn), 能 import `file:` 模块; 系统调用级的沙箱 (Landlock / seccomp) 还没加.
 - **内存和生命周期**: 堆超了只停这个 web (窗口的发 `windowcrash {reason: 'memory'}`, 桌面的重起). 关闭先问 `beforeclose` (3 秒不答就关),
