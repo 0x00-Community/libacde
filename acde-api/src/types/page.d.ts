@@ -183,6 +183,7 @@ export interface AcdeWindows extends WindowsEvents {
   ): number | Promise<number>
   close(id: number): void
   requestState?(id: number, state: WindowState): Promise<void>
+  setAside?(id: number, on: boolean): Promise<void>
   kill?(id: number): Promise<boolean>
   focus?(id: number): Promise<void>
   hide?(id: number): Promise<void>

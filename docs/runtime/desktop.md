@@ -92,6 +92,9 @@
   桌面用 `requestState(id, state)` 改; 窗框按钮、应用自己的 `minimize()` / `requestState()` 也会改. 桌面只照快照的 `state` / `previous` 更新自己,
   不能只记自己请求过什么. 隐藏 (`hide` / `show`, 快照的 `hidden`) 是另一回事: 不画、不命中、不拿焦点, 位置和状态保留, 只有桌面能做,
   用于桌面的全屏视图 (总览、启动台) 临时让开窗口.
+- **放在一边** (`setAside(id, on)`, 只有桌面页有): 被放在一边的窗口不进 Super+Tab, 键盘要换窗口时合成器也不挑它, 点它照样拿键盘;
+  用于桌面当窗口开的面板. 桌面页进程经原生 `Windows.setAside` 发 `acompositor_window_v1.set_aside` (版本 9 起); 合成器不够新、或没有
+  acompositor (acdev 宿主) 时回 `unsupported` (501).
 - **关闭**: `close(id)` 是礼貌地请窗口关 (acde 应用先问 `beforeclose`, 3 秒不答就关; 原生程序收 `xdg_toplevel.close`); `kill(id)` 直接结束窗口的进程
   (桌面和会话自己的进程不杀), 给「未响应」时用.
 - **父窗口和模态**: 快照的 `parent`; 模态对话框总在父窗口之上, 激活父窗口时焦点落在对话框上. 桌面给父子窗口编组 (任务栏只列顶层) 时看它.

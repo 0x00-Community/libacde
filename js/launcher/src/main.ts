@@ -66,6 +66,7 @@ interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState
   close(window: number): void
   kill?(window: number): void
   setState?(window: number, state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
+  setAside?(window: number, on: boolean): boolean
   windows(): ReturnType<InspectShell['windows']>
   inject?(event: Parameters<InspectShell['inject']>[0]): void
   injectSequence?(events: Parameters<InspectShell['play']>[0]): Promise<unknown>
@@ -533,6 +534,14 @@ class Launcher {
     throw unsupported('panel', method)
   }
 
+  #setAside(window: number, on: boolean): undefined {
+    if (!this.#shell.setAside?.(window, on)) {
+      const why = 'windows.setAside: the window system has no set_aside (acompositor_window_v1 before version 9, or no acompositor)'
+      throw Object.assign(new Error(why), { status: 501, code: 'unsupported' })
+    }
+    return undefined
+  }
+
   #windowsCall(method: string, args: unknown[]): unknown {
     const id = Number(args[0])
     const shell = this.#shell
@@ -549,6 +558,8 @@ class Launcher {
       case 'hide':
       case 'show':
         return shell.hide(id, method === 'hide')
+      case 'setAside':
+        return this.#setAside(id, args[1] === true)
       case 'requestState':
         if (!STATES.includes(String(args[1]))) throw refused(`no window state ${String(args[1])} (${STATES.join(', ')})`)
         if (!shell.setState) throw unsupported('windows', method)
