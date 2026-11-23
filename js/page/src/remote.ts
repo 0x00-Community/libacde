@@ -46,9 +46,10 @@ export class WindowList {
     const desk = number(event['desk'])
     const key = text(event['key']) ?? was?.key ?? null
     const stage = event['stage'] === true
+    const unresponsive = event['unresponsive'] === true
     const placed = {
       ...(rect ? { rect } : {}), ...(instance !== undefined ? { instance } : {}), ...(desk !== undefined ? { desk } : {}), ...(key ? { key } : {}),
-      ...(stage ? { stage } : {}),
+      ...(stage ? { stage } : {}), ...(unresponsive ? { unresponsive } : {}),
     }
     this.#windows.set(event.window, { id: event.window, appId: text(event['appId']), title: text(event['title']), ...(web ? { web } : {}), state, ...placed })
     this.notices.emit('windows:window', event)
@@ -68,6 +69,7 @@ export class WindowList {
     if (changed.has('parent')) out.push(of('windowparent', { parent: event['parent'] }))
     if (changed.has('desk')) out.push(of('windowdesk', { desk: event['desk'] }))
     if (changed.has('rect')) out.push(of('windowgeometry', { rect: event['rect'] }))
+    if (changed.has('unresponsive')) out.push(of(event['unresponsive'] === true ? 'windowhang' : 'windowresponsive'))
     return out
   }
 

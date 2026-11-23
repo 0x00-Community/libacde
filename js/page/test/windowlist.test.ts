@@ -97,6 +97,19 @@ test('a window on the Agent stage says so in its row until the person takes it o
   assert.deepEqual(windows.api.list(), [{ id: 9, appId: 'Minecraft', title: 'Minecraft', state: 'normal', rect, desk: 0 }])
 })
 
+test('an unresponsive window says so in its row, and the change is said as windowhang and windowresponsive', () => {
+  const windows = list()
+  const said: string[] = []
+  windows.notices.on('windows:hang', () => said.push('hang'))
+  windows.notices.on('windows:responsive', () => said.push('responsive'))
+  windows.deliver(event('window', 4, { appId: 'notes', title: 'Notes', state: 'normal', first: true }))
+  windows.deliver(event('window', 4, { appId: 'notes', title: 'Notes', state: 'normal', unresponsive: true, changed: ['unresponsive'] }))
+  assert.deepEqual(windows.api.list(), [{ id: 4, appId: 'notes', title: 'Notes', state: 'normal', unresponsive: true }])
+  windows.deliver(event('window', 4, { appId: 'notes', title: 'Notes', state: 'normal', unresponsive: false, changed: ['unresponsive'] }))
+  assert.deepEqual(windows.api.list(), [{ id: 4, appId: 'notes', title: 'Notes', state: 'normal' }])
+  assert.deepEqual(said, ['hang', 'responsive'])
+})
+
 const window = (accent: string | null) => {
   const self = new WindowSelf(new Rpc(() => {}), {} as never, {} as never, null, WindowSelf.output(800, 600, 1))
   self.tint(accent)

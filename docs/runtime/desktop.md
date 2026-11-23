@@ -96,7 +96,7 @@
   用于桌面当窗口开的面板. 桌面页进程经原生 `Windows.setAside` 发 `acompositor_window_v1.set_aside` (版本 9 起); 合成器不够新、或没有
   acompositor (acdev 宿主) 时回 `unsupported` (501).
 - **关闭**: `close(id)` 是礼貌地请窗口关 (acde 应用先问 `beforeclose`, 3 秒不答就关; 原生程序收 `xdg_toplevel.close`); `kill(id)` 直接结束窗口的进程
-  (桌面和会话自己的进程不杀), 给「未响应」时用.
+  (桌面和会话自己的进程不杀), 给「未响应」时用. 未响应看 `list()` 每行的 `unresponsive` (合成器 ping 5 秒没回), 变化时发 `hang` / `responsive` 事件.
 - **父窗口和模态**: 快照的 `parent`; 模态对话框总在父窗口之上, 激活父窗口时焦点落在对话框上. 桌面给父子窗口编组 (任务栏只列顶层) 时看它.
 - **应用菜单**: 有桌面时运行时不在窗框上画应用菜单, 应用 `setMenus` 的菜单经 `on('menus')` 交给桌面, 桌面要显示就自己画 (菜单栏、窗口菜单都行),
   选中时调 `invokeMenu(id, menu, item)`. 不画也合法, 只是应用菜单没有入口. 菜单项的快捷键也由桌面决定要不要绑.

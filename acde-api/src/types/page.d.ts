@@ -173,6 +173,7 @@ export interface NativeWindow {
   readonly desk?: number
   readonly key?: string
   readonly stage?: boolean
+  readonly unresponsive?: boolean
 }
 
 export interface AcdeWindows extends WindowsEvents {
