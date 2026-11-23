@@ -18,6 +18,7 @@ use crate::render::{Error, Frame, Options, Panel, Plane, Rect, Result, Stats};
 use blitz_paint::PaintCache;
 
 mod highlight;
+mod report;
 
 const FRAME: f64 = 1.0 / 60.0;
 
@@ -56,6 +57,7 @@ pub(crate) struct Engine {
     pub(crate) input: Option<crate::log::Trace>,
     pub(crate) held: Vec<crate::render::Cmd>,
     pub(crate) cursor: &'static str,
+    backdrops: Vec<report::BackdropFact>,
 }
 
 unsafe impl Send for Engine {}
@@ -106,6 +108,7 @@ impl Engine {
             input: None,
             held: Vec::new(),
             cursor: "default",
+            backdrops: Vec::new(),
         };
         let document = this.doc.root_node().id;
         {
@@ -490,7 +493,7 @@ impl Engine {
             .collect();
         self.glass_moving = moving;
         let framed = crate::log::now_ms();
-        Frame {
+        let frame = Frame {
             plane,
             panels,
             size: (width, height),
@@ -498,7 +501,13 @@ impl Engine {
             animating: animating || moving,
             commit,
             trace: self.trace.take().map(|t| crate::log::Trace { framed, ..t }),
-        }
+        };
+        self.backdrops = report::BackdropFact::of_frame(&frame);
+        frame
+    }
+
+    pub(crate) fn render_report(&self) -> String {
+        report::report(&self.backdrops)
     }
 
     pub(crate) fn tree(&mut self) -> Tree<'_> {

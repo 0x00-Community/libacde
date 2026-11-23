@@ -142,6 +142,10 @@ pub fn set_cpu_raster(raster: CpuRaster) -> bool {
     CPU_RASTER.set(raster).is_ok()
 }
 
+pub fn cpu_raster_registered() -> bool {
+    CPU_RASTER.get().is_some()
+}
+
 pub fn cpu_raster(scene: Scene, size: (u32, u32)) -> Option<Vec<u8>> {
     let raster = CPU_RASTER.get()?;
     raster(scene, size).filter(|pixels| whole(pixels, size))

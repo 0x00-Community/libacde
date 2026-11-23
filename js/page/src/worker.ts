@@ -25,6 +25,7 @@ import { Level, Log } from './log'
 import { PageSource } from './page'
 import { PageCalls, type FolderPicker } from './pagecalls'
 import { PageInspect } from './pageinspect'
+import { PageRenderReport } from './dev/render'
 import { Pinned } from './pinned'
 import { RemoteBridge, WindowList, WindowSelf } from './remote'
 import { Permits } from './broker/access/approval/permits'
@@ -175,6 +176,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   const web = new Host(page, dom, init.scale, natives.Ime, windows)
   const debug = !!natives.env['ACDE_DEBUG_DIR'] || !!natives.env['ACDE_DEV']
   const inspect = new PageInspect(page, dom, web, surface.contentOffset)
+  const rendering = new PageRenderReport(dom, surface.contentOffset, surface.hosted === true)
   if (natives.env['ACDE_DEV']) {
     const href = () => String((page.window as { location?: { href?: unknown } }).location?.href ?? '')
     const source = PageDom.source(page, dom)
@@ -194,6 +196,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
     if (service === 'inspect') return inspect.serve(method, args)
     if (service === 'dev' && method === 'state' && natives.env['ACDE_DEV']) return DevState.capture(page.window as never)
     if (service === 'dev' && method === 'clock' && natives.env['ACDE_DEV']) return await page.clock(args[0] as never)
+    if (service === 'dev' && method === 'render' && natives.env['ACDE_DEV']) return rendering.report()
     if (service === 'debug' && method === 'eval' && debug) return await (0, eval)(String(args[0]))
     if (service === 'debug' && method === 'evalOn' && debug) {
       const element = page.nodeOf(Number(args[0]))

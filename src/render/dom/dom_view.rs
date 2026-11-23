@@ -147,6 +147,10 @@ impl Dom {
         .flatten()
     }
 
+    pub fn render_report(&self) -> Result<String> {
+        self.read(|e| Ok(e.render_report()))
+    }
+
     pub fn scrollbar_at(&self) -> Option<[f64; 3]> {
         self.read(|e| {
             let Some(bar) = e.doc.hovered_scrollbar() else { return Ok(None) };

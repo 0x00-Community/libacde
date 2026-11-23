@@ -206,6 +206,7 @@ export interface DomNative {
   commit(): void
 
   semantics?(root: number, limit: number, offscreen?: boolean, invisible?: boolean): string
+  renderReport?(): string
 
   stats(reset?: boolean): DomStats
 }

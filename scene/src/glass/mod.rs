@@ -331,7 +331,7 @@ impl Glass {
         if self.refracts() && own.1.0 < frost.1.0 { frost } else { own }
     }
 
-    fn refracts(&self) -> bool {
+    pub fn refracts(&self) -> bool {
         let r = self.refraction;
         self.lens.thickness > 0.0 && self.lens.index > 1.0 || r.inner_amount > 0.0 || r.outer_amount > 0.0
     }

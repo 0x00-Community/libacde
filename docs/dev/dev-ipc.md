@@ -76,6 +76,16 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
     即事件真正的目标)、它的祖先链, 和盖住这一点但被穿透的 `pointer-events: none` 元素 (只列最外层的, 不含目标的祖先; 顺序按文档倒序, 大致是上层在前).
     `element` 是 `{ref, line, tag, chain: [...], through: [...]}`, 每项的 `line` 与 snapshot 同一写法. 页面在回答前没了 (rpc 失败) 回 `gone: true` 不报错,
     由调用方重试. 会话里还只认本进程的窗口, 合成器那一半 (哪个表面、被谁遮挡) 等 acdev 的代理接上.
+  - `render {web?}` → `{web, window, raster, composedBy, layers}` (2026-11-23, acdev `acdev render`, AC/acdev#115, 设计见总仓
+    `.scratch/acdev-debug-insight/issues/08-render-path.md`): 页面实际走哪条渲染路径. 页面里是 rpc `dev.render` (只在 `ACDE_DEV`;
+    `page/src/dev/render.ts`), 事实来自 `dom.renderReport()` (src/render `engine/report.rs`): `raster` 是 `{path: gpu, adapter, driver, backend, software}` (已发布的
+    `Gpu`; `software` 是 lavapipe / llvmpipe 这类 CPU 类型的适配器)、`{path: cpu, canvases}` (前端登记了 `gpu::set_cpu_raster`, 即页面在 CPU 上画;
+    `canvases` 是给画布用的设备名)、`{path: lost, adapter}`、`{path: none}` (什么设备都没有) 或 `{path: pending}` (设备还没发布); 不是 gpu 时带
+    `degraded: no-gpu`. 每块带 `backdrop-filter` 的图层 (引擎每出一帧记一份, `Engine::backdrops`) 是 `{panel?, rect, kind: glass | frost, group?, pieces?,
+    element?, drawn, degraded?}`: `rect` 是屏幕坐标 (面板图层是面板内坐标), `element` 是中心点上第一个 `backdrop-filter` 不为 none 的元素的 ref;
+    `composedBy` 是 `host-window` (宿主窗口, `surface.hosted`, 进程内的 GPU 合成画玻璃) 或 `compositor` (会话, 交给合成器的 `add_glass_area*`);
+    `drawn` 在宿主窗口是 `gpu-glass`、`cpu-glass`、`cpu-glass-frosted` (CPU 画不了折射, 退成磨砂, 带 `degraded: cpu-cannot-refract`)、`frost`、`none`,
+    交给合成器时是 `compositor` (实际画法由合成器那一半报); 想并进玻璃组但组已满 16 块的那块带 `degraded: group-full`.
   - `clipboard {text?}` → `{text}`: 给 `text` 先写, 再读回宿主剪贴板 (napi `Shell.readClipboard` / `writeClipboard` → hostwin; headless 是进程里那份,
     有窗口是系统剪贴板); 会话没有, 回错.
   - `input {web, events}` → act 的回答: 按页面的 CSS 坐标注入一串原始输入 (`Inspect.input`, 加窗口原点和 `contentOffset` 后 `Shell.inject`):

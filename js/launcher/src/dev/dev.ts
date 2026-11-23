@@ -4,6 +4,8 @@ import { isAbsolute } from '../../../page/src/sys/path'
 import type { ConsoleLevel } from '@acde/dom'
 import type { InspectArg } from '@acde/api'
 import type { Inspect, InspectInput } from './inspect'
+import { renderAnswer, type RenderAnswer } from './render'
+import type { PageRender } from '../../../page/src/dev/render'
 
 export interface DevTarget {
   readonly name: string
@@ -277,6 +279,8 @@ export class DevChannel {
         return this.#route(args)
       case 'unroute':
         return this.#unroute(args)
+      case 'render':
+        return this.#render(args)
       case 'hit': {
         const { x, y } = DevChannel.#point('hit', args)
         return this.#host.inspect().hit(x, y)
@@ -474,6 +478,12 @@ export class DevChannel {
   #push(): void {
     const page = this.#host.page()
     if (page) page.post({ type: 'devroutes', routes: this.#routesFor(page.name, page.app) })
+  }
+
+  async #render(args: Record<string, unknown>): Promise<RenderAnswer> {
+    const page = this.#web(args['web'])
+    const window = this.#host.inspect().windows().find((w) => w.id === page.window)
+    return renderAnswer(page.name, window, (await page.call('dev', 'render', [])) as PageRender)
   }
 
   static #point(op: string, args: Record<string, unknown>): { x: number; y: number } {

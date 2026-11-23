@@ -86,6 +86,10 @@ impl Backdrop {
         self.group.as_ref()
     }
 
+    pub fn left_out_of_its_group(&self) -> bool {
+        self.membership.is_some() && self.group.is_none()
+    }
+
     pub fn compose(&self) -> crate::gpu::Backdrop {
         let r = self.bounds.intersect(self.clip);
         crate::gpu::Backdrop {
