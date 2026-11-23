@@ -1,4 +1,4 @@
-import type { Capabilities, IconName, ShellModule } from './manifest'
+import type { AppManifest, Capabilities, IconName, ShellModule } from './manifest'
 
 export type AcdeConfig = AppConfig | DesktopConfig
 
@@ -22,6 +22,7 @@ export interface WindowAppConfig {
   readonly size?: readonly [number, number]
   readonly multiple?: boolean
   readonly frame?: boolean
+  readonly window?: AppManifest['window']
   readonly mimeTypes?: readonly string[]
   readonly backend?: false | BackendConfig
 }
