@@ -10,7 +10,7 @@ use ntex::io::{Filter, Io, IoBoxed, Sealed};
 use ntex::service::fn_service;
 use ntex::time::{Deadline, Millis, Seconds};
 use ntex::url::Url;
-use ntex::util::Bytes;
+use ntex::util::{BytePageSize, Bytes};
 use ntex::ws::{CloseCode, CloseReason, Codec, Message, WsClient, WsClientConfig};
 use std::{
     cell::{Cell, RefCell},
@@ -29,6 +29,7 @@ const HANDSHAKE: Seconds = Seconds(30);
 const CLOSING: Duration = Duration::from_secs(5);
 const READY: Duration = Duration::from_secs(10);
 const RETRY: Duration = Duration::from_millis(50);
+const BATCH: usize = 1 << 20;
 const FRAMING: &[&str] = &["connection", "content-length", "transfer-encoding", "keep-alive", "te", "trailer", "upgrade", "host"];
 const HANDSHAKE_HEADERS: &[&str] =
     &["sec-websocket-key", "sec-websocket-version", "sec-websocket-protocol", "sec-websocket-extensions", "sec-websocket-accept"];
@@ -66,6 +67,11 @@ impl Events for async_channel::Sender<Event> {
     }
 }
 
+enum Body<T> {
+    Sent(bool),
+    Read(Option<T>),
+}
+
 enum Stop {
     Gone,
     Failed(String),
@@ -78,10 +84,15 @@ impl Stop {
     }
 }
 
+fn backend_io() -> ntex::SharedCfg {
+    let io = ntex::io::IoConfig::new().set_read_size(BytePageSize::Size16, BytePageSize::Size256).set_read_backpressure(BATCH);
+    ntex::SharedCfg::new("acde-backend").add(io).into()
+}
+
 async fn connect(socket: &str) -> std::result::Result<Io, String> {
     let until = Instant::now() + READY;
     loop {
-        let error = match ntex::rt::unix_connect(socket, ntex::SharedCfg::default()).await {
+        let error = match ntex::rt::unix_connect(socket, backend_io()).await {
             Ok(io) => return Ok(io),
             Err(error) => error,
         };
@@ -104,7 +115,7 @@ async fn open_app(app: &str, port: u16) -> std::result::Result<Io, String> {
             },
             Some(Route::Sockets(dir)) => {
                 let socket = dir.join(format!("{port}.sock"));
-                match ntex::rt::unix_connect(&socket, ntex::SharedCfg::default()).await {
+                match ntex::rt::unix_connect(&socket, backend_io()).await {
                     Ok(io) => return Ok(io),
                     Err(error) if matches!(error.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused) => {
                         format!("{}: {error}", socket.display())
@@ -286,10 +297,39 @@ impl Exchange {
         if !events.emit(head).await {
             return Err(Stop::Gone);
         }
-        while let Some(chunk) = response.next().await {
-            if !events.emit(Event::Chunk(chunk.map_err(Stop::caused)?.to_vec())).await {
-                return Err(Stop::Gone);
+        let mut batch = Vec::new();
+        let mut sending = None;
+        let mut end = None;
+        loop {
+            if sending.is_none() && !batch.is_empty() {
+                sending = Some(Box::pin(events.emit(Event::Chunk(std::mem::take(&mut batch)))));
             }
+            let reading = end.is_none() && batch.len() < BATCH;
+            if sending.is_none() && !reading {
+                break;
+            }
+            let step = poll_fn(|cx| {
+                if let Some(sent) = sending.as_mut()
+                    && let Poll::Ready(sent) = sent.as_mut().poll(cx)
+                {
+                    return Poll::Ready(Body::Sent(sent));
+                }
+                if reading && let Poll::Ready(read) = response.poll_next_unpin(cx) {
+                    return Poll::Ready(Body::Read(read));
+                }
+                Poll::Pending
+            })
+            .await;
+            match step {
+                Body::Sent(true) => sending = None,
+                Body::Sent(false) => return Err(Stop::Gone),
+                Body::Read(Some(Ok(chunk))) => batch.extend_from_slice(&chunk),
+                Body::Read(Some(Err(error))) => end = Some(Err(Stop::caused(error))),
+                Body::Read(None) => end = Some(Ok(())),
+            }
+        }
+        if let Some(Err(stop)) = end {
+            return Err(stop);
         }
         if !events.emit(Event::End).await {
             return Err(Stop::Gone);

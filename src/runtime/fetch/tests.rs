@@ -355,6 +355,38 @@ fn many_streams_at_once() {
 }
 
 #[test]
+fn a_slow_reader_gets_the_body_in_fewer_larger_chunks() {
+    let body: Vec<u8> = (0..1 << 20).map(|i: u32| (i * 31 + 7) as u8).collect();
+    let sent = body.clone();
+    let (socket, server) = serve("3001.sock", move |mut stream| {
+        read_head(&stream);
+        stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", sent.len()).as_bytes()).expect("head");
+        for piece in sent.chunks(4096) {
+            stream.write_all(piece).expect("body");
+        }
+    });
+    let (sender, events) = async_channel::bounded(1);
+    let client = FetchClient::default();
+    client.exchange(request(&socket, "GET", "/big", &[], None), sender);
+    assert!(matches!(next(&events), Event::Head { status: 200, .. }));
+    std::thread::sleep(Duration::from_millis(300));
+    let (mut received, mut chunks) = (Vec::new(), 0);
+    loop {
+        match next(&events) {
+            Event::Chunk(data) => {
+                received.extend(data);
+                chunks += 1;
+            }
+            Event::End => break,
+            other => panic!("{other:?}"),
+        }
+    }
+    assert!(received == body, "the body arrives whole and in order");
+    assert!(chunks <= 8, "{chunks} chunks for 256 writes");
+    server.join().expect("server");
+}
+
+#[test]
 fn early_end_is_an_error() {
     let (socket, server) = serve("2.sock", |mut stream| {
         read_head(&stream);
