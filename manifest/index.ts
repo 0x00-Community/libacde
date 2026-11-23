@@ -1,4 +1,4 @@
-import type { AppBackend, AppManifest as AppEntry, Capabilities, PackageManifest, WindowMaterial } from '../acde-api/src/index'
+import type { AppBackend, AppLifecycle, AppManifest as AppEntry, Capabilities, PackageManifest, WindowMaterial } from '../acde-api/src/index'
 import { API_LEVEL, MIN_API_LEVEL } from './level.ts'
 import { FS_ROOTS, SHARED_PLACES } from './places.ts'
 import legacyIcons from '../acde-api/legacy-icons.json' with { type: 'json' }
@@ -50,7 +50,8 @@ export interface ConfiguredService extends DesktopServiceGrant {
   readonly module: string
 }
 
-export type AppManifest = Required<Omit<AppEntry, 'backend' | 'size' | 'sensitive' | 'window'>> & {
+export type AppManifest = Required<Omit<AppEntry, 'backend' | 'size' | 'sensitive' | 'window' | 'lifecycle'>> & {
+  readonly lifecycle: Required<AppLifecycle>
   readonly backend: Required<AppBackend> | null
   readonly size: readonly [number, number] | null
   readonly window: { readonly material: WindowMaterial | null }
@@ -230,6 +231,8 @@ export class Manifest {
     if (typeof services === 'string') return `app ${id}: ${services}`
     const optional = Manifest.#optional(field('optional'), capabilities)
     if (typeof optional === 'string') return `app ${id}: ${optional}`
+    const lifecycle = Manifest.lifecycle(field('lifecycle'))
+    if (typeof lifecycle === 'string') return `app ${id}: ${lifecycle}`
     return {
       id,
       label,
@@ -247,7 +250,17 @@ export class Manifest {
       optional,
       services,
       window: { material },
+      lifecycle,
     }
+  }
+
+  static lifecycle(raw: unknown): Required<AppLifecycle> | string {
+    if (raw === undefined) return { suspendable: false, endsAnytime: false }
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return 'lifecycle is {suspendable?, endsAnytime?}'
+    const { suspendable = false, endsAnytime = false } = raw as { suspendable?: unknown; endsAnytime?: unknown }
+    if (typeof suspendable !== 'boolean') return 'lifecycle.suspendable is true or false'
+    if (typeof endsAnytime !== 'boolean') return 'lifecycle.endsAnytime is true or false'
+    return { suspendable, endsAnytime }
   }
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: moved unchanged from @acde/api's validate.ts

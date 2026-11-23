@@ -73,3 +73,33 @@ test('clock: mistakes are explained', async () => {
   const paused = await clock(web, { action: 'pauseAt', time: START - 1000 })
   assert.equal(paused.now, START - 1000, 'a time already passed: paused there, performance.now still monotonic')
 })
+
+const pause = (ms: number) => new Promise((done) => setTimeout(done, ms))
+
+test('lifecycle: a suspended page has its timers held back to once a second, a frozen one none, and resume runs what is due', async () => {
+  using web = await page()
+  web.run('globalThis.__fired = []')
+  const fired = () => web.json<string[]>('__fired')
+  web.internals.setLifecycle('throttled')
+  web.run('setTimeout(() => __fired.push("throttled"), 10)')
+  await pause(120)
+  assert.deepEqual(fired(), [], 'a 10 ms timer waits for the throttle')
+  web.internals.setLifecycle('frozen')
+  web.run('setTimeout(() => __fired.push("frozen"), 10)')
+  await pause(120)
+  assert.deepEqual(fired(), [], 'nothing runs while frozen')
+  web.internals.setLifecycle('running')
+  await pause(60)
+  assert.deepEqual(fired().sort(), ['frozen', 'throttled'], 'resumed, the overdue timers run at once')
+})
+
+test('lifecycle: a suspended page runs no animation frames until it resumes', async () => {
+  using web = await page()
+  web.run('globalThis.__frames = 0; requestAnimationFrame(() => __frames++)')
+  web.internals.setLifecycle('throttled')
+  web.frame()
+  assert.equal(web.run('__frames'), 0)
+  web.internals.setLifecycle('running')
+  web.frame()
+  assert.equal(web.run('__frames'), 1)
+})

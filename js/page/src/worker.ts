@@ -222,6 +222,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
       tone?: 'light' | 'dark' | null
       reducedTransparency?: boolean
       reduced?: boolean
+      freeze?: boolean
       language?: string
       languages?: string[]
       width?: number
@@ -262,6 +263,12 @@ export default async function boot(natives: WebNatives): Promise<void> {
         return self?.tint(m.color ?? null)
       case 'walltone':
         return self?.shade(m.tone === 'light' || m.tone === 'dark' ? m.tone : null)
+      case 'suspend':
+        self?.emit('suspend')
+        return page.setLifecycle(m.freeze === true ? 'frozen' : 'throttled')
+      case 'resume':
+        page.setLifecycle('running')
+        return self?.emit('resume')
       case 'motion':
         return dom.setReducedMotion?.(m.reduced === true)
       case 'devhot':

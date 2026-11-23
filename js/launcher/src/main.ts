@@ -305,6 +305,11 @@ class Launcher {
     return this.#shell.grant({ window: 1, mode: 'fullscreen', host: true, ...windowGrant(this.manager?.welcome, this.session.found!.app.size) })
   }
 
+  lifecycle(signal: 'suspend' | 'resume'): void {
+    const freeze = this.session.found?.app.lifecycle.suspendable === true
+    this.#thread?.post(signal === 'suspend' ? { type: 'suspend', freeze } : { type: 'resume' })
+  }
+
   start(): void {
     const grant = this.#grant()
     this.#window = grant.window

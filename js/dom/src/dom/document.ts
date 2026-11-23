@@ -23,6 +23,7 @@ import { exitPointerLock, pointerLockElement } from './pointerlock'
 export const documentState = {
   readyState: 'loading' as 'loading' | 'interactive' | 'complete',
   hidden: false,
+  suspended: false,
   currentScript: null as Element | null,
   kind: ['html', 'text/html'] as string[],
 }

@@ -367,7 +367,7 @@ export class WindowSelf {
     return handle ? { ...rest, handle } : rest
   }
 
-  emit(name: Exclude<OwnEvent, 'beforeclose' | 'request' | 'suspend' | 'resume'>, value?: unknown): void {
+  emit(name: Exclude<OwnEvent, 'beforeclose' | 'request'>, value?: unknown): void {
     for (const handler of this.#handlers.get(name) ?? []) handler(value)
   }
 }

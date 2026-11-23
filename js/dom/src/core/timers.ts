@@ -8,11 +8,22 @@ interface Timer extends ClockTimer {
   handle: { cancel(): void; ref(refed: boolean): void }
 }
 
+export type Pace = 'running' | 'throttled' | 'frozen'
+
+export const THROTTLED_MS = 1000
+
 const timers = new Map<number, Timer>()
+let pace: Pace = 'running'
+const held = new Set<ClockTimer>()
 let nextId = 1
 
 const real = (timer: ClockTimer) => {
-  const handle = host.setTimer(Math.max(0, timer.due - host.now()), () => {
+  if (pace === 'frozen') {
+    held.add(timer)
+    return { cancel: () => void held.delete(timer), ref: () => {} }
+  }
+  const wait = Math.max(0, timer.due - host.now())
+  const handle = host.setTimer(pace === 'throttled' ? Math.max(wait, THROTTLED_MS) : wait, () => {
     if (timer.repeat) arm(timer as Timer)
     timer.fire()
   }, timer.refed)
@@ -65,6 +76,17 @@ export function later(ms: number, fn: () => void): () => void {
     internal.delete(timer)
     timer.handle.cancel()
   }
+}
+
+export function setPace(next: Pace): void {
+  if (next === pace) return
+  pace = next
+  held.clear()
+  adoptTimers()
+}
+
+export function currentPace(): Pace {
+  return pace
 }
 
 export function adoptTimers(): void {

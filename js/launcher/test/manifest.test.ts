@@ -82,3 +82,17 @@ describe('shell modules outside a desktop package', () => {
     assert.ok(check('store').some((e) => e.includes('acde:software is a shell module')))
   })
 })
+
+describe('the lifecycle an app declares', () => {
+  test('suspendable and endsAnytime are false unless the app says true; anything else is refused', () => {
+    assert.deepEqual(Manifest.lifecycle(undefined), { suspendable: false, endsAnytime: false })
+    assert.deepEqual(Manifest.lifecycle({ suspendable: true }), { suspendable: true, endsAnytime: false })
+    assert.deepEqual(Manifest.lifecycle({ endsAnytime: true }), { suspendable: false, endsAnytime: true })
+    assert.equal(Manifest.lifecycle({ suspendable: 'yes' }), 'lifecycle.suspendable is true or false')
+    assert.equal(Manifest.lifecycle([]), 'lifecycle is {suspendable?, endsAnytime?}')
+    const app = Manifest.app({ id: 'notes', label: 'Notes', icon: 'text-editor', entry: '/index.html', lifecycle: { suspendable: true } })
+    assert.deepEqual(typeof app === 'string' ? app : app.lifecycle, { suspendable: true, endsAnytime: false })
+    const refused = Manifest.app({ id: 'notes', label: 'Notes', icon: 'text-editor', entry: '/index.html', lifecycle: 1 })
+    assert.equal(refused, 'app notes: lifecycle is {suspendable?, endsAnytime?}')
+  })
+})

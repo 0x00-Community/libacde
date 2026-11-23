@@ -211,4 +211,9 @@
 - **内存和生命周期**: 堆超了只停这个 web (窗口的发 `windowcrash {reason: 'memory'}`, 桌面的重起). 关闭先问 `beforeclose` (3 秒不答就关),
   再停线程、放掉 surface, 它起的原生窗口一起关. 当前任务超过 5 秒报 `windowhang`, 回到循环报 `windowresponsive`, 桌面可以 `kill`.
   desktop web 停了 Broker 重起它 (一分钟最多 3 次). 隐藏的窗口不出帧、画布放掉; 隐藏久了丢弃还没有.
+- **挂起与恢复** (J3, 2026-11-24, 总仓 `.scratch/system/arch-decisions-plan.md`): 启动器的 `lifecycle('suspend' | 'resume')` 是宿主信号的入口 (会话进程经管家通道发来的帧接到这里, 帧格式定了再接线),
+  给页面发 `{type: 'suspend', freeze}` / `{type: 'resume'}`; `freeze` 取清单 `lifecycle.suspendable`. 页面先发 `acde:window` 的 `suspend` 事件, 再交 acde-dom
+  `setLifecycle`: 没声明 `suspendable` 的只节流 (`throttled`: 计时器至少隔 1 秒 (`THROTTLED_MS`), 不跑 `requestAnimationFrame`、不要帧), 声明了的冻结
+  (`frozen`: 计时器一个都不跑, 留着到恢复); `resume` 先回到 `running` (到期的计时器马上跑, 有帧要就要帧) 再发 `resume` 事件. 进程层面的 cgroup 冻结和降调度优先级
+  由 acdes 做. “要结束了”不另造接口: 沿用关窗的 `beforeclose` / `beforeunload` / `pagehide`. 卡死照旧是 `windowhang`.
 - **调试**: 每个 web 有名字 (`files#1048576`, 也是事件循环和日志里的名字); 运行中的会话用 `ACDE_DEBUG_DIR` 和 acdebin-system 的 `packaging/qemu/drive.sh` (见它的 `docs/qemu.md`).

@@ -100,9 +100,10 @@ import {
   type NavigatorOptions,
 } from './dom/window'
 import { clockHandle, now as clockNow, type ClockRequest, type ClockState } from './core/clock'
-import { adoptTimers } from './core/timers'
+import { adoptTimers, setPace, type Pace } from './core/timers'
 
 export { hostTime, type ClockRequest, type ClockState } from './core/clock'
+export type { Pace } from './core/timers'
 export type { DeviceNative } from './device'
 export type { AudioNative, CaptureNative, DomNative, GpuNative, HostNative, StorageAreaNative, StorageNative } from './native'
 export type { WebglNative } from './webgl/index'
@@ -155,6 +156,7 @@ export interface WebInternals {
   setLanguages(languages: { language?: string; languages?: readonly string[] }): void
   setScreen(size: { width: number; height: number }): void
   setVisible(visible: boolean): void
+  setLifecycle(pace: Pace): void
   setActive(active: boolean): void
   clock(request: ClockRequest): Promise<ClockState> | ClockState
   reportError(error: unknown): void
@@ -303,7 +305,7 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
       moved()
       try {
         deliverScrolls()
-        if (!gpuFrames.behind() && !documentState.hidden) runAnimationFrames(clockNow(), report)
+        if (!gpuFrames.behind() && !documentState.hidden && !documentState.suspended) runAnimationFrames(clockNow(), report)
         deliverObservations()
         animating = deliverCssEvents()
       } catch (error) {
@@ -317,7 +319,7 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
       gpuContexts.present()
       frameVersion = version
       dom.commit()
-      if ((framesPending() && !documentState.hidden) || loading || playing || animating) frames.request()
+      if ((framesPending() && !documentState.hidden && !documentState.suspended) || loading || playing || animating) frames.request()
     },
     endTask() {
       idbTaskEnded()
@@ -351,6 +353,11 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
       documentState.hidden = !visible
       fire(document, new Event('visibilitychange', { bubbles: true }))
       if (visible && framesPending()) frames.request()
+    },
+    setLifecycle(next) {
+      setPace(next)
+      documentState.suspended = next !== 'running'
+      if (!documentState.suspended && framesPending()) frames.request()
     },
     setActive(active) {
       if (focus.windowActive === active) return

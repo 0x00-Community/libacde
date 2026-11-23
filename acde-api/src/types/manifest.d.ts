@@ -50,6 +50,12 @@ export interface AppManifest {
   readonly services?: readonly string[]
   readonly sensitive?: boolean
   readonly window?: AppWindow
+  readonly lifecycle?: AppLifecycle
+}
+
+export interface AppLifecycle {
+  readonly suspendable?: boolean
+  readonly endsAnytime?: boolean
 }
 
 export interface AppWindow {
