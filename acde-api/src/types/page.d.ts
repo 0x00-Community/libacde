@@ -533,6 +533,7 @@ export interface PinOptions {
   readonly reserve?: PanelReserve
   readonly keyboard?: PanelKeyboard
   readonly anchor?: PinAnchor
+  readonly userOnly?: boolean
 }
 
 export interface PinnedPanel {

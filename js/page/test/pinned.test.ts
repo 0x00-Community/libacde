@@ -66,7 +66,7 @@ test('once the panel opens it is placed with the input box of the element', asyn
   pinned.pin(element as unknown as Element)
   answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false])
+  assert.deepEqual(calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false, false])
   assert.deepEqual(calls.filter((c) => c[0] === 'placePanel').at(-1), ['placePanel', 7, 10, 20, 100, 50, 0, 0, 100, 50])
 })
 
@@ -95,12 +95,31 @@ test('keyboard: exclusive opens the panel with the keyboard all to itself; on-de
   exclusive.pinned.pin(exclusive.element as unknown as Element, { keyboard: 'exclusive' })
   exclusive.answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(exclusive.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true])
+  assert.deepEqual(exclusive.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, false])
   const onDemand = harness()
   onDemand.pinned.pin(onDemand.element as unknown as Element, { keyboard: 'on-demand' })
   onDemand.answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(onDemand.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false])
+  assert.deepEqual(onDemand.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false, false])
+})
+
+test('userOnly: the panel opens marked as a card only the user may answer; ordinary panels are not', async () => {
+  const card = harness()
+  card.pinned.pin(card.element as unknown as Element, { keyboard: 'exclusive', userOnly: true })
+  card.answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  assert.deepEqual(card.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, true])
+  const overlay = harness()
+  overlay.pinned.pin(overlay.element as unknown as Element, { keyboard: 'exclusive', userOnly: false })
+  overlay.answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  assert.deepEqual(overlay.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, false])
+})
+
+test('userOnly: anything but a boolean is a TypeError and pins nothing', () => {
+  const { calls, element, pinned } = harness()
+  assert.throws(() => pinned.pin(element as unknown as Element, { userOnly: 'yes' as never }), TypeError)
+  assert.deepEqual(calls, [])
 })
 
 test('keyboard: anything else is a TypeError and pins nothing', () => {

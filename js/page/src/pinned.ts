@@ -32,6 +32,7 @@ interface Panel {
   readonly id: number
   readonly margin: number
   readonly exclusive: boolean
+  readonly userOnly: boolean
   reserve: PanelReserve | null
   reserved: string
   anchor: Anchor | null
@@ -72,6 +73,7 @@ export class Pinned {
 
   pin(element: Element, options: PinOptions = {}): PinnedPanel {
     const exclusive = Pinned.#exclusive(options.keyboard)
+    const userOnly = Pinned.#userOnly(options.userOnly)
     const known = this.#panels.get(element)
     if (known) return this.#handle(known)
     const reserve = options.reserve && Pinned.#EDGES[options.reserve.edge] ? options.reserve : null
@@ -85,7 +87,7 @@ export class Pinned {
       end = resolve
     })
     const panel: Panel = {
-      element, id, margin, exclusive, reserve, reserved: '', anchor, sent: '', closed, end,
+      element, id, margin, exclusive, userOnly, reserve, reserved: '', anchor, sent: '', closed, end,
       window: null, opening: false, rect: null, extent: null, view: '', stops: [],
     }
     this.#panels.set(element, panel)
@@ -131,6 +133,11 @@ export class Pinned {
     if (keyboard === undefined || keyboard === 'on-demand') return false
     if (keyboard === 'exclusive') return true
     throw new TypeError(`pin: keyboard is 'exclusive' or 'on-demand', not ${String(keyboard)}`)
+  }
+
+  static #userOnly(userOnly: unknown): boolean {
+    if (userOnly === undefined || typeof userOnly === 'boolean') return userOnly === true
+    throw new TypeError(`pin: userOnly is true or false, not ${String(userOnly)}`)
   }
 
   update(): void {
@@ -281,7 +288,7 @@ export class Pinned {
         const { window, token } = granted as { window: number; token: bigint }
         if (this.#panels.get(panel.element) !== panel) return void this.#rpc.call('panel', 'close', [window]).catch(() => undefined)
         panel.window = window
-        this.#surface.openPanel(panel.id, token, ...rect, panel.exclusive)
+        this.#surface.openPanel(panel.id, token, ...rect, panel.exclusive, panel.userOnly)
         this.#dom.setPanel(panel.id, ...rect)
         this.#surface.placePanel(panel.id, ...rect, ...input)
         this.#place(panel)

@@ -113,7 +113,7 @@
 
 ## 面板与占边
 
-`acde:desktop.pin(element, {margin?, reserve?, keyboard?, anchor?})` → `PinnedPanel` (机制见 `docs/runtime/webs.md`「钉住的面板」):
+`acde:desktop.pin(element, {margin?, reserve?, keyboard?, anchor?, userOnly?})` → `PinnedPanel` (机制见 `docs/runtime/webs.md`「钉住的面板」):
 
 - 元素变成单独的面板, 盖在所有应用窗口上面, 但状态和 DOM 还在桌面页这一个文档里 (同一棵组件树, 同一份事件). 元素要是 stacking context,
   不带祖先的裁剪和透明度; 输入区域就是元素的盒子 (`pointer-events: none` 或不可见时为空), 元素变了运行时自动重量, `update()` 立即重量,
@@ -125,6 +125,10 @@
 - `keyboard`: `'on-demand'` (默认, 点到面板才拿键盘, 菜单栏、Dock) 或 `'exclusive'` (面板显示期间独占键盘, 收起后键盘回原窗口; 弹出菜单、确认卡这类
   用键盘打开、要马上接按键的). 面板拿到键盘之后, 按键交给桌面页的焦点元素: 面板打开时要把页面焦点放进面板.
 - 桌面页本身和 `on-demand` 面板一样: 点到才拿键盘.
+- `userOnly: true` (2026-11-23): 这个面板是只有用户本人能答的卡片 (确认、权限询问; 一般同给 `keyboard: 'exclusive'`), 缺省 false, 不是布尔值抛
+  `TypeError`. 运行时把它一路交给窗口系统; acdes 的会话管家只在这类面板显示期间拒绝 Agent 注入的按键和落在面板上的指针 (acdes `docs/manager.md`).
+  弹出菜单、启动台、聊天浮层这类普通的 `exclusive` 面板不要给: Agent 要能在它们开着时照常操作 (包括点掉它们). 面板里个别元素只许用户点的, 照旧由
+  管家的 `guard` 逐步核对 (`docs/dev/dev-ipc.md`), 不靠这个标记.
 - **锚定弹出** (`anchor: {window, x, y, width?, height?, edge?, align?, adjust?}`, 2026-11-21, 总仓 `.scratch/system/anchored-popup.md`): 菜单、提示气泡、
   下拉框这类跟着某扇窗里某个位置的面板, 不给屏幕坐标, 只说锚在窗口 `window` (`windows.list()` 的窗口号) 内容区的矩形 `(x, y, width, height)` 上
   (那扇窗页面的 CSS 像素, 宽高缺省 0 即一个点); 合成器按真实窗框和缩放把面板放在它的 `edge` 边 (缺省 `bottom`), 沿边 `align` 对齐 (`start` /

@@ -345,7 +345,9 @@ impl Outgoing {
             SurfaceCommand::Activate => Kind::Activate.into(),
             SurfaceCommand::Grab(number, flag) => AcdeCommand { number, flag, ..Kind::Grab.into() },
             SurfaceCommand::PointerLock(_) | SurfaceCommand::WindowLook(_) | SurfaceCommand::Material(_) => return None,
-            SurfaceCommand::OpenPanel { id, token, rect, exclusive } => AcdeCommand { id, token, rect, flag: exclusive, ..Kind::OpenPanel.into() },
+            SurfaceCommand::OpenPanel { id, token, rect, exclusive, user_only } => {
+                AcdeCommand { id, token, rect, flag: exclusive, number: u32::from(user_only), ..Kind::OpenPanel.into() }
+            }
             SurfaceCommand::PlacePanel { id, rect, input } => AcdeCommand { id, rect, input, ..Kind::PlacePanel.into() },
             SurfaceCommand::ClosePanel(id) => AcdeCommand { id, ..Kind::ClosePanel.into() },
             SurfaceCommand::ReservePanel { id, edge, thickness } => AcdeCommand { id, number: edge, thickness, ..Kind::ReservePanel.into() },
