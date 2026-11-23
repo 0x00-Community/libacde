@@ -28,6 +28,7 @@ import { PageInspect } from './pageinspect'
 import { PageRenderReport } from './dev/render'
 import { Pinned } from './pinned'
 import { RemoteBridge, WindowList, WindowSelf } from './remote'
+import { Actions, type Operate } from './actions/index'
 import { Permits } from './broker/access/approval/permits'
 import type { Approval } from './broker/access/approval/permissions'
 import type { CapabilityStatus } from '@acde/api/manifest'
@@ -172,6 +173,8 @@ export default async function boot(natives: WebNatives): Promise<void> {
   self?.useMaterial(init.app?.window?.material)
   const windows = new WindowList(rpc, init.windows)
   const bridge = new RemoteBridge(rpc, init, self, windows, permits)
+  const actions = self && init.app ? new Actions(init.app.actions ?? [], (event) => void rpc.call('actions', 'event', [event]).catch(() => undefined)) : null
+  if (actions) bridge.value['actions'] = actions.api
   if (natives.backend) installBackendTransport({ ...natives.backend, port: init.kind === 'window' && init.app?.backend ? init.app.backend.port : null })
   const web = new Host(page, dom, init.scale, natives.Ime, windows)
   const debug = !!natives.env['ACDE_DEBUG_DIR'] || !!natives.env['ACDE_DEV']
@@ -266,6 +269,10 @@ export default async function boot(natives: WebNatives): Promise<void> {
       case 'suspend':
         self?.emit('suspend')
         return page.setLifecycle(m.freeze === true ? 'frozen' : 'throttled')
+      case 'operate':
+        return void actions?.operate(m as unknown as Operate)
+      case 'cancel':
+        return void actions?.cancel(String((m as { id?: unknown }).id ?? ''))
       case 'resume':
         page.setLifecycle('running')
         return self?.emit('resume')

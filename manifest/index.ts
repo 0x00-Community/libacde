@@ -1,6 +1,7 @@
 import type { AppBackend, AppLifecycle, AppManifest as AppEntry, Capabilities, PackageManifest, WindowMaterial } from '../acde-api/src/index'
 import { API_LEVEL, MIN_API_LEVEL } from './level.ts'
 import { FS_ROOTS, SHARED_PLACES } from './places.ts'
+import { actions as appActions } from './actions.ts'
 import legacyIcons from '../acde-api/legacy-icons.json' with { type: 'json' }
 
 export type { Capabilities, PackageManifest } from '../acde-api/src/index'
@@ -8,13 +9,14 @@ export type { CapabilityState, CapabilityStatus, PlatformSupport, RunningMode, W
 export { API_LEVEL, FS_ROOTS, MIN_API_LEVEL, SHARED_PLACES }
 export type { FsRootName, PlaceCapability, SharedPlace } from '../acde-api/src/index'
 export { PLATFORM_SUPPORT, RUNNING_MODES, platformSupport } from './platforms.ts'
+export { ACTION_NAME, TOOL_RISKS } from './actions.ts'
 
 export const LEGACY_ICONS: Readonly<Record<string, string>> = legacyIcons
 
 
 export const SHELL_MODULES = ['windows', 'packages', 'session', 'desktops', 'inspect', 'desktop', 'setDefault', 'permissions', 'voice', 'software'] as const
 
-export const APP_MODULES = ['launch', 'apps', 'open', 'openPath', 'handlers', 'window', 'services'] as const
+export const APP_MODULES = ['launch', 'apps', 'open', 'openPath', 'handlers', 'window', 'services', 'actions'] as const
 
 export type ShellModule = (typeof SHELL_MODULES)[number]
 
@@ -233,6 +235,8 @@ export class Manifest {
     if (typeof optional === 'string') return `app ${id}: ${optional}`
     const lifecycle = Manifest.lifecycle(field('lifecycle'))
     if (typeof lifecycle === 'string') return `app ${id}: ${lifecycle}`
+    const actions = appActions(field('actions'))
+    if (typeof actions === 'string') return `app ${id}: ${actions}`
     return {
       id,
       label,
@@ -251,6 +255,7 @@ export class Manifest {
       services,
       window: { material },
       lifecycle,
+      actions,
     }
   }
 

@@ -99,6 +99,9 @@
   `light` 表示壁纸偏亮、字该用深色; 还没收到壁纸图、算不出来或没有门户 (宿主会话) 时是 `null`. 壁纸变了或窗口换到别的屏、值变了才发 `wallTone`.
   来源是 acdes 算好经门户 `org.acde.appearance` 推的 `wall-tone` (`a{su}`, 键是屏幕名, 值 0 未知、1 亮、2 暗) 和 `primary-output` (`s`, 主屏名);
   启动器按窗口表行的 `output` (窗口中心所在屏) 取值, 取不到用主屏, 都没有是 `null`, 经页面消息 `{type: 'walltone', tone}` 和初始化参数 `wallTone` 交给页面.
+- `acde:actions` (J2, 2026-11-24, 类型在 `types/actions/`): `handle(name, handler)` 给清单 `acde.apps[].actions` 里声明的操作注册处理函数,
+  `handler(args, {caller, target?, signal, progress})` 回 `{ok: true, output?}` 或 `{error: {code, message}}`. 声明的形状 `AppAction` 和插件的工具同形,
+  `Caller`、`ToolRisk`、`JsonSchema` 也在这里 (dopame 的插件接口以后改为从这里导出, 不再各写一份). 见 `docs/runtime/webs.md`「声明式操作」.
 - `AcdeWindow.on('suspend' | 'resume')` (J3, 2026-11-24): 系统挂起、恢复这扇窗口的应用时发; 收到 `suspend` 后页面的计时器和动画帧被节流, 清单
   `lifecycle.suspendable: true` 的应用会被冻结 (这之后不再跑任何代码, 所以要存的东西在处理函数里同步存好). 清单的 `lifecycle: {suspendable?, endsAnytime?}`
   (缺省都为 false) 见 `docs/runtime/webs.md`「挂起与恢复」; `endsAnytime` 告诉系统这个应用可以不经询问直接结束.

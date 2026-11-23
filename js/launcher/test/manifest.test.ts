@@ -96,3 +96,26 @@ describe('the lifecycle an app declares', () => {
     assert.equal(refused, 'app notes: lifecycle is {suspendable?, endsAnytime?}')
   })
 })
+
+describe('the actions an app declares', () => {
+  const action = { name: 'add_note', description: 'Add a note', inputSchema: { type: 'object', properties: { text: { type: 'string' } } } }
+  const app = (actions: unknown) => Manifest.app({ id: 'notes', label: 'Notes', icon: 'text-editor', entry: '/index.html', actions })
+
+  test('have the shape of a plugin tool, are listed as given, and none by default', () => {
+    const listed = app([{ ...action, annotations: { destructive: true, toolRisk: 'risky' }, longRunning: true, target: { type: 'note' } }])
+    assert.deepEqual(typeof listed === 'string' ? listed : listed.actions, [
+      { ...action, annotations: { destructive: true, toolRisk: 'risky' }, longRunning: true, target: { type: 'note' } },
+    ])
+    const none = app(undefined)
+    assert.deepEqual(typeof none === 'string' ? none : none.actions, [])
+  })
+
+  test('a wrong name, a missing description or schema, bad hints or a second declaration are refused', () => {
+    assert.match(String(app([{ ...action, name: 'Add Note' }])), /name is lower case letters/)
+    assert.equal(app([{ ...action, description: '' }]), 'app notes: action add_note: needs a description')
+    assert.match(String(app([{ ...action, inputSchema: { type: 'string' } }])), /inputSchema is a JSON schema of an object/)
+    assert.match(String(app([{ ...action, annotations: { toolRisk: 'scary' } }])), /toolRisk is one of readOnly, risky, destructive/)
+    assert.match(String(app([action, action])), /declared twice/)
+    assert.match(String(app({})), /actions lists/)
+  })
+})

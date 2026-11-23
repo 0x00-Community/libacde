@@ -145,7 +145,19 @@
 - **应用清单** (`acde.apps`, 解析 acde-host `apps.ts`, 校验 acde-api `validate.ts`): `id`、`label`、`icon`、`entry` (默认导出 `WindowApp` 的
   模块, 或 HTML)、`capabilities` (只放系统能力: `SYSTEM_CAPABILITIES` 加外壳模块; 不认识的名字和服务名都是错误)、
   `optional` (capabilities 里可以缺的几项, 每项也要在 capabilities 里)、`services` (用到的桌面服务名, 不能是 `RESERVED_NAMES`)、
-  `mimeTypes`、`schemes` (打开哪些 URL scheme 的链接, 小写不带冒号, 不能是 `file`)、`requests` (接受哪些私有请求, 小写词, 不能是 `open-file` / `open-link`)、`window` (`{material}`: 默认的窗口背景材质, 名字或 `{name, role, group, spacing, overrides, region}`, 清单规则 `Manifest.material` 查形状, 解析后是 `window.material` 或 null)、`heapMb` (默认 256, 最小 32)、`size` (页面尺寸, 默认 800x600, 窗框另算; 单应用模式的主窗口铺满宿主窗口, 设了 `size` 时它是宿主窗口内容区的初始尺寸)、`multiple`、`frame` (默认 true)、`backend`.
+  `mimeTypes`、`schemes` (打开哪些 URL scheme 的链接, 小写不带冒号, 不能是 `file`)、`requests` (接受哪些私有请求, 小写词, 不能是 `open-file` / `open-link`)、`window` (`{material}`: 默认的窗口背景材质, 名字或 `{name, role, group, spacing, overrides, region}`, 清单规则 `Manifest.material` 查形状, 解析后是 `window.material` 或 null)、`heapMb` (默认 256, 最小 32)、`size` (页面尺寸, 默认 800x600, 窗框另算; 单应用模式的主窗口铺满宿主窗口, 设了 `size` 时它是宿主窗口内容区的初始尺寸)、`multiple`、`frame` (默认 true)、`backend`、`lifecycle` (`{suspendable?, endsAnytime?}`, 缺省都为 false, 见「挂起与恢复」)、
+  `actions` (声明式操作, 见下).
+- **声明式操作** (J2, 2026-11-24, 总仓 `.scratch/system/arch-decisions-plan.md`): 清单 `acde.apps[].actions` 每项和插件的“工具”同形:
+  `{name, description, inputSchema, outputSchema?, annotations?: {readOnly?, destructive?, toolRisk?}, longRunning?, target?: {type}}`. 校验在 `manifest/actions.ts`:
+  `name` 同插件工具名 (`ACTION_NAME`: 小写字母开头, 小写字母、数字、`_`、`-`, 至多 64), 同一个应用里不重名; `description` 非空; 两个 schema 都是 `type: "object"`
+  的 JSON schema; `toolRisk` 是 `readOnly` / `risky` / `destructive` (`TOOL_RISKS`); 解析后缺省为 `[]`. 声明是静态的, 管家不运行应用就能列出;
+  `readOnly` 只对系统包里的应用生效, `destructive`、`toolRisk` 只能调高档位 (由管家和系统总管执行). 应用在页面里用 `acde:actions` 的
+  `handle(名字, (args, call) => 结果)` 注册处理函数 (`page/src/actions/`), 名字必须是清单里声明过的, 返回值用来撤销. `call` 带调用方
+  `caller` (`{id, session, run}`, 同插件的 `Caller`, 由管家填写)、`target?`、取消信号 `signal`、`progress(done, text?)`. 结果是 `{ok: true, output?}`
+  或 `{error: {code, message}}`; 处理函数抛错记 `failed`, 返回别的形状记 `bad_result`, 没声明 `unknown_action`, 还没注册 `no_handler`, 取消后 `cancelled`.
+  `longRunning` 的先发 `pending`, 之后发 `progress` 和结果. 页面这一侧收 `{type: 'operate', id, name, args, caller, target?}` 和 `{type: 'cancel', id}`,
+  发出的事件经 rpc `actions.event`; 启动器和管家之间的帧 (管家方法 `apps.operate`、`apps.cancel`) 等管家的帧格式定了再接.
+  参数仍按不可信输入在处理函数里校验; 64 KiB 上限和 `untrusted: true` 由管家加.
 - **必需与可选能力** (`broker/access/capabilities.ts` `CapabilityCheck`, 由 `Launchable` 用): 声明的能力 (capabilities 和 services) 默认都是
   必需的, 逐个查状态: `available`、`not-declared`、`unsupported` (平台表不支持或运行时没开起来, 如 fs 的 Finder、office)、`service-not-running`、
   `shell-only` (第三方应用的外壳模块), 要批准的能力 (见「批准」) 另有 `not-asked` (还没问过用户)、`asking` (提示已经弹出, 在等回答)、`denied` (用户拒绝或撤销);

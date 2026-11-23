@@ -10,6 +10,7 @@ export type * from './types/capabilities'
 export type * from './types/places'
 export type * from './types/window-look/index'
 export type * from './types/sounds/index'
+export type * from './types/actions/index'
 
 export interface AppModules {
   readonly fs: Page.AcdeFs
@@ -30,5 +31,6 @@ export interface AppModules {
   readonly handlers: Page.AcdeOpenFiles['handlers']
   readonly window: Page.AcdeWindow
   readonly services: Page.AcdeServices
+  readonly actions: import('./types/actions/index').AcdeActions
   readonly capabilities: AcdeCapabilities
 }

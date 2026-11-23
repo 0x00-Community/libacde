@@ -51,6 +51,7 @@ export interface AppManifest {
   readonly sensitive?: boolean
   readonly window?: AppWindow
   readonly lifecycle?: AppLifecycle
+  readonly actions?: readonly import('./actions/index').AppAction[]
 }
 
 export interface AppLifecycle {

@@ -107,6 +107,10 @@ declare module 'acde:window' {
   const self: import('@acde/api').AcdeModules['window']
   export { self as window, self as default }
 }
+declare module 'acde:actions' {
+  const actions: import('@acde/api').AcdeModules['actions']
+  export { actions, actions as default }
+}
 declare module 'acde:capabilities' {
   const capabilities: import('@acde/api').AcdeModules['capabilities']
   export { capabilities, capabilities as default }
