@@ -1,6 +1,6 @@
 import { Manifest } from '@acde/api/manifest'
 import type { Capabilities } from '../../contract'
-import { Permissions, type Approval } from './approval/permissions'
+import { Approvals, type Approval } from './approval/permissions'
 
 const REMOVABLE = 'removable'
 
@@ -30,11 +30,11 @@ export class FileAccess {
   static guard<T extends object>(fs: T, approval: (capability: string) => Approval | null, label: string, office = false): T {
     const refusal = (root: unknown): Error | null => {
       const capability = typeof root === 'string' ? `fs.${root.startsWith(`${REMOVABLE}-`) ? REMOVABLE : root}` : ''
-      const state = Manifest.place(capability) || Permissions.folder(capability) ? approval(capability) : null
-      return state && state !== 'granted' ? Permissions.error(label, capability, state) : null
+      const state = Manifest.place(capability) || Approvals.folder(capability) ? approval(capability) : null
+      return state && state !== 'granted' ? Approvals.error(label, capability, state) : null
     }
     const blocked = (root: unknown): boolean => refusal(root) !== null
-    const folder = (id: unknown) => typeof id === 'string' && !!Permissions.folder(`fs.${id}`)
+    const folder = (id: unknown) => typeof id === 'string' && !!Approvals.folder(`fs.${id}`)
     const removable = (root: { source?: unknown }) => root?.source === REMOVABLE && blocked(REMOVABLE)
     const shown = (root: { place?: unknown; id?: unknown; source?: unknown }) =>
       !blocked(root?.place) && !removable(root) && !(folder(root?.id) && blocked(root?.id))

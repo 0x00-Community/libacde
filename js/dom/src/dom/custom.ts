@@ -2,7 +2,7 @@ import { DOMException } from '../core/exception'
 import { report, tag } from '../core/host'
 import { Ns } from '../native'
 import { customAttributes, type Element, parsedHooks } from './element'
-import { customHooks, HTMLElement } from './html'
+import { customHooks, type HTMLElement } from './html'
 import { dom, existing, ID, lifecycle, wrap, type Wrapper, inner } from './realm'
 import type { Node } from './node'
 

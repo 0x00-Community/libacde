@@ -62,11 +62,11 @@ export class TextEntry {
   static readonly URI_LIST = 'text/uri-list'
 
   static #text(text: string, type = TextEntry.TEXT): ClipboardBytes {
-    return { type, data: new TextEncoder().encode(text) }
+    return { type, data: new globalThis.TextEncoder().encode(text) }
   }
 
   static #decode(data: Uint8Array | null): string {
-    return data ? new TextDecoder().decode(data) : ''
+    return data ? new globalThis.TextDecoder().decode(data) : ''
   }
 
   #write(entries: readonly ClipboardBytes[]): void {

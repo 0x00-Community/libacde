@@ -5,7 +5,7 @@ export const LINE_LIMIT = 262144
 export type PortPost = (message: Record<string, unknown>) => void
 
 export class Lines {
-  readonly #decoder = new TextDecoder()
+  readonly #decoder = new globalThis.TextDecoder()
   #text = ''
   #skipping = false
 

@@ -1,7 +1,7 @@
 import type { CapabilityStatus } from '@acde/api'
 import type { CaptureNative, DeviceNative } from '@acde/dom'
 import { FileAccess } from '../files'
-import { Permissions, type Approval } from './permissions'
+import { Approvals, type Approval } from './permissions'
 
 export interface CaptureAccess {
   supported(capability: string): boolean
@@ -41,7 +41,7 @@ export class Permits {
   reason(module: string): string {
     const reasons = this.#gates(module).flatMap((name) => {
       const approval = this.approval(name)
-      return approval === 'granted' ? [] : [Permissions.reason(name, approval)]
+      return approval === 'granted' ? [] : [Approvals.reason(name, approval)]
     })
     return `acde:${module}: ${reasons.join('; ')}`
   }
@@ -131,6 +131,6 @@ export class Permits {
 
   #error(capability: string): Error {
     const approval = this.approval(capability)
-    return Permissions.error(this.#label, capability, approval === 'granted' ? 'denied' : approval)
+    return Approvals.error(this.#label, capability, approval === 'granted' ? 'denied' : approval)
   }
 }

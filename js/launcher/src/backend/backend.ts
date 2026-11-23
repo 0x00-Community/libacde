@@ -42,7 +42,7 @@ export const BackendPlace = {
 
   tooLong(socket: string, platform = process.platform): string | null {
     const max = BackendPlace.SUN_PATH[platform] ?? 104
-    const bytes = new TextEncoder().encode(socket).length
+    const bytes = new globalThis.TextEncoder().encode(socket).length
     return bytes < max ? null : `the socket path ${socket} is ${bytes} bytes, the system allows ${max - 1}: use a shorter app id or TMPDIR`
   },
 
@@ -66,7 +66,7 @@ export const BackendPlace = {
       }
       return null
     }
-    const href = windows ? `file:///${encodeURI(preload.replaceAll('\\', '/'))}` : new URL(`file://${preload}`).href
+    const href = windows ? `file:///${encodeURI(preload.replaceAll('\\', '/'))}` : new globalThis.URL(`file://${preload}`).href
     for (const name of prefer === 'node' ? ['node', 'bun'] : ['bun', 'node']) {
       const exe = find(name)
       if (exe) return name === 'bun' ? [exe, '--preload', preload, server] : [exe, '--import', href, server]

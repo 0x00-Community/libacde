@@ -22,7 +22,7 @@ export class DevHot {
     public source: string,
   ) {
     const scripts = this.#scripts(source)
-    this.#urls = scripts.map((s) => new URL(s.getAttribute('src')!, base).href)
+    this.#urls = scripts.map((s) => new globalThis.URL(s.getAttribute('src')!, base).href)
     this.#code = scripts.map((s) => io.read(s.getAttribute('src')!))
   }
 

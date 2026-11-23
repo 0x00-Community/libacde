@@ -65,7 +65,7 @@ export class DevRoutes {
     if (!url.startsWith('/')) return (href) => glob.test(href)
     return (href) => {
       try {
-        const parsed = new URL(href)
+        const parsed = new globalThis.URL(href)
         return glob.test(`${parsed.pathname}${parsed.search}`)
       } catch {
         return false
@@ -133,7 +133,7 @@ export class DevRoutes {
   }
 
   static #bytes(base64: string): Uint8Array {
-    const text = atob(base64)
+    const text = globalThis.atob(base64)
     const bytes = new Uint8Array(text.length)
     for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i)
     return bytes

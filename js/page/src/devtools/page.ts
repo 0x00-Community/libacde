@@ -15,7 +15,7 @@ export class PageDomain {
   static frame(id: string, url: string): Record<string, unknown> {
     let origin = ''
     try {
-      origin = new URL(url).origin
+      origin = new globalThis.URL(url).origin
     } catch {}
     return {
       id,

@@ -264,7 +264,7 @@ export class WindowSelf {
       const opening = name === 'request' ? this.#opening : null
       if (opening) {
         this.#opening = null
-        queueMicrotask(() => handler(this.#received(opening)))
+        globalThis.queueMicrotask(() => handler(this.#received(opening)))
       }
       return () => set.delete(handler)
     },

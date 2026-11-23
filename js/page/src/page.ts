@@ -70,7 +70,7 @@ body { font-family: var(--f-sans, sans-serif); color: var(--ink, #1d1d1f); backg
     if (!url) return entry
     let path: string
     try {
-      path = new URL(url).pathname
+      path = new globalThis.URL(url).pathname
     } catch {
       return entry
     }

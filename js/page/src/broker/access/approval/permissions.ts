@@ -45,7 +45,7 @@ interface Waiting {
   readonly settle: (allowed: boolean) => void
 }
 
-export class Permissions {
+export class Approvals {
   static readonly #APPROVAL: ReadonlySet<string> = new Set(APPROVAL_CAPABILITIES)
   readonly #host: PermissionsHost
   readonly #decisions: Map<string, 'granted' | 'denied'>
@@ -60,7 +60,7 @@ export class Permissions {
   }
 
   static approval(capability: string): capability is ApprovalCapability {
-    return Permissions.#APPROVAL.has(capability)
+    return Approvals.#APPROVAL.has(capability)
   }
 
   static folder(capability: string): string | null {
@@ -78,26 +78,26 @@ export class Permissions {
   }
 
   static error(app: string, capability: string, approval: Exclude<Approval, 'granted'> = 'denied'): AcdePermissionError {
-    const error = new Error(`${app}: ${Permissions.reason(capability, approval)}`)
+    const error = new Error(`${app}: ${Approvals.reason(capability, approval)}`)
     const code = approval === 'denied' ? ('denied' as const) : approval === 'asking' ? ('asking' as const) : ('not_asked' as const)
     return Object.assign(error, { status: 403 as const, code, capability })
   }
 
   gated(app: AppManifest, origin: AppOrigin): ApprovalCapability[] {
     if (origin.system) return []
-    const declared = Object.keys(app.capabilities).filter((name): name is ApprovalCapability => !!app.capabilities[name] && Permissions.approval(name))
+    const declared = Object.keys(app.capabilities).filter((name): name is ApprovalCapability => !!app.capabilities[name] && Approvals.approval(name))
     return declared
   }
 
   permit(app: AppManifest, origin: AppOrigin, capability: string): Permit {
-    if (origin.system || !Permissions.approval(capability)) return 'granted'
-    const key = Permissions.#key(app.id, capability)
+    if (origin.system || !Approvals.approval(capability)) return 'granted'
+    const key = Approvals.#key(app.id, capability)
     if (this.#stale(key)) return 'ask'
     return this.#decisions.get(key) ?? (this.#asked.has(key) ? 'denied' : 'ask')
   }
 
   approval(app: AppManifest, origin: AppOrigin, capability: string): Approval {
-    if (origin.system || !Permissions.approval(capability)) return 'granted'
+    if (origin.system || !Approvals.approval(capability)) return 'granted'
     if (this.#prompt(app.id, capability)) return 'asking'
     const permit = this.permit(app, origin, capability)
     return permit === 'ask' ? 'not-asked' : permit
@@ -112,7 +112,7 @@ export class Permissions {
     if (already) return already.answered
     const permit = this.permit(app, origin, capability)
     if (permit !== 'ask') return permit === 'granted'
-    const key = Permissions.#key(app.id, capability)
+    const key = Approvals.#key(app.id, capability)
     if (this.#stale(key)) {
       this.#decisions.delete(key)
       this.#save()
@@ -149,7 +149,7 @@ export class Permissions {
       const at = key.lastIndexOf(':')
       const app = key.slice(0, at)
       const capability = key.slice(at + 1)
-      if ((appId === undefined || app === appId) && Permissions.approval(capability)) rows.push({ app, label: this.#host.label(app), capability, decision })
+      if ((appId === undefined || app === appId) && Approvals.approval(capability)) rows.push({ app, label: this.#host.label(app), capability, decision })
     }
     for (const { app, id, label, exists } of this.#host.folders?.(appId) ?? []) {
       rows.push({ app, label: this.#host.label(app), capability: `fs.${id}` as FolderCapability, decision: 'granted', folder: { label, exists } })
@@ -158,14 +158,14 @@ export class Permissions {
   }
 
   revoke(appId: string, capability: string): boolean {
-    const folder = Permissions.folder(capability)
+    const folder = Approvals.folder(capability)
     if (folder) {
       const had = this.#host.revokeFolder?.(appId, folder) ?? false
       this.#host.changed(appId, capability as ApprovalCapability, 'denied')
       return had
     }
-    if (!Permissions.approval(capability)) throw Object.assign(new TypeError(`"${capability}" is not given by approval`), { status: 400 })
-    const key = Permissions.#key(appId, capability)
+    if (!Approvals.approval(capability)) throw Object.assign(new TypeError(`"${capability}" is not given by approval`), { status: 400 })
+    const key = Approvals.#key(appId, capability)
     const had = this.#decisions.delete(key)
     this.#asked.add(key)
     if (had) this.#save()
@@ -182,7 +182,7 @@ export class Permissions {
   }
 
   #decide(appId: string, capability: ApprovalCapability, decision: 'granted' | 'denied'): void {
-    this.#decisions.set(Permissions.#key(appId, capability), decision)
+    this.#decisions.set(Approvals.#key(appId, capability), decision)
     this.#save()
     this.#host.changed(appId, capability, decision)
   }

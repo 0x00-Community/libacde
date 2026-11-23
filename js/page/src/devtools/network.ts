@@ -102,7 +102,7 @@ export class NetworkDomain {
   static base64(bytes: Uint8Array): string {
     let binary = ''
     for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000))
-    return btoa(binary)
+    return globalThis.btoa(binary)
   }
 
   #emit(method: string, params: Record<string, unknown>): void {
@@ -138,7 +138,7 @@ export class NetworkDomain {
     }
     if (body?.length) {
       request['hasPostData'] = true
-      request['postData'] = new TextDecoder().decode(body)
+      request['postData'] = new globalThis.TextDecoder().decode(body)
     }
     this.#emit('requestWillBeSent', {
       requestId: String(id),
@@ -257,7 +257,7 @@ export class NetworkDomain {
     if (!kept) throw new DevToolsError(-32000, 'No resource with given identifier found')
     if (TEXT.test(kept.mimeType) || kept.mimeType === '') {
       try {
-        return { body: new TextDecoder('utf-8', { fatal: true }).decode(kept.body), base64Encoded: false }
+        return { body: new globalThis.TextDecoder('utf-8', { fatal: true }).decode(kept.body), base64Encoded: false }
       } catch {}
     }
     return { body: NetworkDomain.base64(kept.body), base64Encoded: true }

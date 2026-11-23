@@ -172,10 +172,10 @@ export class Callbacks {
   signal(callback: unknown): AbortSignal {
     const fn = typeof callback === 'function' ? this.#numbers.get(callback) : undefined
     if (fn === undefined) throw new TypeError('releaseSignal: not a callback a caller passed to this service')
-    if (this.#gone.has(fn)) return AbortSignal.abort()
+    if (this.#gone.has(fn)) return globalThis.AbortSignal.abort()
     let controller = this.#signals.get(fn)
     if (!controller) {
-      controller = new AbortController()
+      controller = new globalThis.AbortController()
       this.#signals.set(fn, controller)
     }
     return controller.signal

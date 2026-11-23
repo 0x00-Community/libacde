@@ -221,25 +221,25 @@ export class SourceMaps {
   #load(url: string): SourceMap | null {
     const code = this.#read(url)
     if (!code) return null
-    const text = new TextDecoder().decode(code)
+    const text = new globalThis.TextDecoder().decode(code)
     const link = /\/\/[#@] sourceMapping[U]RL=(\S+)\s*$/.exec(text.slice(-4096))?.[1]
     if (!link) return null
     let json: string
     let base = url
     const inline = /^data:application\/json[^,]*;base64,(.+)$/.exec(link)
-    if (inline) json = new TextDecoder().decode(Uint8Array.from(atob(inline[1]!), (c) => c.charCodeAt(0)))
+    if (inline) json = new globalThis.TextDecoder().decode(Uint8Array.from(globalThis.atob(inline[1]!), (c) => c.charCodeAt(0)))
     else {
-      base = new URL(link, url).href
+      base = new globalThis.URL(link, url).href
       const bytes = this.#readMap(base)
       if (!bytes) return null
-      json = new TextDecoder().decode(bytes)
+      json = new globalThis.TextDecoder().decode(bytes)
     }
     const raw = JSON.parse(json) as { sources?: string[]; sourceRoot?: string; mappings?: string }
     if (typeof raw.mappings !== 'string' || !Array.isArray(raw.sources)) return null
     const root = raw.sourceRoot ? `${raw.sourceRoot.replace(/\/?$/, '/')}` : ''
-    const origin = new URL(url).origin
+    const origin = new globalThis.URL(url).origin
     const sources = raw.sources.map((source) => {
-      const resolved = new URL(root + source, base)
+      const resolved = new globalThis.URL(root + source, base)
       return resolved.origin === origin ? resolved.pathname.replace(/^\//, '') : resolved.href
     })
     return { sources, lines: SourceMaps.#decode(raw.mappings) }

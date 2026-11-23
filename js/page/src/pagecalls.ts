@@ -274,7 +274,7 @@ export class PageCalls implements HandOver {
         if (response.ok && bytes.length <= PageCalls.ICON_BYTES) {
           let binary = ''
           for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-          icon = `data:${response.headers.get('content-type') || 'image/png'};base64,${btoa(binary)}`
+          icon = `data:${response.headers.get('content-type') || 'image/png'};base64,${globalThis.btoa(binary)}`
         }
       } catch {
       }
@@ -299,7 +299,7 @@ export class PageCalls implements HandOver {
   static urlName(url: string): string {
     if (!/^https?:/i.test(url)) return ''
     try {
-      return decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '')
+      return decodeURIComponent(new globalThis.URL(url).pathname.split('/').pop() ?? '')
     } catch {
       return ''
     }

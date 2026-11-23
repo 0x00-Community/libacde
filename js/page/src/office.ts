@@ -12,7 +12,7 @@ export class OfficePage {
   }
 
   static write(setup: { api: string; config: unknown }, theme: 'light' | 'dark'): string {
-    const config = structuredClone(setup.config) as { document?: { key?: string; title?: string }; editorConfig?: { customization?: Record<string, unknown> } }
+    const config = globalThis.structuredClone(setup.config) as { document?: { key?: string; title?: string }; editorConfig?: { customization?: Record<string, unknown> } }
     if (config.editorConfig?.customization) config.editorConfig.customization['uiTheme'] = theme === 'dark' ? 'theme-night' : 'theme-white'
     const key = String(config.document?.key ?? 'document').replace(/[^\w.-]/g, '_')
     const json = JSON.stringify(config).replace(/</g, '\\u003c')

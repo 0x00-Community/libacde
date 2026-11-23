@@ -400,7 +400,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   const hot = reread
     ? new DevHot(page.window.document as never, parser, page.window.location.href, {
         read: (src) => {
-          const path = new URL(src, page.window.location.href).pathname
+          const path = new globalThis.URL(src, page.window.location.href).pathname
           const file = PageSource.file(path, init.resources ?? [])
           return file ? readTextOr(file, null) : null
         },

@@ -197,9 +197,9 @@ export class Host {
     const input = this.#page.input
     const captured = input.capture as unknown as Element | null
     input.capture = null
-    const cancel = new PointerEvent('pointercancel', { bubbles: true, composed: true, pointerId: 1, pointerType: 'mouse', isPrimary: true })
+    const cancel = new globalThis.PointerEvent('pointercancel', { bubbles: true, composed: true, pointerId: 1, pointerType: 'mouse', isPrimary: true })
     ;(captured ?? source).dispatchEvent(cancel)
-    if (captured) captured.dispatchEvent(new PointerEvent('lostpointercapture', { pointerId: 1, pointerType: 'mouse', isPrimary: true }))
+    if (captured) captured.dispatchEvent(new globalThis.PointerEvent('lostpointercapture', { pointerId: 1, pointerType: 'mouse', isPrimary: true }))
   }
 
   async #screenshot(): Promise<void> {
