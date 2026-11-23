@@ -33,7 +33,7 @@
   double / right / hover / scroll 按 `point` 的屏幕坐标经 `Shell.inject` 发 (被盖住时先提前目标窗口; 桌面钉住的面板盖着的地方只算被更上层的钉住窗口挡住, #111); type / settext 走 web 的 `type`;
   key (`"ctrl+a backspace"`, acde-host `keys.ts` 的 `chordCodes`) 先 focus 再注入: 空格分开的每段先全部解析, 有认不出的就整串不发并报出这些段;
   可打印字符直接写 (`7 . 5 * 2`), 美式键盘上要 Shift 的符号 (`*`、`+`、`(` …) 和大写字母自动加 Shift, 也认 `plus` / `multiply` / `minus` 等名字, `ctrl++` 是 Ctrl 加 `+`; select (arg 是选项的值或文字, 多选给列表) 走 web 的 `select`; drag (arg 是目标 ref, 元素或窗口,
-  可以在别的窗口) 在源上按下、量目标 (`point`, 可能滚动; 目标被别的窗口盖住时松开并回错)、分 10 步每步 16 ms 移过去再松开, 页面的指针拖动和
+  可以在别的窗口) 在源上按下、量目标 (`point`, 可能滚动; 目标被别的窗口盖住时松开并回错)、按下后停 150 ms (像真人, 不然合成器在客户端还没发移动请求时就看到按键松开了, 客户机里拖标题栏会被拒, 2026-11-23), 分 10 步每步 16 ms 移过去, 再停一帧松开, 页面的指针拖动和
   HTML5 拖放 (也跨窗口) 都靠它. 窗口 ref 能 focus / restore / minimize / close / key. `open(name)` 按 id、名字找应用或原生程序起它. `query({selector, window?, ref?, limit?, attributes?})` →
   窗口 ref 还能 fill / fullscreen (`setState` 设成 `filled` / `fullscreen`), restore 把这两种设回 `normal`; 桌面和铺满宿主的窗口不行.
   `{window, count, nodes, windows}` (`windows` 只有被查的那个窗口, 形状同快照的 `windows`): 在窗口 (默认焦点窗口) 或某个元素下按 CSS 选择器找, 节点是 `InspectMatch` (`InspectNode` 加 `tag`、`visible`, 给了

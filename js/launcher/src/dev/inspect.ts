@@ -33,6 +33,7 @@ export class Inspect {
   static readonly FIND_LIMIT = 3000
   static readonly DRAG_STEPS = 10
   static readonly DRAG_STEP_MS = 16
+  static readonly DRAG_HOLD_MS = 150
   static readonly INPUT_WAIT_MS = 10_000
   static readonly GENERIC = new Set([
     ...['generic', 'filler', 'panel', 'section', 'unknown', 'redundant-object', 'split-pane', 'layered-pane'],
@@ -470,7 +471,7 @@ export class Inspect {
     shell.inject({ type: 'move', x, y })
     await step()
     shell.inject({ type: 'down', x, y, button: LEFT })
-    await step()
+    await Inspect.#sleep(Inspect.DRAG_HOLD_MS)
     const target = spot ?? (await this.#point(to))
     if ('error' in target) {
       shell.inject({ type: 'up', x, y, button: LEFT })

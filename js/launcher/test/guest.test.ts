@@ -108,6 +108,24 @@ describe('a drag to another process window in the guest', () => {
   })
 })
 
+describe('a drag paces itself like a hand', () => {
+  test('holds the button before moving, moves in steps a frame apart, and rests a frame before letting go', async () => {
+    const sent: { type: string; at: number }[] = []
+    const plain = base(1, [])
+    const guest = new GuestWindows(42, 'app')
+    const host = guest.host(plain, () => 1, { inject: (e) => void sent.push({ type: e.type, at: performance.now() }) })
+    guest.place([{ ...row(7, 42), x: 100, y: 50 }])
+    assert.equal((await new Inspect(host).act('w7', 'drag', '400,300')).ok, true)
+    const down = sent.findIndex((e) => e.type === 'down')
+    const up = sent.findIndex((e) => e.type === 'up')
+    const moves = sent.slice(down + 1, up)
+    assert.equal(moves.length, Inspect.DRAG_STEPS)
+    assert.ok(moves.every((e) => e.type === 'move'))
+    assert.ok(moves[0]!.at - sent[down]!.at >= Inspect.DRAG_HOLD_MS - 5, 'held before the first move')
+    assert.ok(sent[up]!.at - moves.at(-1)!.at >= Inspect.DRAG_STEP_MS - 5, 'a frame before letting go')
+  })
+})
+
 describe('window changes in the guest', () => {
   test('go to winman by window number through the manager, the desktop and panels stay local', async () => {
     const changes: object[] = []
