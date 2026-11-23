@@ -44,6 +44,8 @@
     `stylePriority` / `styleSet`, 不碰文档, 输入输出都是声明块的文字), 所以读到的是 acss 的规范写法 (`background-position: top left` 读回
     `left top`), 简写设进去是它的长写 (`length` / `item` 列长写), 读简写由长写拼回 (拼不回是空串), 无效的值什么都不改. 改了就把序列化后的文字写回
     `style` 属性 (`cssText` 也是先规范化再写); 元素的属性文字按 DOM 的改动计数缓存, 没改动不重读. Web Animations 写行内的 `animation-*` 也走这里.
+  - `@counter-style` 规则是 `CSSCounterStyleRule` (`dom/counter-style.ts`): `name` 和十个描述符读规则文字 (acss 已经查过、规范化了); 设 `name` 要是
+    合法而且能重定义的名字, 设 `system` 不能换算法, `alphabetic` / `numeric` 的 `symbols` 至少两个, acss 丢掉的值不改规则.
   - 没做: `window` 的 `load` 不等样式表和图片; 备用样式表 (`title`)、`CSSImportRule.styleSheet`、`MediaList` 的成员 (只有
     `mediaText` / `length`); `<img crossorigin>` 仍按 no-cors 取.
 - **本地资源的类型** (acde-dom `core/net/index.ts` `TYPES`): 应用包里的文件经 `fetch` / XHR 读到时按扩展名给 `Content-Type`, 只列页面加载要的类型
