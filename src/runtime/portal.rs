@@ -21,6 +21,7 @@ const SETTINGS: &str = "org.freedesktop.portal.Settings";
 const APPEARANCE: &str = "org.freedesktop.appearance";
 const COLOR_SCHEME: &str = "color-scheme";
 const REDUCED_MOTION: &str = "reduced-motion";
+const ACCENT_COLOR: &str = "accent-color";
 const ACDE_APPEARANCE: &str = "org.acde.appearance";
 const GLASS: &str = "glass";
 const REDUCED_TRANSPARENCY: &str = "reduced-transparency";
@@ -142,10 +143,26 @@ fn number(value: &Variant<'_>) -> Option<u32> {
     }
 }
 
+fn accent(value: &Variant<'_>) -> Option<String> {
+    let channel = |field: &Variant<'_>| match field {
+        Variant::F64(c) if (0.0..=1.0).contains(c) => Some((c * 255.0).round() as u8),
+        _ => None,
+    };
+    match value {
+        Variant::Value(inner) => accent(inner),
+        Variant::Structure(color) => match color.fields() {
+            [r, g, b] => Some(format!("#{:02x}{:02x}{:02x}", channel(r)?, channel(g)?, channel(b)?)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 fn appearance_change(namespace: &str, key: &str, value: &Variant<'_>) -> Option<serde_json::Value> {
     match (namespace, key) {
         (APPEARANCE, COLOR_SCHEME) => Some(serde_json::json!({ "dark": dark_scheme(value) })),
         (APPEARANCE, REDUCED_MOTION) => Some(serde_json::json!({ "reducedMotion": number(value) == Some(1) })),
+        (APPEARANCE, ACCENT_COLOR) => Some(serde_json::json!({ "accent": accent(value) })),
         (ACDE_APPEARANCE, GLASS) => Some(serde_json::json!({ "glass": number(value).unwrap_or(0) })),
         (ACDE_APPEARANCE, REDUCED_TRANSPARENCY) => Some(serde_json::json!({ "reducedTransparency": number(value) == Some(1) })),
         _ => None,
@@ -203,13 +220,21 @@ impl Appearance {
         blocking(move || Self::read(&connection).map_err(bus)).await
     }
 
+    #[napi]
+    pub async fn accent(&self) -> Result<Option<String>> {
+        let connection = self.connection.clone();
+        let read = move || Self::setting(&connection, APPEARANCE, ACCENT_COLOR).ok().and_then(|value| accent(&value));
+        blocking(move || Ok(read())).await
+    }
+
     #[napi(ts_return_type = "Promise<{ glass: number; reducedTransparency: boolean; reducedMotion: boolean }>")]
     pub async fn glass(&self) -> Result<serde_json::Value> {
         let connection = self.connection.clone();
         blocking(move || Ok(Self::read_glass(&connection))).await
     }
 
-    #[napi(ts_args_type = "callback: (change: { dark?: boolean; glass?: number; reducedTransparency?: boolean; reducedMotion?: boolean }) => void")]
+    #[napi(ts_args_type = "callback: (change: { dark?: boolean; accent?: string | null; glass?: number; \
+            reducedTransparency?: boolean; reducedMotion?: boolean }) => void")]
     pub fn watch(&self, env: Env, callback: Unknown<'_>) -> Result<()> {
         self.watch.watch(&env, callback, |sink| {
             let signals = Self::changes(&self.connection).map_err(bus)?;
@@ -436,6 +461,19 @@ mod tests {
         assert_eq!(appearance_change(APPEARANCE, COLOR_SCHEME, &Variant::U32(1)), Some(serde_json::json!({ "dark": true })));
         assert_eq!(appearance_change(ACDE_APPEARANCE, "other", &Variant::U32(1)), None);
         assert_eq!(appearance_change(APPEARANCE, REDUCED_MOTION, &Variant::U32(1)), Some(serde_json::json!({ "reducedMotion": true })));
+    }
+
+    #[test]
+    fn the_accent_is_three_srgb_channels_or_unset() {
+        let color = |r: f64, g: f64, b: f64| Variant::from((r, g, b));
+        assert_eq!(accent(&color(1.0, 0.839, 0.039)), Some("#ffd60a".to_string()));
+        assert_eq!(accent(&Variant::Value(Box::new(color(0.0, 0.25, 0.5)))), Some("#004080".to_string()));
+        assert_eq!(accent(&color(-1.0, -1.0, -1.0)), None, "the portal's unset");
+        assert_eq!(accent(&color(0.5, 1.5, 0.5)), None, "out of range");
+        assert_eq!(accent(&Variant::U32(1)), None);
+        let change = |value| appearance_change(APPEARANCE, ACCENT_COLOR, &value);
+        assert_eq!(change(color(1.0, 0.0, 0.0)), Some(serde_json::json!({ "accent": "#ff0000" })));
+        assert_eq!(change(color(-1.0, -1.0, -1.0)), Some(serde_json::json!({ "accent": null })));
     }
 
     #[test]

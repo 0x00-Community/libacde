@@ -181,6 +181,7 @@ class Launcher {
   readonly #port: PagePort | null
   #glass: Glass = { level: 0, reducedTransparency: false }
   #reducedMotion = false
+  #accent: string | null = null
 
   constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
     this.#shell = Launcher.shell(natives, session.label)
@@ -309,14 +310,20 @@ class Launcher {
       scale: this.args.scale,
       languages: SessionLanguage.of(process.env, sys().languages()),
       navigator: { userAgent: '', platform: process.platform === 'darwin' ? 'MacIntel' : process.platform === 'win32' ? 'Win32' : 'Linux x86_64' },
-      dark: this.#dev.dark,
-      glass: this.#glass,
-      reducedMotion: this.#reducedMotion,
+      ...this.#look,
     }
   }
 
-  #appearance({ dark, glass, reducedTransparency, reducedMotion }: AppearanceChange): void {
+  get #look(): Pick<Place, 'dark' | 'accent' | 'glass' | 'reducedMotion'> {
+    return { dark: this.#dev.dark, accent: this.#accent, glass: this.#glass, reducedMotion: this.#reducedMotion }
+  }
+
+  #appearance({ dark, accent, glass, reducedTransparency, reducedMotion }: AppearanceChange): void {
     if (dark !== undefined) this.#dev.follow(dark)
+    if (accent !== undefined && accent !== this.#accent) {
+      this.#accent = accent
+      this.#thread?.post({ type: 'accent', color: accent })
+    }
     if (reducedMotion !== undefined && reducedMotion !== this.#reducedMotion) {
       this.#reducedMotion = reducedMotion
       this.#thread?.post({ type: 'motion', reduced: reducedMotion })
@@ -501,7 +508,7 @@ class Launcher {
     this.#releaseShortcuts()
     this.#reloading = false
     const grant = this.#grant()
-    this.#spawn({ ...this.#init!, token: grant.token, dark: this.#dev.dark, glass: this.#glass, reducedMotion: this.#reducedMotion })
+    this.#spawn({ ...this.#init!, token: grant.token, ...this.#look })
   }
 
   #capabilities(method: string, args: unknown[]): unknown {

@@ -8,6 +8,7 @@ export interface Glass {
 
 export interface AppearanceChange {
   readonly dark?: boolean
+  readonly accent?: string | null
   readonly glass?: number
   readonly reducedTransparency?: boolean
   readonly reducedMotion?: boolean
@@ -16,6 +17,7 @@ export interface AppearanceChange {
 export interface AppearancePortal {
   open(): Promise<{
     dark(): Promise<boolean>
+    accent(): Promise<string | null>
     glass(): Promise<{ glass: number; reducedTransparency: boolean; reducedMotion: boolean }>
     watch(callback: (change: AppearanceChange) => void): void
   }>
@@ -35,7 +37,8 @@ export async function followAppearance(portal: AppearancePortal | undefined, fix
     const opened = await portal.open()
     const followed = ({ dark, ...rest }: AppearanceChange): AppearanceChange => (fixedDark || dark === undefined ? rest : { dark, ...rest })
     opened.watch((change) => apply(followed(change)))
-    apply(followed({ ...(await opened.glass()), dark: await opened.dark().catch(() => false) }))
+    const accent = await opened.accent().catch(() => null)
+    apply(followed({ ...(await opened.glass()), accent, dark: await opened.dark().catch(() => false) }))
   } catch (error) {
     Log.write(Level.Debug, 'acde_launcher', `appearance: light and the clearest glass, the portal has no setting (${reason(error)})`)
   }
