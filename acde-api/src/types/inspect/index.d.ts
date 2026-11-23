@@ -52,6 +52,9 @@ export type InspectAction =
   | 'restore'
   | 'fill'
   | 'fullscreen'
+  | 'move'
+  | 'resize'
+  | 'raise'
 
 export type InspectArg = string | number | readonly string[] | null
 

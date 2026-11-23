@@ -24,7 +24,7 @@ import { ServiceHost } from './manager/service'
 import { DevChannel, type DevOpen, type DevOpened, type DevShell, type DevTarget } from './dev/dev'
 import { DevToolsEndpoint, type NativeDevTools } from './dev/devtools'
 import { managerRelay, type DevRelay } from './dev/relay'
-import { Inspect, type InspectHost, type InspectShell, type ShellWindow } from './dev/inspect'
+import { Inspect, type InspectHost, type InspectShell, type PlaceChange, type ShellWindow } from './dev/inspect'
 import { GuestWindows } from './dev/guest'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
@@ -48,7 +48,7 @@ interface GrantOptions {
   readonly anchor?: AnchorWire
 }
 
-interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState' | 'windows' | 'inject'> {
+interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState' | 'windows' | 'inject' | 'place'> {
   devEvent?(json: string): number
   setMenus?(window: number, menus: string): void
   notify?(title: string, body: string, subtitle: string): void
@@ -233,11 +233,21 @@ class Launcher {
     throw new Error('the runtime offers no windows: neither native.Windows (acdes) nor native.Shell (acdev)')
   }
 
+  static place(shell: LauncherShell, window: number, change: PlaceChange): readonly [number, number, number, number] {
+    const row = shell.windows().find((r) => (r.window ?? r.id) === window)
+    const width = change.width ?? row?.width ?? 0
+    const height = change.height ?? row?.height ?? 0
+    shell.place(window, change.x, change.y, width, height)
+    const now = shell.windows().find((r) => (r.window ?? r.id) === window)
+    return now ? [now.x, now.y, now.width, now.height] : [change.x, change.y, width, height]
+  }
+
   #inspectShell(): InspectShell {
     const shell = this.#shell
     return {
       focus: (window) => shell.focus(window),
       ...(shell.setState && { setState: (window, state) => shell.setState!(window, state) }),
+      place: (window, change) => Promise.resolve(Launcher.place(shell, window, change)),
       windows: () => shell.windows(),
       ...(shell.menus && { menus: (window) => shell.menus!(window) }),
       inject: (event) => {

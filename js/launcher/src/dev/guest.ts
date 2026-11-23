@@ -106,6 +106,10 @@ export class GuestWindows {
         else base.shell.focus(to(id))
       },
       ...((base.shell.setState || window) && { setState }),
+      ...(base.shell.place && {
+        place: (id, change) =>
+          this.placed ? Promise.reject(new Error('in the guest acdev places windows through the session manager')) : base.shell.place!(to(id), change),
+      }),
       windows: () => (this.placed ? [...this.shellWindows(), ...this.#lift(panels?.() ?? [])] : base.shell.windows()),
       inject: (event) => (this.placed && inject ? inject(event) : base.shell.inject(event)),
     }

@@ -36,6 +36,12 @@
   可以在别的窗口) 在源上按下、量目标 (`point`, 可能滚动; 目标被别的窗口盖住时松开并回错)、按下后停 150 ms (像真人, 不然合成器在客户端还没发移动请求时就看到按键松开了, 客户机里拖标题栏会被拒, 2026-11-23), 分 10 步每步 16 ms 移过去, 再停一帧松开, 页面的指针拖动和
   HTML5 拖放 (也跨窗口) 都靠它. 窗口 ref 能 focus / restore / minimize / close / key. `open(name)` 按 id、名字找应用或原生程序起它. `query({selector, window?, ref?, limit?, attributes?})` →
   窗口 ref 还能 fill / fullscreen (`setState` 设成 `filled` / `fullscreen`), restore 把这两种设回 `normal`; 桌面和铺满宿主的窗口不行.
+  窗口 ref 还能 move / resize / raise (2026-11-23, `dev/inspect/place.ts` 的 `Placing`, 填充、最小化也在那里): `move` 的 arg 是屏幕逻辑坐标 `"100,80"`, 大小不变;
+  `resize` 的 arg 是 `"800x600"`, 位置不变 (先读窗口表里当前的 x、y); 经 `InspectShell.place(window, {x, y, width?, height?})` 做, 宿主窗口里是启动器
+  `Shell.place` (`Launcher.place` 读回新矩形), 回 `w1 is at X,Y WxH`; 应用迟交新尺寸时最多轮询窗口表 2 秒, 还没到就照实说"还没接受这个尺寸". 拒绝 (回 `ok: false`
+  并说原因): 桌面、铺满宿主窗口的单应用窗口、钉住的面板、最小化的窗口、状态不是 `normal` 的窗口 (提示先 `act <窗口> restore`), `resize` 另拒固定大小的窗口.
+  `raise` 就是给焦点提到最前, 不改状态; 桌面和最小化的窗口不行. 客户机会话里 (窗口表来自管家) 启动器不摆放, acdev 的驱动直接经管家开发连接发
+  `{op: "window", window: <acompositor 窗口号>, change: {place | focus}}` (acdes docs/manager.md 开发通道).
   `{window, count, nodes, windows}` (`windows` 只有被查的那个窗口, 形状同快照的 `windows`): 在窗口 (默认焦点窗口) 或某个元素下按 CSS 选择器找, 节点是 `InspectMatch` (`InspectNode` 加 `tag`、`visible`, 给了
   `attributes` (最多 20 个属性名) 再加 `attributes: {名字: 值或 null}`), ref
   能直接给 act (不在语义树里的元素也行: `point` 按 render 节点 id 找元素).

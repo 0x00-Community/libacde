@@ -34,9 +34,17 @@ export interface InjectEvent {
 export interface InspectShell {
   focus(window: number): void
   setState?(window: number, state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
+  place?(window: number, change: PlaceChange): Promise<readonly [number, number, number, number]>
   windows(): ShellWindow[]
   menus?(window: number): string | null
   inject(event: InjectEvent): void
+}
+
+export interface PlaceChange {
+  readonly x: number
+  readonly y: number
+  readonly width?: number
+  readonly height?: number
 }
 
 export interface NativeAccessibility {

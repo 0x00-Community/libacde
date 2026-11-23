@@ -4,6 +4,7 @@ import { looked, type ActResult, type InspectStep, type Query, type QueryOptions
 import { chordCodes, keyCode } from '../../../page/src/keys'
 import type { PageNode, PagePoint, PageQuery, PageTree } from '../../../page/src/pageinspect'
 import type { Rpc } from '../../../page/src/rpc'
+import { Placing } from './inspect/place'
 import { header, menubar, outline } from './inspect/text'
 import {
   LEFT,
@@ -21,7 +22,7 @@ import {
   type Tree,
 } from './inspect/types'
 
-export type { InjectEvent, InspectHost, InspectInput, InspectShell, NativeAccessibility, ShellWindow } from './inspect/types'
+export type { InjectEvent, InspectHost, InspectInput, InspectShell, NativeAccessibility, PlaceChange, ShellWindow } from './inspect/types'
 
 export class Inspect {
   static readonly LIMIT = 600
@@ -42,13 +43,6 @@ export class Inspect {
 
   readonly #host: InspectHost
 
-  static unminimizable(row: ShellWindow | undefined): string | null {
-    if (!row || row.minimize !== false) return null
-    if ((row.window ?? row.id) === 0) return 'the desktop stays behind every window'
-    if (row.mode === 'fullscreen') return "it fills the host window, which only the host window's own controls minimize here"
-    if (row.mode === 'pinned') return 'a pinned window stays where it is'
-    return 'a standalone app has no Dock to bring it back'
-  }
   readonly #refs = new Map<number, string>()
   readonly #native = new Map<number, Aliases>()
   readonly #seen = new Map<string, Line[]>()
@@ -277,9 +271,15 @@ export class Inspect {
         return { ok: true, text: `${window.ref} is in front` }
       case 'fill':
       case 'fullscreen':
-        return this.#fill(window, action === 'fill' ? 'filled' : 'fullscreen')
+        return this.#placing().fill(window, action === 'fill' ? 'filled' : 'fullscreen')
       case 'minimize':
-        return this.#minimize(window)
+        return this.#placing().minimize(window)
+      case 'move':
+        return this.#placing().move(window, arg)
+      case 'resize':
+        return this.#placing().resize(window, arg)
+      case 'raise':
+        return this.#placing().raise(window)
       case 'close':
         if (window.kind === 'desktop') return { ok: false, text: 'the desktop cannot be closed' }
         await this.#host.close(window.id)
@@ -301,23 +301,8 @@ export class Inspect {
     }
   }
 
-  #fill(window: InspectWindow, state: 'filled' | 'fullscreen'): ActResult {
-    if (window.kind === 'desktop') return { ok: false, text: `the desktop cannot be made ${state}` }
-    if (window.mode === 'fullscreen') return { ok: false, text: `${window.ref} already fills the host window` }
-    if (!this.#host.shell.setState) return { ok: false, text: `this session cannot make ${window.ref} ${state}` }
-    if (window.hidden) this.#host.hide(window.id, false)
-    this.#host.shell.setState(window.id, state)
-    this.#focus(window)
-    return { ok: true, text: `${window.ref} is ${state}` }
-  }
-
-  #minimize(window: InspectWindow): ActResult {
-    if (window.kind === 'desktop') return { ok: false, text: 'the desktop cannot be minimized' }
-    const reason = Inspect.unminimizable(this.#host.shell.windows().find((row) => (row.window ?? row.id) === window.id))
-    if (reason) return { ok: false, text: `${window.ref} cannot be minimized: ${reason}` }
-    if (this.#host.shell.setState) this.#host.shell.setState(window.id, 'minimized')
-    else this.#host.hide(window.id, true)
-    return { ok: true, text: `${window.ref} is minimized` }
+  #placing(): Placing {
+    return new Placing(this.#host, () => this.windows(), (window) => this.#focus(window))
   }
 
   async #webAct(window: InspectWindow, node: number, action: InspectAction, arg: InspectArg): Promise<ActResult> {

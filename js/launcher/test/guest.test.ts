@@ -190,3 +190,58 @@ describe('a guard on act and run (what only the user may act on)', () => {
     assert.ok(sent.length > 0)
   })
 })
+
+describe('move, resize and raise on a window ref', () => {
+  const rows = (state: 'normal' | 'filled' = 'normal') => [
+    { id: 3, window: 3, canvas: 0, mode: 'free', x: 10, y: 20, width: 300, height: 200, z: 2, focus: false, state },
+    { id: 0, window: 0, canvas: 0, mode: 'desktop', x: 0, y: 0, width: 1280, height: 800, z: -1, focus: false },
+  ]
+  function host(state: 'normal' | 'filled' = 'normal', placed: object[] = [], focused: number[] = []): InspectHost {
+    const table = rows(state)
+    return {
+      ...base(3, focused),
+      shell: {
+        focus: (w) => void focused.push(w),
+        windows: () => table,
+        inject: () => {},
+        place: async (w, change) => {
+          placed.push({ w, ...change })
+          const row = table.find((r) => r.id === w)!
+          Object.assign(row, { x: change.x, y: change.y, ...(change.width !== undefined && { width: change.width, height: change.height }) })
+          return [row.x, row.y, row.width, row.height] as const
+        },
+      },
+      record: (w) => (w === 3 ? { kind: 'web', app: 'notes', title: 'Notes' } : null),
+    }
+  }
+
+  test('move takes screen x,y and keeps the size; resize takes WxH and keeps the place', async () => {
+    const placed: object[] = []
+    const inspect = new Inspect(host('normal', placed))
+    const moved = await inspect.act('w1', 'move', '100,80')
+    assert.equal(moved.ok, true)
+    assert.match(moved.text, /^w1 is at 100,80 300x200/)
+    const resized = await inspect.act('w1', 'resize', '800x600')
+    assert.match(resized.text, /^w1 is at 100,80 800x600/)
+    assert.deepEqual(placed, [{ w: 3, x: 100, y: 80 }, { w: 3, x: 100, y: 80, width: 800, height: 600 }])
+  })
+
+  test('a bad argument, the desktop and a window that is not normal are refused with the reason', async () => {
+    const inspect = new Inspect(host())
+    assert.match((await inspect.act('w1', 'move', '100x80')).text, /move needs where to: screen x,y like "100,80"/)
+    assert.match((await inspect.act('w1', 'resize', '0x10')).text, /resize needs a size: WxH like "800x600"/)
+    assert.match((await inspect.act('w0', 'move', '1,2')).text, /the desktop cannot move/)
+    const filled = new Inspect(host('filled'))
+    const refused = await filled.act('w1', 'resize', '800x600')
+    assert.equal(refused.ok, false)
+    assert.match(refused.text, /w1 is filled; only a normal window can resize: act w1 restore first/)
+  })
+
+  test('raise brings the window to the front and refuses the desktop', async () => {
+    const focused: number[] = []
+    const inspect = new Inspect(host('normal', [], focused))
+    assert.match((await inspect.act('w1', 'raise', null)).text, /^w1 is in front/)
+    assert.deepEqual(focused, [3])
+    assert.match((await inspect.act('w0', 'raise', null)).text, /the desktop stays behind every window/)
+  })
+})
