@@ -5,7 +5,7 @@ import type { Rpc } from '../src/rpc.ts'
 
 type Call = readonly [string, ...unknown[]]
 
-function harness(opacity = '1', anchors = false) {
+function harness(opacity = '1', anchors = false, popped: boolean | undefined = undefined) {
   const calls: Call[] = []
   const listeners = new Map<string, () => void>()
   let answer: { resolve: (value: unknown) => void; reject: (error: Error) => void } | null = null
@@ -32,7 +32,7 @@ function harness(opacity = '1', anchors = false) {
       requestAnimationFrame: () => 0,
       getComputedStyle: () => style,
     },
-    idOf: () => 7,
+    idOf: (node: { panelId?: number }) => node.panelId ?? 7,
   }
   const rpc = {
     call: (service: string, method: string, args: unknown[]) => {
@@ -45,7 +45,10 @@ function harness(opacity = '1', anchors = false) {
     },
   } as unknown as Rpc
   const surface = {
-    openPanel: (...args: unknown[]) => calls.push(['openPanel', ...args]),
+    openPanel: (...args: unknown[]) => {
+      calls.push(['openPanel', ...args])
+      return popped
+    },
     placePanel: (...args: unknown[]) => calls.push(['placePanel', ...args]),
     closePanel: (...args: unknown[]) => calls.push(['closePanel', ...args]),
     reservePanel: (...args: unknown[]) => calls.push(['reservePanel', ...args]),
@@ -66,7 +69,7 @@ test('once the panel opens it is placed with the input box of the element', asyn
   pinned.pin(element as unknown as Element)
   answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false, false])
+  assert.deepEqual(calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false, false, false, 0])
   assert.deepEqual(calls.filter((c) => c[0] === 'placePanel').at(-1), ['placePanel', 7, 10, 20, 100, 50, 0, 0, 100, 50])
 })
 
@@ -95,12 +98,12 @@ test('keyboard: exclusive opens the panel with the keyboard all to itself; on-de
   exclusive.pinned.pin(exclusive.element as unknown as Element, { keyboard: 'exclusive' })
   exclusive.answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(exclusive.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, false])
+  assert.deepEqual(exclusive.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, false, false, 0])
   const onDemand = harness()
   onDemand.pinned.pin(onDemand.element as unknown as Element, { keyboard: 'on-demand' })
   onDemand.answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(onDemand.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false, false])
+  assert.deepEqual(onDemand.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false, false, false, 0])
 })
 
 test('userOnly: the panel opens marked as a card only the user may answer; ordinary panels are not', async () => {
@@ -108,12 +111,12 @@ test('userOnly: the panel opens marked as a card only the user may answer; ordin
   card.pinned.pin(card.element as unknown as Element, { keyboard: 'exclusive', userOnly: true })
   card.answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(card.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, true])
+  assert.deepEqual(card.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, true, false, 0])
   const overlay = harness()
   overlay.pinned.pin(overlay.element as unknown as Element, { keyboard: 'exclusive', userOnly: false })
   overlay.answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(overlay.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, false])
+  assert.deepEqual(overlay.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, false, false, 0])
 })
 
 test('userOnly: anything but a boolean is a TypeError and pins nothing', () => {
@@ -186,4 +189,52 @@ test('closed: unpinned after unpin, parent-closed or refused when the window sys
   const never = refused.pinned.pin(refused.element as unknown as Element, { anchor: ANCHOR })
   refused.answer().reject(new Error('no'))
   assert.equal(await never.closed, 'refused')
+})
+
+const another = (element: object, panelId: number) => ({ ...element, panelId }) as unknown as Element
+
+test('a popup does not go with keyboard exclusive or with reserve; it goes with an anchor', () => {
+  const { element, pinned } = harness('1', true)
+  assert.throws(() => pinned.pin(element as unknown as Element, { popup: true, keyboard: 'exclusive' }), TypeError)
+  assert.throws(() => pinned.pin(element as unknown as Element, { popup: true, reserve: { edge: 'top' } }), TypeError)
+  assert.doesNotThrow(() => pinned.pin(element as unknown as Element, { popup: true, anchor: ANCHOR }))
+})
+
+test('a popup opens with its parent panel\'s id, and handle.popup says whether it became one', async () => {
+  const { calls, element, pinned, answer } = harness('1', false, true)
+  const parent = pinned.pin(element as unknown as Element)
+  answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  assert.equal(parent.popup, false, 'not asked for a popup')
+  const child = pinned.pin(another(element, 9), { popup: true, parent })
+  assert.equal(child.popup, false, 'false until it opens')
+  answer().resolve({ window: 1048578, token: 6n })
+  await Promise.resolve()
+  assert.deepEqual(calls.filter((c) => c[0] === 'openPanel').at(-1), ['openPanel', 9, 6n, 10, 20, 100, 50, false, false, true, 7])
+  assert.equal(child.popup, true)
+  assert.throws(() => pinned.pin(another(element, 11), { parent: {} as never }), TypeError)
+})
+
+test('a popup the window system could not make is not one: handle.popup stays false', async () => {
+  const { element, pinned, answer } = harness('1', false, false)
+  const panel = pinned.pin(element as unknown as Element, { popup: true })
+  answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  assert.equal(panel.popup, false)
+})
+
+test('a dismissed popup ends as dismissed and is closed like an unpin, and its child popups end with it', async () => {
+  const { calls, element, pinned, answer } = harness('1', false, true)
+  const parent = pinned.pin(element as unknown as Element, { popup: true })
+  answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  const child = pinned.pin(another(element, 9), { popup: true, parent })
+  answer().resolve({ window: 1048578, token: 6n })
+  await Promise.resolve()
+  pinned.ended(7, 'dismissed')
+  assert.equal(await parent.closed, 'dismissed')
+  assert.equal(await child.closed, 'parent-closed')
+  assert.deepEqual(calls.filter((c) => c[0] === 'closePanel'), [['closePanel', 9], ['closePanel', 7]])
+  assert.ok(calls.some((c) => c[0] === 'rpc panel.close' && c[1] === 1048577))
+  assert.deepEqual(calls.filter((c) => c[0] === 'setPanel').slice(-2), [['setPanel', 7, 0, 0, 0, 0], ['setPanel', 9, 0, 0, 0, 0]])
 })

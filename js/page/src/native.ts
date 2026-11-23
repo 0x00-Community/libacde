@@ -23,10 +23,12 @@ export interface WindowEvent {
   readonly [field: string]: unknown
 }
 
+export type PanelEnd = 'parent-closed' | 'refused' | 'dismissed'
+
 export type ShellEvent =
   | { type: 'frame'; time: number }
   | { type: 'panelmove'; id: number; x: number; y: number; width: number; height: number }
-  | { type: 'panelended'; id: number; why: 'parent-closed' | 'refused' }
+  | { type: 'panelended'; id: number; why: PanelEnd }
   | { type: 'pointermove' | 'pointerdown' | 'pointerup'; target: number | null; x: number; y: number; button?: number; movement?: readonly [number, number]; modifiers?: Modifiers; time?: number; samples?: readonly PointerSample[] }
   | { type: 'pointerleave'; modifiers?: Modifiers }
   | { type: 'wheel'; target: number | null; x: number; y: number; deltaX: number; deltaY: number; modifiers?: Modifiers }
@@ -94,7 +96,10 @@ export interface NativeSurface {
   readonly pointerLock?: boolean
   lockPointer?(on: boolean): void
   releaseGrab(kind: 'pointer' | 'keyboard'): void
-  openPanel(id: number, token: bigint, x: number, y: number, width: number, height: number, exclusive?: boolean, userOnly?: boolean): void
+  openPanel(
+    id: number, token: bigint, x: number, y: number, width: number, height: number,
+    exclusive?: boolean, userOnly?: boolean, popup?: boolean, parent?: number,
+  ): boolean | undefined
   placePanel(id: number, x: number, y: number, width: number, height: number, ix: number, iy: number, iw: number, ih: number): void
   closePanel(id: number): void
   reservePanel?(id: number, edge: number, thickness: number): void

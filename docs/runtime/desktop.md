@@ -140,8 +140,15 @@
   元素仍要在桌面页可见范围里布局. 已钉住的用 `anchor(next)` 换锚点 (下拉框跟着输入框滚动). 不能和 `reserve` 同给, 也不能和
   `keyboard: 'exclusive'` 同给 (`TypeError`; 菜单要键盘走 `requestGrab`). 窗口系统不会放锚定面板 (老 acdes、acdev 宿主窗口) 时 `pin` 当场抛
   `NotSupportedError`, 桌面可以退回自己换算坐标.
+- **弹出窗口** (`popup: true`, `parent?: PinnedPanel`, 2026-11-24): 菜单、下拉框、启动台这类“点外面就收起”的弹层, 交给窗口系统做成标准弹出窗口
+  (xdg_popup 那一类), 由合成器负责点到外面时收起, 页面不再自己判断点击落在哪. `parent` 是挂在哪个已钉住的面板上 (运行时换成它的面板号交给窗口系统),
+  不给时挂在桌面主层面上; 不是这里钉住、或已经结束的面板抛 `TypeError`. 可以和 `anchor` 同给; 不能和 `keyboard: 'exclusive'` 或 `reserve` 同给
+  (`TypeError`: 弹出窗口打开时自己拿键盘, 不占边). 被收起时 `closed` 以 `'dismissed'` 兑现, 收尾和 `unpin()` 一样; 一个面板结束时, 挂在它下面的
+  面板 (`parent` 是它) 都以 `'parent-closed'` 结束. 窗口系统不会做弹出窗口时 (acdev 宿主窗口、老 acdes) 照常按 `on-demand` 面板打开:
+  `PinnedPanel.popup` (只读, getter) 说这次实际是不是弹出窗口, 请求了并真的建成时为 true, 退回时为 false, 这时 `closed` 不会以 `'dismissed'` 兑现,
+  点外面收起要页面自己做. 元素要可见、有了位置才真正打开, 在那之前 `popup` 为 false, 打开后按实际结果更新.
 - **`closed`**: 每个面板都带的 Promise, 面板结束时兑现: `'unpinned'` (页面 `unpin()`)、`'parent-closed'` (锚定的父窗口关了, 运行时已收起面板,
-  页面只清自己的状态)、`'refused'` (窗口系统这次不让锚: 窗口不存在、会话锁着等, 或面板根本没开出来).
+  页面只清自己的状态)、`'refused'` (窗口系统这次不让锚: 窗口不存在、会话锁着等, 或面板根本没开出来), `'dismissed'` (弹出窗口被合成器收起: 点到了外面)
 - 面板里的 `backdrop-filter` 交给合成器模糊下面的窗口 (acdes: 每个面板只取最大的一块).
 - 全屏窗口盖住面板所在的边时, 面板仍在最上面: 要给全屏让路, 桌面自己把面板变透明、不接指针 (按前台窗口的 `state`).
 

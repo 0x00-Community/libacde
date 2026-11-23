@@ -12,6 +12,11 @@ pub trait Window {
     fn set_waker(&self, waker: Option<Waker>);
     fn send(&self, command: SurfaceCommand);
 
+    fn open_panel(&self, command: SurfaceCommand) -> bool {
+        self.send(command);
+        false
+    }
+
     fn minimizable(&self) -> bool {
         true
     }

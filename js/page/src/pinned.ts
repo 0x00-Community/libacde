@@ -1,6 +1,6 @@
 import { hostTime } from '@acde/dom'
 import type { PanelReserve, PinAnchor, PinClosed, PinnedPanel, PinOptions, WindowEdge } from '@acde/api'
-import type { NativeSurface } from './native'
+import type { NativeSurface, PanelEnd } from './native'
 import { anchorOf, type Anchor, type AnchorWire } from './pinanchor'
 import type { Rpc } from './rpc'
 
@@ -33,6 +33,9 @@ interface Panel {
   readonly margin: number
   readonly exclusive: boolean
   readonly userOnly: boolean
+  readonly popup: boolean
+  readonly parent: number
+  popped: boolean
   reserve: PanelReserve | null
   reserved: string
   anchor: Anchor | null
@@ -55,6 +58,7 @@ export class Pinned {
   readonly #dom: PanelDom
   readonly #page: PinnedPage
   readonly #panels = new Map<Element, Panel>()
+  readonly #handles = new WeakMap<PinnedPanel, Panel>()
 
   readonly #anchors: boolean
 
@@ -80,6 +84,8 @@ export class Pinned {
     const anchor = options.anchor === undefined ? null : this.#anchor(options.anchor)
     if (anchor && reserve) throw new TypeError('pin: anchor and reserve do not go together (an anchored panel reserves no edge)')
     if (anchor && exclusive) throw new TypeError("pin: anchor and keyboard 'exclusive' do not go together (a menu takes the keyboard with requestGrab)")
+    const popup = Pinned.#popup(options.popup, exclusive, reserve)
+    const parent = this.#parent(options.parent)
     const margin = Math.max(0, options.margin ?? 0)
     const id = this.#page.idOf(element)
     let end: (why: PinClosed) => void = () => {}
@@ -87,7 +93,7 @@ export class Pinned {
       end = resolve
     })
     const panel: Panel = {
-      element, id, margin, exclusive, userOnly, reserve, reserved: '', anchor, sent: '', closed, end,
+      element, id, margin, exclusive, userOnly, popup, parent, popped: false, reserve, reserved: '', anchor, sent: '', closed, end,
       window: null, opening: false, rect: null, extent: null, view: '', stops: [],
     }
     this.#panels.set(element, panel)
@@ -124,7 +130,7 @@ export class Pinned {
     return anchorOf(given)
   }
 
-  ended(id: number, why: 'parent-closed' | 'refused'): void {
+  ended(id: number, why: PanelEnd): void {
     const panel = [...this.#panels.values()].find((p) => p.id === id)
     if (panel) this.#unpin(panel, why)
   }
@@ -133,6 +139,21 @@ export class Pinned {
     if (keyboard === undefined || keyboard === 'on-demand') return false
     if (keyboard === 'exclusive') return true
     throw new TypeError(`pin: keyboard is 'exclusive' or 'on-demand', not ${String(keyboard)}`)
+  }
+
+  static #popup(popup: unknown, exclusive: boolean, reserve: PanelReserve | null): boolean {
+    if (popup === undefined || popup === false) return false
+    if (popup !== true) throw new TypeError(`pin: popup is true or false, not ${String(popup)}`)
+    if (exclusive) throw new TypeError("pin: popup and keyboard 'exclusive' do not go together (a popup takes the keyboard when it opens)")
+    if (reserve) throw new TypeError('pin: popup and reserve do not go together (a popup reserves no edge)')
+    return true
+  }
+
+  #parent(parent: PinnedPanel | undefined): number {
+    if (parent === undefined) return 0
+    const panel = this.#handles.get(parent)
+    if (!panel || this.#panels.get(panel.element) !== panel) throw new TypeError('pin: parent is a panel pinned here and not closed')
+    return panel.id
   }
 
   static #userOnly(userOnly: unknown): boolean {
@@ -169,13 +190,18 @@ export class Pinned {
   }
 
   #handle(panel: Panel): PinnedPanel {
-    return {
+    const handle: PinnedPanel = {
       update: () => this.#place(panel),
       unpin: () => this.#unpin(panel, 'unpinned'),
       reserve: (reserve) => this.#rereserve(panel, reserve),
       anchor: (next) => this.#reanchor(panel, next),
       closed: panel.closed,
+      get popup() {
+        return panel.popped
+      },
     }
+    this.#handles.set(handle, panel)
+    return handle
   }
 
   #reanchor(panel: Panel, next: PinAnchor): void {
@@ -217,6 +243,7 @@ export class Pinned {
     for (const stop of panel.stops) stop()
     this.#dom.setPanel(panel.id, 0, 0, 0, 0)
     panel.end(why)
+    for (const child of [...this.#panels.values()].filter((p) => p.parent === panel.id)) this.#unpin(child, 'parent-closed')
     if (panel.window === null) return
     this.#surface.closePanel(panel.id)
     void this.#rpc.call('panel', 'close', [panel.window]).catch(() => undefined)
@@ -288,7 +315,8 @@ export class Pinned {
         const { window, token } = granted as { window: number; token: bigint }
         if (this.#panels.get(panel.element) !== panel) return void this.#rpc.call('panel', 'close', [window]).catch(() => undefined)
         panel.window = window
-        this.#surface.openPanel(panel.id, token, ...rect, panel.exclusive, panel.userOnly)
+        const popped = this.#surface.openPanel(panel.id, token, ...rect, panel.exclusive, panel.userOnly, panel.popup, panel.parent)
+        panel.popped = panel.popup && popped === true
         this.#dom.setPanel(panel.id, ...rect)
         this.#surface.placePanel(panel.id, ...rect, ...input)
         this.#place(panel)

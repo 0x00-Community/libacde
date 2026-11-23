@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use crate::host::surface::{DragImage, Event, Surface};
+use crate::host::surface::{DragImage, Event, PanelOpening, Surface};
 
 use crate::host::bind;
 use crate::host::rt::{self, Msg};
@@ -313,7 +313,7 @@ fn set_backdrop(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _
     with_surface(scope, |surface| surface.set_backdrop(rect, effect));
 }
 
-fn open_panel(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
+fn open_panel(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     let id = bind::arg_f64(scope, &args, 0) as u32;
     let Ok(token) = v8::Local::<v8::BigInt>::try_from(args.get(1)) else {
         return bind::throw_type_error(scope, "openPanel: the token is a bigint");
@@ -322,7 +322,11 @@ fn open_panel(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: 
     let rect = [2, 3, 4, 5].map(|i| bind::arg_f64(scope, &args, i).round() as i32);
     let exclusive = args.get(6).is_true();
     let user_only = args.get(7).is_true();
-    with_surface(scope, |surface| surface.open_panel(id, token, rect, exclusive, user_only));
+    let popup = args.get(8).is_true();
+    let parent = Some(bind::arg_f64(scope, &args, 9)).filter(|p| p.is_finite() && *p > 0.0).map(|p| p as u32);
+    let opening = PanelOpening { id, token, rect, exclusive, user_only, popup, parent };
+    let popped = with_surface(scope, |surface| surface.open_panel(opening));
+    rv.set_bool(popped.unwrap_or(false));
 }
 
 fn place_panel(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {

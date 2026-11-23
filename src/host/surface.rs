@@ -6,6 +6,16 @@ use crate::render::{RenderHandle, SurfaceCommand as C};
 
 pub struct Surface(Box<dyn crate::host::platform::Window>);
 
+pub struct PanelOpening {
+    pub id: u32,
+    pub token: u64,
+    pub rect: [i32; 4],
+    pub exclusive: bool,
+    pub user_only: bool,
+    pub popup: bool,
+    pub parent: Option<u32>,
+}
+
 macro_rules! commands {
     ($($name:ident($($arg:ident: $t:ty),*) => $command:expr;)*) => {$(
         pub fn $name(&self, $($arg: $t),*) {
@@ -47,6 +57,11 @@ impl Surface {
         self.0.content_offset()
     }
 
+    pub fn open_panel(&self, panel: PanelOpening) -> bool {
+        let PanelOpening { id, token, rect, exclusive, user_only, popup, parent } = panel;
+        self.0.open_panel(C::OpenPanel { id, token, rect, exclusive, user_only, popup, parent })
+    }
+
     pub fn pump(&self) -> Vec<Event> {
         self.0.pump()
     }
@@ -72,7 +87,6 @@ impl Surface {
         request_activate() => C::Activate;
         request_grab(kind: u32, on: bool) => C::Grab(kind, on);
         lock_pointer(on: bool) => C::PointerLock(on);
-        open_panel(id: u32, token: u64, rect: [i32; 4], exclusive: bool, user_only: bool) => C::OpenPanel { id, token, rect, exclusive, user_only };
         place_panel(id: u32, rect: [i32; 4], input: [i32; 4]) => C::PlacePanel { id, rect, input };
         close_panel(id: u32) => C::ClosePanel(id);
         reserve_panel(id: u32, edge: u32, thickness: f64) => C::ReservePanel { id, edge, thickness };

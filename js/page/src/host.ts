@@ -4,7 +4,7 @@ import { DragDrop, DragSource } from './dnd'
 import type { HandOver } from './pagecalls'
 import { InputMethod, type ImeEvent } from './ime'
 import { ShellInput, chordMatches } from './keys'
-import { WINDOW_EVENTS, type Modifiers, type Native, type NativeSurface, type RawShellEvent, type ShellEvent, type WindowEvent } from './native'
+import { WINDOW_EVENTS, type Modifiers, type Native, type NativeSurface, type PanelEnd, type RawShellEvent, type ShellEvent, type WindowEvent } from './native'
 import type { WindowList } from './remote'
 import { screenshotFile } from './sys/os'
 import { TextEntry } from './text'
@@ -41,7 +41,7 @@ export class Host {
   #moves: RawShellEvent[] = []
   onActivation: (active: boolean) => void = () => {}
   onPanelMove: (id: number, extent: readonly [number, number, number, number]) => void = () => {}
-  onPanelEnded: (id: number, why: 'parent-closed' | 'refused') => void = () => {}
+  onPanelEnded: (id: number, why: PanelEnd) => void = () => {}
   onGrab: (event: WindowGrabEvent | WindowGrabLostEvent) => void = () => {}
   menuKeys: readonly string[] = []
   onMenuKey: (chord: string) => void = () => {}
