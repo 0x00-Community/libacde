@@ -229,7 +229,8 @@
 
 **图标主题变了** (2026-11-22): 管家给桌面推 `{type: 'iconschanged', theme}` 并重发服务表; 页面里是 `acde:icons` 的 `on('changed', ({theme}) => …)`
 (`Host.NOTICES` → `icons:changed`), `acde:icons.theme()` 读的是服务表里最新的同步值, 事件先到时先按事件里的 `theme` 改掉 (`RemoteBridge.SERVICE_EVENTS`
-列出带事件的服务, 现在只有 `icons`).
+列出带事件的服务, 由 `RemoteBridge.THEMES` 生成: `icons`、`sounds`).
+**声音主题变了** (2026-11-23): 同法, 管家推 `{type: 'soundschanged', theme}` → `sounds:changed`; `acde:sounds` (类型在 `acde-api/src/types/sounds/`, 以模块扩充给 `AcdePage` 加 `sounds`, 为 page.d.ts 的行数门禁) 有 `theme()`、`lookup(names)` (返回声音文件的绝对路径, 页面经 `/acde-sounds/<路径>` 播放) 和 `on('changed')`.
 
 **会话里的菜单快捷键** (2026-11-20): 宿主上菜单快捷键经 `shell.shortcut(combo, 'menu', window)` 在合成器登记; 会话里应用进程没有桌面协议, 登记不上.
 所以有管家时, 应用的 `window.setMenus` 照旧交给管家, 启动器另外记下菜单的快捷键表 (`AppMenus.remember`), 以 `{type: 'menukeys', keys}` 发给页面线程;

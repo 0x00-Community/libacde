@@ -18,6 +18,10 @@ declare module 'acde:icons' {
   const icons: import('../types/page').AcdeIcons
   export { icons, icons as default }
 }
+declare module 'acde:sounds' {
+  const sounds: import('../types/sounds/index').AcdeSounds
+  export { sounds, sounds as default }
+}
 declare module 'acde:desktops' {
   const desktops: import('../types/page').AcdeDesktops
   export { desktops, desktops as default }

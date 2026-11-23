@@ -9,6 +9,7 @@ export type * from './types/config'
 export type * from './types/capabilities'
 export type * from './types/places'
 export type * from './types/window-look/index'
+export type * from './types/sounds/index'
 
 export interface AppModules {
   readonly fs: Page.AcdeFs

@@ -356,7 +356,8 @@ type ModuleHost = { defineModule(url: string, exports: object): void; refuseModu
 
 export class RemoteBridge {
   readonly value: Record<string, unknown> = {}
-  static readonly SERVICE_EVENTS: Readonly<Record<string, readonly string[]>> = { icons: ['changed'] }
+  static readonly THEMES: readonly string[] = ['icons', 'sounds']
+  static readonly SERVICE_EVENTS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(RemoteBridge.THEMES.map((s) => [s, ['changed']]))
   readonly #services = new Set<string>()
   readonly #shapeOf = new Map<string, ServiceShape>()
   readonly #changes = new Notices()
@@ -373,7 +374,9 @@ export class RemoteBridge {
     this.#rpc = rpc
     this.permits = permits
     this.#notices = windows.notices
-    windows.notices.on('icons:changed', (event) => this.#syncChanged('icons', 'theme', (event as { theme?: unknown }).theme))
+    for (const theme of RemoteBridge.THEMES) {
+      windows.notices.on(`${theme}:changed`, (event) => this.#syncChanged(theme, 'theme', (event as { theme?: unknown }).theme))
+    }
     const permissions = () => ({
       ...Rpc.calls(() => rpc, 'permissions', 'pending', 'answer', 'list', 'revoke'),
       on: windows.notices.for('permissions', ['prompt', 'answered']),
