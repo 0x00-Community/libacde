@@ -11,7 +11,7 @@
     background use wlr-layer-shell.
   </description>
 
-  <interface name="acompositor_desktop_v1" version="12">
+  <interface name="acompositor_desktop_v1" version="13">
     <description summary="the desktop's handle on acompositor">
       On bind acompositor sends a window event for every toplevel already shown, then
       work_area, then done. Later windows come as they are shown. From version 2 the
@@ -33,7 +33,8 @@
       by acdev) hears what the seat and the windows do: presses, move and resize requests
       with acompositor's answer, keyboard focus, windows shown and hidden, drags.
       From version 12 such a client also asks how the screen is drawn (render_state) and
-      where a point lands (hit).
+      where a point lands (hit). From version 13 windows (acompositor_window_v1 version 8)
+      say whether their client answers acompositor's pings.
     </description>
 
     <enum name="error">
@@ -419,7 +420,7 @@
     </request>
   </interface>
 
-  <interface name="acompositor_window_v1" version="7">
+  <interface name="acompositor_window_v1" version="8">
     <description summary="one toplevel of any client"/>
 
     <request name="destroy" type="destructor"/>
@@ -593,6 +594,17 @@
         activated state, and shots of it work. Its desktop number takes no desktop. 0 once
         it is a window of the person's desktops, as after activate. Sent before done, with
         the first burst only when it is 1.
+      </description>
+      <arg name="on" type="uint"/>
+    </event>
+
+    <event name="unresponsive" since="8">
+      <description summary="whether the window's client answers pings">
+        acompositor sends xdg_wm_base.ping to a client when it hands the client input (at
+        most once in 2 seconds) and when one of its windows is activated. 1 once a ping has
+        gone 5 seconds without a pong: every window of that client is then unresponsive.
+        0 as soon as the client answers. Sent before done, with the first burst only when
+        it is 1.
       </description>
       <arg name="on" type="uint"/>
     </event>
