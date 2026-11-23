@@ -91,12 +91,13 @@ struct Uniforms {
     stride: u64,
     size: u64,
     pending: Vec<u8>,
+    written: Vec<u8>,
 }
 
 impl Uniforms {
     fn new(device: &wgpu::Device, size: u64, capacity: u64) -> Self {
         let stride = size.next_multiple_of(u64::from(device.limits().min_uniform_buffer_offset_alignment));
-        Self { buffer: Self::buffer(device, capacity * stride), capacity, stride, size, pending: Vec::new() }
+        Self { buffer: Self::buffer(device, capacity * stride), capacity, stride, size, pending: Vec::new(), written: Vec::new() }
     }
 
     fn buffer(device: &wgpu::Device, size: u64) -> wgpu::Buffer {
@@ -113,6 +114,7 @@ impl Uniforms {
         if grew {
             queue.write_buffer(&self.buffer, 0, &self.pending);
             self.pending.clear();
+            self.written.clear();
             self.capacity *= 2;
             self.buffer = Self::buffer(device, self.capacity * self.stride);
         }
@@ -122,11 +124,20 @@ impl Uniforms {
         ((index * self.stride) as u32, grew)
     }
 
+    fn reuse(&self, bytes: &[u8]) -> Option<u32> {
+        let stride = self.stride as usize;
+        self.pending.chunks(stride).position(|slot| slot[..bytes.len()] == *bytes).map(|i| (i * stride) as u32)
+    }
+
     fn flush(&mut self, queue: &wgpu::Queue) {
-        if !self.pending.is_empty() {
-            queue.write_buffer(&self.buffer, 0, &self.pending);
-            self.pending.clear();
+        if self.pending.is_empty() {
+            return;
         }
+        if !self.written.starts_with(&self.pending) {
+            queue.write_buffer(&self.buffer, 0, &self.pending);
+            self.written.clone_from(&self.pending);
+        }
+        self.pending.clear();
     }
 
     fn binding(&self) -> wgpu::BindingResource<'_> {
@@ -309,7 +320,11 @@ impl Composer {
     }
 
     fn push_group(&mut self, group: &GlassGroup) -> u32 {
-        let (offset, grew) = self.pieces.push(&self.device, &self.queue, &group.to_uniform());
+        let bytes = group.to_uniform();
+        if let Some(offset) = self.pieces.reuse(&bytes) {
+            return offset;
+        }
+        let (offset, grew) = self.pieces.push(&self.device, &self.queue, &bytes);
         if grew {
             self.binds.clear();
         }

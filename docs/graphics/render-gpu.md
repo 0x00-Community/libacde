@@ -140,7 +140,7 @@
   进程内合成画组 (`src/vello/compose.rs`, 2026-11-22): `Composer::backdrop` 见到非空的 `group` 走 `glass_group`: 取样区域是 `Backdrop.rect` (各块并集) 外扩
   `GlassGroup::reach()`, 模糊层与颜色矩阵和单块同一段 (`glass_under`, 模糊层取第一块的玻璃), 再用 `fs_glass_group` 逐像素按组场着色. 全部管线共用一个
   绑定布局: 绑定 3 是块数组 (`acde_glass_pieces`, 动态偏移的 uniform, 每组 `GlassGroup::to_uniform` 的 1792 字节一段), 不画组的绘制给偏移 0; 参数缓冲和块缓冲
-  是同一个 `Uniforms` (满了翻倍重建, 已录的绑定组仍指向旧缓冲, 旧缓冲先写好), 任一个重建都清掉绑定组缓存. 块数和间距放在 `Params.shift` (x 块数, y 间距),
+  是同一个 `Uniforms` (满了翻倍重建, 已录的绑定组仍指向旧缓冲, 旧缓冲先写好), 任一个重建都清掉绑定组缓存. 组的块数组不重复传 (2026-11-23): 同一批里内容相同的组复用已有那一段的偏移; 提交时若这一批的内容和上次写进缓冲的完全相同 (前缀一致), 不再 `write_buffer`, 所以组静止时每帧不重传 2304 字节; 缓冲重建时这份记录一并清掉. 块数和间距放在 `Params.shift` (x 块数, y 间距),
   `Params.bias` 是取样区域. 宿主窗口和会话里画页面都经这里, 所以两边跟着生效.
   出现、消失 (`--acde-glass-id`, 2026-11-22; `acde_scene::glass::Appearance`, 渲染侧 `Engine::animate_glass`): 每张平面 (整页一份, 每个钉住的面板各一份, 面板撤掉时丢掉)
   记着上一帧各组里带 `--acde-glass-id` 的块 (`Piece.id`). 新出现的名字从同组里离它最近的那块的中心长出来 (半宽高和半径从 0 按曲线到实际大小, 中心从那块的中心
