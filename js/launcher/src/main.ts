@@ -2,6 +2,7 @@ import { installCore } from '@acde/dom/core'
 import type { WebInit } from '../../page/src/contract'
 import type { FileFilter, Lent, WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
 import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
+import { Log } from '../../page/src/log'
 import { readDirOr, readTextOr } from '../../page/src/sys/fs'
 import { screenshotFile, xdgHome } from '../../page/src/sys/os'
 import { join } from '../../page/src/sys/path'
@@ -217,6 +218,7 @@ class Launcher {
       inspect: () => this.#inspector(),
       reload: () => this.#devReload(false),
       open: (given) => this.#devOpen(given),
+      origin: () => Date.now() - Log.clock(),
       appearance: (change) => {
         this.#appearance(change)
         return this.#glass

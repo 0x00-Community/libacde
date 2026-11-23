@@ -42,6 +42,7 @@ export interface DevHost {
   inspect(): Inspect
   reload(): Promise<void>
   open?(given: DevOpen): Promise<DevOpened>
+  origin?(): number
   appearance?(change: { readonly glass?: number; readonly reducedTransparency?: boolean }): { readonly level: number; readonly reducedTransparency: boolean }
   respond?(id: number, ok: boolean, payload: string): void
   place?(windows: unknown): void
@@ -239,10 +240,12 @@ export class DevChannel {
       }
       case 'clock':
         return this.#web(args['web']).call('dev', 'clock', [DevChannel.#clock(args)])
-      case 'console':
-        return this.log.console({ ...DevChannel.#query(args), ...(args['level'] !== undefined && { level: args['level'] as ConsoleLevel | 'errors' }) })
+      case 'console': {
+        const level = args['level'] === undefined ? {} : { level: args['level'] as ConsoleLevel | 'errors' }
+        return { ...this.log.console({ ...DevChannel.#query(args), ...level }), ...this.#origin() }
+      }
       case 'network':
-        return this.log.requests({ ...DevChannel.#query(args), failed: args['failed'] === true })
+        return { ...this.log.requests({ ...DevChannel.#query(args), failed: args['failed'] === true }), ...this.#origin() }
       case 'screen': {
         if (typeof args['path'] !== 'string' || !isAbsolute(args['path'])) throw new Error('screen: path is an absolute file path for the PNG')
         const size = await this.#host.shell.screenshot(args['path'])
@@ -356,6 +359,10 @@ export class DevChannel {
       this.#host.page()?.post({ type: 'colorscheme', dark: this.dark })
     }
     return { colorScheme: this.dark ? 'dark' : 'light', emulated: this.#emulated !== null }
+  }
+
+  #origin(): { readonly origin?: number } {
+    return this.#host.origin ? { origin: Math.round(this.#host.origin()) } : {}
   }
 
   static readonly GLASS = ['clear', 'medium', 'tinted'] as const
