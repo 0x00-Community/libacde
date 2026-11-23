@@ -308,7 +308,7 @@ impl Engine {
     }
 
     pub(in crate::render::dom) fn match_media(&mut self, query: &str) -> bool {
-        self.doc.media_matches(query)
+        self.doc.media_matches_now(query)
     }
 
     pub(in crate::render::dom) fn scroll_to(&mut self, node: NodeId, left: f64, top: f64, smooth: bool) {
