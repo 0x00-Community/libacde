@@ -185,7 +185,8 @@
   2D 画布, 支持裁剪矩形、`resizeWidth` / `resizeHeight`、`imageOrientation: 'flipY'`、`premultiplyAlpha` (WebGL 上传时按它, 不看
   `UNPACK_FLIP_Y_WEBGL` / `UNPACK_PREMULTIPLY_ALPHA_WEBGL`); `<video>` 来源报 `NotSupportedError`. 2D `drawImage` 和 WebGPU 外部拷贝收它.
 - 选项 `default_lang` (默认 zh-Hans)、`dark` (事后用 `set_dark` 改, 都只改
-  viewport, 媒体查询和 `matchMedia` 跟着变). `semantics(root, limit, offscreen, invisible)`: offscreen 时不按可见范围剪, invisible 见 `docs/web/inspect.md`「看和操作桌面」. `<iframe>` 不加载
+  viewport, 媒体查询和 `matchMedia` 跟着变). 页面能用的偏好类媒体查询: `prefers-color-scheme` (`dark` / `set_dark`)、`prefers-reduced-transparency`
+  (`set_glass` 的减少透明度, 见 `docs/dev/build-run.md` 的玻璃通透度)、`prefers-reduced-motion` (acss 现在恒为 `no-preference`, 还没接系统的值). `semantics(root, limit, offscreen, invisible)`: offscreen 时不按可见范围剪, invisible 见 `docs/web/inspect.md`「看和操作桌面」. `<iframe>` 不加载
   (`skip_iframe_content`), 只是空盒子. 增量录制见 vendor/blitz; `ACDE_PAINT_VERIFY=1` 每帧再整页录一次比对 (测试用). 图片缓存最多 256 张 /
   64 MB. 所有入口 `catch_unwind`.
 - 窗框 (`decoration.rs`): `Decoration::scene(&Bar {title, width, height, scale, style, fullscreen})` → 物理像素的场景 (背景 #f4f2f7; `FrameStyle::Mac`:

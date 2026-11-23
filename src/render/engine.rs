@@ -192,6 +192,12 @@ impl Engine {
 
     pub(crate) fn set_glass(&mut self, preference: acde_scene::glass::Preference) {
         let dark = self.doc.viewport().color_scheme == ColorScheme::Dark;
+        if self.doc.viewport().reduced_transparency != preference.reduced_transparency {
+            let mut viewport = self.doc.viewport().clone();
+            viewport.reduced_transparency = preference.reduced_transparency;
+            self.doc.set_viewport(viewport);
+            self.touch();
+        }
         self.adopt_glass(acde_scene::glass::Preference { dark, ..preference });
     }
 

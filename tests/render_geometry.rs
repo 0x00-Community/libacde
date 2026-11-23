@@ -199,3 +199,20 @@ fn prefers_color_scheme_follows_the_option_and_set_dark() {
         assert_eq!(doc.dom.match_media("(prefers-color-scheme: light)"), dark);
     }
 }
+
+#[test]
+fn prefers_reduced_transparency_follows_the_glass_preference() {
+    let doc = Doc::new(800, 600, 1.0, &Options::default()).unwrap();
+    doc.add_stylesheet("#dot { width: 10px; height: 10px; } @media (prefers-reduced-transparency: reduce) { #dot { width: 30px; } }").unwrap();
+    let body = doc.create_element("body").unwrap();
+    doc.append_child(0, body).unwrap();
+    let dot = doc.create_element("div").unwrap();
+    doc.set_attribute(dot, "id", "dot").unwrap();
+    doc.append_child(body, dot).unwrap();
+    for reduced in [false, true, false] {
+        doc.dom.set_glass(0, reduced);
+        assert_eq!(doc.rect(dot).unwrap().width, if reduced { 30.0 } else { 10.0 }, "the style follows {reduced}");
+        assert_eq!(doc.dom.match_media("(prefers-reduced-transparency: reduce)"), reduced);
+        assert_eq!(doc.dom.match_media("(prefers-reduced-transparency: no-preference)"), !reduced);
+    }
+}
