@@ -655,6 +655,20 @@ natives! {
         text!(property = scope, args, 0); text!(value = scope, args, 1);
         dom.css_supports_declaration(&property, &value)
     }
+    "styleText" => fn style_text(scope, args, dom) { text!(text = scope, args, 0); Ok(dom.style_text(&text)) }
+    "styleNames" => fn style_names(scope, args, dom) { text!(text = scope, args, 0); Ok(dom.style_names(&text)) }
+    "styleGet" => fn style_get(scope, args, dom) {
+        text!(text = scope, args, 0); text!(name = scope, args, 1);
+        Ok(dom.style_get(&text, &name))
+    }
+    "stylePriority" => fn style_priority(scope, args, dom) {
+        text!(text = scope, args, 0); text!(name = scope, args, 1);
+        Ok(dom.style_priority(&text, &name))
+    }
+    "styleSet" => fn style_set(scope, args, dom) {
+        text!(text = scope, args, 0); text!(name = scope, args, 1); text!(value = scope, args, 2);
+        Ok(dom.style_set(&text, &name, &value, f(scope, &args, 3) != 0.0))
+    }
     "cssRegisterProperty" => fn css_register_property(scope, args, dom) {
         text!(name = scope, args, 0); text!(syntax = scope, args, 1);
         let (inherits, has_initial) = (f(scope, &args, 2) != 0.0, f(scope, &args, 3) != 0.0);

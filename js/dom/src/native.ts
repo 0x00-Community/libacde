@@ -154,6 +154,11 @@ export interface DomNative {
   cssSupportsDeclaration(property: string, value: string): boolean
   cssRegisterProperty(name: string, syntax: string, inherits: number, hasInitial: number, initial: string): number
   cssPropertySupported(name: string): boolean
+  styleText(text: string): string
+  styleNames(text: string): string[]
+  styleGet(text: string, name: string): string
+  stylePriority(text: string, name: string): boolean
+  styleSet(text: string, name: string, value: string, important: number): string | null
   caretRect(id: number, offset: number): Float64Array
   caretFromPoint(x: number, y: number): { node: number; offset: number } | null
   textRects(id: number, start: number, end: number): Float64Array

@@ -40,6 +40,10 @@
   - `<link>` / `<style>` 的 `media` 属性是表的 media list: 不匹配的表照取、照派 `load`、`sheet` 照有, 只是不生效; 改属性不重取.
   - `link.disabled` / `disabled` 属性停用 link 的表 (加载前就有属性的, 表一到就是停用的); `sheet.disabled` 读写 blitz 里那张表的 disabled 标志
     (`sheetDisabled` / `setSheetDisabled`), 不改属性 (acdev#52).
+  - `element.style`、规则的 `style` (acde-dom `dom/style.ts`): 读写交给 acss 的 `style_attr_*` (原生 `styleText` / `styleNames` / `styleGet` /
+    `stylePriority` / `styleSet`, 不碰文档, 输入输出都是声明块的文字), 所以读到的是 acss 的规范写法 (`background-position: top left` 读回
+    `left top`), 简写设进去是它的长写 (`length` / `item` 列长写), 读简写由长写拼回 (拼不回是空串), 无效的值什么都不改. 改了就把序列化后的文字写回
+    `style` 属性 (`cssText` 也是先规范化再写); 元素的属性文字按 DOM 的改动计数缓存, 没改动不重读. Web Animations 写行内的 `animation-*` 也走这里.
   - 没做: `window` 的 `load` 不等样式表和图片; 备用样式表 (`title`)、`CSSImportRule.styleSheet`、`MediaList` 的成员 (只有
     `mediaText` / `length`); `<img crossorigin>` 仍按 no-cors 取.
 - **本地资源的类型** (acde-dom `core/net/index.ts` `TYPES`): 应用包里的文件经 `fetch` / XHR 读到时按扩展名给 `Content-Type`, 只列页面加载要的类型

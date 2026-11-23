@@ -6,7 +6,7 @@ import { now as clockNow } from '../core/clock'
 import { later } from '../core/timers'
 import type { Element } from './element'
 import { documentId, dom, ID, wrap, inner } from './realm'
-import { declarationsOf, inlineStyle, propertyName, writeDeclarations } from './style'
+import { editInline, inlineDeclaration, inlineStyle, propertyName } from './style'
 
 export class AnimationTimeline {
   get currentTime(): number {
@@ -360,15 +360,14 @@ export class Animation extends EventTarget {
     if (!(effect instanceof KeyframeEffect) || !target) return
     const frames = effect.getKeyframes()
     const edge = this.#state === 'finished' ? (this.#rate < 0 ? 0 : 1) : -1
-    const style = inlineStyle(target)
-    const declarations = new Map(declarationsOf(style))
+    const edits: [string, string, boolean][] = []
     for (const key of new Set(frames.flatMap((frame) => Object.keys(frame).filter((k) => !META.has(k))))) {
       const name = cssProperty(key)
       const at = frames.findLast((frame) => frame['computedOffset'] === edge && frame[key] !== undefined && frame[key] !== null)
       const value = at ? String(at[key]).trim() : dom.computedStyle(target[ID], '', name)
-      if (value && safe(value)) declarations.set(name, { value, important: false })
+      if (value && safe(value)) edits.push([name, value, false])
     }
-    writeDeclarations(style, declarations)
+    editInline(inlineStyle(target), edits)
   }
 }
 getters(Animation.prototype, { pending: false, replaceState: 'active' })
@@ -379,9 +378,9 @@ const DIRECTIONS = ['normal', 'reverse', 'alternate', 'alternate-reverse']
 const FILLS = new Set(['none', 'forwards', 'backwards', 'both', 'auto'])
 const META = new Set(['offset', 'easing', 'composite', 'computedOffset'])
 const LONGHANDS = ['animation-name', 'animation-duration', 'animation-timing-function', 'animation-delay', 'animation-iteration-count', 'animation-direction', 'animation-fill-mode', 'animation-play-state', 'animation-composition']
+const OWN = ['animation', ...LONGHANDS]
 const COMPOSITES = new Set(['replace', 'add', 'accumulate'])
 const FRAME_COMPOSITES = new Set([...COMPOSITES, 'auto'])
-const OWN = ['animation', ...LONGHANDS]
 
 function ms(value: number): string {
   return `${+value.toFixed(3)}ms`
@@ -534,9 +533,9 @@ function restyle(target: Element, changed: Animation, restart: boolean): void {
   if (!entry) {
     if (!restart || !changed[CSS](target)) return
     entry = { animations: [], original: new Map(), held: { names: [] } }
-    const declarations = declarationsOf(inlineStyle(target))
+    const style = inlineStyle(target)
     for (const key of OWN) {
-      const declaration = declarations.get(key)
+      const declaration = inlineDeclaration(style, key)
       if (declaration) entry.original.set(key, declaration)
     }
     styled.set(target, entry)
@@ -560,18 +559,16 @@ function restyle(target: Element, changed: Animation, restart: boolean): void {
     animation[RULE] = { name: values[0], values }
   }
   entry.animations = kept
-  const style = inlineStyle(target)
-  const declarations = new Map(declarationsOf(style))
-  for (const key of OWN) declarations.delete(key)
+  const edits: [string, string, boolean][] = OWN.map((key) => [key, '', false])
   if (kept.length) {
-    LONGHANDS.forEach((key, i) => declarations.set(key, { value: kept.map((a) => a[RULE]!.values[i]).join(', '), important: false }))
+    LONGHANDS.forEach((key, i) => edits.push([key, kept.map((a) => a[RULE]!.values[i]).join(', '), false]))
     entry.held.names = kept.map((a) => a[RULE]!.name)
   } else {
-    for (const [key, declaration] of entry.original) declarations.set(key, declaration)
+    for (const [key, { value, important }] of entry.original) edits.push([key, value, important])
     styled.delete(target)
     collected.unregister(entry.held)
   }
-  writeDeclarations(style, declarations)
+  editInline(inlineStyle(target), edits)
   for (const name of gone) keyframes.drop(name)
 }
 

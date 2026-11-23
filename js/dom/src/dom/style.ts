@@ -5,8 +5,6 @@ import { counterStyleName, counterStyleParts, counterStyleSettable, counterStyle
 import { computedStyleOf } from './layout'
 import { changed, dom, ID, version } from './realm'
 
-type Declarations = Map<string, { value: string; important: boolean }>
-
 const INLINE = Symbol('inlineStyle')
 
 const propertyNames = new Map<string, string>()
@@ -28,42 +26,6 @@ export function propertyName(key: string): string {
 
 function propertyKey(name: string): string {
   return name.startsWith('--') ? name : name.toLowerCase()
-}
-
-function serialize(declarations: Declarations): string {
-  return [...declarations].map(([name, { value, important }]) => `${name}: ${value}${important ? ' !important' : ''};`).join(' ')
-}
-
-function parseDeclarations(text: string): Declarations {
-  const declarations: Declarations = new Map()
-  let depth = 0, quote = '', start = 0
-  const take = (end: number) => {
-    const part = text.slice(start, end)
-    start = end + 1
-    const colon = part.indexOf(':')
-    if (colon < 0) return
-    const name = part.slice(0, colon).trim()
-    let value = part.slice(colon + 1).trim()
-    const important = /!\s*important$/i.test(value)
-    if (important) value = value.replace(/!\s*important$/i, '').trim()
-    if (name && value) {
-      const key = propertyKey(name)
-      declarations.delete(key)
-      declarations.set(key, { value, important })
-    }
-  }
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]!
-    if (quote) {
-      if (c === '\\') i++
-      else if (c === quote) quote = ''
-    } else if (c === '"' || c === "'") quote = c
-    else if (c === '(' || c === '[') depth++
-    else if (c === ')' || c === ']') depth = Math.max(0, depth - 1)
-    else if (c === ';' && depth === 0) take(i)
-  }
-  take(text.length)
-  return declarations
 }
 
 // The property a CSSStyleDeclaration attribute name stands for (cssom-1: the camel-cased
@@ -102,38 +64,42 @@ interface DeclarationState {
   readonly element: Element | null
   readonly pseudo: string
   readonly computed: boolean
-  text: string | null
+  text: string
   textVersion: number
-  parsed: Declarations
   names: string[] | null
-  namesVersion: number
+  namesOf: string | number
 }
 
 const STATE = Symbol('state')
 
-export function declarationsOf(style: CSSStyleDeclaration): Declarations {
+function sourceOf(style: CSSStyleDeclaration): string {
   const s = style[STATE]
-  if (!s.element || s.textVersion === version) return s.parsed
-  const text = dom.getAttribute(s.element[ID], 'style')
+  if (!s.element || s.textVersion === version) return s.text
+  s.text = dom.getAttribute(s.element[ID], 'style') ?? ''
   s.textVersion = version
-  if (text === s.text) return s.parsed
-  s.text = text
-  s.parsed = parseDeclarations(text ?? '')
-  return s.parsed
+  return s.text
 }
 
-export function writeDeclarations(style: CSSStyleDeclaration, declarations: Declarations): void {
+function store(style: CSSStyleDeclaration, text: string): void {
   const s = style[STATE]
-  const text = serialize(declarations)
-  if (!s.element) {
-    s.parsed = declarations
-    return
+  if (s.element && text !== sourceOf(style)) {
+    setAttribute(s.element, 'style', text)
+    s.textVersion = version
   }
-  if (text === (s.text ?? '')) return
-  s.text = text === '' ? null : text
-  s.parsed = declarations
-  setAttribute(s.element, 'style', s.text)
-  s.textVersion = version
+  s.text = text
+}
+
+export function inlineDeclaration(style: CSSStyleDeclaration, name: string): { value: string; important: boolean } | null {
+  const text = sourceOf(style)
+  const value = dom.styleGet(text, name)
+  return value === '' ? null : { value, important: dom.stylePriority(text, name) }
+}
+
+export function editInline(style: CSSStyleDeclaration, edits: Iterable<readonly [name: string, value: string, important: boolean]>): void {
+  const before = sourceOf(style)
+  let text = before
+  for (const [name, value, important] of edits) text = dom.styleSet(text, name, value, important ? 1 : 0) ?? text
+  if (text !== before) store(style, text)
 }
 
 function writable(style: CSSStyleDeclaration): void {
@@ -142,14 +108,17 @@ function writable(style: CSSStyleDeclaration): void {
 
 function nameList(style: CSSStyleDeclaration): string[] {
   const s = style[STATE]
-  if (!s.computed) return [...declarationsOf(style).keys()]
-  if (s.namesVersion !== version || !s.names) {
+  const key = s.computed ? version : sourceOf(style)
+  if (s.names && s.namesOf === key) return s.names
+  if (s.computed) {
     const all = dom.computedStyleAll(s.element![ID], s.pseudo)
     const names: string[] = []
     for (let i = 0; i < all.length; i += 2) names.push(all[i]!)
     s.names = names
-    s.namesVersion = version
+  } else {
+    s.names = dom.styleNames(key as string)
   }
+  s.namesOf = key
   return s.names
 }
 
@@ -157,19 +126,22 @@ export class CSSStyleDeclaration {
   readonly [STATE]: DeclarationState
 
   constructor(element: Element | null = null, computed = false, pseudo = '') {
-    this[STATE] = { element, pseudo, computed, text: null, textVersion: -1, parsed: new Map(), names: null, namesVersion: -1 }
+    this[STATE] = { element, pseudo, computed, text: '', textVersion: -1, names: null, namesOf: -1 }
   }
 
   get cssText(): string {
-    const s = this[STATE]
-    if (s.computed) return ''
-    return s.element ? (dom.getAttribute(s.element[ID], 'style') ?? '') : serialize(s.parsed)
+    if (this[STATE].computed) return ''
+    return dom.styleText(sourceOf(this))
   }
   set cssText(text: string) {
     writable(this)
     const s = this[STATE]
-    if (s.element) setAttribute(s.element, 'style', String(text))
-    else s.parsed = parseDeclarations(String(text))
+    const serialized = dom.styleText(String(text))
+    if (s.element) {
+      setAttribute(s.element, 'style', serialized)
+      s.textVersion = version
+    }
+    s.text = serialized
   }
 
   get length(): number {
@@ -184,34 +156,27 @@ export class CSSStyleDeclaration {
     const key = propertyKey(String(name))
     const s = this[STATE]
     if (s.computed) return computedStyleOf(s.element![ID], s.pseudo, key)
-    return declarationsOf(this).get(key)?.value ?? ''
+    return dom.styleGet(sourceOf(this), key)
   }
 
   getPropertyPriority(name: string): string {
     if (this[STATE].computed) return ''
-    return declarationsOf(this).get(propertyKey(String(name)))?.important ? 'important' : ''
+    return dom.stylePriority(sourceOf(this), propertyKey(String(name))) ? 'important' : ''
   }
 
   setProperty(name: string, value: string | null, priority = ''): void {
     writable(this)
-    const key = propertyKey(String(name))
-    const declarations = new Map(declarationsOf(this))
-    const text = value === null || value === undefined ? '' : String(value).trim()
-    if (text === '') declarations.delete(key)
-    else {
-      const important = String(priority).toLowerCase() === 'important'
-      if (priority && !important) return
-      const old = declarations.get(key)
-      if (old && old.value === text && old.important === important) return
-      declarations.set(key, { value: text, important })
-    }
-    writeDeclarations(this, declarations)
+    const text = value === null || value === undefined ? '' : String(value)
+    const important = String(priority).toLowerCase() === 'important'
+    if (priority && !important && text !== '') return
+    editInline(this, [[propertyKey(String(name)), text, important]])
   }
 
   removeProperty(name: string): string {
     writable(this)
-    const old = this.getPropertyValue(name)
-    this.setProperty(name, '')
+    const key = propertyKey(String(name))
+    const old = this.getPropertyValue(key)
+    editInline(this, [[key, '', false]])
     return old
   }
 
@@ -240,7 +205,7 @@ export function computedStyle(element: Element, pseudo: string): CSSStyleDeclara
 
 function freeStyle(text: string): CSSStyleDeclaration {
   const style = new CSSStyleDeclaration(null)
-  style[STATE].parsed = parseDeclarations(text)
+  style[STATE].text = text
   return new Proxy(style, handler)
 }
 

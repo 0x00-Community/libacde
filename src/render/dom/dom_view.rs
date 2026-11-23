@@ -182,6 +182,26 @@ impl Dom {
         blitz_dom::css_property_is_supported(name)
     }
 
+    pub fn style_text(&self, text: &str) -> String {
+        blitz_dom::acss::style_attr_serialize(text)
+    }
+
+    pub fn style_names(&self, text: &str) -> Vec<String> {
+        blitz_dom::acss::style_attr_property_names(text)
+    }
+
+    pub fn style_get(&self, text: &str, name: &str) -> String {
+        blitz_dom::acss::style_attr_get_property(text, name)
+    }
+
+    pub fn style_priority(&self, text: &str, name: &str) -> bool {
+        blitz_dom::acss::style_attr_property_priority(text, name)
+    }
+
+    pub fn style_set(&self, text: &str, name: &str, value: &str, important: bool) -> Option<String> {
+        blitz_dom::acss::style_attr_set_property(text, name, value, important)
+    }
+
     pub fn css_supports_declaration(&self, property: &str, value: &str) -> Result<bool> {
         self.read(|e| Ok(e.doc.css_supports_declaration(property, value)))
     }

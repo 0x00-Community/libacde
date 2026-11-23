@@ -589,6 +589,25 @@ export class MockDom implements DomNative {
     this.supported.push(['condition', condition])
     return /display:\s*grid/.test(condition)
   }
+  styleText(text: string): string {
+    return serializeStyle(parseStyle(text))
+  }
+  styleNames(text: string): string[] {
+    return [...parseStyle(text).keys()]
+  }
+  styleGet(text: string, name: string): string {
+    return parseStyle(text).get(name)?.value ?? ''
+  }
+  stylePriority(text: string, name: string): boolean {
+    return !!parseStyle(text).get(name)?.important
+  }
+  styleSet(text: string, name: string, value: string, important: number): string | null {
+    const declarations = parseStyle(text)
+    const written = value.trim()
+    if (written === '') declarations.delete(name)
+    else declarations.set(name, { value: written, important: important !== 0 })
+    return serializeStyle(declarations)
+  }
   cssPropertySupported(name: string): boolean {
     return ['color', 'float', 'font-size', 'display', '-webkit-box-orient'].includes(name)
   }
@@ -796,4 +815,42 @@ export class MockDom implements DomNative {
   node(id: number): HNode {
     return this._node(id)
   }
+}
+
+type StyleDeclarations = Map<string, { value: string; important: boolean }>
+
+function serializeStyle(declarations: StyleDeclarations): string {
+  return [...declarations].map(([name, { value, important }]) => `${name}: ${value}${important ? ' !important' : ''};`).join(' ')
+}
+
+function parseStyle(text: string): StyleDeclarations {
+  const declarations: StyleDeclarations = new Map()
+  let depth = 0, quote = '', start = 0
+  const take = (end: number) => {
+    const part = text.slice(start, end)
+    start = end + 1
+    const colon = part.indexOf(':')
+    if (colon < 0) return
+    const name = part.slice(0, colon).trim()
+    let value = part.slice(colon + 1).trim()
+    const important = /!\s*important$/i.test(value)
+    if (important) value = value.replace(/!\s*important$/i, '').trim()
+    if (name && value) {
+      const key = name.startsWith('--') ? name : name.toLowerCase()
+      declarations.delete(key)
+      declarations.set(key, { value, important })
+    }
+  }
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!
+    if (quote) {
+      if (c === '\\') i++
+      else if (c === quote) quote = ''
+    } else if (c === '"' || c === "'") quote = c
+    else if (c === '(' || c === '[') depth++
+    else if (c === ')' || c === ']') depth = Math.max(0, depth - 1)
+    else if (c === ';' && depth === 0) take(i)
+  }
+  take(text.length)
+  return declarations
 }
