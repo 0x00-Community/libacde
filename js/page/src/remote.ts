@@ -45,8 +45,10 @@ export class WindowList {
     const instance = number(event['instance'])
     const desk = number(event['desk'])
     const key = text(event['key']) ?? was?.key ?? null
+    const stage = event['stage'] === true
     const placed = {
       ...(rect ? { rect } : {}), ...(instance !== undefined ? { instance } : {}), ...(desk !== undefined ? { desk } : {}), ...(key ? { key } : {}),
+      ...(stage ? { stage } : {}),
     }
     this.#windows.set(event.window, { id: event.window, appId: text(event['appId']), title: text(event['title']), ...(web ? { web } : {}), state, ...placed })
     this.notices.emit('windows:window', event)

@@ -15,6 +15,7 @@ export interface GuestRow {
   readonly desktop: boolean
   readonly lock: boolean
   readonly confirm: boolean
+  readonly stage?: boolean
 }
 
 export type GuestRole = 'app' | 'desktop' | 'lock' | 'confirm'
@@ -91,6 +92,7 @@ export class GuestWindows {
       hidden: row.hidden,
       pid: row.pid,
       ...(row.state && { state: row.state }),
+      ...(row.stage && { stage: true }),
     }))
   }
 
@@ -168,6 +170,7 @@ export class GuestWindows {
       desktop: given.desktop === true,
       lock: given.lock === true,
       confirm: given.confirm === true,
+      stage: given.stage === true,
     }
   }
 }

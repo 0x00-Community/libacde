@@ -27,6 +27,7 @@ export interface InspectWindow {
   readonly pid: number | null
   readonly parent?: number | null
   readonly modal?: boolean
+  readonly stage?: boolean
 }
 
 export interface InspectMatch extends InspectNode {
@@ -74,6 +75,7 @@ export type InspectShot =
     readonly width: number
     readonly height: number
     readonly window: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
+    readonly stage?: boolean
   }
   | { readonly ok: false; readonly text: string }
 
@@ -92,12 +94,12 @@ export interface AcdeInspect {
   run(
     steps: readonly { ref: string; action: InspectAction; text?: InspectArg }[],
   ): Promise<{ ok: boolean; text: string }>
-  open(name: string): Promise<{ ok: boolean; text: string }>
+  open(name: string): Promise<{ ok: boolean; text: string; stage?: boolean }>
   shot(window: string | number, options?: { max?: number }): Promise<InspectShot>
   input(
     window: string | number,
     events: readonly InspectPixelInput[],
-  ): Promise<{ ok: true; done: boolean; textSkipped: number } | { ok: false; text: string; code?: string; app?: string }>
+  ): Promise<{ ok: true; done: boolean; textSkipped: number; stage?: boolean } | { ok: false; text: string; code?: string; app?: string }>
   query(options: {
     selector: string
     window?: string

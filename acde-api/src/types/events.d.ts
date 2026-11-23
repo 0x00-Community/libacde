@@ -64,7 +64,7 @@ export interface WindowCrashEvent extends WindowsEventOf<'windowcrash'> {
   readonly reason: string
 }
 
-export type WindowChange = 'appId' | 'title' | 'state' | 'hidden' | 'rect' | 'active' | 'parent' | 'desk'
+export type WindowChange = 'appId' | 'title' | 'state' | 'hidden' | 'rect' | 'active' | 'parent' | 'desk' | 'stage'
 
 export interface WindowEvent extends WindowsEventOf<'window'> {
   readonly appId: string | null
@@ -78,6 +78,7 @@ export interface WindowEvent extends WindowsEventOf<'window'> {
   readonly active: boolean
   readonly parent?: number
   readonly desk: number
+  readonly stage?: boolean
   readonly first: boolean
   readonly changed?: readonly WindowChange[]
   readonly web?: true

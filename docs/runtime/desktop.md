@@ -71,6 +71,9 @@
   (`WindowEvent`: `appId`、`title`、`state`、`previous`、`hidden`、`rect`、`active`、`parent`、`desk`、`first`、`changed` …), `first` 是新窗口
   (或重载后补报的), `changed` 列出这批变了的字段. 另有 `close` (窗口没了)、`crash` (进程崩了; 和 `close` 一样把窗口从表里删掉, 两者都要当「窗口没了」处理,
   且可能先后都到)、`menus`、`currentdesk`. `open`、`title`、`state`、`activate`、`parent`、`desk`、`geometry` 已过时 (由快照推出, 照旧发), 新桌面只听 `window`.
+- **Agent 的 stage** (acdes, 2026-11-23): 快照与 `list()` 的行可带 `stage: true` (变化时 `changed` 里是 `stage`): Agent 起的原生程序的窗口, 不画到任何屏上、
+  不拿人的键盘, 也不占虚拟桌面的编号. 桌面可以在任务栏里单独显示或不显示它; `focus(window)` 就是人接手: 窗口移到当前桌面、照常显示并拿键盘,
+  之后 `stage` 为 false. 见 acdes `docs/acompositor/desktop.md`「Agent 的 stage」.
   `ready`、`show`、`attention`、`hang`、`responsive` 不保证发 (今天 acdes 都不发).
 - **打开应用**: `acde:apps.open(id, request?, {parent, modal, newWindow, root, size})` → `{window, instance?, running?}`. 回答里的 `window` 可能是 0
   (窗口还没出来, acdes 总是这样): 桌面按随后 `first` 快照的 `appId` (有 `instance` 时再对 `instance`) 认领, 认领要能在回答之前或之后发生.

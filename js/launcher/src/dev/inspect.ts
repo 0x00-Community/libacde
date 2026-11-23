@@ -88,6 +88,7 @@ export class Inspect {
         pid: row.pid ?? null,
         parent: row.parent ?? null,
         modal: !!row.modal,
+        ...(row.stage ? { stage: true } : {}),
       })
     }
     return out.sort((a, b) => b.z - a.z)

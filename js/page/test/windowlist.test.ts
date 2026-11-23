@@ -87,3 +87,12 @@ test('a window key from a winman snapshot is on the row and on the derived open'
   assert.equal(windows.api.list()[0]!.key, 'w-91')
   assert.equal((opened[0] as { key?: string }).key, 'w-91')
 })
+
+test('a window on the Agent stage says so in its row until the person takes it over', () => {
+  const windows = list()
+  const rect = { x: 0, y: 0, width: 80, height: 50 }
+  windows.deliver(event('window', 9, { appId: 'Minecraft', title: 'Minecraft', state: 'normal', rect, desk: 0, stage: true, first: true }))
+  assert.deepEqual(windows.api.list(), [{ id: 9, appId: 'Minecraft', title: 'Minecraft', state: 'normal', rect, desk: 0, stage: true }])
+  windows.deliver(event('window', 9, { appId: 'Minecraft', title: 'Minecraft', state: 'normal', rect, desk: 0, stage: false, first: false, changed: ['stage'] }))
+  assert.deepEqual(windows.api.list(), [{ id: 9, appId: 'Minecraft', title: 'Minecraft', state: 'normal', rect, desk: 0 }])
+})

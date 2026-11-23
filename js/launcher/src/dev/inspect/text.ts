@@ -31,7 +31,7 @@ export function menubar(window: InspectWindow, geometry: MenuGeometry): InspectN
 }
 
 export function header(w: InspectWindow): string {
-  const flags = [w.app ? `app=${w.app}` : '', w.kind === 'native' ? 'native' : '', w.focus ? 'focused' : '', w.hidden ? 'minimized' : '']
+  const flags = [w.app ? `app=${w.app}` : '', w.kind === 'native' ? 'native' : '', w.stage ? 'stage' : '', w.focus ? 'focused' : '', w.hidden ? 'minimized' : '']
   if (w.mode !== 'free') flags.push(w.mode)
   if ((w.state === 'filled' || w.state === 'fullscreen') && !flags.includes(w.state)) flags.push(w.state)
   const title = w.title ? ` ${JSON.stringify(w.title)}` : ''

@@ -61,6 +61,10 @@
   由管家自己答 (不经页面, 见 acdes `docs/manager.md` 的 `inspect.shot`): `shot(window, {max?})` 回那扇窗自己画面的 PNG (base64, 长边缩到 `max`, 默认 1280)
   和窗口的逻辑矩形; `input(window, events)` 按窗口逻辑坐标发 move / down / up / wheel、相对移动 `motion {dx, dy}` (游戏锁住指针时转视角)、
   按住与松开键 (`keydown` / `keyup`)、`text`、`wait`. 类型 `InspectPixelInput`、`InspectShot`.
+- **Agent 的 stage** (acdes, 2026-11-23): `open(name)` 开的原生程序 (不是 acde 应用的) 落在 Agent 自己的 stage 上, 回答带 `stage: true`: 它的窗口不画到屏上、
+  不抢人的键盘, 对程序自己照常可见. 快照的窗口 (`InspectWindow`) 带 `stage: true`, 文本行多一个 `[stage]` 标记; `shot`、`input` 的回答带 `stage`.
+  stage 上的窗口 `input` 不等人让开、不管它是否最小化; 人在桌面上激活它 (`acde:windows.focus`) 就是人接手, 之后 `stage` 为 false, 照人桌面的规则.
+  细节见 acdes `docs/manager.md`「Agent 的 stage」.
 - **原生窗口** (runtime `atspi.rs`, napi `Accessibility`, Linux 会话): 读 AT-SPI2. 起服务时把 `org.a11y.Status.IsEnabled` 设成 true; GTK3 总上报,
   Qt 要开关为 true 且在真的显示平台上. `tree(pid, title, limit)` 按 pid 找应用、按标题挑顶层窗口, 角色规范成 ARIA 风格; act 先试 AT-SPI 的
   Action / EditableText / GrabFocus, 不行按坐标. 检查 `src/runtime/tests/atspi-check.sh`.
