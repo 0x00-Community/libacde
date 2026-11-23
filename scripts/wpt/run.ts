@@ -89,21 +89,20 @@ if (existsSync(RESULTS))
       done.set(r.url, r)
     }
 
-// Shards are cut from the whole selection, before finished tests are dropped, so a resumed shard keeps the
-// tests it had and the shards of one selection never overlap, whichever machine runs which shard.
+// A test's shard is fixed by its directory alone, so whatever the selection (whole directories, a list, known
+// timeouts skipped, a resumed run) a test always lands in the same shard, and with machines pinned to shards it
+// always runs on the same machine; the shards of one selection never overlap. Chunks are then cut within the shard.
+const hash = (s: string) => [...s].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7)
+const directory = (url: string) => url.split('?')[0]!.split('/').slice(0, -1).join('/')
 const groups = new Map<string, Test[]>()
 for (const t of list) {
+  if (hash(directory(t.url)) % SHARDS !== SHARD - 1) continue
   const key = `${t.kind}:${t.url.split('?')[0]!.split('/').slice(1, -1).slice(0, 2).join('/')}`
   if (!groups.has(key)) groups.set(key, [])
   groups.get(key)!.push(t)
 }
-const shardOf = (key: string) => [...key].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7) % SHARDS
 const mine: [string, Test[]][] = []
-for (const [key, tests] of groups)
-  for (let i = 0; i < tests.length; i += CHUNK) {
-    const chunk = `${key}#${i / CHUNK}`
-    if (shardOf(chunk) === SHARD - 1) mine.push([chunk, tests.slice(i, i + CHUNK)])
-  }
+for (const [key, tests] of groups) for (let i = 0; i < tests.length; i += CHUNK) mine.push([`${key}#${i / CHUNK}`, tests.slice(i, i + CHUNK)])
 // every test this run is meant to have a result for; `expectations check` reports the ones without one
 const SELECTED = join(OUT, 'selected.json')
 const before = existsSync(SELECTED) ? (JSON.parse(readFileSync(SELECTED, 'utf8')) as string[]) : []
