@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 const HERE = import.meta.dir
@@ -34,6 +34,22 @@ export type Test = {
   viewport?: [number, number]
 }
 export type NotApplicable = { dir: string; reason: string }
+
+// the checkout's commit, read from .git itself (a worktree's .git file and its common dir too): a test machine
+// need not have git installed
+function headOf(repo: string): string {
+  let git = join(repo, '.git')
+  if (!statSync(git).isDirectory()) git = resolve(repo, readFileSync(git, 'utf8').trim().replace(/^gitdir: /, ''))
+  const common = existsSync(join(git, 'commondir')) ? resolve(git, readFileSync(join(git, 'commondir'), 'utf8').trim()) : git
+  const head = readFileSync(join(git, 'HEAD'), 'utf8').trim()
+  if (!head.startsWith('ref: ')) return head
+  const ref = head.slice(5)
+  for (const dir of [git, common]) if (existsSync(join(dir, ref))) return readFileSync(join(dir, ref), 'utf8').trim()
+  const packed = existsSync(join(common, 'packed-refs')) ? readFileSync(join(common, 'packed-refs'), 'utf8') : ''
+  const line = packed.split('\n').find((l) => l.endsWith(` ${ref}`))
+  if (!line) throw new Error(`${repo}: cannot resolve ${ref}`)
+  return line.split(' ')[0]!
+}
 
 export function notApplicable(): NotApplicable[] {
   return readFileSync(join(HERE, 'not-applicable'), 'utf8')
@@ -136,7 +152,7 @@ for (let n = FIRST; n < FIRST + WORKERS; n++) {
 writeFileSync(join(STATE, 'tests.json'), JSON.stringify(tests))
 writeFileSync(join(STATE, 'not-applicable.json'), JSON.stringify(Object.fromEntries(excluded)))
 const count = (pred: (t: Test) => boolean) => tests.filter(pred).length
-const sha = (await Bun.$`git -C ${WPT} rev-parse HEAD`.text()).trim()
+const sha = headOf(WPT)
 writeFileSync(join(WORK, 'wpt-sha'), sha + '\n')
 const kinds = (['testharness', 'reftest', 'crashtest'] as const).map((k) => `${k} ${count((t) => t.kind === k && !t.unhosted)}`).join(', ')
 const unhosted = (['websocket', 'https', 'print'] as const).map((r) => `${r} ${count((t) => t.unhosted === r)}`).join(', ')
