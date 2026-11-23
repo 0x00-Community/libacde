@@ -558,6 +558,10 @@ export class MockDom implements DomNative {
       scrollHeight: Math.max(b.height, Number(node.getAttribute?.('data-scroll-height') ?? 0)),
     }
   }
+  scrollbar: [number, number, number] | null = null
+  scrollbarAt(): Float64Array {
+    return new Float64Array(this.scrollbar ?? [])
+  }
   hitTest(x: number, y: number): number {
     const all = this.hitTestAll(x, y)
     return all.length === 0 ? NONE : all[0]!

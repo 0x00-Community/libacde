@@ -12,6 +12,7 @@ import { pointerLockElement } from './pointerlock'
 import { SelectInput } from './select'
 import { PointerSelection } from './textselect'
 import { RangeInput } from './rangeinput'
+import { ScrollbarDrag } from './scrollbar'
 import { CONNECTED, dom, documentId, ID, inner, moved, rootElementId, wrap } from './realm'
 
 export interface Modifiers {
@@ -79,6 +80,7 @@ export class Input {
   readonly selects = new SelectInput()
   readonly text = new PointerSelection()
   readonly ranges = new RangeInput()
+  readonly scrollbars = new ScrollbarDrag()
   onKeyDefault: (target: Element, key: string, modifiers: Modifiers) => void = () => {}
 
   elementAt(target: number | null | undefined, x: number, y: number, ignoreCapture = false): Element {
@@ -164,7 +166,7 @@ export class Input {
   pointer(type: 'pointermove' | 'pointerdown' | 'pointerup', x: number, y: number, options: PointerOptions = {}): void {
     focus.modality = 'pointer'
     moved()
-    if (this.selects.pointer(type, x, y)) {
+    if (this.scrollbars.pointer(type, x, y, options.button ?? 0) || this.selects.pointer(type, x, y)) {
       if (type === 'pointerup') this.#release(options.button ?? 0)
       this.#last = { x, y }
       return

@@ -147,6 +147,20 @@ impl Dom {
         .flatten()
     }
 
+    pub fn scrollbar_at(&self) -> Option<[f64; 3]> {
+        self.read(|e| {
+            let Some(bar) = e.doc.hovered_scrollbar() else { return Ok(None) };
+            let Some(ratio) = e.doc.get_node(bar.node_id).map(|n| n.scrollbar_drag_ratio(bar.axis)) else { return Ok(None) };
+            let axis = match bar.axis {
+                blitz_dom::taffy::AbsoluteAxis::Horizontal => 0.0,
+                blitz_dom::taffy::AbsoluteAxis::Vertical => 1.0,
+            };
+            Ok(Some([f64::from(e.ids.id_of(bar.node_id)), axis, ratio]))
+        })
+        .ok()
+        .flatten()
+    }
+
     pub fn hit_test_all(&self, x: f64, y: f64) -> Vec<u32> {
         self.read(|e| {
             let hits = e.resolved().elements_from_point(x as f32, y as f32);

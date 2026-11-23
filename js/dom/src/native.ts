@@ -149,6 +149,7 @@ export interface DomNative {
   metrics(id: number): Metrics | null
   hitTest(x: number, y: number): number
   hitTestAll(x: number, y: number): Uint32Array
+  scrollbarAt(): Float64Array
   computedStyle(id: number, pseudo: string, property: string): string
   computedStyleAll(id: number, pseudo: string): string[]
   cssSupports(condition: string): boolean

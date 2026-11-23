@@ -632,6 +632,7 @@ natives! {
         let (x, y) = (f(scope, &args, 0), f(scope, &args, 1));
         Ok(dom.hit_test(x, y).map_or(-1.0, f64::from))
     }
+    "scrollbarAt" => fn scrollbar_at(scope, args, dom) { Ok(Floats(dom.scrollbar_at().map(|s| s.to_vec()).unwrap_or_default())) }
     "hitTestAll" => fn hit_test_all(scope, args, dom) {
         let (x, y) = (f(scope, &args, 0), f(scope, &args, 1));
         Ok(Ids(dom.hit_test_all(x, y)))

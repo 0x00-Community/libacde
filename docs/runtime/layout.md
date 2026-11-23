@@ -203,6 +203,9 @@
   (render 先把样式算到最新), 在元素上发 `AnimationEvent` / `TransitionEvent` (冒泡, 不可取消, 伪元素的发在宿主元素上带 `pseudoElement`);
   Web Animations 自己的 `acde-animation-<n>` 关键帧不发. 还有动画在跑或刚有事件就再要一帧; 改了 DOM 的任务结束时也要一帧, 好让新开始的动画被看到.
   还没有: 只有 webkit 前缀监听时改发旧名 (DOM 的 legacy event types), `getAnimations()` 里的 CSS 动画.
+  拖滚动条 (`dom/scrollbar.ts`, `Input` 在别的指针处理之前调, AC/dopame#20): 左键按下时问原生 `scrollbarAt()` (render 里指针下、看得见的覆盖式滚动条滑块,
+  `hovered_scrollbar`; 回 `[元素 id, 轴 0 横 1 竖, 每像素滑块对应的内容像素]`, 没有就是空), 按在滑块上就开始拖: 移动时按起点的滚动位置加位移乘比例
+  `scrollTo` 那个元素 (不小于 0, 上限由原生夹住), 松开结束. 拖滑块的按下、移动、松开都不发给页面, 也不动选区和焦点. 滑块只在滚动后显示 (悬停不唤出), 看不见时按不到.
   用指针选文字 (`dom/textselect.ts`, `Input` 调): 左键按下 (pointerdown / mousedown 都没取消) 在 `caretFromPoint` 处折叠选区, 先发可取消的
   `selectstart`; 按住移动时把焦点端扩到指针处; 第二次按下 (500 ms、5 px 内) 选一个词 (`Intl.Segmenter`, 中文按词典分词), 第三次选所在
   块 (向上找到 `display` 不是行内的祖先), 拖动时按同样的粒度扩展; Shift 按下从原锚点扩展. 按在表单控件、按钮、label、可编辑区域、链接、

@@ -379,3 +379,23 @@ test('pointermove: getCoalescedEvents has every sample since the last dispatch, 
     return [new PointerEvent('pointermove').getCoalescedEvents().length, new PointerEvent('pointermove', { coalescedEvents: [a, b] }).getCoalescedEvents().map((e) => e.clientX), new PointerEvent('pointermove').getPredictedEvents().length, errors]
   })()`), [0, [1, 2], 0, ['TypeError', 'TypeError', 'TypeError']])
 })
+
+test('dragging an overlay scrollbar thumb scrolls its box and fires no pointer events at the page', async () => {
+  using web = await page('<!doctype html><html><body><div id="box" data-scroll-height="1000"></div></body></html>')
+  const box = web.internals.idOf(web.run('document.getElementById("box")'))
+  web.dom.boxes.set(box, { x: 0, y: 0, width: 100, height: 200 })
+  web.run('globalThis.downs = 0; document.addEventListener("pointerdown", () => downs++)')
+  const input = web.internals.input
+  web.dom.scrollbar = [box, 1, 5]
+  input.pointer('pointerdown', 95, 10)
+  web.dom.scrollbar = null
+  input.pointer('pointermove', 95, 30)
+  assert.equal(web.run('document.getElementById("box").scrollTop'), 100)
+  input.pointer('pointermove', 95, 1000)
+  input.pointer('pointerup', 95, 1000)
+  assert.equal(web.run('document.getElementById("box").scrollTop'), 800, 'clamped to the end')
+  assert.equal(web.run('downs'), 0)
+  input.pointer('pointerdown', 50, 50)
+  input.pointer('pointerup', 50, 50)
+  assert.equal(web.run('downs'), 1, 'a press off the thumb reaches the page')
+})
