@@ -68,6 +68,14 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
     (一起给, 默认页面中心), 按这一点命中 (被别的窗口盖住就落到那个窗口), 和真的系统拖放同一段 (`dndenter` + `dnddrop`); 只排进主线程就回答,
     页面收到 drop 要自己等. 会话没有, 回错.
   - `pointer {x, y}` → `{x, y}`: 把指针移到屏幕坐标 (会话是全局逻辑坐标, 宿主窗口是内容区坐标), 同真的移动 (悬停、屏幕边缘事件都照常发).
+  - `hit {x, y}` → `{x, y, window, surface, local?, element?, gone?, note?}` (2026-11-23, acdev `acdev hit`, AC/acdev#115, 设计见总仓
+    `.scratch/acdev-debug-insight/issues/09-hit-test.md`): 屏幕坐标 (同 `pointer`) 下面是什么. `Inspect.hit` → `dev/inspect/hit.ts` 的 `Hit`: 在窗口表
+    (`windows()`, 不算最小化和藏起来的) 和桌面面板的行里取 z 最大且盖住这一点的; `window` 是 `{ref, app, title}` (面板算 `w0`), `local` 是窗口内坐标;
+    `surface` 是 `page`、`decoration` (标题栏一带, 即页面 `contentOffset` 之外)、`panel`、`native` (原生窗口, 或会话里别的进程的窗口) 或 `none` (什么都没盖住).
+    页面一侧是 rpc `inspect.hit(x, y)` (`PageInspect.hit`, 窗口内坐标, 先减 `contentOffset`): `dom.hitTest` 命中的元素 (已按 `pointer-events: none` 穿透,
+    即事件真正的目标)、它的祖先链, 和盖住这一点但被穿透的 `pointer-events: none` 元素 (只列最外层的, 不含目标的祖先; 顺序按文档倒序, 大致是上层在前).
+    `element` 是 `{ref, line, tag, chain: [...], through: [...]}`, 每项的 `line` 与 snapshot 同一写法. 页面在回答前没了 (rpc 失败) 回 `gone: true` 不报错,
+    由调用方重试. 会话里还只认本进程的窗口, 合成器那一半 (哪个表面、被谁遮挡) 等 acdev 的代理接上.
   - `clipboard {text?}` → `{text}`: 给 `text` 先写, 再读回宿主剪贴板 (napi `Shell.readClipboard` / `writeClipboard` → hostwin; headless 是进程里那份,
     有窗口是系统剪贴板); 会话没有, 回错.
   - `input {web, events}` → act 的回答: 按页面的 CSS 坐标注入一串原始输入 (`Inspect.input`, 加窗口原点和 `contentOffset` 后 `Shell.inject`):

@@ -277,6 +277,10 @@ export class DevChannel {
         return this.#route(args)
       case 'unroute':
         return this.#unroute(args)
+      case 'hit': {
+        const { x, y } = DevChannel.#point('hit', args)
+        return this.#host.inspect().hit(x, y)
+      }
       case 'pointer':
         return this.#pointer(args)
       case 'clipboard':
@@ -472,11 +476,16 @@ export class DevChannel {
     if (page) page.post({ type: 'devroutes', routes: this.#routesFor(page.name, page.app) })
   }
 
-  #pointer(args: Record<string, unknown>): { x: number; y: number } {
+  static #point(op: string, args: Record<string, unknown>): { x: number; y: number } {
     const { x, y } = args
     if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) {
-      throw new Error('pointer: x and y are numbers in screen coordinates')
+      throw new Error(`${op}: x and y are numbers in screen coordinates`)
     }
+    return { x, y }
+  }
+
+  #pointer(args: Record<string, unknown>): { x: number; y: number } {
+    const { x, y } = DevChannel.#point('pointer', args)
     if (!this.#host.shell.inject) throw new Error('pointer: this backend takes no injected input')
     this.#host.shell.inject({ type: 'move', x, y })
     return { x, y }

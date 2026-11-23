@@ -5,6 +5,7 @@ import { chordCodes, keyCode } from '../../../page/src/keys'
 import type { PageNode, PagePoint, PageQuery, PageTree } from '../../../page/src/pageinspect'
 import type { Rpc } from '../../../page/src/rpc'
 import { Placing } from './inspect/place'
+import { Hit, type HitAnswer } from './inspect/hit'
 import { header, menubar, outline } from './inspect/text'
 import {
   MODIFIERS,
@@ -591,6 +592,10 @@ export class Inspect {
     const ms = Number(given)
     if (!(ms >= 0 && ms <= Inspect.INPUT_WAIT_MS)) throw new Error(`input: wait takes ms from 0 to ${Inspect.INPUT_WAIT_MS}, not ${JSON.stringify(given)}`)
     return ms
+  }
+
+  hit(x: number, y: number): Promise<HitAnswer> {
+    return new Hit(this.#host, this.windows(), (window, n) => Inspect.#node(window, n.id, n, n.states, n.rect, [])).at(x, y)
   }
 
   async query(options: QueryOptions): Promise<Query> {

@@ -35,6 +35,11 @@ export interface PageQuery {
 
 export type PagePoint = { readonly x: number; readonly y: number } | { readonly error: string }
 
+export type PageHit =
+  | { readonly decoration: true }
+  | { readonly outside: true }
+  | { readonly target: PageMatch | null; readonly chain: readonly PageMatch[]; readonly through: readonly PageMatch[] }
+
 type Field = HTMLInputElement | HTMLTextAreaElement
 
 export class PageInspect {
@@ -69,6 +74,8 @@ export class PageInspect {
         return this.host.insertText(String(args[0] ?? ''))
       case 'guarded':
         return this.guarded(String(args[0] ?? ''), Number(args[1] ?? -1), String(args[2] ?? 'none'))
+      case 'hit':
+        return this.hit(Number(args[0]), Number(args[1]))
       default:
         throw new Error(`inspect has no ${method}`)
     }
@@ -178,6 +185,30 @@ export class PageInspect {
     const focused = (this.page.document as unknown as Document).activeElement
     if (how === 'keyboard' && id < 0 && matches(focused)) return 'the focused element'
     return null
+  }
+
+  hit(x: number, y: number): PageHit {
+    const window = this.page.window as unknown as Window
+    const [px, py] = [x - this.offset[0], y - this.offset[1]]
+    if (px < 0 || py < 0) return { decoration: true }
+    if (px >= window.innerWidth || py >= window.innerHeight) return { outside: true }
+    const id = this.dom.hitTest(px, py)
+    const target = id < 0 ? null : this.#element(id)
+    const chain: PageMatch[] = []
+    for (let e = target?.parentElement ?? null; e; e = e.parentElement) chain.push(this.#match(e))
+    return { target: target && this.#match(target), chain, through: this.#through(px, py, target).map((e) => this.#match(e)) }
+  }
+
+  #through(x: number, y: number, target: Element | null): Element[] {
+    const window = this.page.window as unknown as Window
+    const document = this.page.document as unknown as Document
+    const covers = (e: Element) => {
+      if (target && e.contains(target)) return false
+      const r = e.getBoundingClientRect()
+      return r.width > 0 && r.height > 0 && x >= r.left && x < r.right && y >= r.top && y < r.bottom
+    }
+    const none = [...document.querySelectorAll('*')].filter((e) => covers(e) && window.getComputedStyle(e).getPropertyValue('pointer-events') === 'none')
+    return none.filter((e) => !none.some((o) => o !== e && o.contains(e))).reverse()
   }
 
   #under(id: number): HTMLElement | null {
