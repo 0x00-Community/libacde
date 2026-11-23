@@ -688,4 +688,27 @@ export const CSS = {
     if (args.length === 1) return dom.cssSupports(String(args[0]))
     return dom.cssSupportsDeclaration(String(args[0]), String(args[1]))
   },
+  registerProperty(...args: readonly unknown[]): void {
+    const what = "Failed to execute 'registerProperty' on 'CSS'"
+    if (args.length === 0) throw new TypeError(`${what}: 1 argument required, but only 0 present.`)
+    const definition = args[0]
+    if (definition === null || (typeof definition !== 'object' && typeof definition !== 'function')) {
+      throw new TypeError(`${what}: The provided value is not of type 'PropertyDefinition'.`)
+    }
+    const members = definition as Record<string, unknown>
+    const inherits = members['inherits']
+    if (inherits === undefined) throw new TypeError(`${what}: Failed to read the 'inherits' property from 'PropertyDefinition': Required member is undefined.`)
+    const initialValue = members['initialValue']
+    const initial = initialValue === undefined ? null : String(initialValue)
+    const nameValue = members['name']
+    if (nameValue === undefined) throw new TypeError(`${what}: Failed to read the 'name' property from 'PropertyDefinition': Required member is undefined.`)
+    const name = String(nameValue)
+    const syntaxValue = members['syntax']
+    const syntax = syntaxValue === undefined ? '*' : String(syntaxValue)
+    const outcome = dom.cssRegisterProperty(name, syntax, inherits ? 1 : 0, initial === null ? 0 : 1, initial ?? '')
+    if (outcome === 1) throw new DOMException(`${what}: The name, syntax or initial value of '${name}' is not valid.`, 'SyntaxError')
+    if (outcome === 2) throw new DOMException(`${what}: The name provided has already been registered.`, 'InvalidModificationError')
+    if (outcome === 3) throw new DOMException(`${what}: The document has registered as many properties as it may.`, 'QuotaExceededError')
+    changed()
+  },
 }

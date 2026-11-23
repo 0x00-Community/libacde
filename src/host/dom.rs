@@ -655,6 +655,12 @@ natives! {
         text!(property = scope, args, 0); text!(value = scope, args, 1);
         dom.css_supports_declaration(&property, &value)
     }
+    "cssRegisterProperty" => fn css_register_property(scope, args, dom) {
+        text!(name = scope, args, 0); text!(syntax = scope, args, 1);
+        let (inherits, has_initial) = (f(scope, &args, 2) != 0.0, f(scope, &args, 3) != 0.0);
+        text!(initial = scope, args, 4);
+        dom.css_register_property(&name, &syntax, inherits, has_initial.then_some(&*initial))
+    }
     "caretRect" => fn caret_rect(scope, args, dom) {
         let (id, offset) = (id(scope, &args, 0), f(scope, &args, 1) as u32);
         dom.caret_rect(id, offset).map(|q| Floats(q.to_vec()))

@@ -152,6 +152,7 @@ export interface DomNative {
   computedStyleAll(id: number, pseudo: string): string[]
   cssSupports(condition: string): boolean
   cssSupportsDeclaration(property: string, value: string): boolean
+  cssRegisterProperty(name: string, syntax: string, inherits: number, hasInitial: number, initial: string): number
   cssPropertySupported(name: string): boolean
   caretRect(id: number, offset: number): Float64Array
   caretFromPoint(x: number, y: number): { node: number; offset: number } | null

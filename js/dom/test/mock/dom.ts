@@ -596,6 +596,13 @@ export class MockDom implements DomNative {
     this.supported.push([property, value])
     return property === 'display' && value === 'grid'
   }
+  readonly registered: [string, string, number, number, string][] = []
+  cssRegisterProperty(name: string, syntax: string, inherits: number, hasInitial: number, initial: string): number {
+    if (!name.startsWith('--')) return 1
+    if (this.registered.some(([n]) => n === name)) return 2
+    this.registered.push([name, syntax, inherits, hasInitial, initial])
+    return 0
+  }
   caretRect(_id: number, _offset: number): Float64Array {
     return new Float64Array(4)
   }

@@ -178,14 +178,24 @@ impl Dom {
         self.read(|e| Ok(e.doc.css_supports_condition(condition)))
     }
 
-    /// Whether the engine has the CSS property `name` (not a custom property): the attributes a
-    /// `CSSStyleDeclaration` exposes
     pub fn css_property_supported(&self, name: &str) -> bool {
         blitz_dom::css_property_is_supported(name)
     }
 
     pub fn css_supports_declaration(&self, property: &str, value: &str) -> Result<bool> {
         self.read(|e| Ok(e.doc.css_supports_declaration(property, value)))
+    }
+
+    pub fn css_register_property(&self, name: &str, syntax: &str, inherits: bool, initial: Option<&str>) -> Result<u32> {
+        use blitz_dom::acss::properties::registry::RegisterError;
+        self.write(|e| {
+            Ok(match e.doc.register_custom_property(name, syntax, inherits, initial) {
+                Ok(()) => 0,
+                Err(RegisterError::Syntax) => 1,
+                Err(RegisterError::AlreadyRegistered) => 2,
+                Err(RegisterError::TooMany) => 3,
+            })
+        })
     }
 
     pub fn computed_style_all(&self, id: u32, pseudo: &str) -> Result<Vec<String>> {

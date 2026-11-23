@@ -795,6 +795,35 @@ test('CSS.supports asks render: a condition text or a property and a value; no a
   assert.equal(web.run('try { CSS.supports() } catch (e) { e instanceof TypeError }'), true)
 })
 
+test('CSS.registerProperty reads the dictionary in member order and turns the engine refusals into DOMExceptions', async () => {
+  using web = await page()
+  const result = web.json(`(() => {
+    const read = []
+    const definition = new Proxy({ name: '--size', syntax: '<length>', inherits: false, initialValue: '0px' }, { get: (o, k) => (read.push(k), o[k]) })
+    CSS.registerProperty(definition)
+    const caught = (f) => { try { f(); return 'none' } catch (e) { return e.name } }
+    return {
+      read,
+      again: caught(() => CSS.registerProperty({ name: '--size', inherits: true })),
+      notCustom: caught(() => CSS.registerProperty({ name: 'width', inherits: true })),
+      noInherits: caught(() => CSS.registerProperty({ name: '--a' })),
+      noName: caught(() => CSS.registerProperty({ inherits: true })),
+      none: caught(() => CSS.registerProperty()),
+      notObject: caught(() => CSS.registerProperty(5)),
+    }
+  })()`)
+  assert.deepEqual(result, {
+    read: ['inherits', 'initialValue', 'name', 'syntax'],
+    again: 'InvalidModificationError',
+    notCustom: 'SyntaxError',
+    noInherits: 'TypeError',
+    noName: 'TypeError',
+    none: 'TypeError',
+    notObject: 'TypeError',
+  })
+  assert.deepEqual(web.dom.registered, [['--size', '<length>', 0, 1, '0px']])
+})
+
 test('getBBox of SVG shapes and groups comes from their geometry, also after a script sets it', async () => {
   using web = await page(`<!doctype html><html><body><svg width="200" height="200">
     <g id="g" transform="translate(10 20)"><rect id="r" x="5" y="6" width="30" height="40"/><circle cx="100" cy="100" r="10"/></g>
