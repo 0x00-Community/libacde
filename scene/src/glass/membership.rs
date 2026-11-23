@@ -18,6 +18,7 @@ impl Name {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Membership {
+    pub layer: u64,
     pub container: Option<u64>,
     pub spacing: f32,
     pub union: Option<Name>,
@@ -25,7 +26,7 @@ pub struct Membership {
 }
 
 impl Membership {
-    pub fn from_properties(container: Option<(u64, &str)>, property: impl Fn(&str) -> Option<String>, warn: impl Fn(String)) -> Option<Self> {
+    pub fn from_properties(layer: u64, container: Option<(u64, &str)>, property: impl Fn(&str) -> Option<String>, warn: impl Fn(String)) -> Option<Self> {
         let spacing = container.and_then(|(_, text)| match text.trim() {
             "none" | "" => None,
             given => {
@@ -40,7 +41,7 @@ impl Membership {
         let union = property("acde-glass-union").and_then(|t| Name::of(&t));
         let id = property("acde-glass-id").and_then(|t| Name::of(&t));
         let spacing = spacing.unwrap_or(0.0).clamp(0.0, MOST_LENGTH);
-        (container.is_some() || union.is_some()).then_some(Self { container, spacing, union, id })
+        (container.is_some() || union.is_some()).then_some(Self { layer, container, spacing, union, id })
     }
 
     pub fn scaled(self, factor: f64) -> Self {
@@ -48,7 +49,8 @@ impl Membership {
     }
 
     pub fn joins(&self, other: &Self) -> bool {
-        (self.container.is_some() && self.container == other.container) || (self.union.is_some() && self.union == other.union)
+        let together = (self.container.is_some() && self.container == other.container) || (self.union.is_some() && self.union == other.union);
+        self.layer == other.layer && together
     }
 }
 
@@ -63,29 +65,38 @@ mod tests {
     #[test]
     fn a_container_spacing_makes_a_member_and_names_are_kept() {
         let given = [("acde-glass-id", " dock-item "), ("acde-glass-union", "none")];
-        let member = Membership::from_properties(Some((7, "10px")), properties(&given), |w| panic!("{w}")).unwrap();
-        assert_eq!(member, Membership { container: Some(7), spacing: 10.0, union: None, id: Name::of("dock-item") });
+        let member = Membership::from_properties(0, Some((7, "10px")), properties(&given), |w| panic!("{w}")).unwrap();
+        assert_eq!(member, Membership { layer: 0, container: Some(7), spacing: 10.0, union: None, id: Name::of("dock-item") });
         assert_eq!(member.scaled(2.0).spacing, 20.0);
     }
 
     #[test]
     fn no_membership_without_a_container_or_a_union_and_a_bad_spacing_warns() {
-        assert_eq!(Membership::from_properties(None, properties(&[("acde-glass-id", "a")]), |w| panic!("{w}")), None);
-        assert_eq!(Membership::from_properties(Some((1, "none")), properties(&[]), |w| panic!("{w}")), None);
+        assert_eq!(Membership::from_properties(0, None, properties(&[("acde-glass-id", "a")]), |w| panic!("{w}")), None);
+        assert_eq!(Membership::from_properties(0, Some((1, "none")), properties(&[]), |w| panic!("{w}")), None);
         let warned = std::cell::Cell::new(0);
-        assert_eq!(Membership::from_properties(Some((1, "2em")), properties(&[]), |_| warned.set(warned.get() + 1)), None);
+        assert_eq!(Membership::from_properties(0, Some((1, "2em")), properties(&[]), |_| warned.set(warned.get() + 1)), None);
         assert_eq!(warned.get(), 1);
-        let union = Membership::from_properties(None, properties(&[("acde-glass-union", "pair")]), |w| panic!("{w}")).unwrap();
+        let union = Membership::from_properties(0, None, properties(&[("acde-glass-union", "pair")]), |w| panic!("{w}")).unwrap();
         assert_eq!((union.container, union.union), (None, Name::of("pair")));
     }
 
     #[test]
     fn members_join_by_container_or_by_union() {
-        let member = |container: Option<u64>, union: Option<&str>| Membership { container, spacing: 8.0, union: union.and_then(Name::of), id: None };
+        let member = |container: Option<u64>, union: Option<&str>| Membership { layer: 0, container, spacing: 8.0, union: union.and_then(Name::of), id: None };
         assert!(member(Some(1), None).joins(&member(Some(1), None)));
         assert!(!member(Some(1), None).joins(&member(Some(2), None)));
         assert!(member(Some(1), Some("u")).joins(&member(None, Some("u"))));
         assert!(!member(None, None).joins(&member(None, None)));
         assert_ne!(Name::of("a"), Name::of("b"));
+    }
+
+    #[test]
+    fn glass_in_another_layer_never_joins() {
+        let at =
+            |layer: u64, container: Option<u64>, union: Option<&str>| Membership { layer, container, spacing: 8.0, union: union.and_then(Name::of), id: None };
+        assert!(!at(0, Some(1), None).joins(&at(5, Some(1), None)), "the outer glass and its own button share a container but not a layer");
+        assert!(at(5, Some(1), None).joins(&at(5, Some(1), None)), "buttons inside the same glass still merge");
+        assert!(!at(0, None, Some("u")).joins(&at(5, None, Some("u"))), "a union name does not reach across layers");
     }
 }

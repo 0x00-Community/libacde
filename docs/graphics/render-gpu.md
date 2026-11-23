@@ -126,7 +126,10 @@
   (`glassEffectUnion`)、`--acde-glass-id: <名字>` (`glassEffectID`, 出现、消失的动画用); 都是作者自定义属性, 不认它们的浏览器照常显示 backdrop-filter.
   blitz-paint (`render/glass.rs`) 给有系统玻璃的效果图层带出 `LayerShape.group: Option<Membership>` (`acde_scene::glass::Membership`):
   自定义属性会继承, 所以容器是从父元素起往上、值和父元素相同的那一串祖先里最外面的一个 (它的节点号, 间距按 CSS px 乘 scale); 嵌套的两层容器写了同一个
-  值时算作外层一个. 同一个 `--acde-glass-union` 名字不看 DOM 层级、大小与形状, 因此调参页要让大胶囊、小胶囊和圆钮融合时统一写 `--acde-glass-union: tuner`. 单测把三种形状放在三个不同的父节点下, 最终仍是一个三块的 GlassGroup. 名字存成 FNV-1a 64 位散列 (`Name`), `none` 和空串当没写. 没有容器也没有 union 名字的玻璃不成组. src/render `Split` 切完图层后
+  值时算作外层一个. 同一个 `--acde-glass-union` 名字不看 DOM 层级、大小与形状, 因此调参页要让大胶囊、小胶囊和圆钮融合时统一写 `--acde-glass-union: tuner`. 单测把三种形状放在三个不同的父节点下, 最终仍是一个三块的 GlassGroup. 玻璃分层 (用户 2026-11-23): 每块页面玻璃属于一层, 层是离它最近的、自己也是玻璃 (有 `backdrop-filter` 且解析出系统玻璃) 的祖先元素的节点号,
+  没有这样的祖先就是顶层 0 (`Membership.layer`, blitz-paint `glass_layer` 推断); 不是玻璃的包装元素 (`li`、布局用的 `div`) 不产生新层. 只有同一层的玻璃才可能
+  融合 (`Membership::joins` 先比层, 再看同容器或同 union 名): 工具条和它里面的按钮即使在同一容器、写同一 union 名也不合, 按钮之间照常合.
+  页面层也不和窗口层 (窗口材质) 融合, 不跨窗口; 原定的 `--acde-glass-group` 已取消. 名字存成 FNV-1a 64 位散列 (`Name`), `none` 和空串当没写. 没有容器也没有 union 名字的玻璃不成组. src/render `Split` 切完图层后
   (`merge_glass`): 同一容器或同一 union 名字 (`Membership::joins`, 可传递) 的玻璃图层, 按绘制顺序把各块 (`Backdrop::piece`: 外框、半径、指数、玻璃) 放进
   第一块那层的 `Backdrop.group`, 外框和裁剪取各块的并集, 其余几块的图层去掉 backdrop (只剩内容). 间距取组内最大 (只靠 union 成组时为 0, 各块不鼓出).
   超过 16 块时多出的块各画各的, 记一次 warn. 只有一块的成员也成一组 (一块的组和单块画出来相同, G4 有对照测试), 好让出现、消失的动画有处可放. 底图在第一块的位置取一次, 所以后面几块之前画的内容 (多半没有) 不会出现在玻璃里.
