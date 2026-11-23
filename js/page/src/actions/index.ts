@@ -53,7 +53,7 @@ export class Actions {
       const why = declared ? failed('no_handler', `no handler for ${name} yet`) : failed('unknown_action', `${name} is not declared`)
       return this.#send({ type: 'result', id, result: why })
     }
-    const controller = new AbortController()
+    const controller = new globalThis.AbortController()
     this.#running.set(id, controller)
     if (declared.longRunning) this.#send({ type: 'pending', id })
     const progress = (done: number, text?: string) => {
