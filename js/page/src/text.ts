@@ -10,7 +10,7 @@ export interface TextInputState {
   readonly text: string
   readonly cursor: number
   readonly anchor: number
-  readonly password: boolean
+  readonly secret: boolean
   readonly rect: { x: number; y: number; width: number; height: number }
 }
 
@@ -25,6 +25,7 @@ export class TextEntry {
   #last: TextInputState | null = null
   #checked = 0
   static readonly RECHECK_MS = 100
+  static readonly SECRET_AUTOCOMPLETE = new Set(['current-password', 'new-password', 'one-time-code'])
   #inactive = false
   #composing: Element | null = null
   #preedit: HTMLElement | null = null
@@ -90,7 +91,7 @@ export class TextEntry {
   async clipboard(target: Element, key: 'c' | 'x' | 'v'): Promise<void> {
     const data = new this.#window.DataTransfer()
     const type = key === 'c' ? 'copy' : key === 'x' ? 'cut' : 'paste'
-    if (type !== 'paste' && TextEntry.#password(target)) return
+    if (type !== 'paste' && TextEntry.secret(target)) return
     if (type === 'paste') await this.#pasted(data as never)
     const event = new this.#window.ClipboardEvent(type, { bubbles: true, cancelable: true, composed: true, clipboardData: data } as never)
     const handled = !target.dispatchEvent(event as unknown as Event)
@@ -136,22 +137,22 @@ export class TextEntry {
     const text = field ? field.value : (this.#selection()?.focusNode?.textContent ?? '')
     const cursor = field ? (field.selectionEnd ?? text.length) : (this.#selection()?.focusOffset ?? 0)
     const anchor = field ? (field.selectionStart ?? cursor) : (this.#selection()?.anchorOffset ?? cursor)
-    const password = field?.type === 'password'
+    const secret = TextEntry.secret(editable)
     const last = editable === this.#reported ? this.#last : null
-    const same = !!last && last.text === text && last.cursor === cursor && last.anchor === anchor && last.password === password
+    const same = !!last && last.text === text && last.cursor === cursor && last.anchor === anchor && last.secret === secret
     const now = hostTime.now()
     if (same && now - this.#checked < TextEntry.RECHECK_MS) return
     const rect = this.#caretRect(editable)
     this.#checked = now
     if (same && last.rect.x === rect.x && last.rect.y === rect.y && last.rect.width === rect.width && last.rect.height === rect.height) return
     this.#reported = editable
-    this.#last = { text, cursor, anchor, password, rect }
+    this.#last = { text, cursor, anchor, secret, rect }
     this.#ime.focus(this.#last)
   }
 
   panel(event: ImePanelEvent): void {
     const target = this.active()
-    if (!this.#editable(target) || TextEntry.#password(target!)) {
+    if (!this.#editable(target) || TextEntry.secret(target!)) {
       this.#panel.hide()
       return
     }
@@ -160,7 +161,7 @@ export class TextEntry {
 
   preedit(text: string): void {
     const target = this.active()
-    if (!this.#editable(target) || TextEntry.#password(target)) return
+    if (!this.#editable(target) || TextEntry.secret(target)) return
     if (!text && this.#composing !== target) return
     if (this.#composing !== target) {
       this.#composing = target
@@ -185,8 +186,10 @@ export class TextEntry {
     this.#editing.deleteSurrounding(this.active() as never, offset, length)
   }
 
-  static #password(target: Element): boolean {
-    return target.localName === 'input' && (target as HTMLInputElement).type === 'password'
+  static secret(target: Element): boolean {
+    if (target.localName === 'input' && (target as HTMLInputElement).type === 'password') return true
+    if (target.localName !== 'input' && target.localName !== 'textarea') return false
+    return (target.getAttribute('autocomplete') ?? '').toLowerCase().split(/\s+/).some((token) => TextEntry.SECRET_AUTOCOMPLETE.has(token))
   }
 
   #fire(target: Element, type: string, data: string): void {

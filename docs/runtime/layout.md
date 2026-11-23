@@ -76,6 +76,9 @@
   `window.setTitle` 记下标题 (语义树、`webs`、DevTools 目标用它); `window.setMenus` 交给宿主窗口 (`Shell.setMenus`, 菜单画在框上), 带 `shortcut`
   的菜单项注册成 `menu` 范围的快捷键, 宿主推来的 `menuselect` 和按下的菜单快捷键转成页面的 `window.menu` (`app/menus.ts`); `page.open` / `page.save`
   (页面的打开、保存文件选择器) 用 `sys.pickFiles` / `sys.pickSave` (见 `docs/web/fs.md`「打开和保存文件」), `page.notify` 用 `Shell.notify` (`app/page.ts`); `page.download` 仍回 501.
+- **密钥输入框** (2026-11-24): `type=password` 的 `<input>`, 以及 `autocomplete` 里有 `current-password` / `new-password` /
+  `one-time-code` 的 `<input>` / `<textarea>`, 算密钥输入框 (`TextEntry.secret`, `js/page/src/text.ts`): 所有页面里都不启用输入法 (`InputMethod.focus`
+  不发 `focusIn`, 即不发 text-input 的 enable; 从普通输入框切过来时发 `focusOut`), 没有预编辑和候选面板, 也不能复制、剪切出去; 普通输入框不变.
 - **会话与桌面包** (`acde:session`、`acde:desktops`, libacde 工单 04): 页面胶水 (`RemoteBridge`) 给桌面页定义这两个模块, 应用页在
   `tier.shell` 含 `session` / `desktops` 时定义. `session.logout/reboot/poweroff/setLanguage(tag)`、`desktops.list()` (回
   `{desktops: DesktopInfo[], current}`)、`desktops.choose(id, remember?)` 经 rpc 转出, 有管家时原样 `manager.call`. 同步的

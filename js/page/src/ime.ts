@@ -77,16 +77,19 @@ export class InputMethod {
   }
 
   focus(state: TextInputState): void {
+    if (state.secret) {
+      this.blur()
+      return
+    }
     this.#guard((ime) => {
       const sent = this.#focused ? this.#sent : null
-      const open = !state.password
-      if (sent?.password !== state.password) ime.setCapability({ preedit: open, surroundingText: open, password: state.password, clientPanel: open })
       if (!this.#focused) {
+        ime.setCapability({ preedit: true, surroundingText: true, password: false, clientPanel: true })
         ime.focusIn()
         this.#focused = true
       }
       const changed = sent?.text !== state.text || sent.cursor !== state.cursor || sent.anchor !== state.anchor
-      if (open && changed) ime.setSurroundingText(state.text, state.cursor, state.anchor)
+      if (changed) ime.setSurroundingText(state.text, state.cursor, state.anchor)
       const rect = state.rect, was = sent?.rect
       if (!was || was.x !== rect.x || was.y !== rect.y || was.width !== rect.width || was.height !== rect.height) ime.setCursorRect(rect.x, rect.y, rect.width, rect.height)
       this.#sent = state
