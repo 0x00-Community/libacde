@@ -19,6 +19,8 @@ export const APP_MODULES = ['launch', 'apps', 'open', 'openPath', 'handlers', 'w
 
 export type ShellModule = (typeof SHELL_MODULES)[number]
 
+export const SYSTEM_APPS: readonly string[] = ['community-store']
+
 export const SYSTEM_CAPABILITIES = [
   'fs', 'terminal', 'network', 'system', 'bluetooth', 'audio', 'devices', 'power', 'input', 'display',
   'office', 'launch', 'slots', 'open', 'openFiles', 'camera', 'microphone', 'idleDetection',
@@ -326,7 +328,9 @@ export class Manifest {
           warnings.push(`${at}: service ${JSON.stringify(grant.name)} has a backend role, but the desktop has no backend`)
       }
     }
-    const system = (manifest.desktops ?? []).length > 0
+    const system =
+      (manifest.desktops ?? []).length > 0 ||
+      (apps.length > 0 && apps.every((raw) => SYSTEM_APPS.includes(String((raw as { id?: unknown }).id))))
     const shellFindings = errors
     const seen = new Set<string>()
     for (const raw of apps) {
@@ -359,7 +363,7 @@ export class Manifest {
         warnings.push(`${at}: heapMb below ${Manifest.MIN_HEAP_MB} is ignored (${Manifest.HEAP_MB} then)`)
       if (!system) {
         for (const name of Manifest.shellModules(app.capabilities))
-          shellFindings.push(`${at}: acde:${name} is a shell module: only apps of a desktop package (system apps) may declare it`)
+          shellFindings.push(`${at}: acde:${name} is a shell module: only system apps (of a desktop package, or the community store) may declare it`)
       }
       for (const finding of Manifest.#roots(app.capabilities.fs)) shellFindings.push(`${at}: ${finding}`)
       for (const name of Object.keys(app.capabilities).filter((k) => !Manifest.CAPABILITIES.has(k))) {

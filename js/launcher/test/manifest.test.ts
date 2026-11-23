@@ -70,3 +70,15 @@ describe('the contract levels a runtime takes', () => {
     assert.equal(Manifest.refusal(API_LEVEL + 1), `needs level ${API_LEVEL + 1}, runtime ${runtime}`)
   })
 })
+
+describe('shell modules outside a desktop package', () => {
+  const app = (id: string) => ({ id, label: 'Store', icon: 'store', entry: '/s/index.html', capabilities: { software: true } })
+  const check = (id: string) =>
+    Manifest.check({ apiLevel: API_LEVEL, apps: [app(id)], assets: { '/s/': ['web'] } } as unknown as PackageManifest, () => true, () => true, () => true).errors
+  test('the community store may declare one, being a system app where acdes trusts its package', () => {
+    assert.deepEqual(check('community-store'), [])
+  })
+  test('any other app is refused', () => {
+    assert.ok(check('store').some((e) => e.includes('acde:software is a shell module')))
+  })
+})

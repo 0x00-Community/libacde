@@ -26,7 +26,7 @@
 | `backend` | 否 | 桌面后台: `{unit}`, 后台进程的 systemd 系统单元模板名, 以 `@` 结尾、不含 `/` (如 `"acdes-session-agent@"`); 管家按 `<unit><UID>.service` 的主进程认它, 只认系统包 |
 | `heapMb` | 否 | 桌面页的 JS 堆, 默认 1024, 最小 32 |
 
-同一个包里还要有 `apiLevel` (和运行时的契约级别相同, 否则整个包不加载), 可以有 `apps` (和桌面同包的应用是**系统应用**, 可以声明外壳模块)、
+同一个包里还要有 `apiLevel` (和运行时的契约级别相同, 否则整个包不加载), 可以有 `apps` (和桌面同包的应用是**系统应用**, 可以声明外壳模块; 不带桌面的包里应用全是 `SYSTEM_APPS` (`manifest/index.ts`, 现在只有社区商店 `community-store`, 同 acdes 的 `registry.rs`) 时也是, acdes 另要求这个包归 root)、
 `assets` (同源 URL 前缀 → 包里的目录)、`services` (服务名 → 模块文件). 桌面自己不需要声明 capabilities: 桌面页拿到全部模块.
 系统应用的条目可以写 `"sensitive": true` (SDK `AppManifest.sensitive`, 2026-11-21, F7): 标成敏感应用, 只对带桌面的系统包有效, 第三方包不能自标
 (写了的话 acdes 拒收这个应用); 敏感应用怎么对待由 acdes 认定 (见 acdes `docs/manager.md`「敏感应用」), libacde 不看这个字段.
