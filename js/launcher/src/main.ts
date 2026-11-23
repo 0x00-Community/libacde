@@ -195,7 +195,8 @@ class Launcher {
     this.#title = session.label
     const menuKeys = manager ? (keys: readonly string[]) => this.#thread?.post({ type: 'menukeys', keys }) : null
     this.#menus = new AppMenus(this.#shell, () => this.#window, menuKeys)
-    this.#lent = new LentCallbacks((frame) => manager?.send?.(frame))
+    const report = process.env['ACDE_DEV'] ? (code: string, text: string) => this.#thread?.post({ rpc: 'violation', code, text }) : null
+    this.#lent = new LentCallbacks({ send: (frame) => manager?.send?.(frame), report })
     this.#lending = new Lending({ manager, app: () => this.session.found?.app.id, post: (message) => this.#thread?.post(message) })
     this.#pages = new PageCalls({
       label: session.label,
@@ -429,7 +430,8 @@ class Launcher {
     if (typeof chord === 'string') return void this.#menuKey(chord)
     const call = message as { rpc?: string; id?: number; service?: string; method?: string; args?: unknown[] } | null
     if (!this.manager || call?.rpc !== 'call' || !call.service || !Object.hasOwn(this.#services, call.service)) return void rpc.receive(message)
-    this.manager.call(call.service, call.method ?? '', this.#lent.lend(call.args ?? [])).then(
+    const { service, method = '' } = call
+    this.#lent.call(service, method, call.args ?? [], (args) => this.manager!.call(service, method, args)).then(
       (value) => this.#thread?.post({ rpc: 'result', id: call.id, value }),
       (error: Error & { status?: number; code?: string }) => {
         const fields = { ...(error.status !== undefined && { status: error.status }), ...(error.code !== undefined && { code: error.code }) }

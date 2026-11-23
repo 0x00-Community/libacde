@@ -116,6 +116,11 @@
   换成本进程内只增不复用的编号 (同一次加载里同一个 n 换成同一个号, 管家只登记一份), 管家推来的 `invoke` 按这张表换回页面的编号, 表里没有的
   (上一次加载的) 丢掉; 重载 (`#respawn`, `reload`、开发重载都经过它) 时把表里的号全部向管家发 `{release: {fn}}` 再清表, 服务那边对应的回调作废、
   `releaseSignal` abort. 页面自己发的 `{rpc: 'release', fn}` 是它放掉启动器借给它的函数, 照旧由启动器的 rpc 收, 不转管家.
+  调用追踪 (2026-11-23, AC/acdev#115, 总仓 `.scratch/acdev-debug-insight/issues/done/04-call-tracing.md`): `LentCallbacks` 带加载代次 (`load`, 从 1 起, 每次 `releaseAll` 加 1),
+  释放时把号和它所属的代次记进一张短表 (最近 `RELEASED_KEPT` = 1024 个). 服务调用经 `LentCallbacks.call` 转出, `acde_host::calls` 开到 debug 时每次调用记一行
+  `event=call load= service= method= lent=[号,…] ok= ms=`, 每次送达页面的回调记 `event=invoke load= fn= page=`. 管家推来的 invoke 查不到号时不再静默丢弃:
+  记一行 `event=stale-invoke code=<stale-load|unknown-callback> fn= lent-by=<借出时的代次|none> load=<现在的代次>` (开发模式下 warn, 正式系统 debug); 开发模式 (`ACDE_DEV`) 下另给页面发
+  `{rpc: 'violation', code, text}`, 页面的 rpc 把 `text` 写到自己的 `console.error`, 于是 `acdev console` 当场看得到 (StrictMode 式的当场报错). 违规种类只有这两个固定编号, 测试可以断言.
 - **服务列表变化** (`acde:services`, 应用与桌面都有, 不用声明): `names()` 给当前的命名空间, `on('changed', ({names, added, removed}) => …)`
   在推来的列表 (含形状) 和上一份不同时通知. 通知前新命名空间已能 `import('acde:<名字>')`, 形状变了的重新 import 拿新代理, 去掉的再 import
   会被拒 (`modules.rs` 的 `define` / `refuse` 会丢掉缓存的模块; 已拿到手的旧代理仍在, 调用由管家报错). 桌面先于服务起来时 (客户机上服务要

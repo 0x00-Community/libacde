@@ -10,7 +10,7 @@ import { backendUp, Callbacks, incomingCall, released, ServiceHost, shapeOf } fr
 import { LentCallbacks } from '../src/manager/lent.ts'
 import { Rpc } from '../../page/src/rpc.ts'
 
-bindNatives({ host: { logEnabled: () => false }, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
+bindNatives({ host: { logEnabled: () => false, log: () => {} }, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
 
 const pkg = (apps: unknown[], extra: object = {}) => JSON.stringify({ name: 'demo', acde: { apiLevel: 1, apps, ...extra } })
 const app = (id: string, entry = '/index.html') => ({ id, label: id.toUpperCase(), icon: 'apps', entry })
@@ -409,26 +409,38 @@ function loadedPage(): { rpc: Rpc; sent: Call[] } {
   return { rpc: new Rpc((message) => sent.push(message as Call)), sent }
 }
 
-function lendOne(rpc: Rpc, sent: Call[], lending: LentCallbacks, fn: () => void): number {
+async function lent(lending: LentCallbacks, args: readonly unknown[]): Promise<unknown[]> {
+  let out: unknown[] = []
+  await lending.call('desks', 'watch', args, async (given) => {
+    out = given
+  })
+  return out
+}
+
+async function lendOne(rpc: Rpc, sent: Call[], lending: LentCallbacks, fn: () => void): Promise<number> {
   void rpc.call('desks', 'watch', [fn])
-  const marked = lending.lend(sent.at(-1)!.args)[0] as { __acdeFn: number }
-  return marked.__acdeFn
+  return ((await lent(lending, sent.at(-1)!.args))[0] as { __acdeFn: number }).__acdeFn
+}
+
+function natives(logged: string[], on: boolean): void {
+  const host = { logEnabled: () => on, log: (_level: number, target: string, text: string) => void logged.push(`${target} ${text}`), clock: () => 0 }
+  bindNatives({ host, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
 }
 
 describe('callbacks a page lends to desktop services', () => {
   test('after a reload the old callbacks are released and never reach the new page, whose own callbacks still do', async () => {
     const frames: object[] = []
-    const lending = new LentCallbacks((frame) => frames.push(frame))
+    const lending = new LentCallbacks({ send: (frame) => void frames.push(frame) })
     const calls: string[] = []
     const old = loadedPage()
-    const before = lendOne(old.rpc, old.sent, lending, () => calls.push('old'))
-    assert.equal(lendOne(old.rpc, old.sent, lending, () => calls.push('old 2')) > before, true)
+    const before = await lendOne(old.rpc, old.sent, lending, () => calls.push('old'))
+    assert.equal((await lendOne(old.rpc, old.sent, lending, () => calls.push('old 2'))) > before, true)
 
     lending.releaseAll()
     assert.deepEqual(frames, [{ release: { fn: before } }, { release: { fn: before + 1 } }])
 
     const fresh = loadedPage()
-    const after = lendOne(fresh.rpc, fresh.sent, lending, () => calls.push('new'))
+    const after = await lendOne(fresh.rpc, fresh.sent, lending, () => calls.push('new'))
     assert.deepEqual((fresh.sent[0]!.args[0] as { __acdeFn: number }).__acdeFn, (old.sent[0]!.args[0] as { __acdeFn: number }).__acdeFn)
     assert.notEqual(after, before, 'the page numbers start over, the numbers the manager sees do not')
     assert.equal(lending.invoke({ type: 'invoke', fn: before, args: [] }), null)
@@ -438,12 +450,45 @@ describe('callbacks a page lends to desktop services', () => {
     assert.deepEqual(calls, ['new'])
   })
 
-  test('a callback lent twice in one load keeps its number, so the manager keeps one entry', () => {
-    const lending = new LentCallbacks(() => {})
+  test('a callback lent twice in one load keeps its number, so the manager keeps one entry', async () => {
+    const lending = new LentCallbacks({ send: () => {} })
     const marked = [{ __acdeFn: 5 }, { on: { __acdeFn: 5 } }, 'text']
-    const [first, nested, text] = lending.lend(marked) as [{ __acdeFn: number }, { on: { __acdeFn: number } }, string]
+    const [first, nested, text] = (await lent(lending, marked)) as [{ __acdeFn: number }, { on: { __acdeFn: number } }, string]
     assert.equal(nested.on.__acdeFn, first.__acdeFn)
     assert.equal(text, 'text')
     assert.equal(lending.invoke({ type: 'invoke', fn: first.__acdeFn, args: [1] })?.fn, 5)
+  })
+
+  test('a call back to a released callback is reported on the spot with the load that lent it, and the warning names both loads', async () => {
+    const logged: string[] = []
+    natives(logged, true)
+    try {
+      const reported: [string, string][] = []
+      const lending = new LentCallbacks({ send: () => {}, report: (code, text) => void reported.push([code, text]) })
+      const [first] = (await lent(lending, [{ __acdeFn: 1 }])) as [{ __acdeFn: number }]
+      lending.releaseAll()
+      assert.equal(lending.load, 2)
+      assert.equal(lending.invoke({ type: 'invoke', fn: first.__acdeFn, args: [] }), null)
+      assert.deepEqual(reported.map(([code]) => code), ['stale-load'])
+      assert.match(reported[0]![1], /callback \d+ of load 1 after the page reloaded and released it; this is load 2/)
+      assert.ok(logged.some((line) => line.includes(`event=stale-invoke code=stale-load fn=${first.__acdeFn} lent-by=1 load=2`)))
+      assert.equal(lending.invoke({ type: 'invoke', fn: 999, args: [] }), null)
+      assert.equal(reported.at(-1)![0], 'unknown-callback')
+    } finally {
+      natives([], false)
+    }
+  })
+
+  test('the page puts a reported violation on its own console', async () => {
+    const errors: unknown[] = []
+    const error = console.error
+    console.error = (...args: unknown[]) => void errors.push(args.join(' '))
+    try {
+      new Rpc(() => {}).receive({ rpc: 'violation', code: 'stale-load', text: 'acde: stale' })
+      await new Promise((settled) => setTimeout(settled, 0))
+    } finally {
+      console.error = error
+    }
+    assert.deepEqual(errors, ['acde: stale'])
   })
 })

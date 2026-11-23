@@ -5,6 +5,7 @@ type RpcMessage =
   | { rpc: 'result'; id: number; value?: unknown; error?: RemoteError; refs?: true }
   | { rpc: 'invoke'; fn: number; args: unknown[]; refs?: true }
   | { rpc: 'release'; fn: number }
+  | { rpc: 'violation'; code: string; text: string }
 
 interface RemoteError {
   readonly name: string
@@ -62,6 +63,10 @@ export class Rpc {
   async #receive(message: RpcMessage): Promise<void> {
     if (message.rpc === 'release') {
       this.#functions.delete(message.fn)
+      return
+    }
+    if (message.rpc === 'violation') {
+      console.error(message.text)
       return
     }
     const incoming = <T>(value: T): T => (message.refs ? (this.#in(value) as T) : value)
