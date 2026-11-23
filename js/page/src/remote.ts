@@ -398,7 +398,7 @@ export class RemoteBridge {
       }),
       desktops: () => Rpc.calls(() => rpc, 'desktops', 'list', 'choose'),
       software: () => ({
-        ...Rpc.calls(() => rpc, 'software', 'state', 'refresh', 'install', 'remove', 'update'),
+        ...Rpc.calls(() => rpc, 'software', 'state', 'refresh', 'install', 'remove', 'update', 'model'),
         on: windows.notices.for('software', ['changed']),
       }),
     }

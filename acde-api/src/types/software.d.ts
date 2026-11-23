@@ -18,6 +18,12 @@ export interface SoftwareState {
   readonly updates: SoftwareUpdate[]
 }
 
+export interface SoftwareModelChange {
+  readonly action: 'load' | 'unload'
+  readonly model: string
+  readonly url: string
+}
+
 export interface SoftwareChangedEvent {
   readonly type: 'softwarechanged'
 }
@@ -28,5 +34,6 @@ export interface AcdeSoftware {
   install(name: string): Promise<null>
   remove(name: string): Promise<null>
   update(): Promise<null>
+  model(change: SoftwareModelChange): Promise<null>
   on(type: 'changed', handler: (event: SoftwareChangedEvent) => void): () => boolean
 }
