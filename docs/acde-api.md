@@ -43,7 +43,7 @@
 
 `src/index.d.ts`、`src/app.d.ts`、`src/shell.d.ts` (入口); `src/modules/` (`declare module 'acde:…'`); `src/types/` (清单、配置、服务、能力、
 页面、事件、权限、软件包 (`software.d.ts`, `acde:software`)、office; `acde:inspect` 的类型 (`InspectNode`、`InspectWindow`、`InspectAction` 等) 在子目录 `types/inspect/` (2026-11-23 从 `page.d.ts` 原样搬出, 为行数门禁; `page.d.ts` 照旧转出, 引用路径不变); 窗口外观 `WindowLook` 在子目录 `types/window-look/` (它用模块扩充给 `AcdeDesktop` 加 `setWindowLook`, `page.d.ts` 不动)). 删除前是由 JS 常量推出来的两组类型, 现在直接写成字面量联合: `types/names.d.ts` (`IconName`、`ShellModule`,
-原来是 `validate.ts` 里 `ICON_NAMES`、`SHELL_MODULES` 的元素类型)、`types/places.d.ts` (`SharedPlace`、`PlaceCapability`, 原来出自
+原来是 `validate.ts` 里 `SHELL_MODULES` 的元素类型; `IconName` 是任意 freedesktop 图标名的 `string`, 旧的 Dopame 私有名表 `ICON_NAMES`、`LegacyIconName` 2026-11-23 删掉, 过渡只留 `legacy-icons.json`)、`types/places.d.ts` (`SharedPlace`、`PlaceCapability`, 原来出自
 `runtime/places.js` 的 `SHARED_PLACES`); `types/modules.d.ts` 的 `AcdeModules` 原在 `runtime/load.d.ts`.
 
 ## 没有进这个包的 (不是纯类型声明)
@@ -58,7 +58,7 @@
 | `src/runtime/places.js` (`SHARED_PLACES`) | 共享位置的列表 (类型留下了) | `manifest/places.ts` |
 | `src/runtime/platforms.js` (`PLATFORM_SUPPORT`、`RUNNING_MODES`、`platformSupport()`) | 各平台、各跑法下有哪些模块 | `manifest/platforms.ts` |
 | `src/vite.js` (`@acde/api/vite`) | Vite 插件: 构建时把 `acde:*` 留作外部模块, dev 时换成会 reject 的替身 | acdev 的 `npm/src/vite-plugin.ts` (`acdev build` 用) |
-| `src/validate.ts` (`@acde/api/manifest`) | 清单校验 (`Manifest`、`LEGACY_ICONS` (过渡用, 读 `legacy-icons.json`)、`ICON_NAMES` (就是它的键)、`SHELL_MODULES`、`APP_MODULES`、能力列表、导入规则), Broker 和 `acdev check/build` 共用 | `manifest/index.ts` |
+| `src/validate.ts` (`@acde/api/manifest`) | 清单校验 (`Manifest`、`LEGACY_ICONS` (过渡用, 读 `legacy-icons.json`)、`SHELL_MODULES`、`APP_MODULES`、能力列表、导入规则), Broker 和 `acdev check/build` 共用 | `manifest/index.ts` |
 | `src/frame.ts` (`FrameThemes`) | 窗框主题的颜色、样式解析成传给原生的格式 | 没有 (运行时一侧的逻辑) |
 | `src/index.js` | 上面那些值的再导出 | 没有 |
 | `scripts/build.mjs` | esbuild 打 `dist/` 并检查产物 | 没有 |

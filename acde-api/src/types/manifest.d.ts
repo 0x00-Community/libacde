@@ -1,7 +1,7 @@
 import type { FsRootName } from './places'
-import type { IconName, LegacyIconName, ShellModule } from './names'
+import type { IconName, ShellModule } from './names'
 
-export type { IconName, LegacyIconName, ShellModule }
+export type { IconName, ShellModule }
 
 export interface PackageManifest {
   readonly apiLevel?: number

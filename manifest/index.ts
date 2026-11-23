@@ -11,7 +11,6 @@ export { PLATFORM_SUPPORT, RUNNING_MODES, platformSupport } from './platforms.ts
 
 export const LEGACY_ICONS: Readonly<Record<string, string>> = legacyIcons
 
-export const ICON_NAMES: readonly string[] = Object.keys(LEGACY_ICONS)
 
 export const SHELL_MODULES = ['windows', 'packages', 'session', 'desktops', 'inspect', 'desktop', 'setDefault', 'permissions', 'voice', 'software'] as const
 
