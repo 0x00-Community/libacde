@@ -22,6 +22,7 @@ pub struct Dropped {
     pub name: String,
     pub label: String,
     pub kind: EntryKind,
+    pub writable: bool,
 }
 
 const LENT: &str = "lent:";
@@ -47,7 +48,7 @@ impl PickedFolders {
         let Some(owner) = workspace.owner() else { return Vec::new() };
         paths
             .iter()
-            .filter_map(|path| lend_one(workspace, owner, path).inspect_err(|error| log::warn!("{owner}: a dropped item is not lent: {error}")).ok()?)
+            .filter_map(|path| lend_path(workspace, owner, path, false).inspect_err(|error| log::warn!("{owner}: a dropped item is not lent: {error}")).ok()?)
             .collect()
     }
 
@@ -147,20 +148,29 @@ impl PickedFolders {
     }
 }
 
-fn lend_one(workspace: &super::Workspace, owner: &str, path: &str) -> Result<Option<Dropped>, String> {
+fn opened<T>(writable: bool, open: impl Fn(bool) -> std::io::Result<T>) -> std::io::Result<(T, bool)> {
+    match open(writable) {
+        Ok(done) => Ok((done, writable)),
+        Err(_) if writable => Ok((open(false)?, false)),
+        Err(error) => Err(error),
+    }
+}
+
+pub(crate) fn lend_path(workspace: &super::Workspace, owner: &str, path: &str, writable: bool) -> Result<Option<Dropped>, String> {
     let info = std::fs::symlink_metadata(path).map_err(|error| format!("{path}: {error}"))?;
     let label = std::path::Path::new(path).file_name().map_or_else(|| path.to_owned(), |name| name.to_string_lossy().into_owned());
     let failed = |error: std::io::Error| format!("{path}: {error}");
     let refused = |failure: Failure| failure.message;
-    let (name, kind) = if info.is_dir() {
-        let root = super::LentRoot::open(label.clone(), false, path).map_err(failed)?;
-        (workspace.lend(owner, root).map_err(refused)?, EntryKind::Directory)
+    let (name, kind, writable) = if info.is_dir() {
+        let (root, writable) = opened(writable, |w| super::LentRoot::open(label.clone(), w, path)).map_err(failed)?;
+        (workspace.lend(owner, root).map_err(refused)?, EntryKind::Directory, writable)
     } else if info.is_file() {
-        (workspace.lend_file(owner, LentFile::open(path, false).map_err(failed)?).map_err(refused)?, EntryKind::File)
+        let (file, writable) = opened(writable, |w| LentFile::open(path, w)).map_err(failed)?;
+        (workspace.lend_file(owner, file).map_err(refused)?, EntryKind::File, writable)
     } else {
         return Ok(None);
     };
-    Ok(Some(Dropped { name, label, kind }))
+    Ok(Some(Dropped { name, label, kind, writable }))
 }
 
 #[cfg(windows)]
@@ -317,6 +327,25 @@ mod tests {
         assert_eq!(folders.read("lent-file:file").unwrap().unwrap().data, b"a");
         assert_eq!(code(folders.write("lent-file:file", b"x")), "EACCES");
         assert!(PickedFolders::default().lend_dropped(&[picked]).is_empty());
+        _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_path_is_lent_writable_when_it_can_be_and_read_only_otherwise() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = scratch();
+        let (open, kept) = (base.join("picked/open.txt"), base.join("picked/kept.txt"));
+        std::fs::write(&open, b"o").unwrap();
+        std::fs::write(&kept, b"k").unwrap();
+        std::fs::set_permissions(&kept, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let all = crate::runtime::fs::Workspace::at(&base);
+        let lent = |path: &str| all.lend_path("editor", path, true).unwrap().unwrap();
+        assert!(lent(&open).writable);
+        let root_writes = std::fs::OpenOptions::new().write(true).open(&kept).is_ok();
+        assert_eq!(lent(&kept).writable, root_writes);
+        assert_eq!(lent(&base.join("picked")).kind, EntryKind::Directory);
+        assert!(all.lend_path("editor", &base.join("gone"), true).is_err());
+        assert!(!all.lend_path("editor", &open, false).unwrap().unwrap().writable);
         _ = std::fs::remove_dir_all(base);
     }
 

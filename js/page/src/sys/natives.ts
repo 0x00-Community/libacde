@@ -62,6 +62,7 @@ interface SysNative {
   pickFiles?(app: string, title: string, multiple: boolean, filters: readonly FileFilter[]): Promise<{ readonly files: LentFile[] } | null>
   pickSave?(app: string, title: string, name: string, filters: readonly FileFilter[]): Promise<LentFile | null>
   unlendRoot?(app: string, name: string): boolean
+  lendPaths?(app: string, paths: readonly string[]): Omit<Lent, 'fd'>[]
   spawnWeb(
     name: string,
     init: unknown,

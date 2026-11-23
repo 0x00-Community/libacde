@@ -155,6 +155,7 @@ fn launcher<'s>(scope: &mut v8::PinScope<'s, '_>, argv: &[String]) -> v8::Local<
         "pickFolder" => crate::host::picker::pick_folder,
         "pickFiles" => crate::host::picker::pick_files,
         "pickSave" => crate::host::picker::pick_save,
+        "lendPaths" => crate::host::web::lend_paths,
     );
     #[cfg(unix)]
     bind::method(scope, obj, "adoptLent", crate::host::web::adopt_lent);

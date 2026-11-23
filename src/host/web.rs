@@ -236,6 +236,23 @@ pub(crate) fn lend_file(owner: &str, file: crate::runtime::LentFile) -> Result<S
     with_workspace(|workspace| workspace.lend_file(owner, file))
 }
 
+pub fn lend_paths(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let mut given = bind::Args { scope: &mut *scope, args: &args };
+    let (owner, paths) = (given.string(0), given.json(1));
+    let paths: Vec<String> = paths.and_then(|value| serde_json::from_value(value).ok()).unwrap_or_default();
+    let lent: Result<Vec<_>, _> = paths.iter().map(|path| with_workspace(|workspace| workspace.lend_path(&owner, path, true))).collect();
+    let lent = match lent {
+        Ok(lent) => lent,
+        Err(error) => return bind::throw_error(scope, &error.message),
+    };
+    let list = v8::Array::new(scope, 0);
+    for crate::runtime::Dropped { name, label, kind, writable } in lent.into_iter().flatten() {
+        let entry = crate::js_object!(scope, {"name" => name, "label" => label, "kind" => kind.as_str(), "writable" => writable});
+        list.set_index(scope, list.length(), entry.into());
+    }
+    rv.set(list.into());
+}
+
 fn with_workspace<T, E: Into<crate::runtime::FsError>>(work: impl FnOnce(&crate::runtime::Workspace) -> Result<T, E>) -> Result<T, crate::runtime::FsError> {
     WEBS.with(|w| work(w.borrow_mut().system.workspace.get_or_insert_with(crate::runtime::Workspace::new))).map_err(Into::into)
 }

@@ -76,7 +76,7 @@ acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边�
   - 会话: 页面取 data 里的 `text/uri-list` 原串 (acdes `crates/window` 保留它), 经页面调用 `dropped({uris})` 到启动器 (`app/lending.ts` `dropped`),
     启动器调管家 `fs.dropped({uris})`, 管家和合成器报的放下核对后回 `{files: Lent[]}` + `fds` (文件只读, 文件夹 `O_PATH`), 交 `sys.adoptLent`, 文件夹另发 `fsroots {added}`.
   - 宿主窗口: 没有 `text/uri-list` (acdev hostwin 只给 `files`), 页面调 `natives.picker.dropped()` (src/host `picker.rs`): 只认 Rust 在 `webnative.rs` `pump`
-    里记下的这个页面最近一次 `dnddrop` 的 `files` (5 秒内, 取一次就清), 页面报的路径一概不收; 当场只读打开 (`PickedFolders::lend_dropped`) 并登记给本应用.
+    里记下的这个页面最近一次 `dnddrop` 的 `files` (5 秒内, 取一次就清), 页面报的路径一概不收; 当场只读打开 (`PickedFolders::lend_dropped`, 和 dev 通道 `open {path}` 共用 `picked.rs` `lend_path`) 并登记给本应用.
   - 两种都回 `{name, label, kind, writable: false}`, 页面按名字造句柄 (`PageCalls.lent`), `text/uri-list` 和 `text/plain` 不进页面的 `DataTransfer`.
   不超过 64 MiB 的普通文件进 `dataTransfer.files` (内容经 `natives.picker` 读进来),
   每个文件和文件夹在 `items` 里是 `kind: 'file'` 的一项, `getAsFileSystemHandle()` 给只读句柄 (`createWritable` / 新建 / 删除是 `NotAllowedError`,

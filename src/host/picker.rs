@@ -187,8 +187,8 @@ fn settle(scope: &mut v8::PinScope, resolver: v8::Local<v8::PromiseResolver>, an
         Ok(Reply::Done) => v8::undefined(scope).into(),
         Ok(Reply::Dropped(dropped)) => {
             let list = v8::Array::new(scope, 0);
-            for Dropped { name, label, kind } in dropped {
-                let entry = crate::js_object!(scope, {"name" => name, "label" => label, "kind" => kind.as_str(), "writable" => false});
+            for Dropped { name, label, kind, writable } in dropped {
+                let entry = crate::js_object!(scope, {"name" => name, "label" => label, "kind" => kind.as_str(), "writable" => writable});
                 list.set_index(scope, list.length(), entry.into());
             }
             list.into()

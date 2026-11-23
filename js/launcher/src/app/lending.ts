@@ -88,6 +88,15 @@ export class Lending {
     return taken.length ? taken.map(({ name, label, kind, writable }) => ({ name, label: label || name, kind, writable })) : null
   }
 
+  openPath(path: string): Request {
+    const app = this.#host.app()
+    const lend = sys().lendPaths
+    if (!app || !lend) throw new Error('open: this session cannot lend a path to its app')
+    const [entry] = lend(app, [path])
+    if (!entry) throw new Error(`open: ${path} is neither a file nor a folder`)
+    return { kind: 'open-file', file: entry.label, entry }
+  }
+
   request(event: Readonly<Record<string, unknown>>): Request | null {
     const adopted = this.lend(event['lent'], event['fds'])
     const request = Lending.entered(event['request'] as Request | undefined, event['lent'], adopted)

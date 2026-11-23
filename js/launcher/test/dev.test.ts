@@ -189,3 +189,16 @@ describe('the guard of act and run', () => {
     }
   })
 })
+
+describe('DevChannel.opening', () => {
+  test('takes an app, an absolute path or an http(s) link, and says what is wrong with the rest', () => {
+    assert.deepEqual(DevChannel.opening({ name: 'notes' }), { name: 'notes', path: null, url: null })
+    assert.deepEqual(DevChannel.opening({ path: '/home/u/a/b.md' }), { name: null, path: '/home/u/a/b.md', url: null })
+    assert.deepEqual(DevChannel.opening({ name: 'web', url: 'https://example.com/x' }), { name: 'web', path: null, url: 'https://example.com/x' })
+    assert.throws(() => DevChannel.opening({}), /give an app \(name\), a path or a url/)
+    assert.throws(() => DevChannel.opening({ path: '/a', url: 'https://x' }), /path or url, not both/)
+    assert.throws(() => DevChannel.opening({ path: 'a/b' }), /a\/b is not an absolute path/)
+    assert.throws(() => DevChannel.opening({ url: 'file:///etc/passwd' }), /only http and https/)
+    assert.throws(() => DevChannel.opening({ name: 3 }), /name is a non-empty string/)
+  })
+})

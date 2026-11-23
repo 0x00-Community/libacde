@@ -21,7 +21,7 @@ import { refused, route, unsupported, wallpaperOf } from './app/calls'
 import { rejectingCalls, sessionOf, windowGrant, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
 import { WindowSnapshots, type ShellEvent } from './app/events'
 import { ServiceHost } from './manager/service'
-import { DevChannel, type DevShell, type DevTarget } from './dev/dev'
+import { DevChannel, type DevOpen, type DevOpened, type DevShell, type DevTarget } from './dev/dev'
 import { DevToolsEndpoint, type NativeDevTools } from './dev/devtools'
 import { managerRelay, type DevRelay } from './dev/relay'
 import { Inspect, type InspectHost, type InspectShell, type ShellWindow } from './dev/inspect'
@@ -215,6 +215,7 @@ class Launcher {
       page: () => this.#target(),
       inspect: () => this.#inspector(),
       reload: () => this.#devReload(false),
+      open: (given) => this.#devOpen(given),
       ...(relay && { respond: relay.respond }),
       ...(this.#guest && { place: (windows: unknown) => this.#guest!.place(windows) }),
       production: !process.env['ACDE_DEV'],
@@ -695,6 +696,16 @@ class Launcher {
   #replaceServices(services: Readonly<Record<string, ServiceShape>> | undefined): void {
     this.#services = services ?? {}
     this.#thread?.post({ type: 'services', services: this.#services })
+  }
+
+  async #devOpen({ name, path, url }: DevOpen): Promise<DevOpened> {
+    const app = this.#desktop ? null : this.session.found?.app
+    if (!app) throw new Error(`open: ${DevChannel.SINGLE}`)
+    if (name !== null && name !== app.id && name !== app.label) return { ok: false, text: `open: ${DevChannel.SINGLE}; this one runs ${app.id}` }
+    const request = path !== null ? this.#lending.openPath(path) : url !== null ? { kind: 'open-link', url } : null
+    if (!request) return { ok: true, text: `opened ${app.id} (it was running)`, app: app.id }
+    await this.#rpc?.call('window', 'request', [request])
+    return { ok: true, text: `${app.id} was asked to open ${path ?? url}`, app: app.id }
   }
 
   #deliver(event: ManagerEvent): void {

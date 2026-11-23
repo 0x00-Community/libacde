@@ -400,6 +400,10 @@ impl Workspace {
         self.shared.lend_file(owner, file)
     }
 
+    pub(crate) fn lend_path(&self, owner: &str, path: &str, writable: bool) -> Outcome<Option<Dropped>> {
+        picked::lend_path(self, owner, path, writable).map_err(|message| Failure::http(404, message))
+    }
+
     pub(crate) fn lent_file(&self, name: &str) -> Option<LentFile> {
         self.shared.lent_file(self.owner.as_deref()?, name)
     }

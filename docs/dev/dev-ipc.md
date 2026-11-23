@@ -34,7 +34,11 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
   - `eval {web, code, node?, arg?}` → `{value}`: 和 `ACDE_DEBUG_DIR` 一样求值 (promise 等落定), 结构化克隆回来再 JSON (undefined 是 null, JSON 不了的回错).
     给了 `node` (render 节点 id, 即 ref 里点后面的数) 时 `code` 是一个函数的源码, 以 `(元素, arg)` 调用 (rpc `debug.evalOn`).
   - `shot {web}` → `{png: <base64>, width, height}` (`Shell.capture`, 设备像素, 桌面的含面板).
-  - `snapshot` / `act` / `run` / `open {name}` / `query {selector, window?, ref?, limit?, attributes?}` → `Broker.inspect.api` 的同名方法 (`docs/web/inspect.md`「看和操作桌面」).
+  - `snapshot` / `act` / `run` / `query {selector, window?, ref?, limit?, attributes?}` → `Broker.inspect.api` 的同名方法 (`docs/web/inspect.md`「看和操作桌面」).
+  - `open {name?, path?, url?}` (2026-11-23, acdev `acdev open`): 只给 `name` 拉起应用; 带 `path` (绝对路径, 文件或文件夹) 用默认应用或 `name` 打开它, 带 `url` (只认 http / https)
+    交给应用当链接打开; `path` 和 `url` 至多给一个, 应答 `{ok, text, app?}` (`DevChannel.opening` 查形状). 会话里由 acdes 管家做 (复用 `apps.openPath` 和 open-link).
+    宿主窗口的单应用会话只有这一个应用: `name` 只能是它; `path` 经启动器 `sys.lendPaths` (src/host `web.rs` `lend_paths`, `Workspace::lend_path`: 能写就可写借出,
+    不能写退回只读) 借给它, 照 openPath 的形状 `{kind: 'open-file', file, entry}` 经 `window.request` 交给页面; `url` 交 `{kind: 'open-link', url}`.
   - `console {web?, since?, limit?, level?}` → `{entries, next, dropped}`: 页面的 `console.*` 和没人接的错误 (`devlog.ts`, 见下), `level` 是
     log / info / warn / error / debug, 或 errors (console.error 和错误); `web` 是 web 名、应用 id 或 desktop; `since` 是上次的 `next`, `dropped`
     是 since 之后已经丢掉的条数. 条目 `{seq, time (ms, 和日志同一个零点), web, app, kind: console | error | rejection, level, text}`.

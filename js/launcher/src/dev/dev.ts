@@ -41,9 +41,22 @@ export interface DevHost {
   page(): DevTarget | null
   inspect(): Inspect
   reload(): Promise<void>
+  open?(given: DevOpen): Promise<DevOpened>
   respond?(id: number, ok: boolean, payload: string): void
   place?(windows: unknown): void
   readonly production?: boolean
+}
+
+export interface DevOpen {
+  readonly name: string | null
+  readonly path: string | null
+  readonly url: string | null
+}
+
+export interface DevOpened {
+  readonly ok: boolean
+  readonly text: string
+  readonly app?: string
 }
 
 interface DevInit {
@@ -196,7 +209,8 @@ export class DevChannel {
       case 'input':
         return inspect().input(this.#web(args['web']).window, args['events'] as readonly InspectInput[])
       case 'open':
-        throw new Error(`open: ${DevChannel.SINGLE}`)
+        if (!this.#host.open) throw new Error(`open: ${DevChannel.SINGLE}`)
+        return this.#host.open(DevChannel.opening(args))
       case 'init':
         return this.#init(args)
       case 'uninit':
@@ -332,6 +346,20 @@ export class DevChannel {
       this.#host.page()?.post({ type: 'colorscheme', dark: this.dark })
     }
     return { colorScheme: this.dark ? 'dark' : 'light', emulated: this.#emulated !== null }
+  }
+
+  static opening(args: Record<string, unknown>): DevOpen {
+    const text = (key: string) => {
+      const value = args[key]
+      if (value !== undefined && value !== null && (typeof value !== 'string' || !value)) throw new Error(`open: ${key} is a non-empty string`)
+      return typeof value === 'string' ? value : null
+    }
+    const [name, path, url] = [text('name'), text('path'), text('url')]
+    if (path !== null && url !== null) throw new Error('open: give path or url, not both')
+    if (name === null && path === null && url === null) throw new Error('open: give an app (name), a path or a url')
+    if (path !== null && !isAbsolute(path)) throw new Error(`open: ${path} is not an absolute path`)
+    if (url !== null && !/^https?:\/\//i.test(url)) throw new Error(`open: ${url}: only http and https links open here`)
+    return { name, path, url }
   }
 
   #choose(args: Record<string, unknown>): Record<string, unknown> {
