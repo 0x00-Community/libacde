@@ -63,6 +63,8 @@ declare module '../page' {
   interface AcdeWindow {
     setMaterial(material: MaterialName, options?: MaterialOptions): void
     material(): CurrentMaterial
+    accent(): string | null
+    on(name: 'accent', handler: (color: string | null) => void): () => boolean
   }
 
   interface AcdeDesktop {

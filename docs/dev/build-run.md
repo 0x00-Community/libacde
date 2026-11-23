@@ -72,7 +72,7 @@ Bun 的本代目录在默认 base 下, DACL 读回只有 SYSTEM 和当前用户,
   **强调色** (2026-11-23): 标准门户 `org.freedesktop.appearance` 的 `accent-color` (`(ddd)`, sRGB 0..1) 也由它读 (原生 `Appearance.accent()`, 变化随 `watch` 来),
   三个分量都在 0..1 时转成 `#rrggbb`, 否则 (门户约定 -1 或越界表示没设) 是 `null`; 进初始化参数 `accent`, 变了发 `{type: 'accent', color}`; 页面交 `dom.setAccent`,
   `engine.set_accent` 写进视口 (blitz `Viewport.accent` → acss `Device.accent`), 系统颜色 `AccentColor` 取它、`AccentColorText` 按对比度取白或黑, 变了整页重算样式,
-  `getComputedStyle` 立即读到; 没设或没有门户时两者是默认值 (`#0075ff`、白; 深色 `#99c8ff`、黑). CSS 里没有对应的媒体查询, 也不发事件.
+  `getComputedStyle` 立即读到; 没设或没有门户时两者是默认值 (`#0075ff`、白; 深色 `#99c8ff`、黑). CSS 里没有对应的媒体查询; 要分清没设和选了默认色、或要在变化时做事的页面用 `acde:window` 的 `accent()` / `on('accent')` (见 `docs/acde-api.md`).
   **语言** (`language.ts`): 按 `LANGUAGE` / `LC_ALL` / `LC_MESSAGES` / `LANG`; 都没设时用系统的首选语言 (sys `languages()`, hostwin `system/languages.rs`:
   Windows `GetUserPreferredUILanguages`、macOS `NSLocale.preferredLanguages`, Linux 读系统区域 `/etc/locale.conf` 或 `/etc/default/locale`, #147);
   还是没有时 `en-US` (acde-dom 的默认同样是 `en-US`). `acde:session` 的 `setLanguage(tag)` 写 `locale.conf` 并发 `languagechange`.

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { WindowEvent } from '../src/native.ts'
-import { WindowList } from '../src/remote.ts'
+import { WindowList, WindowSelf } from '../src/remote.ts'
 import { Rpc } from '../src/rpc.ts'
 
 const list = () => new WindowList(new Rpc(() => {}))
@@ -95,4 +95,31 @@ test('a window on the Agent stage says so in its row until the person takes it o
   assert.deepEqual(windows.api.list(), [{ id: 9, appId: 'Minecraft', title: 'Minecraft', state: 'normal', rect, desk: 0, stage: true }])
   windows.deliver(event('window', 9, { appId: 'Minecraft', title: 'Minecraft', state: 'normal', rect, desk: 0, stage: false, first: false, changed: ['stage'] }))
   assert.deepEqual(windows.api.list(), [{ id: 9, appId: 'Minecraft', title: 'Minecraft', state: 'normal', rect, desk: 0 }])
+})
+
+const window = (accent: string | null) => {
+  const self = new WindowSelf(new Rpc(() => {}), {} as never, {} as never, null, WindowSelf.output(800, 600, 1))
+  self.tint(accent)
+  return self
+}
+
+test('accent() is the system accent the page started with, null when the system sets none', () => {
+  assert.equal(window(null).api.accent(), null)
+  assert.equal(window('#d0249f').api.accent(), '#d0249f')
+})
+
+test('a new accent fires the accent event once and accent() follows it', () => {
+  const self = window(null)
+  const seen: unknown[] = []
+  const off = self.api.on('accent', (color) => void seen.push(color))
+  self.tint('#d0249f')
+  self.tint('#d0249f')
+  assert.equal(self.api.accent(), '#d0249f')
+  self.tint(null)
+  assert.equal(self.api.accent(), null)
+  assert.deepEqual(seen, ['#d0249f', null], 'an unchanged accent fires nothing')
+  assert.equal(off(), true)
+  self.tint('#0075ff')
+  assert.deepEqual(seen, ['#d0249f', null], 'a removed handler hears nothing')
+  assert.equal(self.api.accent(), '#0075ff', 'the default colour picked by the user is not the unset null')
 })

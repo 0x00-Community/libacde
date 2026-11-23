@@ -141,11 +141,13 @@ export class WindowList {
   }
 }
 
+type OwnEvent = WindowEventName | 'accent'
+
 type PageLike = { dispatchEvent(event: Event): boolean; Event: typeof Event; document: Document }
 
 export class WindowSelf {
   static readonly #EDGES: Record<WindowEdge, number> = { top: 1, bottom: 2, left: 4, right: 8 }
-  static readonly #OWN: Record<WindowEventName, true> = {
+  static readonly #OWN: Record<OwnEvent, true> = {
     activate: true,
     deactivate: true,
     beforeclose: true,
@@ -158,17 +160,19 @@ export class WindowSelf {
     output: true,
     hostcontrols: true,
     minimizable: true,
+    accent: true,
   }
   static readonly EVENTS: readonly string[] = [...Object.keys(WindowSelf.#OWN), 'shortcut']
   readonly #rpc: Rpc
   readonly #surface: NativeSurface
   readonly #page: PageLike
   #menus: AppMenu[] = []
-  readonly #handlers = new Map<WindowEventName, Set<(value?: unknown) => unknown>>()
+  readonly #handlers = new Map<OwnEvent, Set<(value?: unknown) => unknown>>()
   #unmount: (() => void) | null = null
   #opening: Record<string, unknown> | null
   #state: WindowState = 'normal'
   #output: WindowOutput
+  #accent: string | null = null
   #material: CurrentMaterial = Object.freeze({ material: 'none', options: Object.freeze({}) })
   onVisible: (visible: boolean) => void = () => {}
   onTitle: (title: string) => void = () => {}
@@ -207,6 +211,12 @@ export class WindowSelf {
     const was = this.#output
     this.#output = output
     if (JSON.stringify(was) !== JSON.stringify(output)) this.emit('output', output)
+  }
+
+  tint(accent: string | null): void {
+    if (accent === this.#accent) return
+    this.#accent = accent
+    this.emit('accent', accent)
   }
 
   static output(width: number, height: number, scale: number, workArea?: WindowRect | null): WindowOutput {
@@ -255,10 +265,11 @@ export class WindowSelf {
     },
     setMaterial: (material: MaterialName, options: MaterialOptions = {}) => this.#setMaterial(material, options),
     material: (): CurrentMaterial => this.#material,
+    accent: (): string | null => this.#accent,
     requestActivate: () => this.#surface.requestActivate(),
     requestGrab: (kind: 'pointer' | 'keyboard') => this.#surface.requestGrab(kind),
     releaseGrab: (kind: 'pointer' | 'keyboard') => this.#surface.releaseGrab(kind),
-    on: (name: WindowEventName, handler: (value?: unknown) => unknown) => {
+    on: (name: OwnEvent, handler: (value?: unknown) => unknown) => {
       if (!Object.hasOwn(WindowSelf.#OWN, name)) throw new TypeError(`acde:window has no ${String(name)} event (${WindowSelf.EVENTS.join(', ')})`)
       const set = this.#handlers.get(name) ?? new Set()
       set.add(handler)
@@ -347,7 +358,7 @@ export class WindowSelf {
     return handle ? { ...rest, handle } : rest
   }
 
-  emit(name: 'activate' | 'deactivate' | 'grab' | 'grablost' | 'state' | 'output' | 'hostcontrols' | 'minimizable', value?: unknown): void {
+  emit(name: Exclude<OwnEvent, 'beforeclose' | 'request' | 'suspend' | 'resume'>, value?: unknown): void {
     for (const handler of this.#handlers.get(name) ?? []) handler(value)
   }
 }
@@ -457,7 +468,7 @@ export class RemoteBridge {
     const api = self.api
     const shortcut = windows.notices.for('window', WindowSelf.EVENTS)
     const on = (name: string, handler: (value?: unknown) => unknown) =>
-      name === 'shortcut' ? shortcut(name, handler) : api.on(name as WindowEventName, handler)
+      name === 'shortcut' ? shortcut(name, handler) : api.on(name as OwnEvent, handler)
     const value = { ...api, id: self.id, on }
     Object.defineProperty(value, 'state', { get: () => self.state, enumerable: true })
     Object.defineProperty(value, 'output', { get: () => self.output, enumerable: true })

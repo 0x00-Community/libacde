@@ -166,6 +166,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
 
   const output = WindowSelf.output(init.screen?.width ?? 0, init.screen?.height ?? 0, init.scale, init.screen?.workArea)
   const self = init.kind === 'window' && init.app ? new WindowSelf(rpc, surface, globalThis as never, init.request ?? null, output) : null
+  self?.tint(init.accent ?? null)
   self?.useMaterial(init.app?.window?.material)
   const windows = new WindowList(rpc, init.windows)
   const bridge = new RemoteBridge(rpc, init, self, windows, permits)
@@ -252,7 +253,8 @@ export default async function boot(natives: WebNatives): Promise<void> {
       case 'glass':
         return dom.setGlass?.(m.level ?? 0, m.reducedTransparency === true)
       case 'accent':
-        return dom.setAccent?.(m.color ?? '')
+        dom.setAccent?.(m.color ?? '')
+        return self?.tint(m.color ?? null)
       case 'motion':
         return dom.setReducedMotion?.(m.reduced === true)
       case 'devhot':

@@ -92,6 +92,9 @@
   `material()` 回实际生效的名字 (此时是 `none`) 和给的选项. `overrides` 是"参数名 → CSS 写法"的表, 参数名同 `--acde-glass-*` 去掉前缀 (`blur`、`tint`、`outline` …), 档位、深浅、
   减少透明度仍由系统定 (减少透明度时一律不透明). 清单 `window.material` 写默认值 (名字或 `{name, role, group, spacing, overrides, region}`), 窗口一开就用.
   给开发者的建议: 长时间存在的主窗口背景用 `blur` (开销中等), 浮在内容上的工具栏和小面板窗口用 `glass` (最贵), 临时弹出用 `blur`; 页面背景要透明, 材质才透得出来.
+- `AcdeWindow.accent()` / `on('accent', handler)` (2026-11-23, 类型同在 `types/window-look/`): 系统强调色的原值 `#rrggbb`, 系统没设 (门户的 `accent-color` 是 -1 或越界) 或没有门户 (宿主会话) 时是 `null`;
+  原值变了发 `accent`, 参数是新值. 用来分清"没设"和"用户正好选了默认色": CSS 的 `AccentColor` 在没设时是默认的 `#0075ff`, 区分不开. 来源只有一条, 同 `AccentColor`
+  (门户 → launcher → 页面消息 `{type: 'accent', color}`, 见 `docs/dev/build-run.md` 的强调色); 页面初始化参数 `accent` 和这条消息都原样保留 `null`, 渲染收空串表示没设.
 - `AcdeWindow.on('beforeclose')`: 原来是一个签名 `() => boolean | void | Promise<boolean | void>`, 拆成返回 `boolean` 和返回 `void` 的两个重载, 能传的函数不变.
 
 ## 系统模块的错误与事件 (libacde 单子 12)
