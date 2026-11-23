@@ -30,6 +30,9 @@
   先画进临时纹理再合成. 光栅化方 (src/vello) 做 filter 的 drop-shadow、模糊、颜色矩阵, backdrop 的模糊和所有颜色函数 (`Backdrop::effect`:
   按顺序合成一个颜色矩阵, 几个 blur 按平方和开方合并); backdrop-filter 里的 drop-shadow 不做; 只切最外层: 已有 filter 的元素里面再有 filter / backdrop-filter 时不做 (#46);
   这两种同一组滤镜只记一次 warn (最多记 64 组).
+  `text-shadow` (2026-11-23, vendor/blitz `blitz-paint/src/text/shadow.rs`): 每个阴影是同一段字形按偏移再画一遍, 颜色用阴影的, 写在后面的画在下面, 都在文字之前;
+  有模糊时这段字形放进一个 GaussianBlur 滤镜图层 (标准差为模糊半径的一半, 同 box-shadow 和 drop-shadow), 所以带模糊的文字阴影也走上面的 filter 段, 受同样的限制
+  (已有 filter 的元素里面不做); 装饰线和 "…" 不带阴影, `background-clip: text` 的蒙版不画阴影.
   窗口之间的毛玻璃 (`setBackdrop`、面板的 `backdrops`) 仍只带 blur / saturate / brightness.
   磨砂的角形 (2026-11-22): blitz-paint 推带 `backdrop-filter` 的图层时用 `push_shaped_layer` 带上元素的 `Corners {radius, exponent}`
   (`acde-scene` 的 `corner`; `exponent` 是超椭圆指数 `n = 2^k`, 2 是圆弧, CSS `squircle` 是 4), `render::Backdrop` 记下它: `radius()` 有声明时
