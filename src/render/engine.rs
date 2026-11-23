@@ -1,10 +1,10 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, LazyLock, Weak};
+use std::sync::{Arc, Weak};
 use std::time::Instant;
 
-use blitz_dom::{BaseDocument, DocumentConfig, NodeId, UserAgentStyles, UserAgentStylesheet};
+use blitz_dom::{BaseDocument, DocumentConfig, NodeId};
 use blitz_traits::net::Url;
 use blitz_traits::shell::{ColorScheme, Viewport};
 
@@ -25,9 +25,6 @@ const FRAME: f64 = 1.0 / 60.0;
 const UA_EXTRA: &str = "button, select, input:is([type=button], [type=submit], [type=reset], [type=checkbox], [type=radio], \
     [type=color], [type=file], [type=image], [type=range]) { box-sizing: border-box; } \
     input[type=range] { appearance: auto; width: 129px; height: 16px; margin: 2px; padding: 0; border: 0; background: transparent; cursor: default; }";
-
-static UA_STYLES: LazyLock<UserAgentStyles> =
-    LazyLock::new(|| UserAgentStyles::new(vec![UserAgentStylesheet::default_sheet(), UserAgentStylesheet::parse(UA_EXTRA)]));
 
 pub(crate) struct Engine {
     pub(crate) doc: BaseDocument,
@@ -80,7 +77,6 @@ impl Engine {
                 skip_iframe_content: true,
                 default_lang: Some(options.default_lang.clone().unwrap_or_else(|| "zh-Hans".into())),
                 svg_text_only: options.svg_text_path.unwrap_or(false),
-                ua_styles: Some(UA_STYLES.clone()),
                 ..Default::default()
             }),
             ids: Ids::default(),
@@ -120,6 +116,7 @@ impl Engine {
             let html = tree.create_element(blitz_dom::ns!(html), "html");
             tree.m.append_children(document, &[html]);
         }
+        this.doc.add_user_agent_stylesheet(blitz_dom::UserAgentStylesheet::parse(UA_EXTRA));
         Ok(this)
     }
 
