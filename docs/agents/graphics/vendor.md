@@ -2,12 +2,13 @@
 
 依赖来自 crates.io, 加上两处 git: `vendor/blitz` 是子模块 (Gitea `AC/blitz`, `.gitmodules` 写相对地址 `../blitz.git`: 跟着本仓库的 origin 走, ssh 克隆就是 ssh, CI 用 http 加令牌克隆就是 http (这台 Gitea 不许匿名读, 带令牌的 `-c http.extraHeader` 也要给 `submodule update`); fork 自 DioxusLabs/blitz, 原来在 GitHub `Jabberwocky238/blitz`, 2026-11-14 整个搬进内网), blitz 的 taffy
 照上游 Blitz 钉 DioxusLabs/taffy 的 git 提交 `4e59968`. 根 `Cargo.toml` 用 `[patch.crates-io]` 把 blitz-* 换成子模块里的. 克隆后 `git submodule update --init`; 打包 (acdes 的 PKGBUILD) 和 CI 也取子模块.
-小补丁不留: stylo、parley、fontique、vello、taffy、libseat-sys、fslock、async-dnssd 都用 crates.io 原版 (servo 版 stylo 没有的 `@container`、
+小补丁不留: stylo、parley、vello、taffy、libseat-sys、fslock、async-dnssd 都用 crates.io 原版 (servo 版 stylo 没有的 `@container`、
 `accent-color`、`field-sizing`、`prefers-reduced-motion` 和 SVG 的 `pointer-events` 取值随之没有).
 
 | 目录 | 上游 |
 | --- | --- |
 | `wgpu-hal` | crates.io `wgpu-hal` 30.0.2 原样拷入, 只改 EGL 建上下文那几行, 见下 |
+| `fontique` | crates.io `fontique` 0.12.0 原样拷入, 只改回退字体查询的缓存键 (4 行), 见下 |
 | `blitz` (子模块) | DioxusLabs/blitz main `fb297a38` 上接我们的提交: 只留 blitz-dom / blitz-paint / blitz-traits / stylo_taffy / debug_timer (`MIT OR Apache-2.0`) |
 
 blitz fork 和上游结构的不同: HTML 解析用 src/render 自己的 html5ever TreeSink; `build_inline_layout_into` 在 `layout/inline/build.rs`; `paint_scene`
@@ -135,3 +136,18 @@ webgl 枚举 uniform 时 (`shader.rs` `unpadded`) 解开这层; 这样各后端 
   vello 管线 0 报错. 桌面 OpenGL 路径因此删掉, 不留开关.
 - 升 wgpu 时: 拷新版 wgpu-hal 进来, 重做同一处改动, 改这里写的版本号; 上游接受补丁 (草稿,
   发之前给用户看) 后改用上游的选项, 删掉 `vendor/wgpu-hal` 和 patch.
+
+**fontique (`vendor/fontique`, 回退字体查询按脚本的默认键缓存)**
+
+- 上游: crates.io `fontique` 0.12.0 (linebender/parley 的 fontique), 整个包原样拷入 (含 LICENSE-MIT / LICENSE-APACHE), 根 `Cargo.toml` 的
+  `[patch.crates-io] fontique = { path = "vendor/fontique" }` 换上; 和 wgpu-hal 一样, acdes、acdev 的根 `Cargo.toml` 也要写同样的 patch
+  (路径 `../libacde/vendor/fontique`).
+- 改了什么: `src/collection/mod.rs` 的 `CollectionInner::fallback_families` 开头, 不在 fontique 跟踪表里的 (脚本, 语言) 键 (`is_tracked()` 为假)
+  换成这个脚本的默认键 `FallbackKey::new(script, None)` 再查, 改动处有 `acde:` 标记. 其余一字未改.
+- 为什么: 不跟踪的键本来就把语言规范成空, 问系统 (CoreText `CTFontCreateForString`, 不带语言) 的参数和默认键完全一样, `FallbackMap::get`
+  也把它当默认键读; 但 `FallbackMap::set` 对不跟踪的键什么也不存, 于是默认键还没被查过时, 每次都重新问 CoreText. 拉丁、西里尔、希腊等大多数脚本
+  都不在跟踪表里, 文档有 `lang` (比如 `zh-CN`) 时, 拉丁文的键就是不跟踪的; 再加上 `Query::set_fallbacks` 每次都另查一次汉字键, 单项缓存
+  `fallback_cache` 来回换, 每段文字布局 (DOM 文字、canvas `fillText` / `measureText`) 都要走一遍 CoreText 的描述符匹配. 换成默认键后结果不变,
+  只是第一次之后命中 `data.fallbacks`. 独立小程序 (fontique 0.12.0, 本机系统字体): 拉丁 + zh-CN / ja / en 的键与汉字键交替查一对,
+  原版每对约 2.2 µs, 改后约 32 ns, 查到的字体族相同 (Helvetica).
+- 升 parley / fontique 时: 拷新版进来, 重做同一处改动; 上游修好后删掉 `vendor/fontique` 和 patch.

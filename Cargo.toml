@@ -203,3 +203,4 @@ lto = "thin"
 
 [patch.crates-io]
 wgpu-hal = { path = "vendor/wgpu-hal" }
+fontique = { path = "vendor/fontique" }
