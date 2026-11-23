@@ -5,6 +5,8 @@ const HIGHLIGHT_AMOUNT: f32 = 0.45;
 const HIGHLIGHT_WIDTH: f32 = 4.0;
 const OUTLINE: Outline = Outline { width: 1.0, color: [1.0, 1.0, 1.0, 0.5], merged: false };
 const DARK_OUTLINE: Outline = Outline { color: [1.0, 1.0, 1.0, 0.25], ..OUTLINE };
+const LIGHT_TINT: [f32; 3] = [0.97, 0.97, 0.98];
+const DARK_TINT: [f32; 3] = [0.11, 0.11, 0.12];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Role {
@@ -145,15 +147,30 @@ impl Glass {
             highlight: highlight(),
             white_point: 0.0,
             smoothing: 0.5,
-            tint: if dark { [0.11, 0.11, 0.12, 0.9] } else { [0.97, 0.97, 0.98, 0.9] },
+            tint: tinted(dark, 0.9),
             outline: OUTLINE,
             ..Self::default()
         }
+    }
+
+    pub fn blur(level: Level, dark: bool) -> Self {
+        let (pairs, tint) = match level {
+            Level::Clear => ([(6.0, 1.0), (12.0, 0.6), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)], 0.15),
+            Level::Medium => ([(10.0, 1.0), (20.0, 0.8), (32.0, 0.5), (0.0, 0.0), (0.0, 0.0)], 0.35),
+            Level::Tinted => ([(16.0, 1.0), (32.0, 0.8), (48.0, 0.6), (0.0, 0.0), (0.0, 0.0)], 0.6),
+            Level::Opaque => ([(24.0, 1.0), (48.0, 1.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)], 1.0),
+        };
+        Self { blur: layers(pairs), tint: tinted(dark, tint), smoothing: 0.5, ..Self::default() }
     }
 }
 
 fn layers(pairs: [(f32, f32); LAYERS]) -> [BlurLayer; LAYERS] {
     pairs.map(|(radius, opacity)| BlurLayer { radius, opacity })
+}
+
+fn tinted(dark: bool, alpha: f32) -> [f32; 4] {
+    let [r, g, b] = if dark { DARK_TINT } else { LIGHT_TINT };
+    [r, g, b, alpha]
 }
 
 fn highlight() -> Highlight {

@@ -1,10 +1,8 @@
-use crate::glass::{BlurLayer, Glass, LAYERS, Level, Preference, Role};
+use crate::glass::{Glass, Level, Preference, Role};
 use std::borrow::Cow;
 use std::sync::{Mutex, OnceLock, RwLock};
 
 pub const MOST_NAME: usize = 64;
-const LIGHT_TINT: [f32; 3] = [0.97, 0.97, 0.98];
-const DARK_TINT: [f32; 3] = [0.11, 0.11, 0.12];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -148,23 +146,6 @@ fn parsed(key: &str, text: &str, warn: &impl Fn(String)) -> Option<Vec<f32>> {
     (!failed.get()).then(|| bytes.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect())
 }
 
-impl Glass {
-    pub fn blur(level: Level, dark: bool) -> Self {
-        let (layers, tint) = match level {
-            Level::Clear => ([(6.0, 1.0), (12.0, 0.6), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)], 0.15),
-            Level::Medium => ([(10.0, 1.0), (20.0, 0.8), (32.0, 0.5), (0.0, 0.0), (0.0, 0.0)], 0.35),
-            Level::Tinted => ([(16.0, 1.0), (32.0, 0.8), (48.0, 0.6), (0.0, 0.0), (0.0, 0.0)], 0.6),
-            Level::Opaque => ([(24.0, 1.0), (48.0, 1.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)], 1.0),
-        };
-        let [r, g, b] = if dark { DARK_TINT } else { LIGHT_TINT };
-        Self { blur: blur_layers(layers), tint: [r, g, b, tint], smoothing: 0.5, ..Self::default() }
-    }
-}
-
-fn blur_layers(pairs: [(f32, f32); LAYERS]) -> [BlurLayer; LAYERS] {
-    pairs.map(|(radius, opacity)| BlurLayer { radius, opacity })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,7 +198,7 @@ mod tests {
         let clear = blur.glass(Role::Regular, preference(0, false, false)).unwrap();
         assert!(tinted.tint[3] > clear.tint[3] && tinted.blur[0].radius > clear.blur[0].radius);
         let dark = blur.glass(Role::Regular, preference(1, false, true)).unwrap();
-        assert_eq!(&dark.tint[..3], &DARK_TINT[..]);
+        assert_eq!(&dark.tint[..3], &Glass::opaque(true).tint[..3]);
     }
 
     #[test]
