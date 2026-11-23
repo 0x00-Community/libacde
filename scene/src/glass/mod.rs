@@ -324,6 +324,17 @@ impl Glass {
         let large = shown.iter().copied().max_by(|a, b| a.radius.total_cmp(&b.radius)).unwrap_or_default();
         ((small.radius, small.opacity), (large.radius, large.opacity))
     }
+
+    fn unrefracted_layers(&self) -> ((f32, f32), (f32, f32)) {
+        let own = self.two_layers();
+        let frost = Self::blur(Level::Clear, false).two_layers();
+        if self.refracts() && own.1.0 < frost.1.0 { frost } else { own }
+    }
+
+    fn refracts(&self) -> bool {
+        let r = self.refraction;
+        self.lens.thickness > 0.0 && self.lens.index > 1.0 || r.inner_amount > 0.0 || r.outer_amount > 0.0
+    }
 }
 
 fn words<const N: usize>(text: &str) -> Option<[&str; N]> {
@@ -404,7 +415,7 @@ pub mod cpu {
 
     impl Under {
         pub(super) fn of(source: &Pixels, glass: &Glass) -> Self {
-            let ((small_radius, small_opacity), (large_radius, large_opacity)) = glass.two_layers();
+            let ((small_radius, small_opacity), (large_radius, large_opacity)) = glass.unrefracted_layers();
             let weight = match small_opacity + large_opacity {
                 sum if sum > 0.0 => large_opacity / sum,
                 _ => 0.0,
@@ -671,5 +682,26 @@ mod tests {
         let out = cpu::paint(&source, margin, Corners { radius: 8.0, exponent: 2.0 }, &below);
         let red = |x: usize, y: usize| channels(out.data[y * width + x])[1];
         assert!(red(width / 2, height - margin - 2) > red(width / 2, margin + 1), "180deg lights the bottom edge");
+    }
+
+    #[test]
+    fn on_the_cpu_a_lens_glass_that_cannot_refract_is_frosted_like_the_blur_material() {
+        let margin = 40;
+        let (width, height) = (160, 120);
+        let stripes = |x: usize| if x % 4 < 2 { 0xff00_0000 } else { 0xffff_ffff };
+        let source = Pixels { width, height, data: (0..width * height).map(|i| stripes(i % width)).collect() };
+        let corners = Corners { radius: 8.0, exponent: 2.0 };
+        let spread = |glass: &Glass| {
+            let out = cpu::paint(&source, margin, corners, glass);
+            let row: Vec<u32> = (width / 2 - 8..width / 2 + 8).map(|x| channels(out.data[(height / 2) * width + x])[1]).collect();
+            row.iter().max().unwrap() - row.iter().min().unwrap()
+        };
+        let clear = Glass::preset(Role::Regular, Level::Clear);
+        assert!(clear.blur[0].radius < 1.0, "the clear preset leans on the lens, not on blur");
+        assert!(spread(&clear) < 40, "stripes under clear glass are frosted on the cpu: {}", spread(&clear));
+        let flat = Glass { refraction: Refraction::default(), lens: Lens::default(), ..clear };
+        assert!(spread(&flat) > 150, "glass without a lens keeps its own light blur: {}", spread(&flat));
+        let tinted = Glass::preset(Role::Regular, Level::Tinted);
+        assert_eq!(tinted.unrefracted_layers(), tinted.two_layers(), "glass blurred more than the frost keeps its own layers");
     }
 }
