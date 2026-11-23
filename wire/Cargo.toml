@@ -1,0 +1,18 @@
+[package]
+name = "acde-wire"
+description = "The session manager's control channel (JSON frames with fds) and the acompositor client protocols, for acdes and acdev's guest agent"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+acompositor = ["dep:wayland-client", "dep:wayland-backend", "dep:wayland-scanner", "dep:bitflags"]
+
+[dependencies]
+rustix = { version = "=1.1.6", features = ["net", "fs"] }
+serde_json = "=1.0.154"
+wayland-client = { version = "=0.31.15", optional = true }
+wayland-backend = { version = "=0.3.17", optional = true }
+wayland-scanner = { version = "=0.31.11", optional = true }
+bitflags = { version = "=2.13.2", optional = true }

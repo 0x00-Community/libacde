@@ -1,5 +1,7 @@
 [workspace]
 resolver = "3"
+# wire: the session manager's control channel and the acompositor client protocols, shared by acdes and acdev's guest agent
+members = ["wire"]
 # vendor/blitz: the blitz fork (submodule), its own workspace
 exclude = ["vendor"]
 

@@ -1,0 +1,746 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="acompositor_desktop_v1">
+  <copyright>
+    Copyright © 2026 acompositor authors. MIT license.
+  </copyright>
+
+  <description summary="the desktop's control over windows, captures and shortcuts">
+    Only the desktop gets this global: acompositor offers it on the connection the session
+    hands it as privileged, never on connections made through WAYLAND_DISPLAY.
+    Windows of every client are listed and controlled here; the desktop's own panels and
+    background use wlr-layer-shell.
+  </description>
+
+  <interface name="acompositor_desktop_v1" version="12">
+    <description summary="the desktop's handle on acompositor">
+      On bind acompositor sends a window event for every toplevel already shown, then
+      work_area, then done. Later windows come as they are shown. From version 2 the
+      desktop also hears the work area of every screen it has bound a wl_output for.
+      From version 3 acompositor keeps virtual desktops: every window belongs to one desktop,
+      only the windows of the current desktop are shown, and panels (layer-shell) show on
+      all of them. Desktops are numbered by the desktop client; desktop 0 exists from the
+      start and is current. New windows land on the current desktop; a window with a parent
+      lands on its parent's.
+      From version 6 the desktop tells acompositor how to round the corners of windows and
+      which shadows to draw around them. From version 7 windows (acompositor_window_v1
+      version 5) can be made the wallpaper of a screen. From version 8 the desktop
+      picks the cursor theme, and acompositor animates windows (opening, minimizing and
+      restoring, state changes, desktop switches) by the motion preset the desktop picks;
+      windows (acompositor_window_v1 version 6) take animations of their own. From version 9
+      it tells which window a drag of files was dropped on. From version 10 windows
+      (acompositor_window_v1 version 7) say whether they are on the Agent's stage.
+      From version 11 a client acompositor took at the dev level (only in a guest started
+      by acdev) hears what the seat and the windows do: presses, move and resize requests
+      with acompositor's answer, keyboard focus, windows shown and hidden, drags.
+      From version 12 such a client also asks how the screen is drawn (render_state) and
+      where a point lands (hit).
+    </description>
+
+    <enum name="error">
+      <entry name="unknown_desktop" value="0" summary="the desktop number names no desktop"/>
+      <entry name="last_desktop" value="1" summary="the only desktop cannot be removed"/>
+      <entry name="same_desktop" value="2" summary="windows cannot move into the desktop being removed"/>
+      <entry name="dev_only" value="3" summary="render_state and hit are for a client at the dev level only"/>
+    </enum>
+
+    <event name="current_desktop" since="3">
+      <description summary="the desktop being shown">
+        Sent on bind and whenever the current desktop changes, before done.
+      </description>
+      <arg name="desktop" type="uint"/>
+    </event>
+
+    <request name="add_desktop" since="3">
+      <description summary="make a desktop with this number; nothing happens if it exists"/>
+      <arg name="desktop" type="uint"/>
+    </request>
+
+    <request name="remove_desktop" since="3">
+      <description summary="remove a desktop, moving its windows into another">
+        If the desktop is the current one, into becomes current in the same step.
+      </description>
+      <arg name="desktop" type="uint"/>
+      <arg name="into" type="uint"/>
+    </request>
+
+    <request name="show_desktop" since="3">
+      <description summary="switch to a desktop in one step">
+        The windows of the old desktop and those of the new one swap in a single frame;
+        the keyboard goes to the front window of the new desktop. Showing the current
+        desktop does nothing.
+      </description>
+      <arg name="desktop" type="uint"/>
+    </request>
+
+    <request name="destroy" type="destructor"/>
+
+    <event name="window">
+      <description summary="a toplevel is shown">
+        The window object gets its app_id, title, parent and state events, then done.
+      </description>
+      <arg name="window" type="new_id" interface="acompositor_window_v1"/>
+    </event>
+
+    <event name="work_area">
+      <description summary="the screen less the edges panels reserve"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+
+    <event name="output_work_area" since="2">
+      <description summary="one screen's work area">
+        Sent for each wl_output the desktop has bound, when it is bound and whenever that
+        screen's work area changes, before done. Coordinates are the compositor's logical
+        ones, the same as wl_output.geometry. work_area stays the first screen's.
+      </description>
+      <arg name="output" type="object" interface="wl_output"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+
+    <event name="done">
+      <description summary="the end of a burst of window, work_area and desktop events"/>
+    </event>
+
+    <request name="capture">
+      <description summary="capture the screen, one window, or the desktop with its panels">
+        The capture object reports the size of the picture with buffer_size; the client
+        then hands it an shm buffer of that size with copy.
+      </description>
+      <arg name="id" type="new_id" interface="acompositor_capture_v1"/>
+      <arg name="what" type="uint" enum="capture_kind"/>
+      <arg name="window" type="object" interface="acompositor_window_v1" allow-null="true"/>
+    </request>
+
+    <request name="capture_output" since="2">
+      <description summary="capture one screen, or only its background and panels">
+        Like capture, for the screen behind output; what is screen or desktop. A window
+        capture, or an output whose screen is gone, gives a capture of size 0 whose copy
+        fails.
+      </description>
+      <arg name="id" type="new_id" interface="acompositor_capture_v1"/>
+      <arg name="output" type="object" interface="wl_output"/>
+      <arg name="what" type="uint" enum="capture_kind"/>
+    </request>
+
+    <enum name="capture_kind">
+      <entry name="screen" value="0" summary="everything on the screen, cursor left out"/>
+      <entry name="window" value="1" summary="one window's own picture"/>
+      <entry name="desktop" value="2" summary="the background and panel layers only"/>
+    </enum>
+
+    <request name="bind_shortcut">
+      <description summary="take a key combination for the desktop">
+        A bound combination never reaches clients. key is an evdev code; key 0 with the
+        super modifier is Super pressed and released alone, which acompositor holds back
+        until it knows whether another key follows.
+      </description>
+      <arg name="id" type="new_id" interface="acompositor_shortcut_v1"/>
+      <arg name="modifiers" type="uint" enum="modifier"/>
+      <arg name="key" type="uint"/>
+    </request>
+
+    <enum name="modifier" bitfield="true">
+      <entry name="shift" value="1"/>
+      <entry name="control" value="4"/>
+      <entry name="alt" value="8"/>
+      <entry name="super" value="64"/>
+    </enum>
+
+    <request name="set_keyboard_repeat" since="5">
+      <description summary="how held keys repeat, for every client">
+        The same meaning as wl_keyboard.repeat_info: rate is repeats per second, 0 turns
+        repeating off; delay is how long a key is held, in milliseconds, before it
+        repeats. acompositor starts at 25 and 600; a rate outside 0 to 100 or a delay outside
+        100 to 2000 is taken as the nearest bound. Every wl_keyboard and input method
+        keyboard grab hears the new values at once. acompositor does not keep the setting
+        across restarts.
+      </description>
+      <arg name="rate" type="int"/>
+      <arg name="delay" type="int"/>
+    </request>
+
+    <enum name="pointer_kind" since="5">
+      <entry name="mouse" value="0"/>
+      <entry name="touchpad" value="1"/>
+    </enum>
+
+    <request name="set_pointer" since="5">
+      <description summary="how a kind of pointing device behaves">
+        speed is -1 to 1, 0 by default: relative motion is multiplied by 4 to the power
+        speed. left_handed 1 swaps the left and right buttons (touchpad taps stay as they
+        are). natural_scroll 1 turns the wheel and finger scrolling the other way.
+        scroll_factor is 0.1 to 10, 1 by default, and multiplies finger scrolling only; a
+        wheel moves by its clicks. Values outside the ranges are taken as the nearest bound.
+        Mice and touchpads keep separate settings. acompositor does not keep them across
+        restarts.
+      </description>
+      <arg name="kind" type="uint" enum="pointer_kind"/>
+      <arg name="speed" type="fixed"/>
+      <arg name="left_handed" type="uint"/>
+      <arg name="natural_scroll" type="uint"/>
+      <arg name="scroll_factor" type="fixed"/>
+    </request>
+
+    <request name="set_touchpad" since="5">
+      <description summary="touchpad tapping and resting while typing">
+        tap_to_click 1 makes a short touch click (one finger left, two right, three middle).
+        disable_while_typing 1 ignores touchpad motion, scrolling and presses for 300 ms
+        after a key other than a modifier is pressed. Both are 1 by default.
+      </description>
+      <arg name="tap_to_click" type="uint"/>
+      <arg name="disable_while_typing" type="uint"/>
+    </request>
+
+    <enum name="input_kind" since="5">
+      <entry name="keyboard" value="0"/>
+      <entry name="mouse" value="1"/>
+      <entry name="touchpad" value="2"/>
+      <entry name="tablet" value="3" summary="a pointing device with absolute positions"/>
+    </enum>
+
+    <event name="input_device_added" since="5">
+      <description summary="an input device acompositor reads">
+        Sent for every device on bind and when one is plugged in, before done. A device
+        that is both a keyboard and a pointer comes once for each, under its own id. Ids
+        are not reused. Power buttons and lid switches are left out.
+      </description>
+      <arg name="id" type="uint"/>
+      <arg name="kind" type="uint" enum="input_kind"/>
+      <arg name="name" type="string"/>
+    </event>
+
+    <event name="input_device_removed" since="5">
+      <description summary="a device is gone, before done"/>
+      <arg name="id" type="uint"/>
+    </event>
+
+    <request name="set_scale" since="5">
+      <description summary="the scale of every screen, or back to automatic">
+        In 120ths, as in wp_fractional_scale_v1: 120 is 1, 180 is 1.5. 0 goes back to the
+        scale acompositor picks from the screen's density (or the one given with --scale). A
+        value outside 120 to 480 is taken as the nearest bound. All screens share one
+        scale, so there is no output argument. Clients hear the change through
+        wl_output.scale, preferred_buffer_scale and preferred_scale as usual. acompositor does
+        not keep the choice across restarts.
+      </description>
+      <arg name="scale" type="uint"/>
+    </request>
+
+    <enum name="look_state" since="6">
+      <entry name="focused" value="0" summary="the window holding the keyboard"/>
+      <entry name="unfocused" value="1" summary="every other window"/>
+    </enum>
+
+    <request name="set_window_corners" since="6">
+      <description summary="round the outer corners of windows">
+        acompositor cuts the corners of every window it decorates (a shown toplevel in the
+        normal state whose window geometry, if any, covers its surface) along the
+        superellipse |x/r|^n + |y/r|^n = 1, letting what lies beneath show through, and
+        does the same to the window's subsurfaces. radius r is in logical pixels, 0 to 256,
+        0 (the start) leaving corners square; a radius larger than half the window's
+        smaller side is taken as that half. exponent n is 2 (a circular arc) to 8, values
+        outside taken as the nearest bound; 4 to 5 look like a continuous corner. Popups
+        are neither cut nor shadowed. Every window is drawn again at once.
+      </description>
+      <arg name="radius" type="fixed"/>
+      <arg name="exponent" type="fixed"/>
+    </request>
+
+    <request name="clear_window_shadow" since="6">
+      <description summary="drop the shadow layers of one state; every window is drawn again"/>
+      <arg name="state" type="uint" enum="look_state"/>
+    </request>
+
+    <request name="add_window_shadow" since="6">
+      <description summary="one more shadow layer around the windows of one state">
+        What one entry of CSS box-shadow draws outside a box: the window's shape (with
+        the corners of set_window_corners) moved by x and y, grown by spread (shrunk when
+        negative, the radius growing or shrinking with it), blurred with a Gaussian whose
+        standard deviation is blur / 2, painted in color and left out where the window
+        itself is. x, y, blur and spread are logical pixels: x and y -256 to 256, blur 0 to
+        256, spread -256 to 256, values outside taken as the nearest bound. color is
+        ARGB8888, not premultiplied. Layers are painted in the order they are added, the
+        first at the bottom (the reverse of a CSS list); a state keeps at most 4 layers and
+        further ones are ignored. acompositor starts with no layers. Every window is drawn
+        again at once.
+      </description>
+      <arg name="state" type="uint" enum="look_state"/>
+      <arg name="x" type="fixed"/>
+      <arg name="y" type="fixed"/>
+      <arg name="blur" type="fixed"/>
+      <arg name="spread" type="fixed"/>
+      <arg name="color" type="uint"/>
+    </request>
+
+    <enum name="motion" since="8">
+      <entry name="standard" value="0" summary="a critically damped spring of response 0.35 s: scale, move and fade"/>
+      <entry name="reduced" value="1" summary="no scaling or moving: a 0.15 s linear fade; desktops switch at once"/>
+    </enum>
+
+    <request name="set_motion" since="8">
+      <description summary="how windows animate">
+        The parameters of each preset live in acompositor (acde_scene::motion); the desktop only
+        picks one. acompositor starts with standard. Running animations keep their curve; later
+        ones use the new preset. Reduced also drops the scaling and moving of animate, keeping
+        its fade.
+      </description>
+      <arg name="motion" type="uint" enum="motion"/>
+    </request>
+
+    <request name="create_embed_slot">
+      <description summary="reserved: a place in a desktop surface for another client's surface">
+        Embedding is not implemented yet: the slot sends unavailable at once.
+      </description>
+      <arg name="id" type="new_id" interface="acompositor_embed_slot_v1"/>
+      <arg name="surface" type="object" interface="wl_surface"/>
+    </request>
+
+    <request name="set_cursor_theme" since="8">
+      <description summary="the Xcursor theme and size of the pointer">
+        name is an Xcursor theme's folder name, looked up in XCURSOR_PATH (or the usual
+        icon folders) and followed along the Inherits of its index.theme; size is the
+        nominal size in logical pixels, 8 to 256, values outside taken as the nearest bound.
+        The themed cursor on screen is drawn again at once; cursors a client gave as a
+        surface stay as they are. A shape the theme and its parents lack falls back to the
+        theme called default, then to a built-in arrow. acompositor does not keep the choice
+        across restarts and does not touch the environment: whoever starts programs gives
+        them XCURSOR_THEME and XCURSOR_SIZE.
+      </description>
+      <arg name="name" type="string"/>
+      <arg name="size" type="uint"/>
+    </request>
+
+    <event name="dropped" since="9">
+      <description summary="a drag offering text/uri-list was dropped on a window">
+        Sent when a drag whose source offers text/uri-list is dropped on a surface of a
+        window and the drop is performed (the same moment the target gets
+        wl_data_device.drop). window is that toplevel. uri_list is the read end of a pipe
+        whose write end acompositor handed to the drag's source with
+        wl_data_source.send("text/uri-list"): the list comes from the source, not from the
+        window, so the desktop can tell what was really dropped. Drags without a source
+        (inside one client) send nothing.
+      </description>
+      <arg name="window" type="object" interface="acompositor_window_v1"/>
+      <arg name="uri_list" type="fd"/>
+    </event>
+
+    <event name="press" since="11">
+      <description summary="dev level: a pointer button went down">
+        Only a client at the dev level hears this and the other events from version 11; a
+        bind by any other client at version 11 gets none of them, and acompositor makes none
+        while no such client is bound. Every window number in them is the N of the window's
+        identifier acompositor-N; 0 is no window (a panel, the lock screen, the background).
+        x and y are the pointer in the compositor's logical coordinates, window is the
+        toplevel under it (a popup counts as its toplevel), button the evdev code.
+      </description>
+      <arg name="window" type="uint"/>
+      <arg name="x" type="fixed"/>
+      <arg name="y" type="fixed"/>
+      <arg name="button" type="uint"/>
+    </event>
+
+    <event name="move_request" since="11">
+      <description summary="dev level: a window asked to be moved">
+        accepted is 1 when the move began; otherwise 0 and reason says why.
+      </description>
+      <arg name="window" type="uint"/>
+      <arg name="serial" type="uint"/>
+      <arg name="accepted" type="uint"/>
+      <arg name="reason" type="string"/>
+    </event>
+
+    <event name="resize_request" since="11">
+      <description summary="dev level: a window asked to be resized">
+        edges are those of xdg_toplevel.resize_edge; accepted and reason as for move_request.
+      </description>
+      <arg name="window" type="uint"/>
+      <arg name="serial" type="uint"/>
+      <arg name="edges" type="uint"/>
+      <arg name="accepted" type="uint"/>
+      <arg name="reason" type="string"/>
+    </event>
+
+    <event name="focus" since="11">
+      <description summary="dev level: the keyboard went to another surface">
+        window is the toplevel that has the keyboard now, 0 when it is no window or nothing.
+      </description>
+      <arg name="window" type="uint"/>
+    </event>
+
+    <event name="map" since="11">
+      <description summary="dev level: a toplevel is shown for the first time"/>
+      <arg name="window" type="uint"/>
+    </event>
+
+    <event name="unmap" since="11">
+      <description summary="dev level: a shown toplevel is no longer shown"/>
+      <arg name="window" type="uint"/>
+    </event>
+
+    <event name="drag_start" since="11">
+      <description summary="dev level: a drag began">
+        window is the toplevel it began in; 0 for a drag acompositor began for an injected drop.
+      </description>
+      <arg name="window" type="uint"/>
+    </event>
+
+    <event name="drag_end" since="11">
+      <description summary="dev level: a drag ended">
+        window is the toplevel it ended over, 0 when none; dropped is 1 when the target got
+        wl_data_device.drop, 0 when the drag was cancelled.
+      </description>
+      <arg name="window" type="uint"/>
+      <arg name="dropped" type="uint"/>
+    </event>
+
+    <request name="render_state" since="12">
+      <description summary="dev level: how the screen is drawn now">
+        The new object reports the render backend, then every glass and frosted area of the
+        shown windows, then done. Another client gets the dev_only error.
+      </description>
+      <arg name="id" type="new_id" interface="acompositor_render_state_v1"/>
+    </request>
+
+    <request name="hit" since="12">
+      <description summary="dev level: where a point lands">
+        x and y are in the compositor's logical coordinates. The new object reports the
+        surface input goes to at that point by the current stacking and input regions, the
+        windows under it that also hold the point, then done. Another client gets the
+        dev_only error.
+      </description>
+      <arg name="id" type="new_id" interface="acompositor_hit_v1"/>
+      <arg name="x" type="fixed"/>
+      <arg name="y" type="fixed"/>
+    </request>
+  </interface>
+
+  <interface name="acompositor_window_v1" version="7">
+    <description summary="one toplevel of any client"/>
+
+    <request name="destroy" type="destructor"/>
+
+    <event name="app_id">
+      <arg name="app_id" type="string"/>
+    </event>
+
+    <event name="title">
+      <arg name="title" type="string"/>
+    </event>
+
+    <event name="client">
+      <description summary="the process that owns the window, 0 when unknown"/>
+      <arg name="pid" type="uint"/>
+    </event>
+
+    <event name="vouched_app_id">
+      <description summary="the application the session vouched for when it handed acompositor this window's client; empty when none"/>
+      <arg name="app_id" type="string"/>
+    </event>
+
+    <event name="parent">
+      <arg name="parent" type="object" interface="acompositor_window_v1" allow-null="true"/>
+    </event>
+
+    <event name="state">
+      <arg name="state" type="uint" enum="state"/>
+      <arg name="hidden" type="uint" summary="1 while hidden by set_hidden"/>
+    </event>
+
+    <event name="geometry">
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+
+    <event name="activated">
+      <description summary="the window has the keyboard (1) or lost it (0)"/>
+      <arg name="activated" type="uint"/>
+    </event>
+
+    <event name="desktop" since="2">
+      <description summary="the desktop the window belongs to">
+        Sent with the window's first events and whenever it moves, before done. The window
+        object has version 2 when the desktop bound acompositor_desktop_v1 at version 3 or later.
+      </description>
+      <arg name="desktop" type="uint"/>
+    </event>
+
+    <event name="stacking" since="3">
+      <description summary="where the window stands among the toplevels, from the back">
+        0 is the backmost toplevel; a larger place is nearer the front. All toplevels of
+        all desktops share one order, so the windows of the current desktop compare by
+        their places. Sent with the window's first events and whenever its place changes,
+        before done; raising one window moves the places of those it passes. The window
+        object has version 3 when the desktop bound acompositor_desktop_v1 at version 4 or later.
+      </description>
+      <arg name="place" type="uint"/>
+    </event>
+
+    <event name="identifier" since="4">
+      <description summary="a name for the window that stays while acompositor runs">
+        Sent once, with the window's first events, before done. It is the same for this
+        window on every acompositor_window_v1 object, also after the desktop binds
+        acompositor_desktop_v1 again, differs between windows (also of one client) and is not
+        used again while acompositor runs; like the identifier of ext-foreign-toplevel-list.
+      </description>
+      <arg name="identifier" type="string"/>
+    </event>
+
+    <event name="min_size" since="4">
+      <description summary="the smallest size the client accepts">
+        What the client set with xdg_toplevel.set_min_size, in logical pixels; 0 is no limit
+        in that direction. Sent with the window's first events and whenever it changes,
+        before done. The window object has version 4 when the desktop bound
+        acompositor_desktop_v1 at version 5 or later.
+      </description>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+
+    <event name="done">
+      <description summary="the end of a burst of events about this window"/>
+    </event>
+
+    <event name="closed">
+      <description summary="the window is gone; destroy the object"/>
+    </event>
+
+    <enum name="state">
+      <entry name="normal" value="0"/>
+      <entry name="minimized" value="1"/>
+      <entry name="filled" value="2" summary="maximized: the work area"/>
+      <entry name="fullscreen" value="3"/>
+    </enum>
+
+    <request name="activate">
+      <description summary="bring the window to the front and give it the keyboard (shows it if hidden, restores it if minimized; from version 2 also switches to its desktop)">
+        A window on the Agent's stage (see the stage event) leaves the stage first: the
+        person takes it over. It moves to the current desktop, with its dialogs and popups,
+        and from then on is a window like any other.
+      </description>
+    </request>
+
+    <enum name="error">
+      <entry name="unknown_desktop" value="0" summary="the desktop number names no desktop"/>
+    </enum>
+
+    <request name="move_to_desktop" since="2">
+      <description summary="move the window, with its dialogs and popups, to another desktop">
+        A window moved away from the current desktop disappears in the same step; the
+        keyboard goes to the front window that stays.
+      </description>
+      <arg name="desktop" type="uint"/>
+    </request>
+
+    <request name="set_hidden">
+      <description summary="hide the window without minimizing it (virtual desktops), or show it again"/>
+      <arg name="hidden" type="uint"/>
+    </request>
+
+    <request name="set_state">
+      <arg name="state" type="uint" enum="state"/>
+    </request>
+
+    <request name="close">
+      <description summary="ask the window's client to close it (xdg_toplevel.close)"/>
+    </request>
+
+    <request name="place">
+      <description summary="move a normal window; a size above 0 also asks the client for that size"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </request>
+
+    <request name="set_wallpaper" since="5">
+      <description summary="show the window as the wallpaper of a screen">
+        acompositor takes the window out of the stack and draws it over the whole screen,
+        under the desktop page (layer-shell bottom) and over the plain background, and asks
+        its client for the screen's size. It is no longer drawn as a window, cycled to, or
+        given the keyboard, and listings leave it out; the object stays and sends wallpaper 1.
+        A window made the wallpaper of a screen that has one already sends the old one back.
+        The window object has version 5 when the desktop bound acompositor_desktop_v1 at
+        version 7 or later.
+      </description>
+      <arg name="output" type="object" interface="wl_output"/>
+      <arg name="pointer" type="uint" summary="1: it gets pointer input where nothing is above it; 0: it gets none"/>
+    </request>
+
+    <request name="unset_wallpaper" since="5">
+      <description summary="send the window back to the stack as a normal window, in front, at its old size"/>
+    </request>
+
+    <event name="wallpaper" since="5">
+      <description summary="whether the window is a wallpaper now">
+        1 after set_wallpaper took; 0 when it is a normal window again: unset_wallpaper, another
+        window made the wallpaper of the same screen, or the screen went away. Sent before done.
+      </description>
+      <arg name="on" type="uint"/>
+    </event>
+
+    <event name="stage" since="7">
+      <description summary="whether the window is on the Agent's stage">
+        1 while the window is on the stage: a toplevel of a program the Agent started, kept
+        off every screen and out of the person's stacking, cycling and keyboard. To its
+        client it stays shown: it keeps its wl_surface.enter, frame callbacks and the
+        activated state, and shots of it work. Its desktop number takes no desktop. 0 once
+        it is a window of the person's desktops, as after activate. Sent before done, with
+        the first burst only when it is 1.
+      </description>
+      <arg name="on" type="uint"/>
+    </event>
+
+    <enum name="easing" since="6">
+      <description summary="the CSS easing keywords, as cubic Bézier curves"/>
+      <entry name="linear" value="0"/>
+      <entry name="ease" value="1"/>
+      <entry name="ease_in" value="2"/>
+      <entry name="ease_out" value="3"/>
+      <entry name="ease_in_out" value="4"/>
+    </enum>
+
+    <request name="animate" since="6">
+      <description summary="move how the window is drawn to a target, over a time">
+        The window is drawn scaled by scale about its centre, moved by dx and dy logical pixels
+        and with the opacity (0 to 1) given; fields not in the fields mask keep the value they
+        have now, which is 1, 1, 0, 0 unless an animation left them otherwise. After delay
+        milliseconds the values go to the target over duration milliseconds along easing;
+        they stay there when it ends, so animating back to 1, 1, 0, 0 undoes it. Only the
+        drawing changes: the window keeps its place for input and in geometry. A later
+        animation of the same window, its own or one acompositor starts (minimizing, a state
+        change, a desktop switch), replaces it, and the replaced one ends where it was.
+        Under the reduced motion preset scale, dx and dy are ignored. animated follows when the
+        animation ends or is replaced, also when there was nothing to do.
+      </description>
+      <arg name="fields" type="uint" summary="the fields given: 1 opacity, 2 scale, 4 dx, 8 dy"/>
+      <arg name="opacity" type="fixed"/>
+      <arg name="scale" type="fixed"/>
+      <arg name="dx" type="fixed"/>
+      <arg name="dy" type="fixed"/>
+      <arg name="duration" type="uint" summary="milliseconds"/>
+      <arg name="delay" type="uint" summary="milliseconds"/>
+      <arg name="easing" type="uint" enum="easing"/>
+    </request>
+
+    <event name="animated" since="6">
+      <description summary="an animate request ended or was replaced"/>
+    </event>
+  </interface>
+
+  <interface name="acompositor_render_state_v1" version="1">
+    <description summary="one answer to render_state"/>
+    <request name="destroy" type="destructor"/>
+
+    <enum name="composer">
+      <entry name="cpu" value="0"/>
+      <entry name="gpu" value="1"/>
+    </enum>
+
+    <enum name="drawn">
+      <entry name="none" value="0" summary="not drawn: covered by opaque windows above it"/>
+      <entry name="frost" value="1" summary="a frosted area (blur only)"/>
+      <entry name="gpu_glass" value="2" summary="glass, drawn on the GPU"/>
+      <entry name="cpu_glass_frosted" value="3" summary="glass, drawn on the CPU as frost with the glass's tint"/>
+    </enum>
+
+    <event name="backend">
+      <description summary="what composes the screen">
+        device and driver are the GPU's adapter name and driver; both are empty on the CPU.
+      </description>
+      <arg name="composer" type="uint" enum="composer"/>
+      <arg name="device" type="string"/>
+      <arg name="driver" type="string"/>
+    </event>
+
+    <event name="area">
+      <description summary="one glass or frosted area of a shown window">
+        window is the N of acompositor-N; surface is the wl_surface's id in its client. The
+        rectangle is in physical pixels of the composed screen.
+      </description>
+      <arg name="window" type="uint"/>
+      <arg name="surface" type="uint"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+      <arg name="drawn" type="uint" enum="drawn"/>
+    </event>
+
+    <event name="done"/>
+  </interface>
+
+  <interface name="acompositor_hit_v1" version="1">
+    <description summary="one answer to hit"/>
+    <request name="destroy" type="destructor"/>
+
+    <event name="landed">
+      <description summary="the surface input goes to at the point">
+        window is the N of the toplevel the surface belongs to, 0 for none; role is toplevel,
+        popup, subsurface, layer, lock or none (nothing there); surface is the wl_surface's id
+        in its client (0 for none); sx and sy are the point in that surface's coordinates.
+      </description>
+      <arg name="window" type="uint"/>
+      <arg name="role" type="string"/>
+      <arg name="surface" type="uint"/>
+      <arg name="sx" type="fixed"/>
+      <arg name="sy" type="fixed"/>
+    </event>
+
+    <event name="beneath">
+      <description summary="a window that holds the point but is covered there">
+        Sent for each shown window under the landed surface whose rectangle holds the point,
+        from the nearest down.
+      </description>
+      <arg name="window" type="uint"/>
+    </event>
+
+    <event name="done"/>
+  </interface>
+
+  <interface name="acompositor_capture_v1" version="1">
+    <request name="destroy" type="destructor"/>
+
+    <event name="buffer_size">
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+    </event>
+
+    <request name="copy">
+      <description summary="copy the picture into an ARGB8888 or XRGB8888 shm buffer of buffer_size"/>
+      <arg name="buffer" type="object" interface="wl_buffer"/>
+    </request>
+
+    <event name="ready"/>
+
+    <event name="failed">
+      <arg name="reason" type="string"/>
+    </event>
+  </interface>
+
+  <interface name="acompositor_shortcut_v1" version="1">
+    <request name="destroy" type="destructor"/>
+
+    <event name="activated">
+      <arg name="time" type="uint" summary="milliseconds, the input clock"/>
+    </event>
+
+    <event name="refused">
+      <description summary="the combination is taken or not allowed; destroy the object"/>
+    </event>
+  </interface>
+
+  <interface name="acompositor_embed_slot_v1" version="1">
+    <description summary="reserved for embedding another client's surface; not implemented"/>
+
+    <request name="destroy" type="destructor"/>
+
+    <event name="unavailable"/>
+  </interface>
+</protocol>

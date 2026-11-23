@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="acompositor_inject_v1">
+  <copyright>
+    Copyright © 2026 acompositor authors. MIT license.
+  </copyright>
+
+  <description summary="input from a remote desktop, as evdev codes">
+    A remote desktop process feeds the keyboard and pointer of whoever sits at the other end
+    into acompositor, as if they came from local devices: they go through the same shortcuts,
+    focus rules, input method grab and lock screen as local input. Keys and buttons are
+    evdev codes (KEY_*, BTN_*), so no keymap is involved. Only connections the session
+    handed over at the remote level are offered this global.
+  </description>
+
+  <interface name="acompositor_inject_v1" version="5">
+    <enum name="state">
+      <entry name="released" value="0"/>
+      <entry name="pressed" value="1"/>
+    </enum>
+
+    <enum name="error">
+      <entry name="invalid_state" value="0" summary="a state that is neither released nor pressed"/>
+      <entry name="invalid_code" value="1" summary="a key or button code outside 1..=767"/>
+      <entry name="invalid_size" value="2" summary="a screen size of 0 or above 8192 pixels"/>
+    </enum>
+
+    <request name="destroy" type="destructor">
+      <description summary="stop injecting; keys and buttons still held are released"/>
+    </request>
+
+    <request name="key">
+      <description summary="press or release a keyboard key">
+        key is an evdev KEY_* code; a press of a key already held is ignored, as is a
+        release of a key that is not held.
+      </description>
+      <arg name="key" type="uint"/>
+      <arg name="state" type="uint" enum="state"/>
+    </request>
+
+    <request name="button">
+      <description summary="press or release a pointer button">
+        button is an evdev BTN_* code, such as BTN_LEFT (0x110).
+      </description>
+      <arg name="button" type="uint"/>
+      <arg name="state" type="uint" enum="state"/>
+    </request>
+
+    <request name="move_by">
+      <description summary="move the pointer relative to where it is">
+        dx and dy are logical pixels, as from a mouse.
+      </description>
+      <arg name="dx" type="fixed"/>
+      <arg name="dy" type="fixed"/>
+    </request>
+
+    <request name="move_to">
+      <description summary="move the pointer to a place on the screens">
+        x and y are logical coordinates in the compositor's space, the same as
+        wl_output.geometry and xdg-output; the pointer stays on the screens.
+      </description>
+      <arg name="x" type="fixed"/>
+      <arg name="y" type="fixed"/>
+    </request>
+
+    <request name="wheel">
+      <description summary="turn the wheel by whole detents">
+        Signs as evdev: horizontal right is positive, vertical away from the user is positive.
+      </description>
+      <arg name="horizontal" type="int"/>
+      <arg name="vertical" type="int"/>
+    </request>
+
+    <request name="scroll">
+      <description summary="smooth scrolling, as from two fingers">
+        dx and dy are logical pixels of content movement, as wl_pointer.axis values; send
+        scroll_stop when the fingers lift.
+      </description>
+      <arg name="dx" type="fixed"/>
+      <arg name="dy" type="fixed"/>
+    </request>
+
+    <request name="text" since="3">
+      <description summary="type a string">
+        Printable ASCII, newline and tab are typed as key presses on acompositor's US layout,
+        with shift where needed, so they go through the same paths as any key. Other
+        characters are committed in runs to the focused client's text-input-v3 when it is
+        enabled; when it is not, they are left out and text_skipped says how many.
+      </description>
+      <arg name="text" type="string"/>
+    </request>
+
+    <event name="text_skipped" since="3">
+      <description summary="characters of the last text request that could not be typed"/>
+      <arg name="count" type="uint"/>
+    </event>
+
+    <request name="drop" since="3">
+      <description summary="drop data on the surface at a place, as if dragged there">
+        source is a wl_data_source of this client that already offers its types (for files,
+        text/uri-list). acompositor moves the pointer to x, y in the compositor's logical space
+        and drags the source onto the surface there; once that surface accepts a type (and,
+        between version 3 sides, an action) the drop happens, and if it refuses or says
+        nothing within a second the drag is cancelled. The source hears the outcome as in
+        any drag: send, dnd_drop_performed and dnd_finished, or cancelled.
+      </description>
+      <arg name="source" type="object" interface="wl_data_source"/>
+      <arg name="x" type="fixed"/>
+      <arg name="y" type="fixed"/>
+    </request>
+
+    <request name="scroll_stop">
+      <description summary="the end of a smooth scroll"/>
+    </request>
+
+    <request name="resize_screen" since="2">
+      <description summary="ask for a headless screen of this size">
+        When the remote client's window changes size, ask for the screen to follow, in
+        physical pixels. Only a headless acompositor (--headless) obeys; on real screens the
+        request is ignored. Clients see the new size through wl_output, maximized windows
+        refill the new work area, and capture sessions get new buffer constraints.
+      </description>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+    </request>
+
+    <request name="target" since="4">
+      <description summary="send the Agent's input into one window">
+        Only for Agent-level and dev-level connections; others are ignored. identifier is a
+        toplevel's acompositor_window_v1.identifier (acompositor-N); an empty string ends the
+        targeting. While a window is targeted, move_to takes x and y in that window's logical
+        coordinates (its geometry's top left is 0, 0) and the pointer only hits that window,
+        its subsurfaces and its popups. Keys go to that window's client: when the person's
+        keyboard is elsewhere, the client is lent the keyboard (wl_keyboard enter, key,
+        modifiers) without moving the person's focus, as the Agent's pointer is lent.
+        A window on the Agent's stage is never raised or focused by this input and nothing
+        of the person's changes. A window on the person's desktops behaves as before: a
+        press raises it and gives it the keyboard, and keys first focus it.
+        When the window is not found or later closes, target_lost is sent once and the
+        input is dropped until the next target.
+      </description>
+      <arg name="identifier" type="string"/>
+    </request>
+
+    <event name="target_lost" since="4">
+      <description summary="the targeted window is gone; input is dropped until the next target"/>
+    </event>
+
+    <request name="focus_desktop" since="5">
+      <description summary="give the keyboard to the desktop, as a click on it would">
+        Only for dev-level connections; others are ignored, and so is the request while
+        the screen is locked. The desktop is the background-layer panel that takes the
+        keyboard on demand; it gets the keyboard focus as if the person had clicked on it,
+        until a window is activated or clicked. With no such panel nothing happens.
+      </description>
+    </request>
+  </interface>
+</protocol>
