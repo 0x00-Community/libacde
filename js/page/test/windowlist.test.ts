@@ -123,3 +123,16 @@ test('a new accent fires the accent event once and accent() follows it', () => {
   assert.deepEqual(seen, ['#d0249f', null], 'a removed handler hears nothing')
   assert.equal(self.api.accent(), '#0075ff', 'the default colour picked by the user is not the unset null')
 })
+
+test('wallTone() is the tone of the wall under the window, null until there is one, and a change fires wallTone once', () => {
+  const self = window(null)
+  assert.equal(self.api.wallTone(), null)
+  const seen: unknown[] = []
+  self.api.on('wallTone', (tone) => void seen.push(tone))
+  self.shade('light')
+  self.shade('light')
+  self.shade('dark')
+  self.shade(null)
+  assert.equal(self.api.wallTone(), null)
+  assert.deepEqual(seen, ['light', 'dark', null], 'an unchanged tone fires nothing')
+})

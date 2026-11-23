@@ -59,12 +59,16 @@ export interface CurrentMaterial {
   readonly options: MaterialOptions
 }
 
+export type WallTone = 'light' | 'dark' | null
+
 declare module '../page' {
   interface AcdeWindow {
     setMaterial(material: MaterialName, options?: MaterialOptions): void
     material(): CurrentMaterial
     accent(): string | null
+    wallTone(): WallTone
     on(name: 'accent', handler: (color: string | null) => void): () => boolean
+    on(name: 'wallTone', handler: (tone: WallTone) => void): () => boolean
   }
 
   interface AcdeDesktop {

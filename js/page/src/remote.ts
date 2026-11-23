@@ -1,6 +1,6 @@
 import type {
   AppMenu, BackdropEffect, CurrentMaterial, MaterialName, MaterialOptions, NativeWindow, WindowApp, WindowEdge, WindowEventName, WindowMaterial, WindowMode,
-  WindowOutput, WindowRect, WindowState,
+  WallTone, WindowOutput, WindowRect, WindowState,
 } from '@acde/api'
 import type { ServiceShape, WebInit, WireMenu } from './contract'
 import { Level, Log } from './log'
@@ -141,7 +141,7 @@ export class WindowList {
   }
 }
 
-type OwnEvent = WindowEventName | 'accent'
+type OwnEvent = WindowEventName | 'accent' | 'wallTone'
 
 type PageLike = { dispatchEvent(event: Event): boolean; Event: typeof Event; document: Document }
 
@@ -161,6 +161,7 @@ export class WindowSelf {
     hostcontrols: true,
     minimizable: true,
     accent: true,
+    wallTone: true,
   }
   static readonly EVENTS: readonly string[] = [...Object.keys(WindowSelf.#OWN), 'shortcut']
   readonly #rpc: Rpc
@@ -173,6 +174,7 @@ export class WindowSelf {
   #state: WindowState = 'normal'
   #output: WindowOutput
   #accent: string | null = null
+  #wallTone: WallTone = null
   #material: CurrentMaterial = Object.freeze({ material: 'none', options: Object.freeze({}) })
   onVisible: (visible: boolean) => void = () => {}
   onTitle: (title: string) => void = () => {}
@@ -217,6 +219,12 @@ export class WindowSelf {
     if (accent === this.#accent) return
     this.#accent = accent
     this.emit('accent', accent)
+  }
+
+  shade(tone: WallTone): void {
+    if (tone === this.#wallTone) return
+    this.#wallTone = tone
+    this.emit('wallTone', tone)
   }
 
   static output(width: number, height: number, scale: number, workArea?: WindowRect | null): WindowOutput {
@@ -266,6 +274,7 @@ export class WindowSelf {
     setMaterial: (material: MaterialName, options: MaterialOptions = {}) => this.#setMaterial(material, options),
     material: (): CurrentMaterial => this.#material,
     accent: (): string | null => this.#accent,
+    wallTone: (): WallTone => this.#wallTone,
     requestActivate: () => this.#surface.requestActivate(),
     requestGrab: (kind: 'pointer' | 'keyboard') => this.#surface.requestGrab(kind),
     releaseGrab: (kind: 'pointer' | 'keyboard') => this.#surface.releaseGrab(kind),

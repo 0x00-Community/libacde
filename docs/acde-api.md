@@ -95,6 +95,10 @@
 - `AcdeWindow.accent()` / `on('accent', handler)` (2026-11-23, 类型同在 `types/window-look/`): 系统强调色的原值 `#rrggbb`, 系统没设 (门户的 `accent-color` 是 -1 或越界) 或没有门户 (宿主会话) 时是 `null`;
   原值变了发 `accent`, 参数是新值. 用来分清"没设"和"用户正好选了默认色": CSS 的 `AccentColor` 在没设时是默认的 `#0075ff`, 区分不开. 来源只有一条, 同 `AccentColor`
   (门户 → launcher → 页面消息 `{type: 'accent', color}`, 见 `docs/dev/build-run.md` 的强调色); 页面初始化参数 `accent` 和这条消息都原样保留 `null`, 渲染收空串表示没设.
+- `AcdeWindow.wallTone()` / `on('wallTone', handler)` (2026-11-23, 用户选定的公开方法, 类型 `WallTone = 'light' | 'dark' | null` 同在 `types/window-look/`): 窗口所在屏的壁纸整体偏亮还是偏暗,
+  `light` 表示壁纸偏亮、字该用深色; 还没收到壁纸图、算不出来或没有门户 (宿主会话) 时是 `null`. 壁纸变了或窗口换到别的屏、值变了才发 `wallTone`.
+  来源是 acdes 算好经门户 `org.acde.appearance` 推的 `wall-tone` (`a{su}`, 键是屏幕名, 值 0 未知、1 亮、2 暗) 和 `primary-output` (`s`, 主屏名);
+  启动器按窗口表行的 `output` (窗口中心所在屏) 取值, 取不到用主屏, 都没有是 `null`, 经页面消息 `{type: 'walltone', tone}` 和初始化参数 `wallTone` 交给页面.
 - `AcdeWindow.on('beforeclose')`: 原来是一个签名 `() => boolean | void | Promise<boolean | void>`, 拆成返回 `boolean` 和返回 `void` 的两个重载, 能传的函数不变.
 
 ## 系统模块的错误与事件 (libacde 单子 12)
