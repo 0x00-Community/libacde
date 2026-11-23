@@ -3,20 +3,18 @@ import type { WebInit } from '../../page/src/contract'
 import type { FileFilter, Lent, WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
 import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
 import { Log } from '../../page/src/log'
-import { readDirOr, readTextOr } from '../../page/src/sys/fs'
-import { screenshotFile, xdgHome } from '../../page/src/sys/os'
+import { screenshotFile } from '../../page/src/sys/os'
 import { join } from '../../page/src/sys/path'
 import { onceSignal, process } from '../../page/src/sys/process'
 import { Rpc } from '../../page/src/rpc'
 import { SessionLanguage } from '../../page/src/language'
 import { PageSource } from '../../page/src/page'
-import { AppLookup, DesktopLookup, desktopInit, webInit, type Found, type Place } from './app/app'
+import { desktopInit, webInit, type Place } from './app/app'
 import { FakeLock } from './app/lock'
 import { AppMenus } from './app/menus'
 import { PageCalls } from './app/page'
 import { Lending } from './app/lending'
 import type { WireMenu } from '../../page/src/contract'
-import { API_LEVEL } from '@acde/api/manifest'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported, wallpaperOf } from './app/calls'
 import { rejectingCalls, sessionOf, windowGrant, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
@@ -27,6 +25,7 @@ import { DevToolsEndpoint, type NativeDevTools } from './dev/devtools'
 import { managerRelay, type DevRelay } from './dev/relay'
 import { Inspect, type InspectHost, type InspectShell, type PlaceChange, type PlayEvent, type ShellWindow } from './dev/inspect'
 import { GuestWindows } from './dev/guest'
+import { standalone } from './standalone'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
 import { fixedScheme, followAppearance, type AppearanceChange, type AppearancePortal, type Glass } from './app/appearance'
@@ -97,53 +96,6 @@ const STOP = new Set(['close', 'exit', 'quit'])
 const CLOSE_WAIT_MS = 3000
 type WindowState = 'normal' | 'minimized' | 'filled' | 'fullscreen'
 const STATES: readonly string[] = ['normal', 'minimized', 'filled', 'fullscreen'] satisfies WindowState[]
-
-function filesFor(found: Found): WebGrants['fs'] {
-  const fs = found.app.capabilities.fs
-  if (!fs) return null
-  const declared = typeof fs === 'object' ? [...fs.roots] : []
-  const places = process.env['ACDE_DEV_PLACES'] ? declared : []
-  return { places, paths: false }
-}
-
-function grantsFor(found: Found): WebGrants {
-  const { app } = found
-  const root = process.env['ACDE_STORAGE'] ?? join(xdgHome('data'), 'acde', 'storage')
-  return {
-    app: app.id, fs: filesFor(found), terminal: false, network: !!app.capabilities.network, system: false, bluetooth: false, audio: !!app.capabilities.audio,
-    devices: false, power: false, input: false, display: false, office: false, camera: false, microphone: false,
-    storage: { key: `app-${app.id}`, dir: root ? join(root, `app-${app.id}`) : null, legacy: null },
-  }
-}
-
-function standalone(args: LaunchArgs): Session {
-  if (args.kind === 'lock') return lockPreview(args)
-  if (args.kind !== 'app') throw new Error(`${args.kind} needs the session manager (ACDE_MANAGER_FD); without it only app <id|dir> and lock <desktop> run`)
-  const path = (process.env['ACDE_PATH'] ?? '').split(':').filter(Boolean)
-  const found = new AppLookup({ readText: (file) => readTextOr(file, null), readDir: readDirOr }).find(args.app, path, sys().cwd())
-  const { app } = found
-  const grants = grantsFor(found)
-  return {
-    kind: 'app', found, page: null, resources: found.resources, label: app.label, heapMb: app.heapMb,
-    tier: null, grants, request: null, services: {}, own: false, lock: false, confirm: false,
-  }
-}
-
-function lockPreview(args: LaunchArgs): Session {
-  const path = (process.env['ACDE_PATH'] ?? '').split(':').filter(Boolean)
-  const found = new DesktopLookup({ readText: (file) => readTextOr(file, null), readDir: readDirOr }).find(args.app, path, sys().cwd())
-  const entry = found.desktop.lock
-  if (!entry) throw new Error(`desktop ${found.desktop.id} has no lock page (lock in its package.json)`)
-  const grants: WebGrants = {
-    app: null, fs: null, terminal: false, network: false, system: false, bluetooth: false, audio: false, devices: false, power: false,
-    input: false, display: false, office: false, camera: false, microphone: false, storage: { key: 'lock', dir: null, legacy: null },
-  }
-  return {
-    kind: 'desktop', found: null, page: join(found.dir, entry), resources: found.resources, label: `${found.desktop.name} (lock)`,
-    heapMb: found.desktop.heapMb, tier: { level: API_LEVEL, shell: [], refused: {} }, grants, request: null, services: {},
-    own: false, lock: true, confirm: false,
-  }
-}
 
 function rect(value: unknown): [number, number, number, number] {
   const v = Array.isArray(value) ? value.map((n) => Math.round(Number(n) || 0)) : []
