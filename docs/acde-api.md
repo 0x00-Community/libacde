@@ -42,7 +42,7 @@
 ## 结构
 
 `src/index.d.ts`、`src/app.d.ts`、`src/shell.d.ts` (入口); `src/modules/` (`declare module 'acde:…'`); `src/types/` (清单、配置、服务、能力、
-页面、事件、权限、软件包 (`software.d.ts`, `acde:software`)、office; 窗口外观 `WindowLook` 在子目录 `types/window-look/` (它用模块扩充给 `AcdeDesktop` 加 `setWindowLook`, `page.d.ts` 不动)). 删除前是由 JS 常量推出来的两组类型, 现在直接写成字面量联合: `types/names.d.ts` (`IconName`、`ShellModule`,
+页面、事件、权限、软件包 (`software.d.ts`, `acde:software`)、office; `acde:inspect` 的类型 (`InspectNode`、`InspectWindow`、`InspectAction` 等) 在子目录 `types/inspect/` (2026-11-23 从 `page.d.ts` 原样搬出, 为行数门禁; `page.d.ts` 照旧转出, 引用路径不变); 窗口外观 `WindowLook` 在子目录 `types/window-look/` (它用模块扩充给 `AcdeDesktop` 加 `setWindowLook`, `page.d.ts` 不动)). 删除前是由 JS 常量推出来的两组类型, 现在直接写成字面量联合: `types/names.d.ts` (`IconName`、`ShellModule`,
 原来是 `validate.ts` 里 `ICON_NAMES`、`SHELL_MODULES` 的元素类型)、`types/places.d.ts` (`SharedPlace`、`PlaceCapability`, 原来出自
 `runtime/places.js` 的 `SHARED_PLACES`); `types/modules.d.ts` 的 `AcdeModules` 原在 `runtime/load.d.ts`.
 
