@@ -231,6 +231,7 @@ fn a_link_waits_for_the_sheets_its_stylesheet_imports() {
     assert_eq!((dom.sheet_state(link).unwrap(), color(&dom, p)), (1, "rgb(255, 0, 0)".to_owned()));
 
     dom.set_attribute(link, "href", &format!("data:text/css,@import url({import}); p {{ margin-left: 5px }}")).unwrap();
+    assert_eq!(dom.sheet_state(link).unwrap(), 0, "the new sheet is in and its import is out");
     drop(take(&loads, import));
     assert_eq!(dom.take_loaded(), vec![link]);
     assert_eq!(dom.sheet_state(link).unwrap(), 2, "a failed import fails the link");
