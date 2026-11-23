@@ -1,8 +1,5 @@
 import type { AppAction, JsonSchema, ToolRisk } from '../acde-api/src/index'
-
-export const ACTION_NAME = /^[a-z][a-z0-9_-]{0,63}$/
-
-export const TOOL_RISKS: readonly ToolRisk[] = ['readOnly', 'risky', 'destructive']
+import { TOOL_NAME, TOOL_RISKS } from '../acde-api/vendor/plugin-api/src/tools'
 
 const SHAPE = '{name, description, inputSchema, outputSchema?, annotations?, longRunning?, target?}'
 
@@ -30,7 +27,7 @@ function annotations(value: unknown): AppAction['annotations'] | string {
 function action(raw: unknown): AppAction | string {
   if (!isObject(raw)) return `an action is ${SHAPE}`
   const { name, description, inputSchema, outputSchema, longRunning, target } = raw
-  if (typeof name !== 'string' || !ACTION_NAME.test(name)) {
+  if (typeof name !== 'string' || !TOOL_NAME.test(name)) {
     return `an action's name is lower case letters, digits, _ and - (at most 64), not ${JSON.stringify(name)}`
   }
   const named = (why: string) => `action ${name}: ${why}`

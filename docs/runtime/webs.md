@@ -149,7 +149,7 @@
   `actions` (声明式操作, 见下).
 - **声明式操作** (J2, 2026-11-24, 总仓 `.scratch/system/arch-decisions-plan.md`): 清单 `acde.apps[].actions` 每项和插件的“工具”同形:
   `{name, description, inputSchema, outputSchema?, annotations?: {readOnly?, destructive?, toolRisk?}, longRunning?, target?: {type}}`. 校验在 `manifest/actions.ts`:
-  `name` 同插件工具名 (`ACTION_NAME`: 小写字母开头, 小写字母、数字、`_`、`-`, 至多 64), 同一个应用里不重名; `description` 非空; 两个 schema 都是 `type: "object"`
+  `name` 同插件工具名 (plugin-api 的 `TOOL_NAME`, 类型和常量都取自副本, 见 `docs/acde-api.md`「plugin-api 副本」: 小写字母开头, 小写字母、数字、`_`、`-`, 至多 64), 同一个应用里不重名; `description` 非空; 两个 schema 都是 `type: "object"`
   的 JSON schema; `toolRisk` 是 `readOnly` / `risky` / `destructive` (`TOOL_RISKS`); 解析后缺省为 `[]`. 声明是静态的, 管家不运行应用就能列出;
   `readOnly` 只对系统包里的应用生效, `destructive`、`toolRisk` 只能调高档位 (由管家和系统总管执行). 应用在页面里用 `acde:actions` 的
   `handle(名字, (args, call) => 结果)` 注册处理函数 (`page/src/actions/`), 名字必须是清单里声明过的, 返回值用来撤销. `call` 带调用方

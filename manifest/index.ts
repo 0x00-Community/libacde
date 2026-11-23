@@ -9,7 +9,7 @@ export type { CapabilityState, CapabilityStatus, PlatformSupport, RunningMode, W
 export { API_LEVEL, FS_ROOTS, MIN_API_LEVEL, SHARED_PLACES }
 export type { FsRootName, PlaceCapability, SharedPlace } from '../acde-api/src/index'
 export { PLATFORM_SUPPORT, RUNNING_MODES, platformSupport } from './platforms.ts'
-export { ACTION_NAME, TOOL_RISKS } from './actions.ts'
+export { TOOL_NAME, TOOL_RISKS } from '../acde-api/vendor/plugin-api/src/tools'
 
 export const LEGACY_ICONS: Readonly<Record<string, string>> = legacyIcons
 

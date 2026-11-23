@@ -2,7 +2,7 @@
 
 > 路径相对仓库根。
 
-`@acde/api` 是运行时删掉的 `web/` 的替代品 (群里结论, 2026-11-17): 学 workerd, npm 包是薄壳, **只有 `.d.ts` 声明, 没有 JS 逻辑**.
+`@acde/api` 是运行时删掉的 `web/` 的替代品 (群里结论, 2026-11-17): 学 workerd, npm 包是薄壳, **只有类型声明, 没有 JS 逻辑** (plugin-api 副本例外, 见下「plugin-api 副本」).
 它描述运行时给应用的东西: `acde:*` 模块 (运行时注入页面, 包里只是 `declare module`)、包清单、`acde.config.jsonc`、服务、能力、页面对象和事件的类型.
 来源是删除前的 `web/packages/acde-api` (acdert `91e7dd1e` 的父提交, 本仓库的历史), 只取纯类型声明. 它和清单规则 `manifest/` 原在 acdev 的
 `npm/` 里, 2026-11-18 随运行时库一起拆进本仓库: 运行时编译时要读它们, acdes 不该为此检出 acdev.
@@ -17,6 +17,19 @@
   只能 `import type`: 包里没有 JS, 运行时 `import '@acde/api'` 找不到入口.
 - 一个工程只用一个入口: 应用的类型从 `./app` 取, 桌面从 `./shell` 取; 和 `.` 混用时 `acde:*` 模块的声明重复, 类型检查报冲突 (原包就是这样).
 - 还没发到 npm (发版要用户同意); 包现在 `"private": true`.
+
+## plugin-api 副本 (`acde-api/vendor/plugin-api`, 2026-11-24)
+
+- 声明式操作和插件工具同形 (见 `docs/runtime/webs.md`「声明式操作」): `AppAction`、`ActionAnnotations`、`Caller`、`ToolRisk`、`JsonSchema` 只在
+  plugin-api (AC/plugin-api, Dopame 与 form 共用的插件接口) 里定义一次, `acde-api/src/types/actions` 从副本 re-export; 清单规则 `manifest/actions.ts` 的
+  名字规则 `TOOL_NAME` 和档位 `TOOL_RISKS` 也从副本取, `manifest/index.ts` 原样导出. 页面一侧专用的 `ActionCall`、`ActionResult`、`ActionError`、
+  `ActionHandler`、`AcdeActions`、`ActionTarget` 仍在本仓库.
+- 副本只读, 放在 `acde-api/` 里 (`package.json` 的 `files` 含 `vendor`), acdev 拷 acde-api 时一并带走. 只放类型和校验用得到的源码: 从 `src/tools.ts`
+  出发顺着相对 import 取到的文件 (现在 4 个), 不带测试、例子和一致性用例. 这几个是 `.ts` 源码, 本包因此不再是纯 `.d.ts`, 但仍只供 `import type` 和清单规则用.
+- `acde-api/vendor/plugin-api/SYNCED.json` 记源提交. 更新: 在 plugin-api 检出里提交好 (没有未提交改动), 然后 `bun scripts/sdk/plugin-api.ts sync`
+  (源目录取 `PLUGIN_API_DIR`, 默认仓库旁边的 `../plugin-api`, 即总仓里的检出), 跑类型检查和 page、launcher 的单测后连同 `SYNCED.json` 一起提交.
+  `bun scripts/sdk/plugin-api.ts check` 核对副本和记下的提交一致 (源目录不在就跳过); 不一致说明有人直接改了副本: 改 plugin-api, 再 sync. 只复制 git 跟踪的文件,
+  跳过 `AGENTS.md` 和 `.gitignore`.
 
 ## 版本与兼容 (用户 2026-11-20 定)
 

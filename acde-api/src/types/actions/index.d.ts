@@ -1,28 +1,6 @@
-export type JsonSchema = { readonly type: 'object'; readonly [key: string]: unknown }
+import type { Caller } from '../../../vendor/plugin-api/src/tools'
 
-export type ToolRisk = 'readOnly' | 'risky' | 'destructive'
-
-export interface Caller {
-  readonly id: string
-  readonly session: string
-  readonly run: string
-}
-
-export interface ActionAnnotations {
-  readonly readOnly?: boolean
-  readonly destructive?: boolean
-  readonly toolRisk?: ToolRisk
-}
-
-export interface AppAction {
-  readonly name: string
-  readonly description: string
-  readonly inputSchema: JsonSchema
-  readonly outputSchema?: JsonSchema
-  readonly annotations?: ActionAnnotations
-  readonly longRunning?: boolean
-  readonly target?: { readonly type: string }
-}
+export type { ActionAnnotations, AppAction, Caller, JsonSchema, ToolRisk } from '../../../vendor/plugin-api/src/tools'
 
 export interface ActionTarget {
   readonly type: string
