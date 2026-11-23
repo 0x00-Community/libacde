@@ -239,9 +239,9 @@ fn wait_then(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v
     let ready = STATE.with(|s| {
         let mut s = s.borrow_mut();
         s.then = Some(callback);
+        s.armed.store(true, Ordering::SeqCst);
         let ready = s.surface.as_ref().is_none_or(Surface::has_events);
-        s.armed.store(!ready, Ordering::SeqCst);
-        ready
+        ready && s.armed.swap(false, Ordering::SeqCst)
     });
     if ready {
         _ = rt::current().sender().send(Msg::Task(Box::new(wake)));
