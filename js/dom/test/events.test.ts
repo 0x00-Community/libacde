@@ -284,6 +284,27 @@ test('selecting text with the pointer: drag, double and triple press, Shift, and
   assert.equal(selected(), 'Hello brave new world', 'a cancelled selectstart does not select')
 })
 
+test('user-select: none on an ancestor stops a selection that starts inside it, text re-enables it', async () => {
+  using web = await page('<!doctype html><html><body><div id="w" style="user-select: none"><p><span id="s">chrome</span></p><p id="t" style="user-select: text">content</p></div></body></html>')
+  const chrome = web.internals.idOf(web.run('document.getElementById("s").firstChild'))
+  const content = web.internals.idOf(web.run('document.getElementById("t").firstChild'))
+  web.dom.boxes.set(web.internals.idOf(web.run('document.getElementById("s")')), { x: 0, y: 0, width: 60, height: 20 })
+  web.dom.boxes.set(web.internals.idOf(web.run('document.getElementById("t")')), { x: 0, y: 50, width: 70, height: 20 })
+  web.dom.caret = (x, y) => (y < 20 ? { node: chrome, offset: Math.min(6, Math.round(x / 10)) } : { node: content, offset: Math.min(7, Math.round(x / 10)) })
+  const input = web.internals.input
+  const selected = () => web.run('getSelection().toString()')
+
+  input.pointer('pointerdown', 0, 5)
+  input.pointer('pointermove', 60, 5)
+  input.pointer('pointerup', 60, 5)
+  assert.equal(selected(), '', 'a child of user-select: none does not select')
+
+  input.pointer('pointerdown', 0, 55)
+  input.pointer('pointermove', 70, 55)
+  input.pointer('pointerup', 70, 55)
+  assert.equal(selected(), 'content', 'user-select: text inside it selects')
+})
+
 test('range inputs: pressing and dragging sets the value, keys step it; input while it moves, change when done', async () => {
   using web = await page('<!doctype html><html><body><input type="range" id="r" min="0" max="10"><input type="range" id="off" disabled></body></html>')
   const r = web.internals.idOf(web.run('document.getElementById("r")'))

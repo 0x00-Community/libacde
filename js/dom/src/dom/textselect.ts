@@ -26,7 +26,12 @@ function caretAt(x: number, y: number): Point | null {
 }
 
 function selectable(element: Element): boolean {
-  return computedStyleOf(element[ID], '', 'user-select') !== 'none'
+  for (let at: Element | null = element; at; at = inner(at, 'parentElement')) {
+    const value = computedStyleOf(at[ID], '', 'user-select')
+    if (value === 'none') return false
+    if (value && value !== 'auto') return true
+  }
+  return true
 }
 
 function elementOf(node: Node): Element | null {

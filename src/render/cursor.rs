@@ -6,7 +6,7 @@ pub(crate) fn of(doc: &BaseDocument) -> &'static str {
     let Some(style) = ancestors(doc, node).find_map(Node::style) else { return "default" };
     match style.groups.cursor().keyword {
         "auto" if link(doc, node) => "pointer",
-        "auto" if editable(doc, node) || (doc.hover_is_text() && *style.groups.user_select() != UserSelect::None) => "text",
+        "auto" if editable(doc, node) || (doc.hover_is_text() && selectable(doc, node)) => "text",
         "auto" => "default",
         keyword => keyword,
     }
@@ -14,6 +14,10 @@ pub(crate) fn of(doc: &BaseDocument) -> &'static str {
 
 fn ancestors<'a>(doc: &'a BaseDocument, node: &'a Node) -> impl Iterator<Item = &'a Node> {
     std::iter::successors(Some(node), |n| n.parent.and_then(|p| doc.get_node(p))).filter(|n| n.is_element())
+}
+
+fn selectable(doc: &BaseDocument, node: &Node) -> bool {
+    ancestors(doc, node).filter_map(Node::style).map(|s| *s.groups.user_select()).find(|v| *v != UserSelect::Auto) != Some(UserSelect::None)
 }
 
 fn link(doc: &BaseDocument, node: &Node) -> bool {
