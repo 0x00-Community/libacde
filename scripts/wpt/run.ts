@@ -28,6 +28,7 @@ const { values } = parseArgs({
     'skip-slow': { type: 'string', default: '' },
     shard: { type: 'string', default: '1/1' },
     'log-grep': { type: 'string', default: '' },
+    shots: { type: 'string', default: '' },
   },
 })
 const [SHARD, SHARDS] = values.shard!.split('/').map(Number) as [number, number]
@@ -47,6 +48,8 @@ mkdirSync(OUT, { recursive: true })
 const RESULTS = join(OUT, 'results.jsonl')
 const LOG = join(OUT, 'log.jsonl')
 const LOG_GREP = values['log-grep'] ? new RegExp(values['log-grep']) : null
+const SHOTS = values.shots ? join(OUT, values.shots) : null
+if (SHOTS) mkdirSync(SHOTS, { recursive: true })
 const VIEWPORT: [number, number] = [800, 600]
 const LOAD_MS = 6000
 
@@ -138,6 +141,7 @@ class Worker {
   launches = 0
   viewport: [number, number] | null = null
   shots = new Map<string, Image>()
+  pngs = new Map<string, Uint8Array>()
   constructor(readonly n: number) {}
 
   async launch(chunk: string) {
@@ -223,13 +227,25 @@ class Worker {
     await this.acde!.resize(this.web, viewport[0], viewport[1])
     this.viewport = viewport
     this.shots.clear()
+    this.pngs.clear()
   }
 
   async shot(url: string, budget: number): Promise<Image | 'noload' | 'timeout'> {
     await this.navigate(url)
     const state = await this.settle('reftest-wait', budget)
     if (state !== 'ready') return state
-    return Png.decode((await this.acde!.screenshot(this.web)).png)
+    const { png } = await this.acde!.screenshot(this.web)
+    if (SHOTS) this.pngs.set(url, png)
+    return Png.decode(png)
+  }
+
+  keep(t: Test): void {
+    if (!SHOTS) return
+    const name = (url: string) => url.replace(/^\//, '').replace(/[^A-Za-z0-9._-]+/g, '_')
+    for (const url of [t.url, ...(t.references ?? []).map((ref) => ref.url)]) {
+      const png = this.pngs.get(url)
+      if (png) writeFileSync(join(SHOTS, `${name(t.url)}${url === t.url ? '' : `--${name(url)}`}.png`), png)
+    }
   }
 
   async reference(url: string, budget: number): Promise<Image | 'noload' | 'timeout'> {
@@ -251,6 +267,7 @@ class Worker {
       if (chain === null) return res('PASS')
       failures.push(chain)
     }
+    this.keep(t)
     return res('FAIL', { message: failures.join('; ').slice(0, 2000) })
   }
 
