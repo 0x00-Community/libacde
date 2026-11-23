@@ -266,7 +266,10 @@ fn a_union_groups_a_circle_and_different_sized_pills_across_dom_branches() {
 }
 
 fn glass_groups(page: &Page) -> Vec<usize> {
-    let frame = page.frame();
+    group_sizes(&page.frame())
+}
+
+fn group_sizes(frame: &Frame) -> Vec<usize> {
     let mut sizes: Vec<usize> = frame.plane.layers.iter().filter_map(|l| l.backdrop.as_ref()?.group()).map(|g| g.len()).collect();
     sizes.sort_unstable();
     sizes
@@ -291,8 +294,8 @@ fn glass_inside_glass_is_its_own_layer_and_wrappers_make_none() {
         page.doc.append_child(bar, wrapper).unwrap();
         glass_in(&page, wrapper, &format!("left: {left}; top: 20px"));
     }
-    assert_eq!(glass_groups(&page), [2, 2], "the bar merges with its neighbour, its two buttons with each other, never across");
     let frame = page.frame();
+    assert_eq!(group_sizes(&frame), [2, 2], "the bar merges with its neighbour, its two buttons with each other, never across");
     let mut names: Vec<&str> = frame.plane.layers.iter().filter_map(|l| l.backdrop.as_ref()?.group_name.as_deref()).collect();
     names.sort_unstable();
     assert_eq!(names, ["g0", "g1"], "each connected group gets its own name within the surface");
