@@ -28,6 +28,15 @@
 `ACDEV_MIN_API_LEVEL`、`ACDEV_RUNTIME_VERSION` 三个 define), `src/host/web.rs` 用 `include_str!` 嵌进二进制, web 线程从 `acde-runtime:/page.js` 加载它
 (`WebLoader` 认这个地址); 同样把 `js/page/src/webworker.ts` 打成 `webworker.js`, Web Worker 的线程从 `acde-runtime:/webworker.js` 加载它
 (它只引 acde-dom 的 `core/` 和 `worker/`, 不带 DOM). 所以构建运行时库要有 bun. 打包命令只在 `js/bundle.ts` 一处 (`bun bundle.ts [输出目录] [版本]`, 默认 `js/dist`, `build.rs` 也调它).
+**名字不能被打包改掉** (2026-11-23): 一个包里两个同名的顶层符号, bun 把后一个改名 (`URL2`), 而 bun 1.4.4 的 `--keep-names` 对这种改名不补 `name`,
+页面里 `URL.name` 就成了 `"URL2"`, WPT 和 idlharness 按名字认接口 (11-22 `DOMException2` 一次掉了约 160 个子测试). 测试 (`dom/test/harness.ts`) 用 esbuild 的 `keepNames` 打包,
+看不出这个问题, 所以 `bundle.ts` 打完每个包都查一遍: 包里有 `class X<数字>`, 而源码里声明了 `X`、没声明 `X<数字>`, 就报错退出
+(源码指 `js/dom/src`、`js/page/src`、`js/launcher/src` 和 `manifest/` 下的全部文件, 直接扫目录, 不用 `bun build --metafile`: 执行机和 Windows 上的 bun 版本不一); 函数只查暴露出去的
+(包里有 `{X:X<数字>,…}`, 比如全局表里的 `atob`), 内部辅助函数被改名无所谓. 触发改名的三种写法和改法:
+页面胶水、启动器里裸写全局 (`new URL(…)`、`atob(…)`, 指的是装好的全局) 写成 `globalThis.URL`; 只在类型位置用的值导入碰上循环导入 (`custom.ts` ↔ `html.ts`
+的 `HTMLElement`, 删掉的代码也算) 改成 `type` 导入; 两个模块声明同名的类 (Broker 的批准表原来也叫 `Permissions`) 改掉其中内部的那个.
+被摇掉的代码也会触发: `manifest/level.ts` 在没有 define 时才读 `acde-api/` 的文件, 用 `process.getBuiltinModule('node:fs')` 现取, 不静态导入
+`node:fs` / `node:path` (bun 对浏览器目标保留没用到的 `node:` 导入, 曾把它的 `node:path` 实现整个打进运行时, 和 `js/page/src/sys/path.ts` 撞名).
 调试版运行时设了 `ACDEV_JS_DIR` 时从那个目录读 `page.js`、`webworker.js`、`launcher.js`, 读不到才用内嵌的 (发布版只用内嵌的): 改 `js/` 后
 `cd js && bun run bundle` 一两秒出新包, 重开页面即生效, 不重编 Rust; 进客户机时只推这几个文件. `js/tsconfig.json` 的 paths 把 `@acde/dom` 指向 `js/dom/src`,
 `@acde/api` 指向 SDK 的声明 `acde-api/src`, `@acde/api/manifest` 指向清单模块 `manifest/`
