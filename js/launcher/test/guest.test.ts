@@ -188,7 +188,7 @@ describe('input to a page', () => {
 })
 
 describe('window changes in the guest', () => {
-  test('go to winman by window number through the manager, the desktop and panels stay local', async () => {
+  test('go to winman by window number through the manager, and so does the focus of the desktop', async () => {
     const changes: object[] = []
     const focused: number[] = []
     const plain = base(1, focused)
@@ -202,9 +202,9 @@ describe('window changes in the guest', () => {
     await host.close(9)
     host.shell.focus(0)
     assert.deepEqual(changes, [
-      { window: 7, state: 'minimized' }, { window: 9, focus: true }, { window: 9, state: 'normal' }, { window: 9, close: true },
+      { window: 7, state: 'minimized' }, { window: 9, focus: true }, { window: 9, state: 'normal' }, { window: 9, close: true }, { window: 0, focus: true },
     ])
-    assert.deepEqual(focused, [0])
+    assert.deepEqual(focused, [])
   })
 })
 
@@ -220,7 +220,10 @@ describe('a guard on act and run (what only the user may act on)', () => {
       },
     } as never
     const guest = new GuestWindows(42, 'app')
-    const host = guest.host({ ...plain, web: (w) => (w === 1 ? rpc : null) }, () => 1, { inject: (e) => void sent.push(e) })
+    const host = guest.host({ ...plain, web: (w) => (w === 1 ? rpc : null) }, () => 1, {
+      inject: (e) => void sent.push(e),
+      play: async (events) => void sent.push(...events),
+    })
     guest.place([{ ...row(7, 42), x: 100, y: 50 }, row(9, 50)])
     return { inspect: new Inspect(host), sent, asked }
   }
@@ -305,5 +308,40 @@ describe('move, resize and raise on a window ref', () => {
     assert.match((await inspect.act('w1', 'raise', null)).text, /^w1 is in front/)
     assert.deepEqual(focused, [3])
     assert.match((await inspect.act('w0', 'raise', null)).text, /the desktop stays behind every window/)
+  })
+})
+
+describe('the keyboard follows the driver to the desktop', () => {
+  const desktopRow = { id: 0, window: 0, canvas: 0, mode: 'desktop', x: 0, y: 0, width: 800, height: 600, z: -1, focus: false }
+  const appRow = { id: 7, window: 7, canvas: 0, mode: 'free', x: 50, y: 50, width: 300, height: 200, z: 1, focus: true }
+
+  function desktop() {
+    const log: string[] = []
+    const answer = (method: string) => (method === 'point' ? { x: 20, y: 30 } : method === 'tree' ? { nodes: [] } : null)
+    const rpc = { call: async (_service: string, method: string) => answer(method) } as never
+    const plain = base(0, [])
+    const shell = {
+      ...plain.shell,
+      windows: () => [desktopRow, appRow],
+      focus: (w: number) => void log.push(`focus ${w}`),
+      inject: (e: { type: string; code?: number }) => void log.push(`${e.type} ${e.code ?? ''}`.trim()),
+      play: async (events: readonly PlayEvent[]) => void log.push(`play ${events.map((e) => e.type).join(' ')}`),
+    }
+    const record = (w: number) => (w === 7 ? { kind: 'web' as const, app: 'files', title: 'F' } : null)
+    const host: InspectHost = { ...plain, shell, web: (w) => (w === 0 ? rpc : null), record }
+    return { inspect: new Inspect(host), log }
+  }
+
+  test('a key on a desktop element asks for the keyboard first, then presses', async () => {
+    const { inspect, log } = desktop()
+    assert.equal((await inspect.act('w0.4', 'key', 'Enter')).ok, true)
+    assert.equal(log[0], 'focus 0', 'the desktop is focused before the key goes')
+    assert.deepEqual(log.slice(1, 3), ['keydown 28', 'keyup 28'])
+  })
+
+  test('a click on a desktop element is one real pointer sequence', async () => {
+    const { inspect, log } = desktop()
+    assert.equal((await inspect.act('w0.4', 'click', null)).ok, true)
+    assert.deepEqual(log.filter((line) => line.startsWith('play')), ['play move down up'])
   })
 })

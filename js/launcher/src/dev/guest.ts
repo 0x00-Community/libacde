@@ -110,7 +110,7 @@ export class GuestWindows {
     const shell: InspectShell = {
       ...base.shell,
       focus: (id) => {
-        const change = winman(id)
+        const change = id === 0 && window && this.placed ? window : winman(id)
         if (change) change({ window: id, focus: true })
         else base.shell.focus(to(id))
       },

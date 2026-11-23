@@ -7,10 +7,7 @@ import type { Rpc } from '../../../page/src/rpc'
 import { Placing } from './inspect/place'
 import { header, menubar, outline } from './inspect/text'
 import {
-  LEFT,
-  MIDDLE,
   MODIFIERS,
-  RIGHT,
   type Aliases,
   type Box,
   type InspectHost,
@@ -382,61 +379,49 @@ export class Inspect {
     return this.#pointer(window, point[0], point[1], action === 'focus' ? 'click' : action, arg)
   }
 
-  #pointer(window: InspectWindow, x: number, y: number, action: InspectAction, arg: InspectArg): ActResult {
+  async #pointer(window: InspectWindow, x: number, y: number, action: InspectAction, arg: InspectArg): Promise<ActResult> {
     if (window.hidden) return { ok: false, text: Inspect.#minimized(window) }
     const cover = this.#cover(window, x, y)
     if (cover) {
       if (window.kind === 'desktop') return { ok: false, text: `covered there by ${Inspect.#label(cover)}; minimize or close it first` }
       this.#focus(window)
     }
-    const shell = this.#host.shell
     const held = action === 'scroll' ? [] : Inspect.#modifiers(arg)
     const keys = 'shift, ctrl, alt, meta, joined with +'
     if (held === null) return { ok: false, text: `${action} takes the modifier keys to hold (${keys}), not ${JSON.stringify(arg)}` }
-    shell.inject({ type: 'move', x, y })
-    for (const code of held) shell.inject({ type: 'keydown', code })
-    try {
-      return this.#press(action, x, y, arg, held.length ? ` (holding ${String(arg)})` : '')
-    } finally {
-      for (const code of [...held].reverse()) shell.inject({ type: 'keyup', code })
-    }
+    const pressed = Inspect.#pressed(action, x, y, arg)
+    if (!pressed) return { ok: false, text: `unsupported action ${action}` }
+    const down = held.map((key): PlayEvent => ({ type: 'keydown', ...key }))
+    const up = held.toReversed().map((key): PlayEvent => ({ type: 'keyup', ...key }))
+    await this.#host.shell.play([{ type: 'move', x, y }, ...down, ...pressed.events, ...up])
+    const at = `${Math.round(x)},${Math.round(y)}`
+    return { ok: true, text: `${pressed.done} ${at}${held.length ? ` (holding ${String(arg)})` : ''}` }
   }
 
-  static #modifiers(arg: InspectArg): number[] | null {
+  static #modifiers(arg: InspectArg): { key: string; code: number }[] | null {
     if (arg === null || arg === undefined || arg === '') return []
     if (typeof arg !== 'string') return null
     const names = arg.toLowerCase().split('+').map((n) => n.trim()).filter(Boolean)
     if (!names.every((n) => MODIFIERS.has(n))) return null
-    const codes = names.map((n) => keyCode(n))
-    return codes.every((c): c is number => c !== null) ? codes : null
+    const keys = names.map((key) => ({ key, code: keyCode(key) }))
+    return keys.every((k): k is { key: string; code: number } => k.code !== null) ? keys : null
   }
 
-  #press(action: InspectAction, x: number, y: number, arg: InspectArg, held: string): ActResult {
-    const shell = this.#host.shell
-    const press = (button: number) => {
-      shell.inject({ type: 'down', x, y, button })
-      shell.inject({ type: 'up', x, y, button })
-    }
+  static #pressed(action: InspectAction, x: number, y: number, arg: InspectArg): { events: PlayEvent[]; done: string } | null {
+    const press = (button: 'left' | 'right'): PlayEvent[] => [{ type: 'down', x, y, button }, { type: 'up', x, y, button }]
     switch (action) {
       case 'hover':
-        return { ok: true, text: `moved the pointer to ${Math.round(x)},${Math.round(y)}${held}` }
+        return { events: [], done: 'moved the pointer to' }
       case 'right':
-        press(RIGHT)
-        return { ok: true, text: `right-clicked ${Math.round(x)},${Math.round(y)}${held}` }
+        return { events: press('right'), done: 'right-clicked' }
       case 'double':
-        press(LEFT)
-        press(LEFT)
-        return { ok: true, text: `double-clicked ${Math.round(x)},${Math.round(y)}${held}` }
-      case 'scroll': {
-        const dy = Number(arg) || 400
-        shell.inject({ type: 'wheel', x, y, dx: 0, dy, source: 'wheel' })
-        return { ok: true, text: `scrolled ${dy} at ${Math.round(x)},${Math.round(y)}` }
-      }
+        return { events: [...press('left'), ...press('left')], done: 'double-clicked' }
+      case 'scroll':
+        return { events: [{ type: 'wheel', x, y, dx: 0, dy: Number(arg) || 400 }], done: `scrolled ${Number(arg) || 400} at` }
       case 'click':
-        press(LEFT)
-        return { ok: true, text: `clicked ${Math.round(x)},${Math.round(y)}${held}` }
+        return { events: press('left'), done: 'clicked' }
       default:
-        return { ok: false, text: `unsupported action ${action}` }
+        return null
     }
   }
 
@@ -523,7 +508,7 @@ export class Inspect {
   }
 
   #focus(window: InspectWindow): void {
-    if (window.kind === 'desktop') return
+    if (window.focus) return
     this.#host.shell.focus(window.id)
   }
 
@@ -667,13 +652,13 @@ export class Inspect {
     const row = open.items[item - 1]
     if (!row || row.separator) return { ok: false, text: `no item ${ref}` }
     if (row.disabled && action === 'click') return { ok: false, text: `${ref} (${row.label}) is disabled` }
-    const done = this.#pointer(window, ...centre(row.rect), action, null)
+    const done = await this.#pointer(window, ...centre(row.rect), action, null)
     return done.ok ? { ok: true, text: `${action === 'click' ? 'chose' : 'hovered'} ${label.label} › ${row.label}` } : done
   }
 
   async #openMenu(window: InspectWindow, geometry: MenuGeometry, menu: number, at: [number, number]): Promise<NonNullable<MenuGeometry['open']> | ActResult> {
     if (geometry.open?.index === menu - 1) return geometry.open
-    const opened = this.#pointer(window, ...at, geometry.open ? 'hover' : 'click', null)
+    const opened = await this.#pointer(window, ...at, geometry.open ? 'hover' : 'click', null)
     if (!opened.ok) return opened
     const started = Date.now()
     while (Date.now() - started < Inspect.OPEN_MS) {
