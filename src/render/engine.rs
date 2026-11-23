@@ -212,6 +212,16 @@ impl Engine {
         self.touch();
     }
 
+    pub(crate) fn set_accent(&mut self, accent: Option<[u8; 3]>) {
+        if self.doc.viewport().accent == accent {
+            return;
+        }
+        let mut viewport = self.doc.viewport().clone();
+        viewport.accent = accent;
+        self.doc.set_viewport(viewport);
+        self.touch();
+    }
+
     pub(crate) fn set_dark(&mut self, on: bool) {
         let scheme = if on { ColorScheme::Dark } else { ColorScheme::Light };
         if self.doc.viewport().color_scheme == scheme {

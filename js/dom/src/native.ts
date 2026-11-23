@@ -57,6 +57,7 @@ export interface DomNative {
   setDark?(on: boolean): void
   setGlass?(level: number, reducedTransparency: boolean): void
   setReducedMotion?(reduced: boolean): void
+  setAccent?(color: string): void
   compareDocumentPosition(a: number, b: number): number
 
   createElement(ns: Ns, localName: string): number

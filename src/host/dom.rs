@@ -804,6 +804,10 @@ natives! {
         dom.set_dark(bind::arg_bool(scope, &args, 0));
         Ok(())
     }
+    "setAccent" => fn set_accent(scope, args, dom) {
+        dom.set_accent(&bind::arg_string(scope, &args, 0));
+        Ok(())
+    }
     "setReducedMotion" => fn set_reduced_motion(scope, args, dom) {
         dom.set_reduced_motion(bind::arg_bool(scope, &args, 0));
         Ok(())

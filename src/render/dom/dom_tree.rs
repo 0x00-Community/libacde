@@ -40,6 +40,15 @@ impl Dom {
         _ = self.update(|e| e.set_dark(on));
     }
 
+    pub fn set_accent(&self, hex: &str) {
+        let channel = |at: usize| hex.get(at..at + 2).and_then(|pair| u8::from_str_radix(pair, 16).ok());
+        let accent = match (hex.len(), hex.starts_with('#')) {
+            (7, true) => channel(1).zip(channel(3)).zip(channel(5)).map(|((r, g), b)| [r, g, b]),
+            _ => None,
+        };
+        _ = self.update(|e| e.set_accent(accent));
+    }
+
     pub fn set_reduced_motion(&self, reduced: bool) {
         _ = self.update(|e| e.set_reduced_motion(reduced));
     }

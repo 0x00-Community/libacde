@@ -68,6 +68,7 @@ export interface WebInit {
   readonly scale: number
   readonly screen?: { width: number; height: number; workArea?: { x: number; y: number; width: number; height: number } }
   readonly dark: boolean
+  readonly accent?: string | null
   readonly glass?: { readonly level: number; readonly reducedTransparency: boolean }
   readonly reducedMotion?: boolean
   readonly languages: Languages
