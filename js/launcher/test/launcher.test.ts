@@ -128,6 +128,15 @@ describe('the session from the manager\'s welcome', () => {
     assert.deepEqual([plain.page, plain.lock], ['/p/index.html', true])
     assert.deepEqual(sessionOf({ ...base, kind: 'desktop', desktop } as Welcome, 'desktop').page, '/p/desktop.html')
   })
+
+  test('the lock page with a confirm in its welcome is the system confirm page', () => {
+    const desktop = { id: 'lock', name: 'Lock', entry: 'index.html' }
+    const confirm = { id: 'r-1', waiting: { op: 'tool.call' }, agent: false }
+    const page = sessionOf({ ...base, kind: 'desktop', lock: true, confirm, desktop } as Welcome, 'desktop')
+    assert.deepEqual([page.lock, page.confirm], [true, true])
+    assert.equal(sessionOf({ ...base, kind: 'desktop', lock: true, desktop } as Welcome, 'desktop').confirm, false)
+    assert.equal(sessionOf({ ...base, kind: 'desktop', confirm, desktop } as Welcome, 'desktop').confirm, false)
+  })
 })
 
 describe('window system events on their way to the desktop page', () => {

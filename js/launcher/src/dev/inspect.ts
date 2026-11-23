@@ -262,6 +262,8 @@ export class Inspect {
   }
 
   async #windowAct(window: InspectWindow, action: InspectAction, arg: InspectArg): Promise<ActResult> {
+    const managed = Placing.managed(window, action)
+    if (managed) return { ok: false, text: managed }
     switch (action) {
       case 'focus':
       case 'restore':

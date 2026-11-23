@@ -27,6 +27,18 @@ export class Placing {
     return 'a standalone app has no Dock to bring it back'
   }
 
+  static readonly CHANGES: ReadonlySet<string> = new Set(['fill', 'fullscreen', 'minimize', 'move', 'resize', 'raise', 'close'])
+
+  static managed(window: InspectWindow, action: string): string | null {
+    if (!Placing.CHANGES.has(action)) return null
+    if (window.mode === 'confirm') {
+      return `${window.ref} is the system confirm page, which the session manager shows and puts away; `
+        + 'answer it with act on its buttons'
+    }
+    if (window.mode === 'lock') return `${window.ref} is the lock screen, which the session manager shows and puts away`
+    return null
+  }
+
   static refused(window: InspectWindow, action: string): string | null {
     if (window.kind === 'desktop') return `the desktop cannot ${action}`
     if (window.mode === 'fullscreen') return `${window.ref} fills the host window (a single-app session), so it cannot ${action}`

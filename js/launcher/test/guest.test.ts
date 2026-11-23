@@ -4,7 +4,8 @@ import { GuestWindows, type GuestRow } from '../src/dev/guest.ts'
 import { Inspect, type InspectHost } from '../src/dev/inspect.ts'
 
 const row = (id: number, pid: number, extra: Partial<GuestRow> = {}): GuestRow => ({
-  id, app_id: `app${id}`, pid, title: `T${id}`, x: 0, y: 0, width: 100, height: 80, activated: false, hidden: false, desktop: false, lock: false, ...extra,
+  id, app_id: `app${id}`, pid, title: `T${id}`, x: 0, y: 0, width: 100, height: 80, activated: false, hidden: false,
+  desktop: false, lock: false, confirm: false, ...extra,
 })
 
 function base(local: number, focused: number[]): InspectHost {
@@ -77,6 +78,31 @@ describe('the lock page in the guest', () => {
     assert.equal(lock.global(0), 900)
     const inspect = new Inspect(lock.host(base(0, []), () => 0))
     assert.deepEqual(inspect.windows().map((w) => [w.ref, w.kind]), [['w900', 'web'], ['w7', 'native'], ['w0', 'desktop']])
+  })
+})
+
+describe('the system confirm page in the guest', () => {
+  test('is its own window on top, marked confirm, and refuses what only the session manager does', async () => {
+    const page = new GuestWindows(78, GuestWindows.roleOf({ kind: 'desktop', lock: true, confirm: true }))
+    page.place([row(7, 42), { id: 0, desktop: true, pid: 10 }, { id: 901, confirm: true, pid: 78, title: 'confirm' }])
+    assert.equal(page.mine(), 901)
+    const inspect = new Inspect(page.host(base(0, []), () => 0))
+    const windows = inspect.windows()
+    assert.deepEqual(windows.map((w) => [w.ref, w.mode]), [['w901', 'confirm'], ['w7', 'window'], ['w0', 'desktop']])
+    for (const action of ['move', 'resize', 'raise', 'close', 'minimize', 'fill'] as const) {
+      const said = await inspect.act('w901', action, action === 'move' ? '1,1' : action === 'resize' ? '9x9' : null)
+      assert.equal(said.ok, false, action)
+      assert.match(said.text, /^w901 is the system confirm page, which the session manager shows and puts away/)
+    }
+  })
+
+  test('the lock page is marked lock and is not moved either', async () => {
+    const page = new GuestWindows(77, 'lock')
+    page.place([{ id: 900, lock: true, pid: 77, title: 'lock' }])
+    const inspect = new Inspect(page.host(base(0, []), () => 0))
+    assert.equal(inspect.windows()[0]!.mode, 'lock')
+    const said = await inspect.act('w900', 'move', '1,1')
+    assert.deepEqual(said, { ok: false, text: 'w900 is the lock screen, which the session manager shows and puts away' })
   })
 })
 

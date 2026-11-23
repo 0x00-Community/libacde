@@ -122,7 +122,7 @@ function standalone(args: LaunchArgs): Session {
   const grants = grantsFor(found)
   return {
     kind: 'app', found, page: null, resources: found.resources, label: app.label, heapMb: app.heapMb,
-    tier: null, grants, request: null, services: {}, own: false, lock: false,
+    tier: null, grants, request: null, services: {}, own: false, lock: false, confirm: false,
   }
 }
 
@@ -137,7 +137,8 @@ function lockPreview(args: LaunchArgs): Session {
   }
   return {
     kind: 'desktop', found: null, page: join(found.dir, entry), resources: found.resources, label: `${found.desktop.name} (lock)`,
-    heapMb: found.desktop.heapMb, tier: { level: API_LEVEL, shell: [], refused: {} }, grants, request: null, services: {}, own: false, lock: true,
+    heapMb: found.desktop.heapMb, tier: { level: API_LEVEL, shell: [], refused: {} }, grants, request: null, services: {},
+    own: false, lock: true, confirm: false,
   }
 }
 
@@ -202,7 +203,7 @@ class Launcher {
     })
     const relay = managerRelay(manager)
     this.#relay = relay
-    this.#guest = manager ? new GuestWindows(process.pid, session.lock ? 'lock' : session.kind === 'desktop' ? 'desktop' : 'app') : null
+    this.#guest = manager ? new GuestWindows(process.pid, GuestWindows.roleOf(session)) : null
     const page = () => {
       const target = this.#target()
       return target && { ...target, url: this.#init?.url ?? null }
@@ -365,7 +366,7 @@ class Launcher {
 
   #webName(given: string): string {
     const { session } = this
-    if (this.manager && session.lock) return DevChannel.LOCK
+    if (this.manager && session.lock) return session.confirm ? DevChannel.CONFIRM : DevChannel.LOCK
     if (session.instance !== undefined && session.found) return `${session.found.app.id}#${session.instance}`
     return given
   }

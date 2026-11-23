@@ -14,9 +14,10 @@ export interface GuestRow {
   readonly state?: ShellWindow['state']
   readonly desktop: boolean
   readonly lock: boolean
+  readonly confirm: boolean
 }
 
-export type GuestRole = 'app' | 'desktop' | 'lock'
+export type GuestRole = 'app' | 'desktop' | 'lock' | 'confirm'
 
 export interface GuestExtras {
   readonly inject?: InspectShell['inject']
@@ -48,6 +49,11 @@ export class GuestWindows {
     return this.#rows.length > 0
   }
 
+  static roleOf(session: { readonly kind: string; readonly lock: boolean; readonly confirm: boolean }): GuestRole {
+    if (session.confirm) return 'confirm'
+    return session.lock ? 'lock' : session.kind === 'desktop' ? 'desktop' : 'app'
+  }
+
   static id(row: GuestRow): number {
     return row.desktop ? 0 : row.id
   }
@@ -62,7 +68,7 @@ export class GuestWindows {
   }
 
   static #role(row: GuestRow): GuestRole {
-    return row.desktop ? 'desktop' : row.lock ? 'lock' : 'app'
+    return row.desktop ? 'desktop' : row.confirm ? 'confirm' : row.lock ? 'lock' : 'app'
   }
 
   row(id: number): GuestRow | undefined {
@@ -75,12 +81,12 @@ export class GuestWindows {
       id: GuestWindows.id(row),
       window: GuestWindows.id(row),
       canvas: 0,
-      mode: row.desktop ? 'desktop' : 'window',
+      mode: GuestWindows.#role(row) === 'app' ? 'window' : GuestWindows.#role(row),
       x: row.x,
       y: row.y,
       width: row.width,
       height: row.height,
-      z: row.desktop ? -1 : row.lock ? count + GuestWindows.LOCK_Z : count - index,
+      z: row.desktop ? -1 : row.lock || row.confirm ? count + GuestWindows.LOCK_Z : count - index,
       focus: row.activated,
       hidden: row.hidden,
       pid: row.pid,
@@ -161,6 +167,7 @@ export class GuestWindows {
       hidden: given.hidden === true,
       desktop: given.desktop === true,
       lock: given.lock === true,
+      confirm: given.confirm === true,
     }
   }
 }

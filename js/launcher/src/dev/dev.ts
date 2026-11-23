@@ -77,6 +77,7 @@ type Request = Record<string, unknown> & { readonly id: number; readonly op: str
 
 export class DevChannel {
   static readonly LOCK = 'lock'
+  static readonly CONFIRM = 'confirm'
   readonly #inflight = new Set<Promise<void>>()
   static readonly STATE_MS = 500
   static readonly SINGLE = 'a single-app session (acdev dev --app) has no other apps'
@@ -291,7 +292,7 @@ export class DevChannel {
   #web(wanted: unknown): DevTarget {
     const page = this.#host.page()
     const name = wanted === undefined || wanted === null ? '' : String(wanted)
-    const desktop = name === 'desktop' && page?.kind === 'desktop' && page.name !== DevChannel.LOCK
+    const desktop = name === 'desktop' && page?.kind === 'desktop' && page.name !== DevChannel.LOCK && page.name !== DevChannel.CONFIRM
     const matches = !!page && (name === '' || name === page.name || name === page.app || desktop)
     if (!matches) {
       const known = page ? page.name : 'none'

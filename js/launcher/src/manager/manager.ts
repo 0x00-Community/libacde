@@ -34,6 +34,7 @@ export interface Welcome {
   readonly outerSize?: readonly [number, number]
   readonly session?: { readonly own: boolean }
   readonly lock?: boolean
+  readonly confirm?: unknown
   readonly instance?: number
   readonly lent?: readonly Lent[]
   readonly fds?: readonly string[]
@@ -124,6 +125,7 @@ export interface Session {
   readonly services: Readonly<Record<string, ServiceShape>>
   readonly own: boolean
   readonly lock: boolean
+  readonly confirm: boolean
   readonly instance?: number
 }
 
@@ -131,7 +133,8 @@ export function sessionOf(welcome: Welcome, wanted: 'app' | 'desktop' | 'service
   if (welcome.kind !== wanted) throw new Error(`the session manager started this process as ${welcome.kind}, not ${wanted}`)
   const own = welcome.session?.own === true
   const lock = welcome.kind === 'desktop' && welcome.lock === true
-  const shared = { tier: welcome.tier, grants: welcome.grants, request: welcome.request ?? null, services: welcome.services ?? {}, own, lock }
+  const confirm = lock && typeof welcome.confirm === 'object' && welcome.confirm !== null
+  const shared = { tier: welcome.tier, grants: welcome.grants, request: welcome.request ?? null, services: welcome.services ?? {}, own, lock, confirm }
   if (welcome.kind === 'desktop') {
     const desktop = welcome.desktop
     if (!desktop) throw new Error('the session manager sent no desktop in its welcome')

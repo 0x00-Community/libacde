@@ -42,6 +42,9 @@
   并说原因): 桌面、铺满宿主窗口的单应用窗口、钉住的面板、最小化的窗口、状态不是 `normal` 的窗口 (提示先 `act <窗口> restore`), `resize` 另拒固定大小的窗口.
   `raise` 就是给焦点提到最前, 不改状态; 桌面和最小化的窗口不行. 客户机会话里 (窗口表来自管家) 启动器不摆放, acdev 的驱动直接经管家开发连接发
   `{op: "window", window: <acompositor 窗口号>, change: {place | focus}}` (acdes docs/manager.md 开发通道).
+  客户机里锁屏页和系统确认页是管家插进窗口表的伪窗口 (行带 `lock: true` 或 `confirm: true`), 快照里它们的 `mode` 是 `lock`、`confirm` (窗口行显示 `[lock]`、`[confirm]`),
+  叠在所有窗口之上; 系统确认页的开发名是 `confirm` (锁屏页是 `lock`), 启动器按欢迎消息里有没有 `confirm` 区分. 这两种窗口只由管家显示和收起, 对它们的
+  `fill`、`fullscreen`、`minimize`、`move`、`resize`、`raise`、`close` 一律回 `ok: false` 并说明; 确认页的允许、拒绝、输密码用 act 点它自己的按钮.
   `{window, count, nodes, windows}` (`windows` 只有被查的那个窗口, 形状同快照的 `windows`): 在窗口 (默认焦点窗口) 或某个元素下按 CSS 选择器找, 节点是 `InspectMatch` (`InspectNode` 加 `tag`、`visible`, 给了
   `attributes` (最多 20 个属性名) 再加 `attributes: {名字: 值或 null}`), ref
   能直接给 act (不在语义树里的元素也行: `point` 按 render 节点 id 找元素).
