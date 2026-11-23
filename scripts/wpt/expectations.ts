@@ -6,6 +6,7 @@ const HERE = import.meta.dir
 const STATE = process.env.WPT_STATE ?? join(HERE, '..', '..', 'logs', 'wpt')
 const PASSING = new Set(['OK', 'PASS'])
 const SLOW = new Set(['TIMEOUT', 'NOLOAD', 'HANG', 'CRASH'])
+const BROKEN = new Set(['CRASH', 'HANG'])
 
 type Sub = { name: string; status: number; message: string | null }
 type Result = { url: string; kind?: string; status: string; message?: string | null; tests?: Sub[] }
@@ -88,12 +89,19 @@ function merge(runs: Map<string, Result>[]): Expectations {
   return out
 }
 
+function selectedOf(label: string): string[] | null {
+  const file = join(STATE, 'results', label, 'selected.json')
+  return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as string[]) : null
+}
+
 function check(label: string) {
   const expected = load()
   const got = results(label)
   const regressions: string[] = []
   const improvements: string[] = []
   const fresh: string[] = []
+  // a stopped worker or a lost shard must not read as "no regressions": every selected test needs a result
+  const missing = (selectedOf(label) ?? []).filter((url) => !got.has(url))
   for (const [url, r] of got) {
     const e = expected.get(url)
     if (!e) {
@@ -102,8 +110,14 @@ function check(label: string) {
     }
     if (e.flaky === true) continue
     const flaky = new Set(Array.isArray(e.flaky) ? e.flaky : [])
+    const said = r.message ? ` (${String(r.message).slice(0, 200)})` : ''
     if (PASSING.has(e.status) && r.status !== e.status) {
-      regressions.push(`${url}: ${e.status} -> ${r.status}${r.message ? ` (${String(r.message).slice(0, 200)})` : ''}`)
+      regressions.push(`${url}: ${e.status} -> ${r.status}${said}`)
+      continue
+    }
+    // a test that was failing and now takes the runtime down is worse, not the same
+    if (BROKEN.has(r.status) && r.status !== e.status) {
+      regressions.push(`${url}: ${e.status} -> ${r.status}${said}`)
       continue
     }
     if (!PASSING.has(e.status) && PASSING.has(r.status)) improvements.push(`${url}: ${e.status} -> ${r.status}`)
@@ -119,11 +133,15 @@ function check(label: string) {
   const lines = [
     `# ${label} against ${DIR}`,
     '',
-    `${got.size} tests run; ${regressions.length} regressions, ${improvements.length} improvements, ${fresh.length} without an expectation.`,
+    `${got.size} tests run; ${regressions.length} regressions, ${improvements.length} improvements, ${fresh.length} without an expectation, ${missing.length} selected but not run.`,
     '',
     `## Regressions (${regressions.length})`,
     '',
     ...regressions.map((r) => `- ${r}`),
+    '',
+    `## Selected but not run (${missing.length}): the run stopped early or a shard is missing`,
+    '',
+    ...missing.map((r) => `- ${r}`),
     '',
     `## Improvements (${improvements.length}): run expectations update to keep them`,
     '',
@@ -138,7 +156,8 @@ function check(label: string) {
   const max = Number(values.max)
   for (const r of regressions.slice(0, max)) console.log(`  regression: ${r}`)
   if (regressions.length > max) console.log(`  … ${regressions.length - max} more in ${join(STATE, 'results', label, 'check.md')}`)
-  process.exit(regressions.length ? 1 : 0)
+  if (missing.length) console.log(`  ${missing.length} selected tests have no result, e.g. ${missing.slice(0, 3).join(', ')}`)
+  process.exit(regressions.length || missing.length ? 1 : 0)
 }
 
 function update(labels: string[]) {
