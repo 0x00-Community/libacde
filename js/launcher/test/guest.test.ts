@@ -112,10 +112,12 @@ describe('a drag paces itself like a hand', () => {
   test('holds the button before moving, moves in steps a frame apart, and rests a frame before letting go', async () => {
     const sent: { type: string; at: number }[] = []
     const plain = base(1, [])
+    const rpc = { call: async (_service: string, method: string) => (method === 'tree' ? { nodes: [] } : { x: 10, y: 20 }) } as never
     const guest = new GuestWindows(42, 'app')
-    const host = guest.host(plain, () => 1, { inject: (e) => void sent.push({ type: e.type, at: performance.now() }) })
+    const at = { inject: (e: { type: string }) => void sent.push({ type: e.type, at: performance.now() }) }
+    const host = guest.host({ ...plain, web: (w) => (w === 1 ? rpc : null) }, () => 1, at)
     guest.place([{ ...row(7, 42), x: 100, y: 50 }])
-    assert.equal((await new Inspect(host).act('w7', 'drag', '400,300')).ok, true)
+    assert.equal((await new Inspect(host).act('w7.3', 'drag', '400,300')).ok, true)
     const down = sent.findIndex((e) => e.type === 'down')
     const up = sent.findIndex((e) => e.type === 'up')
     const moves = sent.slice(down + 1, up)
