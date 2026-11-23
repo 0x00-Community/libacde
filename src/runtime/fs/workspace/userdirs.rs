@@ -1,6 +1,7 @@
 use super::WorkspaceFs;
 use crate::runtime::failure::Outcome;
 use crate::runtime::fs::path::NodePath;
+use acde_dirs::Place;
 use std::{
     fs::{self, DirBuilder},
     path::Path,
@@ -16,39 +17,19 @@ fn known_folder(name: &str) -> Option<String> {
 
 impl WorkspaceFs {
     pub fn place_dir(&self, name: &str) -> Option<String> {
-        let (key, fallback) = match name {
-            "desktop" => ("DESKTOP", "Desktop"),
-            "documents" => ("DOCUMENTS", "Documents"),
-            "downloads" => ("DOWNLOAD", "Downloads"),
-            "music" => ("MUSIC", "Music"),
-            "pictures" => ("PICTURES", "Pictures"),
-            "videos" => ("VIDEOS", "Videos"),
-            _ => return None,
-        };
-        Some(self.user_dir(key, fallback))
+        Place::named(name).map(|place| self.user_dir(place))
     }
 
-    fn user_dir(&self, name: &str, fallback: &str) -> String {
+    fn user_dir(&self, place: Place) -> String {
         let home = self.home.as_str();
-        let key = format!("XDG_{name}_DIR");
-        let dir = std::env::var(&key).ok().filter(|dir| self.system && !dir.is_empty()).or_else(|| {
-            let text = fs::read(home.join(".config").join("user-dirs.dirs")).ok()?;
-            let prefix = format!("{key}=\"");
-            String::from_utf8_lossy(&text).split(['\n', '\r']).find_map(|line| {
-                let rest = line.strip_prefix(prefix.as_str())?;
-                let (value, _) = rest.split_once('"')?;
-                (!value.is_empty()).then(|| value.to_owned())
-            })
+        let dir = std::env::var(place.variable()).ok().filter(|dir| self.system && !dir.is_empty()).or_else(|| {
+            let text = fs::read(acde_dirs::list_file(Path::new(home))).ok()?;
+            acde_dirs::listed(&String::from_utf8_lossy(&text), place).map(String::from)
         });
         #[cfg(windows)]
-        let dir = dir.or_else(|| self.system.then(|| known_folder(name)).flatten());
-        let Some(dir) = dir else { return home.join(fallback) };
-        let path = match dir.strip_prefix("$HOME") {
-            Some(rest) if rest.is_empty() || rest.starts_with('/') || (cfg!(windows) && rest.starts_with('\\')) => {
-                format!("{home}{rest}")
-            }
-            _ => dir,
-        };
+        let dir = dir.or_else(|| self.system.then(|| known_folder(place.key())).flatten());
+        let Some(dir) = dir else { return home.join(place.fallback()) };
+        let path = acde_dirs::expanded(&dir, home);
         let selected = cfg_select! {
             windows => crate::runtime::fs::path::windows_directory(&path).filter(|dir| {
                 let same_spelling = crate::runtime::fs::path::windows_directory(home)
@@ -59,7 +40,7 @@ impl WorkspaceFs {
             }),
             _ => path.is_absolute().then(|| Self::directory(&path)).filter(|dir| !Self::same_directory(home, dir)),
         };
-        selected.unwrap_or_else(|| home.join(fallback))
+        selected.unwrap_or_else(|| home.join(place.fallback()))
     }
 
     #[cfg(not(windows))]
@@ -76,7 +57,7 @@ impl WorkspaceFs {
     }
 
     pub fn desktop(&self) -> Outcome<String> {
-        let desktop = self.user_dir("DESKTOP", "Desktop");
+        let desktop = self.user_dir(Place::Desktop);
         if !Path::new(&desktop).exists() {
             DirBuilder::new().recursive(true).create(&desktop)?;
         }
@@ -84,6 +65,6 @@ impl WorkspaceFs {
     }
 
     pub fn downloads(&self) -> Option<String> {
-        Some(self.user_dir("DOWNLOAD", "Downloads")).filter(|dir| Path::new(dir).exists())
+        Some(self.user_dir(Place::Downloads)).filter(|dir| Path::new(dir).exists())
     }
 }

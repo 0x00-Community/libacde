@@ -11,8 +11,8 @@ root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOW
 **应用的根** (#66; runtime `fs/access/files.rs` `Files`, Broker `broker/access/files.ts` `FileAccess`): 所有应用 (系统应用也是) 的 root 是不透明的标识, 不是路径:
 `private` (本应用的私有数据文件夹 `$XDG_DATA_HOME/acde/files/<应用 id>`, 没设时 `$HOME/.local/share/...`, 第一次用时建), 公共位置名 (SDK `SHARED_PLACES`:
 `desktop`、`documents`、`downloads`、`music`、`pictures`、`videos`, 按 XDG 用户目录 `XDG_<名>_DIR` / `user-dirs.dirs`; Windows 没设时用对应的已知文件夹
-`SHGetKnownFolderPath`, `path.rs` `known_folder`; 解析在 `fs/workspace/userdirs.rs`, 测试里用 `ACDE_TEST_KNOWN_<名>` 代替已知文件夹;
-acdes 管家里另有一份, 按 freedesktop user-dirs 规范对齐, 改一边要同时改另一边), 用户选的文件夹是借出的根, 按借出名 (`work`、`work-2`…) 当 root. `fs: true` 只给 `private` 和借给它的文件夹;
+`SHGetKnownFolderPath`, `path.rs` `known_folder`; 取哪个文件夹在 `fs/workspace/userdirs.rs`, 测试里用 `ACDE_TEST_KNOWN_<名>` 代替已知文件夹;
+位置名与变量名的对照、`~/.config/user-dirs.dirs` 的读法和 `$HOME` 的展开只在本仓库的 `acde-dirs` (`dirs/`, 只用标准库) 一份, acdes 的管家与会话也用它), 用户选的文件夹是借出的根, 按借出名 (`work`、`work-2`…) 当 root. `fs: true` 只给 `private` 和借给它的文件夹;
 公共位置要在 `fs.roots` 里点名 (校验器: 不是这六个名字就是错误, `agentos-work` 不算;
 末段是位置名的路径如 `~/Downloads` 提示改写位置名, 别的提示用户选的文件夹) 并经批准 (见 `docs/runtime/webs.md`「批准」). `roots()` 回
 `{id, label, source: 'private' | 'place' | 'lent' | 'removable', mode, reason, exists, place?}`, 只有点名了公共位置的系统应用另带 `path`; 别的应用拿不到绝对路径,

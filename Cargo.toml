@@ -12,6 +12,7 @@ repository = "http://gitea.dopamine/AC/libacde"
 
 [workspace.dependencies]
 acde-scene = { path = "scene", version = "=0.1.0", registry = "ac" }
+acde-dirs = { path = "dirs", version = "=0.1.0", registry = "ac" }
 # blitz: our fork (submodule vendor/blitz, Gitea AC/blitz), published to ac with the same names
 blitz-dom = { path = "vendor/blitz/packages/blitz-dom", version = "=0.3.0-beta.5", registry = "ac", default-features = false }
 blitz-paint = { path = "vendor/blitz/packages/blitz-paint", version = "=0.3.0-beta.5", registry = "ac", default-features = false }
@@ -40,6 +41,8 @@ crate-type = ["rlib", "cdylib"]
 
 [dependencies]
 acde-scene = { workspace = true }
+# runtime/fs/workspace/userdirs.rs: the XDG user folders, one reading shared with acdes's manager and session (std only, no new crates)
+acde-dirs = { workspace = true }
 v8 = "=152.2.0"
 log = { version = "=0.4.35", features = ["std"] }
 # log: env_logger behind the log module (written on its own thread)

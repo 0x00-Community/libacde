@@ -1,0 +1,9 @@
+[package]
+name = "acde-dirs"
+description = "The XDG user folders (desktop, documents, downloads, music, pictures, videos) as user-dirs.dirs lists them: std only, one reading for libacde's runtime and acdes's manager and session"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+publish = ["ac"]
+
+[dependencies]
