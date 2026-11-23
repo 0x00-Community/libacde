@@ -1,3 +1,5 @@
+import { topLevel } from './descriptors'
+
 const NOT_A_NAME = new Set(['initial', 'inherit', 'unset', 'revert', 'revert-layer', 'revert-rule', 'default', 'none'])
 const RESERVED = new Set(['decimal', 'disc', 'square', 'circle', 'disclosure-open', 'disclosure-closed'])
 const NEEDS_TWO = new Set(['alphabetic', 'numeric'])
@@ -47,31 +49,6 @@ export function counterStyleName(written: string): string | null {
   const name = identOf(written)
   if (name === null || NOT_A_NAME.has(name.toLowerCase()) || RESERVED.has(name.toLowerCase())) return null
   return name
-}
-
-function topLevel(text: string, split: (c: string) => boolean): string[] {
-  const parts: string[] = []
-  let depth = 0, quote = '', start = 0
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]!
-    if (c === '\\') {
-      i++
-      continue
-    }
-    if (quote) {
-      if (c === quote) quote = ''
-      continue
-    }
-    if (c === '"' || c === "'") quote = c
-    else if (c === '(' || c === '[' || c === '{') depth++
-    else if (c === ')' || c === ']' || c === '}') depth--
-    else if (depth === 0 && split(c)) {
-      parts.push(text.slice(start, i))
-      start = i + 1
-    }
-  }
-  parts.push(text.slice(start))
-  return parts.map((part) => part.trim()).filter(Boolean)
 }
 
 export function counterStyleParts(text: string): { prelude: string; descriptors: Map<string, string> } {

@@ -1,6 +1,7 @@
 import { DOMException, guard } from '../core/exception'
 import { constants, getters, listClass, tag } from '../core/host'
 import { setAttribute, type Element } from './element'
+import { parseDescriptors, serializeDescriptors } from './descriptors'
 import { counterStyleName, counterStyleParts, counterStyleSettable, counterStyleText, identOf, type CounterStyleDescriptor } from './counter-style'
 import { computedStyleOf } from './layout'
 import { changed, dom, ID, version } from './realm'
@@ -65,6 +66,7 @@ interface DeclarationState {
   readonly pseudo: string
   readonly computed: boolean
   text: string
+  raw: boolean
   textVersion: number
   names: string[] | null
   namesOf: string | number
@@ -110,6 +112,13 @@ export function editInline(style: CSSStyleDeclaration, edits: Iterable<readonly 
   if (text !== before) store(style, text)
 }
 
+function rawEdit(style: CSSStyleDeclaration, name: string, value: string, important: boolean): void {
+  const descriptors = parseDescriptors(style[STATE].text)
+  if (value.trim() === '') descriptors.delete(name)
+  else descriptors.set(name, { value: value.trim(), important })
+  style[STATE].text = serializeDescriptors(descriptors)
+}
+
 function writable(style: CSSStyleDeclaration): void {
   if (style[STATE].computed) throw new DOMException("Failed to execute 'setProperty' on 'CSSStyleDeclaration': These styles are computed, and therefore read-only.", 'NoModificationAllowedError')
 }
@@ -124,7 +133,7 @@ function nameList(style: CSSStyleDeclaration): string[] {
     for (let i = 0; i < all.length; i += 2) names.push(all[i]!)
     s.names = names
   } else {
-    s.names = dom.styleNames(key as string)
+    s.names = s.raw ? [...parseDescriptors(key as string).keys()] : dom.styleNames(key as string)
   }
   s.namesOf = key
   return s.names
@@ -134,16 +143,21 @@ export class CSSStyleDeclaration {
   readonly [STATE]: DeclarationState
 
   constructor(element: Element | null = null, computed = false, pseudo = '') {
-    this[STATE] = { element, pseudo, computed, text: '', textVersion: -1, names: null, namesOf: -1 }
+    this[STATE] = { element, pseudo, computed, text: '', raw: false, textVersion: -1, names: null, namesOf: -1 }
   }
 
   get cssText(): string {
     if (this[STATE].computed) return ''
+    if (this[STATE].raw) return serializeDescriptors(parseDescriptors(this[STATE].text))
     return dom.styleText(sourceOf(this))
   }
   set cssText(text: string) {
     writable(this)
     const s = this[STATE]
+    if (s.raw) {
+      s.text = serializeDescriptors(parseDescriptors(String(text)))
+      return
+    }
     const serialized = (s.element && dom.inlineStyleText(s.element[ID], String(text))) ?? dom.styleText(String(text))
     if (s.element) {
       setAttribute(s.element, 'style', serialized)
@@ -164,11 +178,13 @@ export class CSSStyleDeclaration {
     const key = propertyKey(String(name))
     const s = this[STATE]
     if (s.computed) return computedStyleOf(s.element![ID], s.pseudo, key)
+    if (s.raw) return parseDescriptors(s.text).get(key)?.value ?? ''
     return dom.styleGet(sourceOf(this), key)
   }
 
   getPropertyPriority(name: string): string {
     if (this[STATE].computed) return ''
+    if (this[STATE].raw) return parseDescriptors(this[STATE].text).get(propertyKey(String(name)))?.important ? 'important' : ''
     return dom.stylePriority(sourceOf(this), propertyKey(String(name))) ? 'important' : ''
   }
 
@@ -177,6 +193,7 @@ export class CSSStyleDeclaration {
     const text = value === null || value === undefined ? '' : String(value)
     const important = String(priority).toLowerCase() === 'important'
     if (priority && !important && text !== '') return
+    if (this[STATE].raw) return rawEdit(this, propertyKey(String(name)), text, important)
     editInline(this, [[propertyKey(String(name)), text, important]])
   }
 
@@ -184,7 +201,8 @@ export class CSSStyleDeclaration {
     writable(this)
     const key = propertyKey(String(name))
     const old = this.getPropertyValue(key)
-    editInline(this, [[key, '', false]])
+    if (this[STATE].raw) rawEdit(this, key, '', false)
+    else editInline(this, [[key, '', false]])
     return old
   }
 
@@ -211,9 +229,10 @@ export function computedStyle(element: Element, pseudo: string): CSSStyleDeclara
   return new Proxy(new CSSStyleDeclaration(element, true, pseudo), handler)
 }
 
-function freeStyle(text: string): CSSStyleDeclaration {
+function freeStyle(text: string, raw = false): CSSStyleDeclaration {
   const style = new CSSStyleDeclaration(null)
   style[STATE].text = text
+  style[STATE].raw = raw
   return new Proxy(style, handler)
 }
 
@@ -285,7 +304,9 @@ export class CSSRule {
   }
   get style(): CSSStyleDeclaration {
     const open = this[TEXT].indexOf('{')
-    return freeStyle(open < 0 ? '' : this[TEXT].slice(open + 1, this[TEXT].lastIndexOf('}')))
+    const text = this[TEXT].trimStart()
+    const descriptors = text.startsWith('@') && !/^@position-try\b/i.test(text)
+    return freeStyle(open < 0 ? '' : this[TEXT].slice(open + 1, this[TEXT].lastIndexOf('}')), descriptors)
   }
   [DETACH](): void {
     this.#sheet = null

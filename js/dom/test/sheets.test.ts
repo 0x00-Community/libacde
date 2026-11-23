@@ -192,3 +192,16 @@ test('a CSSStyleDeclaration has the camel-cased, webkit-cased and dashed attribu
       'MozAnimation', 'mozAnimation', '-moz-animation', 'FontSize', 'Font-size', 'notAProperty', '--x', 'setProperty'].map((k) => k in s) })()`)
   assert.deepEqual(has, [true, true, true, true, true, true, false, false, false, false, false, false, false, true])
 })
+
+test("an at-rule's style reads its descriptors as the engine wrote them; a style rule's goes through the engine", async () => {
+  using web = await page('<!doctype html><html><head></head><body></body></html>')
+  const result = web.json(`(() => {
+    const sheet = new CSSStyleSheet()
+    sheet.insertRule('@font-face { font-family: x; size-adjust: 100%; src: local(A) }', 0)
+    sheet.insertRule('@page { size: 640px 480px; margin: 1px }', 1)
+    sheet.insertRule('p { color: red }', 2)
+    const [face, page, rule] = sheet.cssRules
+    return [face.style.getPropertyValue('size-adjust'), face.style.getPropertyValue('src'), face.style.length, page.style.getPropertyValue('size'), rule.style.getPropertyValue('color')]
+  })()`)
+  assert.deepEqual(result, ['100%', 'local(A)', 3, '640px 480px', 'red'])
+})
