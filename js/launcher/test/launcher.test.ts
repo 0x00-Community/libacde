@@ -7,8 +7,10 @@ import { route, unsupported } from '../src/app/calls.ts'
 import { nativeArgs, rejectingCalls, sessionOf, windowGrant, windowSize, withCallbacks, withoutUndefined, type Welcome } from '../src/manager/manager.ts'
 import { WindowSnapshots } from '../src/app/events.ts'
 import { backendUp, Callbacks, incomingCall, released, ServiceHost, shapeOf } from '../src/manager/service.ts'
+import { LentCallbacks } from '../src/manager/lent.ts'
+import { Rpc } from '../../page/src/rpc.ts'
 
-bindNatives({ host: {}, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
+bindNatives({ host: { logEnabled: () => false }, sys: { platform: 'linux', argv: [], pid: 1 } } as never)
 
 const pkg = (apps: unknown[], extra: object = {}) => JSON.stringify({ name: 'demo', acde: { apiLevel: 1, apps, ...extra } })
 const app = (id: string, entry = '/index.html') => ({ id, label: id.toUpperCase(), icon: 'apps', entry })
@@ -397,5 +399,51 @@ describe('a desktop page that starts late or reloads', () => {
     snapshots.toDesktop({ type: 'windowcrash', window: 5, reason: 'killed' })
     assert.deepEqual(snapshots.replay(), [{ ...base, window: 3, title: 'Draft', state: 'filled', first: true }])
     assert.deepEqual(['window', 'windowclose', 'windowcrash', 'currentdesk'].map((type) => WindowSnapshots.FOLDED.has(type)), [true, true, true, false])
+  })
+})
+
+type Call = { rpc: 'call'; args: unknown[] }
+
+function loadedPage(): { rpc: Rpc; sent: Call[] } {
+  const sent: Call[] = []
+  return { rpc: new Rpc((message) => sent.push(message as Call)), sent }
+}
+
+function lendOne(rpc: Rpc, sent: Call[], lending: LentCallbacks, fn: () => void): number {
+  void rpc.call('desks', 'watch', [fn])
+  const marked = lending.lend(sent.at(-1)!.args)[0] as { __acdeFn: number }
+  return marked.__acdeFn
+}
+
+describe('callbacks a page lends to desktop services', () => {
+  test('after a reload the old callbacks are released and never reach the new page, whose own callbacks still do', async () => {
+    const frames: object[] = []
+    const lending = new LentCallbacks((frame) => frames.push(frame))
+    const calls: string[] = []
+    const old = loadedPage()
+    const before = lendOne(old.rpc, old.sent, lending, () => calls.push('old'))
+    assert.equal(lendOne(old.rpc, old.sent, lending, () => calls.push('old 2')) > before, true)
+
+    lending.releaseAll()
+    assert.deepEqual(frames, [{ release: { fn: before } }, { release: { fn: before + 1 } }])
+
+    const fresh = loadedPage()
+    const after = lendOne(fresh.rpc, fresh.sent, lending, () => calls.push('new'))
+    assert.deepEqual((fresh.sent[0]!.args[0] as { __acdeFn: number }).__acdeFn, (old.sent[0]!.args[0] as { __acdeFn: number }).__acdeFn)
+    assert.notEqual(after, before, 'the page numbers start over, the numbers the manager sees do not')
+    assert.equal(lending.invoke({ type: 'invoke', fn: before, args: [] }), null)
+
+    fresh.rpc.receive(lending.invoke({ type: 'invoke', fn: after, args: [] }))
+    await new Promise((settled) => setTimeout(settled, 0))
+    assert.deepEqual(calls, ['new'])
+  })
+
+  test('a callback lent twice in one load keeps its number, so the manager keeps one entry', () => {
+    const lending = new LentCallbacks(() => {})
+    const marked = [{ __acdeFn: 5 }, { on: { __acdeFn: 5 } }, 'text']
+    const [first, nested, text] = lending.lend(marked) as [{ __acdeFn: number }, { on: { __acdeFn: number } }, string]
+    assert.equal(nested.on.__acdeFn, first.__acdeFn)
+    assert.equal(text, 'text')
+    assert.equal(lending.invoke({ type: 'invoke', fn: first.__acdeFn, args: [1] })?.fn, 5)
   })
 })

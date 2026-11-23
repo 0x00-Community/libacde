@@ -31,6 +31,7 @@ import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
 import { fixedScheme, followAppearance, type AppearanceChange, type AppearancePortal, type Glass } from './app/appearance'
 import { PagePort } from './manager/pageport'
+import { LentCallbacks } from './manager/lent'
 import type { AnchorWire } from '../../page/src/pinanchor'
 
 interface Grant {
@@ -173,6 +174,7 @@ class Launcher {
   readonly #menus: AppMenus
   readonly #pages: PageCalls
   readonly #lending: Lending
+  readonly #lent: LentCallbacks
   readonly #devtools: DevToolsEndpoint
   #inspect: Inspect | null = null
   readonly #guest: GuestWindows | null
@@ -193,6 +195,7 @@ class Launcher {
     this.#title = session.label
     const menuKeys = manager ? (keys: readonly string[]) => this.#thread?.post({ type: 'menukeys', keys }) : null
     this.#menus = new AppMenus(this.#shell, () => this.#window, menuKeys)
+    this.#lent = new LentCallbacks((frame) => manager?.send?.(frame))
     this.#lending = new Lending({ manager, app: () => this.session.found?.app.id, post: (message) => this.#thread?.post(message) })
     this.#pages = new PageCalls({
       label: session.label,
@@ -426,7 +429,7 @@ class Launcher {
     if (typeof chord === 'string') return void this.#menuKey(chord)
     const call = message as { rpc?: string; id?: number; service?: string; method?: string; args?: unknown[] } | null
     if (!this.manager || call?.rpc !== 'call' || !call.service || !Object.hasOwn(this.#services, call.service)) return void rpc.receive(message)
-    this.manager.call(call.service, call.method ?? '', call.args ?? []).then(
+    this.manager.call(call.service, call.method ?? '', this.#lent.lend(call.args ?? [])).then(
       (value) => this.#thread?.post({ rpc: 'result', id: call.id, value }),
       (error: Error & { status?: number; code?: string }) => {
         const fields = { ...(error.status !== undefined && { status: error.status }), ...(error.code !== undefined && { code: error.code }) }
@@ -513,6 +516,7 @@ class Launcher {
 
   #respawn(): void {
     this.#releaseShortcuts()
+    this.#lent.releaseAll()
     this.#reloading = false
     const grant = this.#grant()
     this.#spawn({ ...this.#init!, token: grant.token, ...this.#look })
@@ -713,7 +717,7 @@ class Launcher {
       else if (event.type === 'services') this.#replaceServices(event['services'] as Readonly<Record<string, ServiceShape>> | undefined)
       else if (event.type === 'devrequest') void this.#dev.request(String(event['key'] ?? ''))
       else if (event.type === 'devreload') void this.#devReload(event['hot'] === true)
-      else if (event.type === 'invoke') this.#thread?.post({ rpc: 'invoke', fn: event['fn'], args: event['args'] ?? [] })
+      else if (event.type === 'invoke') { const message = this.#lent.invoke(event); if (message) this.#thread?.post(message) }
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
       else if (event.type === 'lend' && !this.#desktop) this.#lending.lend([event as unknown as Lent], event['fds'])
       else if (event.type === 'unlend' && !this.#desktop) this.#lending.unlend(String(event['name'] ?? ''))

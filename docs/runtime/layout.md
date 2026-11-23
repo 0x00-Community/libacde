@@ -109,8 +109,13 @@
   `connectBackend` 时以 501 `unsupported` 拒绝..
   原来的令牌交接已过时 (R3): `backendToken()` 永远回 null, `onBackendToken()` 永不回调 (返回的取消函数照常可调), 下个大版本删.
 - **应用与桌面里的服务**: welcome 的 `services` (命名空间到形状) 进 `WebInit.services`, 页面据此生成代理; 管家推 `{type: 'services', services}`
-  时整份交给页面替换代理 (`RemoteBridge.replaceServices`). 页面对这些命名空间的调用不经启动方的 rpc 解开, 原样 (含 `{__acdeFn: n}`) 转给
+  时整份交给页面替换代理 (`RemoteBridge.replaceServices`). 页面对这些命名空间的调用不经启动方的 rpc 解开, 转给
   `manager.call`, 结果或错误直接回给页面; 管家推来的 `{type: 'invoke', fn, args}` 转成页面 rpc 的 `invoke`.
+  回调编号换号 (2026-11-23, `js/launcher/src/manager/lent.ts` `LentCallbacks`): 页面的 rpc 每次加载都从 1 编号, 管家按 "连接 + 编号" 登记借出的回调,
+  重载后新旧页面撞号, 服务调旧回调会落到新页面里同编号的别的函数上 (batch16–18 总管推送收到怪值). 所以启动器转发前把参数里的 `{__acdeFn: n}`
+  换成本进程内只增不复用的编号 (同一次加载里同一个 n 换成同一个号, 管家只登记一份), 管家推来的 `invoke` 按这张表换回页面的编号, 表里没有的
+  (上一次加载的) 丢掉; 重载 (`#respawn`, `reload`、开发重载都经过它) 时把表里的号全部向管家发 `{release: {fn}}` 再清表, 服务那边对应的回调作废、
+  `releaseSignal` abort. 页面自己发的 `{rpc: 'release', fn}` 是它放掉启动器借给它的函数, 照旧由启动器的 rpc 收, 不转管家.
 - **服务列表变化** (`acde:services`, 应用与桌面都有, 不用声明): `names()` 给当前的命名空间, `on('changed', ({names, added, removed}) => …)`
   在推来的列表 (含形状) 和上一份不同时通知. 通知前新命名空间已能 `import('acde:<名字>')`, 形状变了的重新 import 拿新代理, 去掉的再 import
   会被拒 (`modules.rs` 的 `define` / `refuse` 会丢掉缓存的模块; 已拿到手的旧代理仍在, 调用由管家报错). 桌面先于服务起来时 (客户机上服务要
