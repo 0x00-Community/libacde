@@ -395,6 +395,10 @@ export class RemoteBridge {
         ...Rpc.calls(() => rpc, 'session', 'lock', 'logout', 'reboot', 'poweroff', 'setLanguage', 'others', 'switchUser'),
       }),
       desktops: () => Rpc.calls(() => rpc, 'desktops', 'list', 'choose'),
+      software: () => ({
+        ...Rpc.calls(() => rpc, 'software', 'state', 'refresh', 'install', 'remove', 'update'),
+        on: windows.notices.for('software', ['changed']),
+      }),
     }
     if (init.lock) {
       this.value['lock'] = Rpc.calls(() => rpc, 'lock', 'user', 'unlock', 'cancel', 'status', 'answer')
@@ -404,7 +408,7 @@ export class RemoteBridge {
       const events = ['download', 'notification', 'screenshot', 'shortcut', 'edge']
       this.value['desktop'] = { apps: async () => ({ apps: await apps.list() }), on: windows.notices.for('desktop', events) }
       this.value['windows'] = globalWindows()
-      Object.assign(this.value, { packages: tier.packages(), launch: tier.launch(), session: tier.session(), desktops: tier.desktops() })
+      Object.assign(this.value, { packages: tier.packages(), launch: tier.launch(), session: tier.session(), desktops: tier.desktops(), software: tier.software() })
       Object.assign(this.value, { open: apps.open, permissions: permissions(), ...files })
     } else {
       const caps = init.app?.capabilities ?? {}
@@ -418,6 +422,7 @@ export class RemoteBridge {
       if (shell.has('desktops')) this.value['desktops'] = tier.desktops()
       if (shell.has('setDefault')) this.value['setDefault'] = files.setDefault
       if (shell.has('permissions')) this.value['permissions'] = permissions()
+      if (shell.has('software')) this.value['software'] = tier.software()
       if (shell.has('desktop')) {
         this.value['desktop'] = { apps: async () => ({ apps: await apps.list() }), on: windows.notices.for('desktop', ['download', 'notification', 'edge']) }
       }

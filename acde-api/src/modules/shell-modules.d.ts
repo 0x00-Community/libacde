@@ -38,3 +38,7 @@ declare module 'acde:setDefault' {
   const setDefault: import('../types/page').AcdeOpenFiles['setDefault']
   export { setDefault, setDefault as default }
 }
+declare module 'acde:software' {
+  const software: import('../types/page').AcdeSoftware
+  export { software, software as default }
+}

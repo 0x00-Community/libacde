@@ -32,7 +32,7 @@ export type LegacyIconName =
   | 'map'
   | 'weather'
 
-export type ShellModule = 'windows' | 'packages' | 'session' | 'desktops' | 'inspect' | 'desktop' | 'setDefault' | 'permissions' | 'voice'
+export type ShellModule = 'windows' | 'packages' | 'session' | 'desktops' | 'inspect' | 'desktop' | 'setDefault' | 'permissions' | 'voice' | 'software'
 
 export interface IconsChangedEvent {
   readonly theme: string

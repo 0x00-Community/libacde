@@ -3,6 +3,7 @@ import type { AcdeIcons } from './names'
 import type { AcdeOffice } from './office'
 import type { AcdePermissions } from './permissions'
 import type { SharedPlace } from './places'
+import type { AcdeSoftware } from './software'
 import type { AcdeTerminals } from './terminal/index'
 import type { AcdeLock } from './lock/index'
 import type { AcdeSession } from './session/index'
@@ -10,6 +11,7 @@ import type { AcdeSession } from './session/index'
 export type * from './events'
 export type * from './office'
 export type * from './permissions'
+export type * from './software'
 export type * from './terminal/index'
 export type * from './lock/index'
 export type * from './session/index'
@@ -656,6 +658,7 @@ export interface ShellModuleTypes {
   readonly desktop: AcdeDesktop
   readonly setDefault: AcdeOpenFiles['setDefault']
   readonly permissions: AcdePermissions
+  readonly software: AcdeSoftware
 }
 
 export interface ServiceModuleTypes {
@@ -667,6 +670,7 @@ export interface ServiceModuleTypes {
   readonly desktop: Pick<AcdeDesktop, 'apps'>
   readonly setDefault: AcdeOpenFiles['setDefault']
   readonly voice: AcdeVoice
+  readonly software: Omit<AcdeSoftware, 'on'>
 }
 
 export type VoiceEvent =
@@ -1198,6 +1202,7 @@ export interface AcdePage {
   readonly handlers?: AcdeOpenFiles['handlers']
   readonly setDefault?: AcdeOpenFiles['setDefault']
   readonly permissions?: AcdePermissions
+  readonly software?: AcdeSoftware
   readonly window?: AcdeWindow
   readonly services?: AcdeServices
   readonly capabilities?: import('./capabilities').AcdeCapabilities

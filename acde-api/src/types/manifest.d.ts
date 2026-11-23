@@ -85,6 +85,7 @@ export interface Capabilities {
   readonly inspect?: boolean
   readonly desktop?: boolean
   readonly setDefault?: boolean
+  readonly software?: boolean
   readonly camera?: boolean
   readonly microphone?: boolean
   readonly [service: string]: unknown

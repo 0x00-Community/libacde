@@ -32,7 +32,7 @@
   (调用者是 `WindowCalls.SERVICE`, 和桌面页面同一段检查; `launch` 的 `slot` 不算数, 服务没有窗口可嵌), `on(类型)` 收全局窗口事件 (不认识的类型抛 TypeError);
   `acde:packages` 同页面 (含 `on('changed')`); `acde:session`、`acde:desktops`、`acde:inspect`、`acde:setDefault` 同页面; `acde:desktop` 只有 `apps()` (钉面板、
   `setDoubleClick`、`setFrameTheme` 要页面或 surface, `download` / `notification` / `screenshot` / `shortcut` 事件只发给页面); `acde:permissions` 不给服务
-  (`is not available to services here`); `acde:voice` (语音识别: `listen(onEvent)` 回录音号, 事件 `partial` / `final` / `error`, `stop(号)` 结束录音等结果)
+  (`is not available to services here`); `acde:software` 同页面, 但没有 `on('changed')` (`Omit<AcdeSoftware, 'on'>`); `acde:voice` (语音识别: `listen(onEvent)` 回录音号, 事件 `partial` / `final` / `error`, `stop(号)` 结束录音等结果)
   只给服务, 在服务进程里直接调运行时的 `Voice` (同一时间一段录音, 新的取消旧的). SDK 里写成 Promise 的调用在服务里也回 Promise (`ServiceModules` 包一层 async). 事件: Broker 的 `#toDesktop` 同时交给
   `ServiceModules.emit`, 每个服务一份 `Notices` (`notices.ts`, 页面的 `on` 用的也是它), 处理函数在 Broker 线程上同步跑, 抛错只记日志; 服务停了 (或没起来)
   `release(服务名)` 丢掉它的订阅.

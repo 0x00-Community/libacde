@@ -13,7 +13,7 @@ export const LEGACY_ICONS: Readonly<Record<string, string>> = legacyIcons
 
 export const ICON_NAMES: readonly string[] = Object.keys(LEGACY_ICONS)
 
-export const SHELL_MODULES = ['windows', 'packages', 'session', 'desktops', 'inspect', 'desktop', 'setDefault', 'permissions', 'voice'] as const
+export const SHELL_MODULES = ['windows', 'packages', 'session', 'desktops', 'inspect', 'desktop', 'setDefault', 'permissions', 'voice', 'software'] as const
 
 export const APP_MODULES = ['launch', 'apps', 'open', 'openPath', 'handlers', 'window', 'services'] as const
 

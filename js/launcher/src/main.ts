@@ -687,6 +687,7 @@ class Launcher {
       else if (event.type === 'unlend' && !this.#desktop) this.#lending.unlend(String(event['name'] ?? ''))
       else if (event.type === 'visibility' && !this.#desktop) void this.#rpc?.call('window', 'visible', [event['visible'] === true]).catch(() => undefined)
       else if (event.type === 'menuinvoke' && !this.#desktop) void this.#rpc?.call('window', 'menu', [event['menu'], event['item']]).catch(() => undefined)
+      else if (event.type === 'softwarechanged' && !this.#desktop) this.#thread?.post(event)
       else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event as ShellEvent))
     }
   }

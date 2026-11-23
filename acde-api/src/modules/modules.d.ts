@@ -99,6 +99,10 @@ declare module 'acde:setDefault' {
   const setDefault: import('@acde/api').AcdeModules['setDefault']
   export { setDefault, setDefault as default }
 }
+declare module 'acde:software' {
+  const software: import('@acde/api').AcdeModules['software']
+  export { software, software as default }
+}
 declare module 'acde:window' {
   const self: import('@acde/api').AcdeModules['window']
   export { self as window, self as default }

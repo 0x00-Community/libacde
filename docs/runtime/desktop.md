@@ -44,7 +44,7 @@
 | 桌面服务 | `ctx.import` 只能拿 `services[].modules` 列出的外壳模块, 形状是 SDK `ServiceModuleTypes` (见 `docs/runtime/packages.md`) |
 
 - **外壳模块** (`ShellModule`, 只给桌面一侧): `acde:windows` (所有窗口)、`acde:desktop` (钉面板、窗框主题、桌面事件)、`acde:packages` (重扫包、原生程序)、
-  `acde:session` (锁屏、注销、重启、关机、语言)、`acde:desktops` (列出、换桌面)、`acde:permissions` (回答权限询问)、`acde:setDefault`、`acde:inspect`.
+  `acde:session` (锁屏、注销、重启、关机、语言)、`acde:desktops` (列出、换桌面)、`acde:permissions` (回答权限询问)、`acde:setDefault`、`acde:inspect`、`acde:software` (系统的 pacman 包: 列出、刷新、装卸社区商店的包、全量更新, 经 acdes 管家交系统总管执行, 见 acdes `docs/manager.md`「软件包」).
 - **应用模块** (`AppModules`, 谁都有): `acde:apps` (list / open)、`acde:open`、`acde:window`、`acde:services`、`acde:capabilities`; 要声明的: `acde:launch`、
   `acde:openPath` / `acde:handlers` (`openFiles`) 和各系统能力.
 
@@ -250,7 +250,7 @@ acdes 一列按 acdes 的代码核对过; 宿主窗口一列取自 `docs/runtime
 | `windows.screenshot()` | 整屏、某块屏、单个窗口, 可带指针 | 只有整个宿主窗口 |
 | `acde:permissions`、`capabilities.request` | 回 501 (还没有询问可答) | — |
 
-acdes 里系统应用声明的外壳模块现在只有 `session`、`desktops`、`setDefault`、`packages.refresh` 能用, `windows`、`permissions`、`inspect` 回 501;
+acdes 里系统应用声明的外壳模块现在只有 `session`、`desktops`、`setDefault`、`packages.refresh`、`software` 能用, `windows`、`permissions`、`inspect` 回 501;
 要这些能力的界面先放在桌面页里.
 
 ## 还没有的

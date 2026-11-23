@@ -22,6 +22,7 @@ export class Host {
     ['shortcut', ['desktop:shortcut', 'window:shortcut']],
     ['permissionprompt', ['permissions:prompt']],
     ['permissionanswered', ['permissions:answered']],
+    ['softwarechanged', ['software:changed']],
   ])
   static readonly #WINDOW_EVENTS = new Set<string>(WINDOW_EVENTS)
   static readonly MOVES_KEPT = 1024
