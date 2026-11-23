@@ -49,6 +49,11 @@ export interface AppManifest {
   readonly optional?: readonly string[]
   readonly services?: readonly string[]
   readonly sensitive?: boolean
+  readonly window?: AppWindow
+}
+
+export interface AppWindow {
+  readonly material?: import('./window-look/index').MaterialName | import('./window-look/index').WindowMaterial
 }
 
 export interface AppBackend {

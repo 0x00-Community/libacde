@@ -86,6 +86,12 @@
   MIME 类型, Windows 上是扩展名 (`.md`).
 - `AcdeOpenFiles.setDefault`: 为一个 MIME 类型 (Windows 上为一个扩展名, 如 `.md`) 记住 `handler`; 不动系统自己的默认.
 - `AcdeWindow.setBackdrop`: 模糊窗口某块区域后面的东西; `effect.shape` 是角形 (`round` / `squircle` / `superellipse(k)`, 2026-11-22, 类型 `BackdropEffect`). 平台画不准时可以近似 (见 `acde:capabilities` 的 `window.backdrop`).
+- `AcdeWindow.setMaterial(material, options?)` / `material()` (2026-11-23, 总仓 `.scratch/libacde/glass-material-api.md` 末节; 类型在 `types/window-look/` 用模块扩充加到 `AcdeWindow`): 整扇窗口 (或 `region: 'titlebar'` 只有标题栏) 的背景材质, 画在窗口内容之下.
+  `MaterialName` 内置 `glass` (液态玻璃, `role` 是 `regular` / `clear`, 可用 `group` + `spacing` 跨窗口融合)、`blur` (背景模糊加着色, 没有透镜和高光)、`none`; 其余名字留给以后的自定义效果,
+  所以类型是 `'glass' | 'blur' | 'none' | (string & {})`. 名字不合规 (`[a-z0-9._-]`, 至多 64 字节)、`role` / `region` / `spacing` / `group` 写错抛 `TypeError`; 合规但没有这个材质时按 `none` 画并记一次警告,
+  `material()` 回实际生效的名字 (此时是 `none`) 和给的选项. `overrides` 是"参数名 → CSS 写法"的表, 参数名同 `--acde-glass-*` 去掉前缀 (`blur`、`tint`、`outline` …), 档位、深浅、
+  减少透明度仍由系统定 (减少透明度时一律不透明). 清单 `window.material` 写默认值 (名字或 `{name, role, group, spacing, overrides, region}`), 窗口一开就用.
+  给开发者的建议: 长时间存在的主窗口背景用 `blur` (开销中等), 浮在内容上的工具栏和小面板窗口用 `glass` (最贵), 临时弹出用 `blur`; 页面背景要透明, 材质才透得出来.
 - `AcdeWindow.on('beforeclose')`: 原来是一个签名 `() => boolean | void | Promise<boolean | void>`, 拆成返回 `boolean` 和返回 `void` 的两个重载, 能传的函数不变.
 
 ## 系统模块的错误与事件 (libacde 单子 12)

@@ -40,7 +40,31 @@ export interface WindowLook {
   readonly motion?: MotionPreset
 }
 
+export type MaterialName = 'glass' | 'blur' | 'none' | (string & {})
+
+export interface MaterialOptions {
+  readonly role?: 'regular' | 'clear'
+  readonly group?: string
+  readonly spacing?: number
+  readonly overrides?: Readonly<Record<string, string>>
+  readonly region?: 'window' | 'titlebar'
+}
+
+export interface WindowMaterial extends MaterialOptions {
+  readonly name: MaterialName
+}
+
+export interface CurrentMaterial {
+  readonly material: string
+  readonly options: MaterialOptions
+}
+
 declare module '../page' {
+  interface AcdeWindow {
+    setMaterial(material: MaterialName, options?: MaterialOptions): void
+    material(): CurrentMaterial
+  }
+
   interface AcdeDesktop {
     setWindowLook?(look: WindowLook | null): void
     motion?(preset?: MotionPreset): Motion

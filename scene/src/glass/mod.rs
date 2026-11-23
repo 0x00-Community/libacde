@@ -3,10 +3,12 @@ use crate::corner::{self, Corners};
 
 mod appear;
 pub mod group;
+pub mod lens;
 mod membership;
 mod preset;
 
 pub use appear::Appearance;
+pub use lens::{Lens, LensTable};
 pub use membership::{Membership, Name};
 pub use preset::{Level, Role};
 
@@ -63,55 +65,6 @@ impl Outline {
     pub fn coverage(self, d: f64) -> f32 {
         Self::band(f64::from(self.width), d) as f32 * self.color[3]
     }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Lens {
-    pub bezel: f32,
-    pub thickness: f32,
-    pub index: f32,
-    pub dispersion: f32,
-}
-
-impl Lens {
-    pub const MOST_DISPERSION: f32 = 0.1;
-    pub const MOST_INDEX: f32 = 3.0;
-    const STEPS: u32 = 64;
-    const LEAST_SLOPE: f64 = 0.1;
-
-    pub fn source_depth(self, depth: f64, half_short_side: f64) -> f64 {
-        let bezel = f64::from(self.bezel).max(0.5).min(half_short_side.max(0.5));
-        let (thickness, index) = (f64::from(self.thickness), f64::from(self.index));
-        if depth <= 0.0 || depth >= bezel || thickness <= 0.0 || index <= 1.0 {
-            return depth;
-        }
-        bezel * Self::lens_depth(depth / bezel, thickness / bezel, index)
-    }
-
-    fn lens_depth(x: f64, ratio: f64, index: f64) -> f64 {
-        let steps = f64::from(Self::STEPS);
-        let node = |j: u32| bent_depth(f64::from(j) / steps, ratio, index);
-        let at = x.clamp(0.0, 1.0) * steps;
-        let i = (at.floor() as u32).min(Self::STEPS - 1);
-        let here = node(i) + (node(i + 1) - node(i)) * (at - f64::from(i));
-        (i + 1..=Self::STEPS).fold(here, |best, j| best.min(node(j) - Self::LEAST_SLOPE * (f64::from(j) / steps - x)))
-    }
-}
-
-fn bezel_height(x: f64) -> f64 {
-    let u = 1.0 - x.clamp(0.0, 1.0);
-    (1.0 - u.powi(4)).max(0.0).powf(0.25)
-}
-
-fn bezel_slope(x: f64) -> f64 {
-    let u = 1.0 - x.clamp(1e-6, 1.0);
-    u.powi(3) * (1.0 - u.powi(4)).max(1e-6).powf(-0.75)
-}
-
-fn bent_depth(x: f64, ratio: f64, index: f64) -> f64 {
-    let into = (ratio * bezel_slope(x)).atan();
-    let out = (into.sin() / index).clamp(-1.0, 1.0).asin();
-    x + ratio * bezel_height(x) * (into - out).tan()
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -291,6 +244,16 @@ impl Glass {
         let mut floats = Self::default().floats();
         for (slot, chunk) in floats.iter_mut().zip(bytes.chunks_exact(4)) {
             *slot = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        }
+        Self::from_floats(floats).clamped()
+    }
+
+    pub fn with_overrides(base: &Self, overrides: &[f32]) -> Self {
+        let mut floats = base.floats();
+        for (slot, value) in floats.iter_mut().zip(overrides) {
+            if !value.is_nan() {
+                *slot = *value;
+            }
         }
         Self::from_floats(floats).clamped()
     }
@@ -658,35 +621,6 @@ mod tests {
     }
 
     #[test]
-    fn the_bezel_lens_mapping_never_folds_and_leaves_the_middle_still() {
-        for half in [10.0, 40.0, 120.0] {
-            for (bezel, thickness) in [(34.0, 22.0), (34.0, 200.0), (4.0, 22.0), (2.0, 80.0), (256.0, 60.0)] {
-                for index in [1.0, 1.2, 1.5, 2.0, 3.0] {
-                    let lens = Lens { bezel, thickness, index, dispersion: 0.01 };
-                    let mut last = -1.0;
-                    for i in 0..=2000 {
-                        let depth = half * i as f64 / 2000.0;
-                        let source = lens.source_depth(depth, half);
-                        assert!(source > last, "half={half} bezel={bezel} thickness={thickness} index={index}: {last} then {source} at {depth}");
-                        assert!(source <= half + 1e-9, "never past the middle: {source} at {depth}");
-                        last = source;
-                    }
-                }
-            }
-        }
-        let lens = Lens { bezel: 34.0, thickness: 22.0, index: 1.5, dispersion: 0.01 };
-        for depth in [34.0, 35.0, 60.0, 100.0] {
-            assert_eq!(lens.source_depth(depth, 100.0), depth, "the flat middle does not move at {depth}");
-        }
-        let most = (0..=340).map(|i| f64::from(i) / 10.0).map(|e| lens.source_depth(e, 100.0) - e).fold(0.0, f64::max);
-        assert!(most > 2.0, "the default bezel bends visibly: {most}");
-        let off = Lens { thickness: 0.0, ..lens };
-        assert!((0..=100).all(|i| off.source_depth(f64::from(i), 100.0) == f64::from(i)));
-        let flat = Lens { index: 1.0, ..lens };
-        assert!((0..=100).all(|i| flat.source_depth(f64::from(i), 100.0) == f64::from(i)));
-    }
-
-    #[test]
     fn changing_only_the_outline_keeps_every_other_wire_float() {
         let glass = Glass::preset(Role::Regular, Level::Clear);
         let changed = Glass { outline: Outline { width: 3.0, color: [0.1, 0.2, 0.3, 0.4], merged: true }, ..glass };
@@ -697,6 +631,22 @@ mod tests {
         let back = Glass::from_wire(&changed.to_wire());
         assert_eq!(Glass { outline: glass.outline, ..back }, glass);
         assert_eq!(back.outline, changed.outline);
+    }
+
+    #[test]
+    fn overrides_replace_only_what_is_not_nan_and_are_clamped() {
+        let base = Glass::preset(Role::Regular, Level::Clear);
+        assert_eq!(Glass::with_overrides(&base, &[f32::NAN; WIRE_FLOATS]), base);
+        assert_eq!(Glass::with_overrides(&base, &[]), base);
+        let mut some = [f32::NAN; WIRE_FLOATS];
+        (some[19], some[27]) = (0.3, 0.1);
+        let changed = Glass::with_overrides(&base, &some);
+        assert_eq!((changed.white_point, changed.darken), (0.3, 0.1));
+        assert_eq!(Glass { white_point: base.white_point, darken: base.darken, ..changed }, base);
+        let mut wild = [f32::NAN; WIRE_FLOATS + 3];
+        (wild[19], wild[1], wild[17], wild[WIRE_FLOATS]) = (7.0, -5.0, f32::INFINITY, 1.0);
+        let clamped = Glass::with_overrides(&base, &wild);
+        assert_eq!((clamped.white_point, clamped.refraction.inner_height, clamped.highlight.angle), (1.0, 0.0, 0.0));
     }
 
     #[test]

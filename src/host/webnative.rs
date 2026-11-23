@@ -113,6 +113,7 @@ fn claim_surface(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, 
         "setDoubleClick" => set_double_click,
         "setFrameTheme" => set_frame_theme,
         "setWindowLook" => set_window_look,
+        "setMaterial" => set_material,
         "motion" => motion,
         "setPageDark" => set_page_dark,
         "setClipboard" => set_clipboard,
@@ -379,6 +380,19 @@ fn set_window_look(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments
         },
     };
     with_surface(scope, |surface| surface.set_window_look(look));
+}
+
+fn set_material(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let name = bind::arg_string(scope, &args, 0);
+    let options = bind::Args { scope: &mut *scope, args: &args }.json(1).unwrap_or(serde_json::Value::Null);
+    let material = match crate::render::WindowMaterial::from_options(&name, &options) {
+        Ok(material) => material,
+        Err(message) => return bind::throw_type_error(scope, &message),
+    };
+    let effective = bind::string(scope, &material.name);
+    if with_surface(scope, |surface| surface.set_material(material)).is_some() {
+        rv.set(effective.into());
+    }
 }
 
 const MOTION_SAMPLES: usize = 24;

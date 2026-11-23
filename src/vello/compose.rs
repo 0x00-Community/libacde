@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use super::Blur;
 use crate::gpu::glass::Glass;
 use crate::gpu::glass::group::{GlassGroup, UNIFORM_BYTES};
+use crate::gpu::glass::lens::{self, Key, LensTable};
 use crate::gpu::{Backdrop, Effect, Px, Shadow};
 
 #[repr(C)]
@@ -19,10 +20,11 @@ struct Params {
     matrix: [f32; 16],
     bias: [f32; 4],
     outline: [f32; 4],
+    table: [f32; 4],
 }
 
 impl Params {
-    const SIZE: u64 = 160;
+    const SIZE: u64 = 176;
 
     fn bytes(&self) -> [u8; Self::SIZE as usize] {
         let head = [
@@ -39,7 +41,7 @@ impl Params {
             self.shift[0],
             self.shift[1],
         ];
-        let f = head.iter().chain(&self.color).chain(&self.matrix).chain(&self.bias).chain(&self.outline);
+        let f = head.iter().chain(&self.color).chain(&self.matrix).chain(&self.bias).chain(&self.outline).chain(&self.table);
         let mut out = [0u8; Self::SIZE as usize];
         for (chunk, v) in out.as_chunks_mut::<4>().0.iter_mut().zip(f) {
             *chunk = v.to_le_bytes();
@@ -89,12 +91,13 @@ struct Uniforms {
     stride: u64,
     size: u64,
     pending: Vec<u8>,
+    written: Vec<u8>,
 }
 
 impl Uniforms {
     fn new(device: &wgpu::Device, size: u64, capacity: u64) -> Self {
         let stride = size.next_multiple_of(u64::from(device.limits().min_uniform_buffer_offset_alignment));
-        Self { buffer: Self::buffer(device, capacity * stride), capacity, stride, size, pending: Vec::new() }
+        Self { buffer: Self::buffer(device, capacity * stride), capacity, stride, size, pending: Vec::new(), written: Vec::new() }
     }
 
     fn buffer(device: &wgpu::Device, size: u64) -> wgpu::Buffer {
@@ -111,6 +114,7 @@ impl Uniforms {
         if grew {
             queue.write_buffer(&self.buffer, 0, &self.pending);
             self.pending.clear();
+            self.written.clear();
             self.capacity *= 2;
             self.buffer = Self::buffer(device, self.capacity * self.stride);
         }
@@ -120,11 +124,20 @@ impl Uniforms {
         ((index * self.stride) as u32, grew)
     }
 
+    fn reuse(&self, bytes: &[u8]) -> Option<u32> {
+        let stride = self.stride as usize;
+        self.pending.chunks(stride).position(|slot| slot[..bytes.len()] == *bytes).map(|i| (i * stride) as u32)
+    }
+
     fn flush(&mut self, queue: &wgpu::Queue) {
-        if !self.pending.is_empty() {
-            queue.write_buffer(&self.buffer, 0, &self.pending);
-            self.pending.clear();
+        if self.pending.is_empty() {
+            return;
         }
+        if !self.written.starts_with(&self.pending) {
+            queue.write_buffer(&self.buffer, 0, &self.pending);
+            self.written.clone_from(&self.pending);
+        }
+        self.pending.clear();
     }
 
     fn binding(&self) -> wgpu::BindingResource<'_> {
@@ -146,6 +159,8 @@ pub struct Composer {
     layer: Option<((u32, u32), wgpu::Texture, wgpu::TextureView)>,
     uniforms: Uniforms,
     pieces: Uniforms,
+    lens_table: LensTable,
+    lens_rows: wgpu::TextureView,
     binds: HashMap<wgpu::TextureView, (wgpu::BindGroup, u64)>,
     textures: HashMap<(u32, u32, u32, u32), Cached>,
     frame: u64,
@@ -183,6 +198,16 @@ impl Composer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: true,
                         min_binding_size: wgpu::BufferSize::new(Params::SIZE),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
                     },
                     count: None,
                 },
@@ -261,6 +286,8 @@ impl Composer {
             }),
             uniforms: Uniforms::new(device, Params::SIZE, 64),
             pieces: Uniforms::new(device, UNIFORM_BYTES as u64, 4),
+            lens_table: LensTable::default(),
+            lens_rows: lens_rows(device),
             device: device.clone(),
             queue: queue.clone(),
             pipelines,
@@ -293,7 +320,11 @@ impl Composer {
     }
 
     fn push_group(&mut self, group: &GlassGroup) -> u32 {
-        let (offset, grew) = self.pieces.push(&self.device, &self.queue, &group.to_uniform());
+        let bytes = group.to_uniform();
+        if let Some(offset) = self.pieces.reuse(&bytes) {
+            return offset;
+        }
+        let (offset, grew) = self.pieces.push(&self.device, &self.queue, &bytes);
         if grew {
             self.binds.clear();
         }
@@ -306,7 +337,7 @@ impl Composer {
         }
         let frame = self.frame;
         let (layout, sampler, device) = (&self.layout, &self.sampler, &self.device);
-        let (params, pieces) = (self.uniforms.binding(), self.pieces.binding());
+        let (params, pieces, rows) = (self.uniforms.binding(), self.pieces.binding(), &self.lens_rows);
         let entry = self.binds.entry(src.clone()).or_insert_with(|| {
             let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("acde compose"),
@@ -316,6 +347,7 @@ impl Composer {
                     wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
                     wgpu::BindGroupEntry { binding: 2, resource: params },
                     wgpu::BindGroupEntry { binding: 3, resource: pieces },
+                    wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(rows) },
                 ],
             });
             (group, frame)
@@ -551,6 +583,9 @@ impl Composer {
         let region = Self::region(outer, canvas.texture().size())?;
         let [_, _, w, h] = region;
         let mixed = self.mixed_blurs(encoder, canvas, region, glass, b.effect.blur);
+        if b.effect.matrix.is_none() {
+            return Some((region, mixed));
+        }
         let filtered = self.textures(w, h, 0, GLASS_TAG + 8).swap_remove(0);
         let (matrix, bias) = b.effect.columns();
         let params = Params { rect: [0.0, 0.0, w as f32, h as f32], matrix, bias, ..Default::default() };
@@ -590,6 +625,7 @@ impl Composer {
             matrix,
             bias,
             outline: glass.outline.color,
+            table: self.lens_slot(glass.lens, b.rect[2].min(b.rect[3]) / 2.0),
             ..Default::default()
         };
         self.pass(encoder, canvas, false, &[Draw { pipe: Pipe::Glass, src: &filtered, params, scissor: Some(region), mix: None, group: None }]);
@@ -598,9 +634,35 @@ impl Composer {
     fn glass_group(&mut self, encoder: &mut wgpu::CommandEncoder, canvas: &wgpu::TextureView, b: &Backdrop, group: &GlassGroup) {
         let Some(glass) = group.glass() else { return };
         let Some((region, filtered)) = self.glass_under(encoder, canvas, b, glass, group.reach() as f32) else { return };
-        let params = Params { shift: [group.len() as f32, group.spacing], bias: region.map(|v| v as f32), ..Default::default() };
+        let half_short = group.pieces().first().map_or(0.0, |p| p.half[0].min(p.half[1]));
+        let table = self.lens_slot(glass.lens, half_short);
+        let params = Params { shift: [group.len() as f32, group.spacing], bias: region.map(|v| v as f32), table, ..Default::default() };
         let draw = Draw { pipe: Pipe::GlassGroup, src: &filtered, params, scissor: Some(region), mix: None, group: Some(group) };
         self.pass(encoder, canvas, false, &[draw]);
+    }
+
+    fn lens_slot(&mut self, glass_lens: crate::gpu::glass::Lens, half_short: f32) -> [f32; 4] {
+        let key = Key::of(glass_lens, half_short);
+        let missing = [-1.0, key.ratio, key.index, key.dispersion];
+        if !glass_lens.bends() {
+            return missing;
+        }
+        let Some((slot, rows)) = self.lens_table.slot(key, self.frame) else { return missing };
+        if let Some(rows) = rows {
+            let bytes: Vec<u8> = rows.iter().flat_map(|v| v.to_le_bytes()).collect();
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: self.lens_rows.texture(),
+                    mip_level: 0,
+                    origin: wgpu::Origin3d { x: 0, y: (slot.row * 3) as u32, z: 0 },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &bytes,
+                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some((lens::TABLE_SIZE * 4) as u32), rows_per_image: Some(3) },
+                wgpu::Extent3d { width: lens::TABLE_SIZE as u32, height: 3, depth_or_array_layers: 1 },
+            );
+        }
+        [slot.row as f32, key.ratio, key.index, key.dispersion]
     }
 
     fn mixed_blurs(
@@ -612,9 +674,12 @@ impl Composer {
         fallback: f32,
     ) -> wgpu::TextureView {
         let [_, _, w, h] = region;
-        let mixed = self.textures(w, h, 0, GLASS_TAG).swap_remove(0);
         let layers: Vec<(usize, f32, f32)> = glass.blur.iter().enumerate().filter(|(_, l)| l.opacity > 0.0).map(|(i, l)| (i, l.radius, l.opacity)).collect();
         let layers = if layers.is_empty() { vec![(0, fallback, 1.0)] } else { layers };
+        if let [(i, radius, _)] = layers[..] {
+            return self.blur_tagged(encoder, canvas.texture(), region, radius, GLASS_TAG + 1 + i as u32);
+        }
+        let mixed = self.textures(w, h, 0, GLASS_TAG).swap_remove(0);
         let mut total = 0.0;
         for (n, (i, radius, opacity)) in layers.into_iter().enumerate() {
             let blurred = self.blur_tagged(encoder, canvas.texture(), region, radius, GLASS_TAG + 1 + i as u32);
@@ -647,7 +712,21 @@ impl Composer {
 }
 
 fn shader_source() -> String {
-    [crate::gpu::corner::WGSL, crate::gpu::glass::WGSL, crate::gpu::glass::group::WGSL, include_str!("compose.wgsl")].join("\n")
+    [crate::gpu::corner::WGSL, crate::gpu::glass::WGSL, crate::gpu::glass::group::WGSL, lens::TABLE_WGSL, include_str!("compose.wgsl")].join("\n")
+}
+
+fn lens_rows(device: &wgpu::Device) -> wgpu::TextureView {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("acde glass lens rows"),
+        size: wgpu::Extent3d { width: lens::TABLE_SIZE as u32, height: (lens::TABLE_SLOTS * 3) as u32, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::R32Float,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    texture.create_view(&wgpu::TextureViewDescriptor::default())
 }
 
 #[cfg(test)]

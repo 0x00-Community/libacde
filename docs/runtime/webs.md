@@ -97,7 +97,7 @@
     (SDK `NativeWindow.state` 必有; web 侧 `remote.ts` 的 `WindowList.deliver` 按 `window` 快照 (和 `windowclose`、`windowcrash`) 维护行, 先发 `window`, 再按快照的 `first` / `changed` 推出已过时的 `open` / `title` / `state` / `activate` / `parent` / `desk` / `geometry` 照发,
     没收到过 `windowstate` 的窗口是 `normal`, 换标题不丢状态; `key` 是桌面页重载后也不变的窗口键 (winman window v4 的 identifier, acdes 原样转成 `key`),
     `window` 快照和 `windowopen` 带了就记在行上, 后来的事件不带时保留, 推出的 `open` 也带上; 合成器不给时没有这个字段), `acde:inspect` 的窗口 (driver 用的) 带 `state`.
-  - window web: 清单给的服务和能力; `acde.window` (标题、菜单、关闭、最小化、`requestMode` / `setGrabHint` / `setBackdrop` /
+  - window web: 清单给的服务和能力; `acde.window` (标题、菜单、关闭、最小化、`requestMode` / `setGrabHint` / `setBackdrop` / `setMaterial` (背景材质, 经 surface 的 `set_material` 交给宿主, 见 `docs/acde-api.md`) /
     `requestActivate` / `requestGrab` / `releaseGrab`、app 级 `shortcut(combo)`; `beforeclose` 返回 false 留住窗口; `request` 是别的应用
     `acde.open(<id>, {…})` 要它打开的东西, 要对方清单的 `open` 允许, 为一个请求开的窗口把它交给第一个 `request` 处理函数, 只给一次;
     `acde.window.id` 是自己的窗口号). **系统请求** (SDK `SystemRequest`): `{kind: 'open-link', url}` 和 `{kind: 'open-file', url}`
@@ -142,7 +142,7 @@
 - **应用清单** (`acde.apps`, 解析 acde-host `apps.ts`, 校验 acde-api `validate.ts`): `id`、`label`、`icon`、`entry` (默认导出 `WindowApp` 的
   模块, 或 HTML)、`capabilities` (只放系统能力: `SYSTEM_CAPABILITIES` 加外壳模块; 不认识的名字和服务名都是错误)、
   `optional` (capabilities 里可以缺的几项, 每项也要在 capabilities 里)、`services` (用到的桌面服务名, 不能是 `RESERVED_NAMES`)、
-  `mimeTypes`、`schemes` (打开哪些 URL scheme 的链接, 小写不带冒号, 不能是 `file`)、`requests` (接受哪些私有请求, 小写词, 不能是 `open-file` / `open-link`)、`heapMb` (默认 256, 最小 32)、`size` (页面尺寸, 默认 800x600, 窗框另算; 单应用模式的主窗口铺满宿主窗口, 设了 `size` 时它是宿主窗口内容区的初始尺寸)、`multiple`、`frame` (默认 true)、`backend`.
+  `mimeTypes`、`schemes` (打开哪些 URL scheme 的链接, 小写不带冒号, 不能是 `file`)、`requests` (接受哪些私有请求, 小写词, 不能是 `open-file` / `open-link`)、`window` (`{material}`: 默认的窗口背景材质, 名字或 `{name, role, group, spacing, overrides, region}`, 清单规则 `Manifest.material` 查形状, 解析后是 `window.material` 或 null)、`heapMb` (默认 256, 最小 32)、`size` (页面尺寸, 默认 800x600, 窗框另算; 单应用模式的主窗口铺满宿主窗口, 设了 `size` 时它是宿主窗口内容区的初始尺寸)、`multiple`、`frame` (默认 true)、`backend`.
 - **必需与可选能力** (`broker/access/capabilities.ts` `CapabilityCheck`, 由 `Launchable` 用): 声明的能力 (capabilities 和 services) 默认都是
   必需的, 逐个查状态: `available`、`not-declared`、`unsupported` (平台表不支持或运行时没开起来, 如 fs 的 Finder、office)、`service-not-running`、
   `shell-only` (第三方应用的外壳模块), 要批准的能力 (见「批准」) 另有 `not-asked` (还没问过用户)、`asking` (提示已经弹出, 在等回答)、`denied` (用户拒绝或撤销);

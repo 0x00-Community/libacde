@@ -1,4 +1,4 @@
-import type { AppBackend, AppManifest as AppEntry, Capabilities, PackageManifest } from '../acde-api/src/index'
+import type { AppBackend, AppManifest as AppEntry, Capabilities, PackageManifest, WindowMaterial } from '../acde-api/src/index'
 import { API_LEVEL, MIN_API_LEVEL } from './level.ts'
 import { FS_ROOTS, SHARED_PLACES } from './places.ts'
 import legacyIcons from '../acde-api/legacy-icons.json' with { type: 'json' }
@@ -49,9 +49,10 @@ export interface ConfiguredService extends DesktopServiceGrant {
   readonly module: string
 }
 
-export type AppManifest = Required<Omit<AppEntry, 'backend' | 'size' | 'sensitive'>> & {
+export type AppManifest = Required<Omit<AppEntry, 'backend' | 'size' | 'sensitive' | 'window'>> & {
   readonly backend: Required<AppBackend> | null
   readonly size: readonly [number, number] | null
+  readonly window: { readonly material: WindowMaterial | null }
 }
 
 export interface Findings {
@@ -222,6 +223,8 @@ export class Manifest {
     if (typeof requests === 'string') return `app ${id}: ${requests}`
     const size = Manifest.#size(field('size'))
     if (size === undefined) return `app ${id}: size must be [width, height] in whole logical pixels`
+    const material = Manifest.material((field('window') as { material?: unknown } | undefined)?.material)
+    if (typeof material === 'string') return `app ${id}: window.material ${material}`
     const services = Manifest.#services(field('services'))
     if (typeof services === 'string') return `app ${id}: ${services}`
     const optional = Manifest.#optional(field('optional'), capabilities)
@@ -242,6 +245,7 @@ export class Manifest {
       size,
       optional,
       services,
+      window: { material },
     }
   }
 
@@ -404,6 +408,23 @@ export class Manifest {
     const missing = (raw as string[]).find((name) => !capabilities[name])
     if (missing) return `optional ${JSON.stringify(missing)} is not in capabilities (optional lists declared capabilities that the app can run without)`
     return [...(raw as string[])]
+  }
+
+  static readonly #MATERIAL_NAME = /^[a-z0-9._-]{1,64}$/
+
+  static material(raw: unknown): WindowMaterial | null | string {
+    if (raw === undefined || raw === null) return null
+    const given = typeof raw === 'string' ? { name: raw } : raw
+    if (typeof given !== 'object' || Array.isArray(given)) return 'is a material name or {name, role?, group?, spacing?, overrides?, region?}'
+    const { name, role, group, spacing, overrides, region } = given as Record<string, unknown>
+    if (typeof name !== 'string' || !Manifest.#MATERIAL_NAME.test(name)) return 'name is [a-z0-9._-], at most 64 bytes (glass, blur, none)'
+    if (role !== undefined && role !== 'regular' && role !== 'clear') return 'role is regular or clear'
+    if (group !== undefined && (typeof group !== 'string' || !Manifest.#MATERIAL_NAME.test(group))) return 'group is [a-z0-9._-], at most 64 bytes'
+    if (spacing !== undefined && !(typeof spacing === 'number' && spacing >= 0 && spacing <= 256)) return 'spacing is 0 to 256 logical pixels'
+    const texts = typeof overrides === 'object' && overrides !== null && Object.values(overrides).every((v) => typeof v === 'string')
+    if (overrides !== undefined && !texts) return 'overrides maps parameter names to CSS strings'
+    if (region !== undefined && region !== 'window' && region !== 'titlebar') return 'region is window or titlebar'
+    return given as WindowMaterial
   }
 
   static #size(raw: unknown): readonly [number, number] | null | undefined {

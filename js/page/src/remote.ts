@@ -1,5 +1,6 @@
 import type {
-  AppMenu, BackdropEffect, NativeWindow, WindowApp, WindowEdge, WindowEventName, WindowMode, WindowOutput, WindowRect, WindowState,
+  AppMenu, BackdropEffect, CurrentMaterial, MaterialName, MaterialOptions, NativeWindow, WindowApp, WindowEdge, WindowEventName, WindowMaterial, WindowMode,
+  WindowOutput, WindowRect, WindowState,
 } from '@acde/api'
 import type { ServiceShape, WebInit, WireMenu } from './contract'
 import { Level, Log } from './log'
@@ -166,6 +167,7 @@ export class WindowSelf {
   #opening: Record<string, unknown> | null
   #state: WindowState = 'normal'
   #output: WindowOutput
+  #material: CurrentMaterial = Object.freeze({ material: 'none', options: Object.freeze({}) })
   onVisible: (visible: boolean) => void = () => {}
   onTitle: (title: string) => void = () => {}
   handOver: HandOver | null = null
@@ -249,6 +251,8 @@ export class WindowSelf {
       if (typeof k === 'string') throw new TypeError(k)
       this.#surface.setBackdrop(r.x, r.y, r.width, r.height, effect.radius ?? 0, effect.blur ?? 0, effect.saturate ?? 1, effect.brightness ?? 1, k)
     },
+    setMaterial: (material: MaterialName, options: MaterialOptions = {}) => this.#setMaterial(material, options),
+    material: (): CurrentMaterial => this.#material,
     requestActivate: () => this.#surface.requestActivate(),
     requestGrab: (kind: 'pointer' | 'keyboard') => this.#surface.requestGrab(kind),
     releaseGrab: (kind: 'pointer' | 'keyboard') => this.#surface.releaseGrab(kind),
@@ -264,6 +268,24 @@ export class WindowSelf {
       }
       return () => set.delete(handler)
     },
+  }
+
+  #setMaterial(material: MaterialName, options: MaterialOptions): void {
+    if (typeof material !== 'string') throw new TypeError('setMaterial: the material is a name (glass, blur or none)')
+    if (typeof options !== 'object' || options === null) throw new TypeError('setMaterial: options is an object')
+    const kept = Object.freeze({ ...options, ...(options.overrides && { overrides: Object.freeze({ ...options.overrides }) }) })
+    const effective = this.#surface.setMaterial?.(material, kept) ?? 'none'
+    this.#material = Object.freeze({ material: effective, options: kept })
+  }
+
+  useMaterial(given: WindowMaterial | null | undefined): void {
+    if (!given) return
+    const { name, ...options } = given
+    try {
+      this.#setMaterial(name, options)
+    } catch (error) {
+      Log.write(Level.Warn, 'acde_host', `window.material in the manifest: ${(error as Error).message}`)
+    }
   }
 
   #mount(app: WindowApp): void {

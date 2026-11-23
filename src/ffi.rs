@@ -344,7 +344,7 @@ impl Outgoing {
             SurfaceCommand::Backdrop(rect, [r, b, s, l, exponent]) => AcdeCommand { rect, values: [r, b, s, l], thickness: exponent, ..Kind::Backdrop.into() },
             SurfaceCommand::Activate => Kind::Activate.into(),
             SurfaceCommand::Grab(number, flag) => AcdeCommand { number, flag, ..Kind::Grab.into() },
-            SurfaceCommand::PointerLock(_) | SurfaceCommand::WindowLook(_) => return None,
+            SurfaceCommand::PointerLock(_) | SurfaceCommand::WindowLook(_) | SurfaceCommand::Material(_) => return None,
             SurfaceCommand::OpenPanel { id, token, rect, exclusive } => AcdeCommand { id, token, rect, flag: exclusive, ..Kind::OpenPanel.into() },
             SurfaceCommand::PlacePanel { id, rect, input } => AcdeCommand { id, rect, input, ..Kind::PlacePanel.into() },
             SurfaceCommand::ClosePanel(id) => AcdeCommand { id, ..Kind::ClosePanel.into() },

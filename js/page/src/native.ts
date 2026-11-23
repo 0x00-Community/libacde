@@ -93,6 +93,7 @@ export interface NativeSurface {
   setDoubleClick?(action: 'fill' | 'minimize' | 'none'): void
   setFrameTheme?(...args: number[]): void
   setWindowLook?(...args: number[]): void
+  setMaterial?(name: string, options: object): string
   motion?(preset?: string): MotionWire | null
   setPageDark?(dark: boolean): void
 }
