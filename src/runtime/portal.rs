@@ -25,6 +25,8 @@ const ACCENT_COLOR: &str = "accent-color";
 const ACDE_APPEARANCE: &str = "org.acde.appearance";
 const GLASS: &str = "glass";
 const REDUCED_TRANSPARENCY: &str = "reduced-transparency";
+const WALL_TONE: &str = "wall-tone";
+const PRIMARY_OUTPUT: &str = "primary-output";
 
 static TOKENS: AtomicU64 = AtomicU64::new(1);
 
@@ -158,6 +160,33 @@ fn accent(value: &Variant<'_>) -> Option<String> {
     }
 }
 
+fn wall_tones(value: &Variant<'_>) -> serde_json::Value {
+    let tone = |value: &Variant<'_>| match number(value) {
+        Some(1) => serde_json::json!("light"),
+        Some(2) => serde_json::json!("dark"),
+        _ => serde_json::Value::Null,
+    };
+    match value {
+        Variant::Value(inner) => wall_tones(inner),
+        Variant::Dict(tones) => {
+            let named = tones.iter().filter_map(|(output, value)| match output {
+                Variant::Str(name) => Some((name.to_string(), tone(value))),
+                _ => None,
+            });
+            serde_json::Value::Object(named.collect())
+        }
+        _ => serde_json::json!({}),
+    }
+}
+
+fn text(value: &Variant<'_>) -> Option<String> {
+    match value {
+        Variant::Value(inner) => text(inner),
+        Variant::Str(text) if !text.is_empty() => Some(text.to_string()),
+        _ => None,
+    }
+}
+
 fn appearance_change(namespace: &str, key: &str, value: &Variant<'_>) -> Option<serde_json::Value> {
     match (namespace, key) {
         (APPEARANCE, COLOR_SCHEME) => Some(serde_json::json!({ "dark": dark_scheme(value) })),
@@ -165,6 +194,8 @@ fn appearance_change(namespace: &str, key: &str, value: &Variant<'_>) -> Option<
         (APPEARANCE, ACCENT_COLOR) => Some(serde_json::json!({ "accent": accent(value) })),
         (ACDE_APPEARANCE, GLASS) => Some(serde_json::json!({ "glass": number(value).unwrap_or(0) })),
         (ACDE_APPEARANCE, REDUCED_TRANSPARENCY) => Some(serde_json::json!({ "reducedTransparency": number(value) == Some(1) })),
+        (ACDE_APPEARANCE, WALL_TONE) => Some(serde_json::json!({ "wallTones": wall_tones(value) })),
+        (ACDE_APPEARANCE, PRIMARY_OUTPUT) => Some(serde_json::json!({ "primaryOutput": text(value) })),
         _ => None,
     }
 }
@@ -227,6 +258,19 @@ impl Appearance {
         blocking(move || Ok(read())).await
     }
 
+    #[napi(ts_return_type = "Promise<{ wallTones: Record<string, 'light' | 'dark' | null>; \
+            primaryOutput: string | null }>")]
+    pub async fn walls(&self) -> Result<serde_json::Value> {
+        let connection = self.connection.clone();
+        let read = move || {
+            let tones = Self::setting(&connection, ACDE_APPEARANCE, WALL_TONE).ok();
+            let tones = tones.map_or_else(|| serde_json::json!({}), |v| wall_tones(&v));
+            let primary = Self::setting(&connection, ACDE_APPEARANCE, PRIMARY_OUTPUT).ok().and_then(|v| text(&v));
+            serde_json::json!({ "wallTones": tones, "primaryOutput": primary })
+        };
+        blocking(move || Ok(read())).await
+    }
+
     #[napi(ts_return_type = "Promise<{ glass: number; reducedTransparency: boolean; reducedMotion: boolean }>")]
     pub async fn glass(&self) -> Result<serde_json::Value> {
         let connection = self.connection.clone();
@@ -234,7 +278,8 @@ impl Appearance {
     }
 
     #[napi(ts_args_type = "callback: (change: { dark?: boolean; accent?: string | null; glass?: number; \
-            reducedTransparency?: boolean; reducedMotion?: boolean }) => void")]
+            reducedTransparency?: boolean; reducedMotion?: boolean; \
+            wallTones?: Record<string, 'light' | 'dark' | null>; primaryOutput?: string | null }) => void")]
     pub fn watch(&self, env: Env, callback: Unknown<'_>) -> Result<()> {
         self.watch.watch(&env, callback, |sink| {
             let signals = Self::changes(&self.connection).map_err(bus)?;
@@ -474,6 +519,22 @@ mod tests {
         let change = |value| appearance_change(APPEARANCE, ACCENT_COLOR, &value);
         assert_eq!(change(color(1.0, 0.0, 0.0)), Some(serde_json::json!({ "accent": "#ff0000" })));
         assert_eq!(change(color(-1.0, -1.0, -1.0)), Some(serde_json::json!({ "accent": null })));
+    }
+
+    #[test]
+    fn wall_tones_name_each_output_light_dark_or_unknown() {
+        let mut dict = zbus::zvariant::Dict::new(&zbus::zvariant::Signature::Str, &zbus::zvariant::Signature::U32);
+        for (output, tone) in [("HDMI-1", 1u32), ("DP-2", 2), ("eDP-1", 0), ("odd", 7)] {
+            dict.add(output, tone).unwrap();
+        }
+        let expected = serde_json::json!({ "HDMI-1": "light", "DP-2": "dark", "eDP-1": null, "odd": null });
+        assert_eq!(wall_tones(&Variant::Dict(dict.try_clone().unwrap())), expected);
+        assert_eq!(wall_tones(&Variant::Value(Box::new(Variant::Dict(dict)))), expected);
+        assert_eq!(wall_tones(&Variant::U32(1)), serde_json::json!({}));
+        let change = appearance_change(ACDE_APPEARANCE, PRIMARY_OUTPUT, &Variant::from("HDMI-1"));
+        assert_eq!(change, Some(serde_json::json!({ "primaryOutput": "HDMI-1" })));
+        let empty = appearance_change(ACDE_APPEARANCE, PRIMARY_OUTPUT, &Variant::from(""));
+        assert_eq!(empty, Some(serde_json::json!({ "primaryOutput": null })));
     }
 
     #[test]
