@@ -170,6 +170,7 @@ export interface DomNative {
 
   imageState(id: number): Float64Array
   takeLoaded(): Uint32Array
+  wantAnimationEvents(): void
   takeAnimationEvents(): AnimationEvents
   sheetState(id: number): number
   sheetUrl(id: number): string | null

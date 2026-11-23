@@ -480,7 +480,10 @@ impl Dom {
 
     pub fn get_elements_by_class_name(&self, root: u32, class_names: &str) -> Result<Vec<u32>> {
         let wanted: Vec<&str> = class_names.split_ascii_whitespace().collect();
-        self.elements(root, |el| !wanted.is_empty() && wanted.iter().all(|w| el.classes.iter().any(|c| &**c == *w)))
+        self.elements(root, |el| {
+            let classes = el.attr(blitz_dom::local_name!("class")).unwrap_or_default();
+            !wanted.is_empty() && wanted.iter().all(|w| classes.split_ascii_whitespace().any(|c| c == *w))
+        })
     }
 
     pub fn get_elements_by_tag_name(&self, root: u32, qualified_name: &str) -> Result<Vec<u32>> {

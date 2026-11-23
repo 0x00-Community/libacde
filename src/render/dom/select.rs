@@ -1,5 +1,5 @@
 use blitz_dom::node::{SelectItemKind, SelectPicker};
-use blitz_dom::style_dom::ElementState;
+use blitz_dom::ElementState;
 use blitz_dom::{NodeId, local_name, ns};
 
 use crate::render::engine::Engine;
@@ -88,11 +88,10 @@ impl Engine {
         if selected == shown {
             return;
         }
-        self.doc.snapshot_node_and(option, ElementState::CHECKED, |n| {
+        self.doc.change_state(option, |n| {
             if let Some(e) = n.element_data_mut() {
                 e.element_state.set(ElementState::CHECKED, selected);
             }
-            n.mark_ancestors_dirty();
         });
         if let Some(select) = self.owner_select(option) {
             self.doc.rebuild_select(select);

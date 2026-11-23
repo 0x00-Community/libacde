@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 
 use blitz_dom::node::{ImageData, SpecialElementData, TextInputData};
-use blitz_dom::style_dom::ElementState;
+use blitz_dom::ElementState;
 use blitz_dom::{BaseDocument, Node, NodeData, NodeId, QualName, ns};
 
 use crate::render::canvas::Canvas;
@@ -25,7 +25,7 @@ mod values;
 
 pub use types::{AnimationEvent, AnimationEvents, NodeType, Ns, Quad, Viewport};
 
-use values::{Control, Piece, RangeValue, collapse_whitespace, css_context, namespace, ns_of, number_string};
+use values::{Control, Piece, RangeValue, collapse_whitespace, namespace, ns_of, number_string};
 
 const INPUT_TTL_MS: f64 = 1000.0;
 

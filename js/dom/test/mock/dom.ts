@@ -1,5 +1,6 @@
 import { PropertySymbol, Window } from 'happy-dom'
 import type { AnimationEventRecord, AnimationEvents, DomNative, DomStats, Metrics } from '../../src/native.ts'
+import { parseColor } from './color.ts'
 
 type HNode = any
 
@@ -603,21 +604,7 @@ export class MockDom implements DomNative {
     return new Float64Array(0)
   }
   parseColor(color: string): Float64Array | null {
-    const named: Record<string, number[]> = {
-      black: [0, 0, 0], white: [255, 255, 255], red: [255, 0, 0], darkblue: [0, 0, 139], rebeccapurple: [102, 51, 153], transparent: [0, 0, 0, 0],
-    }
-    const text = color.trim().toLowerCase()
-    const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(text)
-    let rgba: number[] | undefined = named[text]
-    if (hex) {
-      const h = hex[1]!.length === 3 ? [...hex[1]!].map((c) => c + c).join('') : hex[1]!
-      rgba = [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
-    }
-    const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,/]+([\d.]+))?\s*\)$/.exec(text)
-    if (rgb) rgba = [Number(rgb[1]), Number(rgb[2]), Number(rgb[3]), rgb[4] === undefined ? 1 : Number(rgb[4])]
-    if (text === 'oklch(0.628 0.2577 29.23)') rgba = [255, 0, 0]
-    if (!rgba) return null
-    return Float64Array.of(rgba[0]! / 255, rgba[1]! / 255, rgba[2]! / 255, rgba[3] ?? 1)
+    return parseColor(color)
   }
   sheetRuleCount(id: number): number {
     const node = this._node(id)
@@ -714,6 +701,8 @@ export class MockDom implements DomNative {
   setOpenState(id: number, modal: boolean, open: boolean): void {
     this.openStates.set(id, { modal, open })
   }
+
+  wantAnimationEvents(): void {}
 
   takeAnimationEvents(): AnimationEvents {
     return { animating: false, events: this.animationEvents.splice(0) }

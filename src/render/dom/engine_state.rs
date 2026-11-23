@@ -183,14 +183,13 @@ impl Engine {
             }
             Control::Checkable => {
                 let checked = self.checked(node);
-                self.doc.snapshot_node_and(node, ElementState::CHECKED, |n| {
+                self.doc.change_state(node, |n| {
                     if let Some(e) = n.element_data_mut() {
                         if !matches!(e.special_data, SpecialElementData::CheckboxInput(_)) {
                             e.special_data = SpecialElementData::CheckboxInput(checked);
                         }
                         e.set_checkbox_input_checked(checked);
                     }
-                    n.mark_ancestors_dirty();
                 });
             }
             _ => {}
@@ -221,11 +220,10 @@ impl Engine {
         };
         self.doc.set_focus_to(node);
         let Some(focused) = self.doc.get_focussed_node_id() else { return };
-        self.doc.snapshot_node_and(focused, ElementState::FOCUSRING, |n| {
+        self.doc.change_state(focused, |n| {
             if let Some(e) = n.element_data_mut() {
                 e.element_state.set(ElementState::FOCUSRING, visible);
             }
-            n.mark_ancestors_dirty();
         });
     }
 
@@ -241,10 +239,10 @@ impl Engine {
         let old = elements(self, self.active);
         let new = elements(self, node);
         for &a in old.iter().filter(|a| !new.contains(a)) {
-            self.doc.snapshot_node_and(a, ElementState::ACTIVE, |n| n.unactive());
+            self.doc.change_state(a, |n| n.unactive());
         }
         for &a in new.iter().filter(|a| !old.contains(a)) {
-            self.doc.snapshot_node_and(a, ElementState::ACTIVE, |n| n.active());
+            self.doc.change_state(a, |n| n.active());
         }
         self.active = node;
     }
@@ -310,14 +308,7 @@ impl Engine {
     }
 
     pub(in crate::render::dom) fn match_media(&mut self, query: &str) -> bool {
-        use blitz_dom::style::media_queries::MediaList;
-        use blitz_dom::style::stylesheets::{CssRuleType, CustomMediaEvaluator, UrlExtraData};
-        let url = UrlExtraData::from(self.doc.url().clone());
-        let mut context = css_context(&url, CssRuleType::Media);
-        let mut parser = blitz_dom::cssparser::Parser::new(query);
-        let list = MediaList::parse(&mut context, &mut parser);
-        let device = self.doc.stylist_device();
-        list.evaluate(device, blitz_dom::style::context::QuirksMode::NoQuirks, &mut CustomMediaEvaluator::none())
+        self.doc.media_matches(query)
     }
 
     pub(in crate::render::dom) fn scroll_to(&mut self, node: NodeId, left: f64, top: f64, smooth: bool) {
@@ -435,7 +426,7 @@ impl Engine {
 
     pub(in crate::render::dom) fn inner_text(&self, node: NodeId) -> String {
         let Some(n) = self.doc.get_node(node) else { return String::new() };
-        if !n.is_element() || n.primary_styles().is_none() {
+        if !n.is_element() || n.style().is_none() {
             return n.text_content();
         }
         let mut pieces = Vec::new();
@@ -467,13 +458,13 @@ impl Engine {
     }
 
     pub(in crate::render::dom) fn inner_text_walk(&self, n: &Node, out: &mut Vec<Piece>) {
-        use blitz_dom::style::computed_values::visibility::T as Visibility;
-        use blitz_dom::style::values::specified::box_::DisplayOutside;
+        use blitz_dom::DisplayOutside;
+        use blitz_dom::acss::properties::keywords::Visibility;
         for &child in &n.children {
             let Some(c) = self.doc.get_node(child) else { continue };
             match &c.data {
                 NodeData::Text(t) => {
-                    let visible = n.primary_styles().is_some_and(|s| s.clone_visibility() == Visibility::Visible);
+                    let visible = n.style().is_some_and(|s| *s.groups.visibility() == Visibility::Visible);
                     if !visible {
                         continue;
                     }
@@ -493,8 +484,7 @@ impl Engine {
                     }));
                 }
                 NodeData::Element(e) => {
-                    let Some(style) = c.primary_styles() else { continue };
-                    let display = style.get_box().display;
+                    let Some(display) = c.display_style() else { continue };
                     if display.is_none() {
                         continue;
                     }
@@ -525,17 +515,8 @@ impl Engine {
     }
 
     pub(in crate::render::dom) fn parse_color(&mut self, text: &str) -> Option<[f64; 4]> {
-        use blitz_dom::style::color::{AbsoluteColor, ColorSpace};
-        use blitz_dom::style::stylesheets::{CssRuleType, UrlExtraData};
-        let url = UrlExtraData::from(self.doc.url().clone());
-        let context = css_context(&url, CssRuleType::Style);
-        let mut parser = blitz_dom::cssparser::Parser::new(text);
-        let device = self.doc.stylist_device();
-        let computed = blitz_dom::style::values::specified::Color::parse_and_compute(&context, &mut parser, Some(device)).ok()?;
-        let color = computed.resolve_to_absolute(&AbsoluteColor::BLACK).to_color_space(ColorSpace::Srgb);
-        let [r, g, b, _] = *color.raw_components();
-        let channel = |v: f32| if v.is_finite() { f64::from(v).clamp(0.0, 1.0) } else { 0.0 };
-        Some([channel(r), channel(g), channel(b), channel(color.alpha().unwrap_or(0.0))])
+        // currentcolor is opaque black, as before (canvas resolves it against the canvas element)
+        blitz_dom::acss::parse_color(text)
     }
 
     pub(in crate::render::dom) fn svg_rect(&mut self, node: NodeId) -> Option<crate::render::Rect> {

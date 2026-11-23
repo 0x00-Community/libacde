@@ -91,11 +91,10 @@ impl Dom {
         self.write(|e| {
             let node = e.n(id)?;
             let state = if modal { ElementState::MODAL } else { ElementState::POPOVER_OPEN };
-            e.doc.snapshot_node_and(node, state, |n| {
+            e.doc.change_state(node, |n| {
                 if let Some(data) = n.element_data_mut() {
                     data.element_state.set(state, open);
                 }
-                n.mark_ancestors_dirty();
             });
             Ok(())
         })
@@ -231,6 +230,15 @@ impl Dom {
 
     pub fn take_loaded(&self) -> Vec<u32> {
         self.read(|e| Ok(e.take_loaded())).unwrap_or_default()
+    }
+
+    /// The page listens for CSS animation and transition events: from now on the engine keeps them
+    /// for `take_animation_events`
+    pub fn want_animation_events(&self) -> Result<()> {
+        self.read(|e| {
+            e.doc.want_animation_events();
+            Ok(())
+        })
     }
 
     pub fn take_animation_events(&self) -> AnimationEvents {
