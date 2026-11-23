@@ -11,7 +11,7 @@
     background use wlr-layer-shell.
   </description>
 
-  <interface name="acompositor_desktop_v1" version="13">
+  <interface name="acompositor_desktop_v1" version="14">
     <description summary="the desktop's handle on acompositor">
       On bind acompositor sends a window event for every toplevel already shown, then
       work_area, then done. Later windows come as they are shown. From version 2 the
@@ -34,7 +34,8 @@
       with acompositor's answer, keyboard focus, windows shown and hidden, drags.
       From version 12 such a client also asks how the screen is drawn (render_state) and
       where a point lands (hit). From version 13 windows (acompositor_window_v1 version 8)
-      say whether their client answers acompositor's pings.
+      say whether their client answers acompositor's pings. From version 14 the desktop
+      sets windows aside (acompositor_window_v1 version 9).
     </description>
 
     <enum name="error">
@@ -420,7 +421,7 @@
     </request>
   </interface>
 
-  <interface name="acompositor_window_v1" version="8">
+  <interface name="acompositor_window_v1" version="9">
     <description summary="one toplevel of any client"/>
 
     <request name="destroy" type="destructor"/>
@@ -542,6 +543,17 @@
     <request name="set_hidden">
       <description summary="hide the window without minimizing it (virtual desktops), or show it again"/>
       <arg name="hidden" type="uint"/>
+    </request>
+
+    <request name="set_aside" since="9">
+      <description summary="keep the window out of window cycling and of the keyboard's next pick">
+        1 sets the window aside, as for a panel the desktop opens as a window: Super+Tab
+        passes it over, and when the keyboard needs a new window acompositor never picks
+        it. A click still gives it the keyboard, as for an on-demand panel. 0 makes it an
+        ordinary window again. Only the desktop's own connection may call it; acompositor
+        ignores the request from any other connection.
+      </description>
+      <arg name="on" type="uint"/>
     </request>
 
     <request name="set_state">
