@@ -140,7 +140,7 @@
 - **调试通道** (`js/launcher/src/dev/dev.ts` 的 `DevChannel`, acdev-single-app 工作项 10、11): 宿主窗口的 `devrequest` 事件 (hostwin `dev.rs`
   转来的 `acdev dev` 请求, 协议见 `docs/dev/dev-ipc.md`) 由本进程按单页回答, 结果经 `Shell.devRespond` 回去; 页面发来的 `{devlog}` (console、
   错误、请求、对话框) 收进 `DevLog`, `{devroute}` 记下假回应用掉一次. `dev-ipc.md` 的请求类型都回答: `snapshot` / `act` / `run` / `query` /
-  `input` 由 `inspect.ts` (删 `web/` 前的 `inspect.ts` 取回, 只登记本进程的窗口) 经页面的 `inspect` 服务做; `route` / `init` 记在启动方,
+  `input` 由 `inspect.ts` (删 `web/` 前的 `inspect.ts` 取回, 只登记本进程的窗口; 它用的类型和常量在 `dev/inspect/types.ts`, 快照文字的窗口行、窗框菜单节点在 `dev/inspect/text.ts`, 2026-11-23 为行数门禁拆出) 经页面的 `inspect` 服务做; `route` / `init` 记在启动方,
   当场推给页面并在重载时随 `WebInit.devRoutes` / `devInit` 带上; `reload` 和 `acdev dev` 改了文件后的 `devreload` (非热替换时) 先取页面状态
   (`dev.state`, 最多 500 毫秒) 再重新找应用、重开页面并带上 `devState`, 热替换只发 `devhot`. 单应用的特例: `open` 报“没有别的应用”;
   `permissions` 恒为空、`answer` 找不到提示、`revoke` 回 `revoked: false` (单应用不问用户); `resize` 改宿主窗口大小 (`resizeScreen`);

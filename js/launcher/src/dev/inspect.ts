@@ -4,118 +4,24 @@ import { looked, type ActResult, type InspectStep, type Query, type QueryOptions
 import { chordCodes, keyCode } from '../../../page/src/keys'
 import type { PageNode, PagePoint, PageQuery, PageTree } from '../../../page/src/pageinspect'
 import type { Rpc } from '../../../page/src/rpc'
+import { header, menubar, outline } from './inspect/text'
+import {
+  LEFT,
+  MIDDLE,
+  MODIFIERS,
+  RIGHT,
+  type Aliases,
+  type Box,
+  type InspectHost,
+  type InspectInput,
+  type MenuGeometry,
+  type NativeNode,
+  type Point,
+  type ShellWindow,
+  type Tree,
+} from './inspect/types'
 
-export interface ShellWindow {
-  readonly id: number
-  readonly state?: 'normal' | 'minimized' | 'filled' | 'fullscreen'
-  readonly window?: number
-  readonly canvas: number
-  readonly mode: string
-  readonly x: number
-  readonly y: number
-  readonly width: number
-  readonly height: number
-  readonly z: number
-  readonly focus: boolean
-  readonly hidden?: boolean
-  readonly pid?: number | null
-  readonly parent?: number | null
-  readonly modal?: boolean
-  readonly minimize?: boolean
-}
-
-export interface InjectEvent {
-  type: 'move' | 'motion' | 'down' | 'up' | 'wheel' | 'keydown' | 'keyup'
-  x?: number
-  y?: number
-  button?: number
-  dx?: number
-  dy?: number
-  source?: 'wheel' | 'finger' | 'continuous'
-  code?: number
-}
-
-export interface InspectShell {
-  focus(window: number): void
-  setState?(window: number, state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
-  windows(): ShellWindow[]
-  menus?(window: number): string | null
-  inject(event: InjectEvent): void
-}
-
-export interface NativeAccessibility {
-  tree(pid: number, title: string | null, limit: number): Promise<string | null>
-  act(node: string, action: string, text?: string | null): Promise<boolean>
-}
-
-export interface InspectHost {
-  readonly shell: InspectShell
-  web(window: number): Rpc | null
-  record(window: number): { readonly kind: 'native' | 'web'; readonly app: string | null; readonly title: string | null; readonly state?: WindowState } | null
-  panel(window: number): boolean
-  close(window: number): Promise<unknown>
-  hide(window: number, hidden: boolean): void
-  open(name: string): Promise<string>
-  accessibility(): Promise<NativeAccessibility | null>
-  records(): readonly number[]
-  ref?(window: number): string | null
-}
-
-interface NativeNode {
-  readonly id: string
-  readonly role: string
-  readonly name?: string
-  readonly value?: string
-  readonly states?: readonly string[]
-  readonly rect?: readonly [number, number, number, number] | null
-  readonly actions?: readonly string[]
-  readonly more?: number
-  readonly children?: readonly NativeNode[]
-}
-
-interface Aliases {
-  readonly byKey: Map<string, number>
-  readonly byNumber: Map<number, { key: string; rect: readonly [number, number, number, number] | null }>
-  next: number
-}
-
-interface Tree {
-  readonly nodes: InspectNode[]
-  readonly notes: string[]
-}
-
-type Box = readonly [number, number, number, number]
-
-interface MenuGeometry {
-  readonly menus: readonly { readonly id: string; readonly label: string; readonly rect: Box }[]
-  readonly open: {
-    readonly index: number
-    readonly hover: number | null
-    readonly items: readonly {
-      readonly label: string
-      readonly shortcut: string | null
-      readonly checked: boolean
-      readonly disabled: boolean
-      readonly separator: boolean
-      readonly rect: Box
-    }[]
-  } | null
-}
-
-const LEFT = 0x110
-const RIGHT = 0x111
-const MIDDLE = 0x112
-const MODIFIERS = new Set(['shift', 'ctrl', 'control', 'alt', 'option', 'meta', 'super', 'cmd', 'command'])
-
-export type InspectInput =
-  | { readonly type: 'move'; readonly x: number; readonly y: number }
-  | { readonly type: 'down' | 'up'; readonly x: number; readonly y: number; readonly button?: 'left' | 'right' | 'middle' }
-  | { readonly type: 'wheel'; readonly x: number; readonly y: number; readonly dx?: number; readonly dy?: number }
-  | { readonly type: 'keydown' | 'keyup'; readonly key: string }
-  | { readonly type: 'text'; readonly text: string }
-  | { readonly type: 'wait'; readonly ms: number }
-
-type Point = { readonly x: number; readonly y: number } | { readonly error: string }
+export type { InjectEvent, InspectHost, InspectInput, InspectShell, NativeAccessibility, ShellWindow } from './inspect/types'
 
 export class Inspect {
   static readonly LIMIT = 600
@@ -213,7 +119,7 @@ export class Inspect {
     const wanted = parsed ? `w${parsed.window}` : options.window
     const targets = Inspect.#targets(windows, options, wanted, find)
     if (wanted && !targets.length) throw Object.assign(new Error(`no window ${wanted}`), { status: 404 })
-    const headers = windows.map((w) => Inspect.#header(w))
+    const headers = windows.map((w) => header(w))
     const same = options.diff && this.#headers === headers.join('\n')
     this.#headers = headers.join('\n')
     const trees: Record<string, readonly InspectNode[]> = {}
@@ -225,21 +131,12 @@ export class Inspect {
       trees[window.ref] = shown.nodes
       bodies.set(window.ref, shown.lines)
     }
-    const lines = Inspect.#outline(windows, headers, bodies, same === true)
+    const lines = outline(windows, headers, bodies, same === true)
     const hint = options.offscreen ? '' : '; elements outside the visible area are left out: scroll, add offscreen, or try another window'
     if (find && !Object.keys(trees).length) lines.push(`(no element contains ${JSON.stringify(options.find!.trim())}${hint})`)
     return { text: lines.join('\n'), windows, trees }
   }
 
-  static #outline(windows: InspectWindow[], headers: string[], bodies: Map<string, string[]>, same: boolean): string[] {
-    const lines: string[] = same ? ['(windows unchanged)'] : []
-    for (const [i, window] of windows.entries()) {
-      const body = bodies.get(window.ref)
-      if (same && !body) continue
-      lines.push(headers[i]!, ...(body ?? []).map((line) => `  ${line}`))
-    }
-    return lines
-  }
 
   static #targets(windows: InspectWindow[], options: SnapshotOptions, wanted: string | undefined, find: string | null): InspectWindow[] {
     if (options.tree === false) return []
@@ -770,7 +667,7 @@ export class Inspect {
     if (tree.hidden) notes.push(`(${tree.hidden} more outside the visible area; scroll, or add offscreen)`)
     if (tree.truncated) notes.push(`(too many elements, listed ${limit}; snapshot a ref to see what is under it)`)
     const menus = node === null ? this.#menus(window) : null
-    return { nodes: [...(menus ? [Inspect.#menubar(window, menus)] : []), ...tree.nodes.map(convert)], notes }
+    return { nodes: [...(menus ? [menubar(window, menus)] : []), ...tree.nodes.map(convert)], notes }
   }
 
   #menus(window: InspectWindow): MenuGeometry | null {
@@ -780,34 +677,6 @@ export class Inspect {
     return geometry.menus.length ? geometry : null
   }
 
-  static #menubar(window: InspectWindow, geometry: MenuGeometry): InspectNode {
-    const [ox, oy] = window.rect
-    const at = ([x, y, w, h]: Box): Box => [x + ox, y + oy, w, h]
-    const menus = geometry.menus.map((menu, i): InspectNode => {
-      const open = geometry.open?.index === i ? geometry.open : null
-      const items = (open?.items ?? []).flatMap((item, k): InspectNode[] => {
-        if (item.separator) return []
-        const states = [...(item.disabled ? ['disabled'] : []), ...(item.checked ? ['checked'] : []), ...(open?.hover === k ? ['focused'] : [])]
-        return [{
-          ref: `${window.ref}.m${i + 1}.${k + 1}`,
-          role: 'menuitem',
-          name: item.label,
-          ...(item.shortcut ? { value: item.shortcut } : {}),
-          ...(states.length ? { states } : {}),
-          rect: at(item.rect),
-        }]
-      })
-      return {
-        ref: `${window.ref}.m${i + 1}`,
-        role: 'menuitem',
-        name: menu.label,
-        states: [open ? 'expanded' : 'collapsed'],
-        rect: at(menu.rect),
-        ...(items.length ? { children: items } : {}),
-      }
-    })
-    return { ref: `${window.ref}.m`, role: 'menubar', children: menus }
-  }
 
   async #menuAct(window: InspectWindow, menu: number, item: number | null, action: InspectAction): Promise<ActResult> {
     const ref = `${window.ref}.m${menu}${item === null ? '' : `.${item}`}`
@@ -915,13 +784,6 @@ export class Inspect {
     return windows.map((w) => `${w.ref}${w.focus ? '*' : ''}${w.hidden ? '-' : ''}`).join(' ')
   }
 
-  static #header(w: InspectWindow): string {
-    const flags = [w.app ? `app=${w.app}` : '', w.kind === 'native' ? 'native' : '', w.focus ? 'focused' : '', w.hidden ? 'minimized' : '']
-    if (w.mode !== 'free') flags.push(w.mode)
-    if ((w.state === 'filled' || w.state === 'fullscreen') && !flags.includes(w.state)) flags.push(w.state)
-    const title = w.title ? ` ${JSON.stringify(w.title)}` : ''
-    return `- ${w.kind === 'desktop' ? 'desktop' : 'window'}${title}${flags.map((f) => (f ? ` [${f}]` : '')).join('')} [${w.ref}]`
-  }
 
   static #sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
