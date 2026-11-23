@@ -42,6 +42,7 @@ export interface DevHost {
   inspect(): Inspect
   reload(): Promise<void>
   open?(given: DevOpen): Promise<DevOpened>
+  appearance?(change: { readonly glass?: number; readonly reducedTransparency?: boolean }): { readonly level: number; readonly reducedTransparency: boolean }
   respond?(id: number, ok: boolean, payload: string): void
   place?(windows: unknown): void
   readonly production?: boolean
@@ -51,6 +52,12 @@ export interface DevOpen {
   readonly name: string | null
   readonly path: string | null
   readonly url: string | null
+}
+
+export interface DevAppearance {
+  readonly scheme?: 'light' | 'dark' | null
+  readonly glass?: number
+  readonly reducedTransparency?: boolean
 }
 
 export interface DevOpened {
@@ -242,6 +249,8 @@ export class DevChannel {
       }
       case 'emulate':
         return this.#emulate(args['colorScheme'])
+      case 'appearance':
+        return this.#appearance(DevChannel.appearing(args))
       case 'choose':
         return this.#choose(args)
       case 'drop':
@@ -346,6 +355,27 @@ export class DevChannel {
       this.#host.page()?.post({ type: 'colorscheme', dark: this.dark })
     }
     return { colorScheme: this.dark ? 'dark' : 'light', emulated: this.#emulated !== null }
+  }
+
+  static readonly GLASS = ['clear', 'medium', 'tinted'] as const
+
+  static appearing(args: Record<string, unknown>): DevAppearance {
+    const { scheme, glass, reducedTransparency } = args
+    if (scheme !== undefined && scheme !== null && scheme !== 'light' && scheme !== 'dark')
+      throw new Error(`appearance: scheme is light, dark or null, not ${JSON.stringify(scheme)}`)
+    const level = glass === undefined ? undefined : DevChannel.GLASS.indexOf(glass as (typeof DevChannel.GLASS)[number])
+    if (level === -1) throw new Error(`appearance: glass is one of ${DevChannel.GLASS.join(', ')}, not ${JSON.stringify(glass)}`)
+    if (reducedTransparency !== undefined && typeof reducedTransparency !== 'boolean') throw new Error('appearance: reducedTransparency is true or false')
+    const transparency = reducedTransparency === undefined ? {} : { reducedTransparency }
+    return { ...(scheme !== undefined && { scheme }), ...(level !== undefined && { glass: level }), ...transparency }
+  }
+
+  #appearance({ scheme, glass, reducedTransparency }: DevAppearance): Record<string, unknown> {
+    if (scheme !== undefined) this.#emulate(scheme)
+    if (!this.#host.appearance) throw new Error('appearance: this session cannot change the glass')
+    const now = this.#host.appearance({ ...(glass !== undefined && { glass }), ...(reducedTransparency !== undefined && { reducedTransparency }) })
+    const shown = DevChannel.GLASS[now.level] ?? DevChannel.GLASS[0]
+    return { scheme: this.dark ? 'dark' : 'light', glass: shown, reducedTransparency: now.reducedTransparency, emulated: this.#emulated !== null }
   }
 
   static opening(args: Record<string, unknown>): DevOpen {

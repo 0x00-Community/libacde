@@ -47,6 +47,10 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
   - `screen {path}` → `Shell.screenshot(path)` 加 `path` (绝对路径; 整个屏幕, 所有窗口合在一起).
   - `emulate {colorScheme?: light | dark | null}` → `{colorScheme, emulated}`: 所有页面 (和以后开的) 的 `prefers-color-scheme`
     (CSS 和 `matchMedia`); null 回到系统的 (portal / `ACDE_COLOR_SCHEME`). 模拟配色时系统配色的变化只记下, 回到系统时再生效.
+  - `appearance {scheme?: light | dark | null, glass?: clear | medium | tinted, reducedTransparency?: boolean}` (2026-11-23, acdev `acdev appearance`)
+    → `{scheme, glass, reducedTransparency, emulated}`: 不给的不变, 什么都不给只读. `scheme` 同 `emulate` 的 colorScheme; `glass` 和 `reducedTransparency` 交启动器
+    `#appearance` (和 portal 的外观变化同一条路, 发 `glass` 消息给页面, 页面 `setGlass` 重算样式和 `prefers-reduced-transparency`), 之后 portal 的变化照常覆盖.
+    形状由 `DevChannel.appearing` 查. 会话里同名请求由 acdes 管家做, 改的是系统真实设置 (`backend.setAppearance` 那一路), 登录页、锁屏、桌面都跟着变.
   - `choose {folder | open | save}` (恰好给一个) → 原样回: 事先答复页面下一次的这种选择器, 不弹窗, 三种各排各的队列, null 当作用户取消.
     `folder: 绝对路径` 答 `showDirectoryPicker`; `open: [绝对路径, …]` (不空) 答 `showOpenFilePicker` / `<input type=file>`, 多于一个而这次
     不许多选时这次回错; `save: 绝对路径` 答 `showSaveFilePicker`. napi `Shell.answerFolder` / `answerOpen` / `answerSave` → hostwin 的队列,

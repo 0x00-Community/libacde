@@ -202,3 +202,16 @@ describe('DevChannel.opening', () => {
     assert.throws(() => DevChannel.opening({ name: 3 }), /name is a non-empty string/)
   })
 })
+
+describe('DevChannel.appearing', () => {
+  test('reads the scheme, the glass by name and reduced transparency, and refuses the rest', () => {
+    assert.deepEqual(DevChannel.appearing({}), {})
+    const given = { scheme: 'dark', glass: 'tinted', reducedTransparency: true }
+    assert.deepEqual(DevChannel.appearing(given), { scheme: 'dark', glass: 2, reducedTransparency: true })
+    assert.deepEqual(DevChannel.appearing({ scheme: null, glass: 'clear' }), { scheme: null, glass: 0 })
+    assert.throws(() => DevChannel.appearing({ scheme: 'dim' }), /scheme is light, dark or null/)
+    assert.throws(() => DevChannel.appearing({ glass: 'frosted' }), /glass is one of clear, medium, tinted/)
+    assert.throws(() => DevChannel.appearing({ glass: 1 }), /glass is one of/)
+    assert.throws(() => DevChannel.appearing({ reducedTransparency: 'on' }), /reducedTransparency is true or false/)
+  })
+})

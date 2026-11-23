@@ -216,6 +216,10 @@ class Launcher {
       inspect: () => this.#inspector(),
       reload: () => this.#devReload(false),
       open: (given) => this.#devOpen(given),
+      appearance: (change) => {
+        this.#appearance(change)
+        return this.#glass
+      },
       ...(relay && { respond: relay.respond }),
       ...(this.#guest && { place: (windows: unknown) => this.#guest!.place(windows) }),
       production: !process.env['ACDE_DEV'],
