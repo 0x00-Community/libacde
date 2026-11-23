@@ -23,6 +23,8 @@ export interface WindowAppConfig {
   readonly multiple?: boolean
   readonly frame?: boolean
   readonly window?: AppManifest['window']
+  readonly lifecycle?: AppManifest['lifecycle']
+  readonly actions?: AppManifest['actions']
   readonly mimeTypes?: readonly string[]
   readonly backend?: false | BackendConfig
 }
