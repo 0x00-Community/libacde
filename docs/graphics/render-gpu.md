@@ -240,6 +240,9 @@
   选适配器: 读 `/sys/class/drm/<节点名>/device/{vendor,device}`, 和 wgpu `AdapterInfo` 的 `vendor` / `device` 对上的用它; 对不上 (GL 后端常报 0) 时,
   非软件适配器恰好一个就用它; 有几个时 (WSL 的 D3D12 设备没有 PCI 编号, 渲染节点挂在 faux_driver 下) 先挑名字含 `MESA_D3D12_DEFAULT_ADAPTER_NAME`
   的 (Mesa 在 WSL 里按名字选卡的同一个变量), 再挑独显, 记一行 info. EGL 无表面平台由 Mesa 自己挑设备, 不能按节点指定, 所以 GLES 下这个比对只是核对.
+  软件适配器 (wgpu `DeviceType::Cpu`, 即 lavapipe 或 llvmpipe) 在 `open_hardware` 和按节点选的 `pick` 里默认排除 (没有 GPU 时页面走 vello_cpu).
+  只为开发和测量 (2026-11-23, 总仓 `.scratch/acdev/windows-3d.md` 的 A1 实验): 环境变量 `ACDE_GPU_ALLOW_CPU=1` (`gpu::ALLOW_CPU`, `gpu::allow_cpu()`) 时
+  不再排除, 排在所有硬件设备之后, 选中时记一行 warn (设备名、类型、驱动). 这不是正式路线, 默认不开, 哪条路线由用户定.
 - 不合规的 Vulkan 驱动 (2026-11-22, 用户要 WSL 用真显卡): wgpu-hal 把一致性版本为 0 的驱动 (WSL 的 Dozen, 即 dzn) 藏起来, 除非实例带
   `InstanceFlags::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER`; libacde 建实例的地方 (`gpu::adapters`、`vello::Device` 的枚举) 都带上它. 宿主窗口和
   会话里自开设备的 `Gpu::open` / `Gpu::open_with(label, fits)` 按名字 (`MESA_D3D12_DEFAULT_ADAPTER_NAME`) → 合规独显 → 合规集显 → 不合规独显 →

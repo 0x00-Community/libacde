@@ -73,6 +73,12 @@ pub fn adapters() -> (wgpu::Instance, Vec<Candidate>) {
 
 pub const NAMED: &str = "MESA_D3D12_DEFAULT_ADAPTER_NAME";
 
+pub const ALLOW_CPU: &str = "ACDE_GPU_ALLOW_CPU";
+
+pub fn allow_cpu() -> bool {
+    std::env::var(ALLOW_CPU).is_ok_and(|value| value == "1")
+}
+
 fn instance(flags: wgpu::InstanceFlags) -> wgpu::Instance {
     wgpu::Instance::new(wgpu::InstanceDescriptor { backends: super::BACKEND, flags, ..wgpu::InstanceDescriptor::new_without_display_handle_from_env() })
 }

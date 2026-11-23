@@ -6,7 +6,7 @@ pub use crate::vello::{Backend, Device, Fence};
 pub use crate::vello::{GpuImage, ImageSet};
 pub use acde_scene::*;
 pub use compositor::{Compositor, Offscreen};
-pub use gpu::{Candidate, DeviceRequest, ErrorSink, Fits, Gpu, NAMED, adapters, lock, set_error_sink, texture, webgpu_features};
+pub use gpu::{ALLOW_CPU, Candidate, DeviceRequest, ErrorSink, Fits, Gpu, NAMED, adapters, allow_cpu, lock, set_error_sink, texture, webgpu_features};
 pub use {kurbo, peniko, wgpu};
 
 pub const BACKEND: wgpu::Backends = cfg_select! {

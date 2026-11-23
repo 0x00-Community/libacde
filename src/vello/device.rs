@@ -68,9 +68,10 @@ impl Device {
 
     pub fn open_hardware() -> Result<Self, String> {
         let mut errors = Vec::new();
-        let mut adapters: Vec<_> = Self::adapters(Backend::Vulkan).into_iter().filter(|a| a.get_info().device_type != wgpu::DeviceType::Cpu).collect();
+        let mut adapters: Vec<_> = Self::adapters(Backend::Vulkan).into_iter().filter(Self::admitted).collect();
         adapters.sort_by_key(|a| match a.get_info().device_type {
             wgpu::DeviceType::DiscreteGpu | wgpu::DeviceType::IntegratedGpu => 0,
+            wgpu::DeviceType::Cpu => 2,
             _ => 1,
         });
         let (adapter, opened) = adapters
@@ -83,6 +84,7 @@ impl Device {
                 }
             })
             .ok_or_else(|| if errors.is_empty() { "no GPU (Vulkan)".to_string() } else { errors.join("; ") })?;
+        Self::note_cpu(&adapter);
         Ok(Self::assemble(&adapter, opened, Backend::Vulkan, Ok(())))
     }
 
@@ -136,8 +138,26 @@ impl Device {
 
     fn on_node(backend: Backend, node: &Path) -> Result<(wgpu::Adapter, Opened), String> {
         let adapter = Self::pick(Self::adapters(backend), Self::pci_ids(node), backend, node)?;
+        Self::note_cpu(&adapter);
         let opened = Self::open_adapter(backend, &adapter).map_err(|e| format!("{}: {e}", adapter.get_info().name))?;
         Ok((adapter, opened))
+    }
+
+    fn admitted(adapter: &wgpu::Adapter) -> bool {
+        adapter.get_info().device_type != wgpu::DeviceType::Cpu || crate::gpu::allow_cpu()
+    }
+
+    fn note_cpu(adapter: &wgpu::Adapter) {
+        let info = adapter.get_info();
+        if info.device_type == wgpu::DeviceType::Cpu {
+            log::warn!(
+                "{} ({:?}, driver {}): a CPU device, taken because {}=1 (development and measuring only)",
+                info.name,
+                info.device_type,
+                info.driver,
+                crate::gpu::ALLOW_CPU
+            );
+        }
     }
 
     fn pci_ids(node: &Path) -> Option<(u32, u32)> {
@@ -151,7 +171,7 @@ impl Device {
 
     fn pick(adapters: Vec<wgpu::Adapter>, ids: Option<(u32, u32)>, backend: Backend, node: &Path) -> Result<wgpu::Adapter, String> {
         let names: Vec<String> = adapters.iter().map(|a| format!("{} ({:?})", a.get_info().name, a.get_info().device_type)).collect();
-        let mut hardware: Vec<_> = adapters.into_iter().filter(|a| a.get_info().device_type != wgpu::DeviceType::Cpu).collect();
+        let mut hardware: Vec<_> = adapters.into_iter().filter(Self::admitted).collect();
         if let Some((vendor, device)) = ids
             && let Some(at) = hardware.iter().position(|a| (a.get_info().vendor, a.get_info().device) == (vendor, device))
         {
@@ -160,7 +180,8 @@ impl Device {
         let named = std::env::var(crate::gpu::NAMED).ok().filter(|name| !name.is_empty());
         hardware.sort_by_key(|a| {
             let info = a.get_info();
-            (!named.as_deref().is_some_and(|name| info.name.contains(name)), info.device_type != wgpu::DeviceType::DiscreteGpu)
+            let cpu = info.device_type == wgpu::DeviceType::Cpu;
+            (cpu, !named.as_deref().is_some_and(|name| info.name.contains(name)), info.device_type != wgpu::DeviceType::DiscreteGpu)
         });
         match hardware.len() {
             0 if names.is_empty() => Err(format!("no {backend:?} adapter")),
