@@ -22,6 +22,7 @@ export type GuestRole = 'app' | 'desktop' | 'lock' | 'confirm'
 
 export interface GuestExtras {
   readonly inject?: InspectShell['inject']
+  readonly play?: InspectShell['play']
   readonly panels?: () => readonly ShellWindow[]
   readonly window?: (change: GuestWindowChange) => void
 }
@@ -97,7 +98,7 @@ export class GuestWindows {
   }
 
   host(base: InspectHost, local: () => number, extra: GuestExtras = {}): InspectHost {
-    const { inject, panels, window } = extra
+    const { inject, play, panels, window } = extra
     const own = (id: number) => this.placed && id === this.mine()
     const to = (id: number) => (own(id) ? local() : id)
     const winman = (id: number) => (window && this.placed && id !== 0 && this.row(id) ? window : null)
@@ -120,6 +121,7 @@ export class GuestWindows {
       }),
       windows: () => (this.placed ? [...this.shellWindows(), ...this.#lift(panels?.() ?? [])] : base.shell.windows()),
       inject: (event) => (this.placed && inject ? inject(event) : base.shell.inject(event)),
+      play: (events) => (this.placed && play ? play(events) : base.shell.play(events)),
     }
     const close = (id: number) => {
       if (!this.placed || own(id)) return base.close(to(id))

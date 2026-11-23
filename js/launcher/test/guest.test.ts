@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { GuestWindows, type GuestRow } from '../src/dev/guest.ts'
-import { Inspect, type InspectHost } from '../src/dev/inspect.ts'
+import { Inspect, type InspectHost, type PlayEvent } from '../src/dev/inspect.ts'
 
 const row = (id: number, pid: number, extra: Partial<GuestRow> = {}): GuestRow => ({
   id, app_id: `app${id}`, pid, title: `T${id}`, x: 0, y: 0, width: 100, height: 80, activated: false, hidden: false,
@@ -10,7 +10,7 @@ const row = (id: number, pid: number, extra: Partial<GuestRow> = {}): GuestRow =
 
 function base(local: number, focused: number[]): InspectHost {
   return {
-    shell: { focus: (w) => void focused.push(w), windows: () => [], inject: () => {} },
+    shell: { focus: (w) => void focused.push(w), windows: () => [], inject: () => {}, play: async () => {} },
     web: () => null,
     record: (w) => (w === local ? { kind: 'web', app: 'files', title: 'Files' } : null),
     panel: () => false,
@@ -121,36 +121,69 @@ describe('the desktop panels in the guest', () => {
 
 describe('a drag to another process window in the guest', () => {
   test('drops at the screen point the driver worked out', async () => {
-    const sent: { type: string; x?: number; y?: number }[] = []
+    const sent: PlayEvent[] = []
     const plain = base(1, [])
     const rpc = { call: async (_service: string, method: string) => (method === 'tree' ? { nodes: [] } : { x: 10, y: 20 }) } as never
     const guest = new GuestWindows(42, 'app')
-    const host = guest.host({ ...plain, web: (w) => (w === 1 ? rpc : null) }, () => 1, { inject: (e) => void sent.push(e) })
+    const host = guest.host({ ...plain, web: (w) => (w === 1 ? rpc : null) }, () => 1, { play: async (events) => void sent.push(...events) })
     guest.place([{ ...row(7, 42), x: 100, y: 50 }, row(9, 50)])
     const result = await new Inspect(host).act('w7.3', 'drag', '640,360')
     assert.equal(result.ok, true)
     assert.deepEqual(sent[0], { type: 'move', x: 110, y: 70 })
-    assert.deepEqual(sent.at(-1), { type: 'up', x: 640, y: 360, button: 0x110 })
+    assert.deepEqual(sent.at(-1), { type: 'up', x: 640, y: 360, button: 'left' })
   })
 })
 
-describe('a drag paces itself like a hand', () => {
-  test('holds the button before moving, moves in steps a frame apart, and rests a frame before letting go', async () => {
-    const sent: { type: string; at: number }[] = []
+describe('a drag is one sequence, paced where it is played', () => {
+  test('move, press, the steps and the release go together, with no pauses of the launcher', async () => {
+    const played: (readonly PlayEvent[])[] = []
     const plain = base(1, [])
     const rpc = { call: async (_service: string, method: string) => (method === 'tree' ? { nodes: [] } : { x: 10, y: 20 }) } as never
     const guest = new GuestWindows(42, 'app')
-    const at = { inject: (e: { type: string }) => void sent.push({ type: e.type, at: performance.now() }) }
-    const host = guest.host({ ...plain, web: (w) => (w === 1 ? rpc : null) }, () => 1, at)
+    const host = guest.host({ ...plain, web: (w) => (w === 1 ? rpc : null) }, () => 1, { play: async (events) => void played.push(events) })
     guest.place([{ ...row(7, 42), x: 100, y: 50 }])
     assert.equal((await new Inspect(host).act('w7.3', 'drag', '400,300')).ok, true)
-    const down = sent.findIndex((e) => e.type === 'down')
-    const up = sent.findIndex((e) => e.type === 'up')
-    const moves = sent.slice(down + 1, up)
-    assert.equal(moves.length, Inspect.DRAG_STEPS)
-    assert.ok(moves.every((e) => e.type === 'move'))
-    assert.ok(moves[0]!.at - sent[down]!.at >= Inspect.DRAG_HOLD_MS - 5, 'held before the first move')
-    assert.ok(sent[up]!.at - moves.at(-1)!.at >= Inspect.DRAG_STEP_MS - 5, 'a frame before letting go')
+    assert.equal(played.length, 1)
+    const kinds = played[0]!.map((e) => e.type)
+    assert.deepEqual(kinds, ['move', 'down', ...Array(Inspect.DRAG_STEPS).fill('move'), 'up'])
+  })
+})
+
+describe('input to a page', () => {
+  const row7 = { id: 7, window: 7, canvas: 0, mode: 'free', x: 30, y: 40, width: 300, height: 200, z: 1, focus: true }
+
+  test('goes to the shell as one sequence in screen points, text in between through the page', async () => {
+    const played: (readonly PlayEvent[])[] = []
+    const typed: unknown[] = []
+    const call = async (_service: string, method: string, args: unknown[]) => {
+      if (method === 'text') typed.push(args[0])
+      return method === 'offset' ? [0, 0] : null
+    }
+    const plain = base(7, [])
+    const shell = { ...plain.shell, windows: () => [row7], play: async (events: readonly PlayEvent[]) => void played.push(events) }
+    const host: InspectHost = { ...plain, web: () => ({ call }) as never, shell }
+    const events = [
+      { type: 'down', x: 5, y: 5 }, { type: 'move', x: 50, y: 5 }, { type: 'up', x: 50, y: 5, button: 'right' },
+      { type: 'text', text: 'hi' }, { type: 'keydown', key: 'a' }, { type: 'wait', ms: 40 },
+    ] as const
+    assert.equal((await new Inspect(host).input(7, events)).ok, true)
+    assert.deepEqual(played[0], [
+      { type: 'down', x: 35, y: 45, button: 'left' }, { type: 'move', x: 80, y: 45 }, { type: 'up', x: 80, y: 45, button: 'right' },
+    ])
+    assert.deepEqual(typed, ['hi'])
+    assert.equal(played[1]![0]!.type, 'keydown')
+    assert.deepEqual(played[1]![1], { type: 'wait', ms: 40 })
+  })
+
+  test('a bad event sends nothing of its sequence', async () => {
+    const played: unknown[] = []
+    const plain = base(7, [])
+    const shell = { ...plain.shell, windows: () => [row7], play: async (events: readonly PlayEvent[]) => void played.push(events) }
+    const call = async () => [0, 0]
+    const host: InspectHost = { ...plain, web: () => ({ call }) as never, shell }
+    const events = [{ type: 'down', x: 5, y: 5 }, { type: 'up', x: 5, y: 5, button: 'thumb' }] as never
+    await assert.rejects(new Inspect(host).input(7, events), /button is left, right or middle/)
+    assert.deepEqual(played, [])
   })
 })
 
@@ -232,6 +265,7 @@ describe('move, resize and raise on a window ref', () => {
         focus: (w) => void focused.push(w),
         windows: () => table,
         inject: () => {},
+        play: async () => {},
         place: async (w, change) => {
           placed.push({ w, ...change })
           const row = table.find((r) => r.id === w)!

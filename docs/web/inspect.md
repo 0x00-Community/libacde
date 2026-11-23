@@ -33,7 +33,10 @@
   double / right / hover / scroll 按 `point` 的屏幕坐标经 `Shell.inject` 发 (被盖住时先提前目标窗口; 桌面钉住的面板盖着的地方只算被更上层的钉住窗口挡住, #111); type / settext 走 web 的 `type`;
   key (`"ctrl+a backspace"`, acde-host `keys.ts` 的 `chordCodes`) 先 focus 再注入: 空格分开的每段先全部解析, 有认不出的就整串不发并报出这些段;
   可打印字符直接写 (`7 . 5 * 2`), 美式键盘上要 Shift 的符号 (`*`、`+`、`(` …) 和大写字母自动加 Shift, 也认 `plus` / `multiply` / `minus` 等名字, `ctrl++` 是 Ctrl 加 `+`; select (arg 是选项的值或文字, 多选给列表) 走 web 的 `select`; drag (arg 是目标 ref, 元素或窗口,
-  可以在别的窗口) 在源上按下、量目标 (`point`, 可能滚动; 目标被别的窗口盖住时松开并回错)、按下后停 150 ms (像真人, 不然合成器在客户端还没发移动请求时就看到按键松开了, 客户机里拖标题栏会被拒, 2026-11-23), 分 10 步每步 16 ms 移过去, 再停一帧松开, 页面的指针拖动和
+  可以在别的窗口) 先量目标 (`point`, 可能滚动; 目标被别的窗口盖住时回错, 什么都不按), 再把整组 (移到源、按下、分 10 步移过去、松开) 一次交给 `InspectShell.play`
+  (宿主窗口里是 `Shell.injectSequence`, 客户机里是管家的 `dev.input`). 节奏只在 acde-scene 的 `input::pace` 里定一份 (2026-11-23): 按下后到第一次移动停 150 ms
+  (像真人, 不然合成器在客户端还没发移动请求时就看到按键松开了, 客户机里拖标题栏会被拒), 两次移动隔一帧 16 ms, 松开前停一帧, 脚本自己写了 wait 的地方不叠加;
+  启动器只生成事件, 不等待. `input(window, events)` 同样整组交出 (页面坐标先换成屏幕坐标, `text` 照旧经页面, 它把序列分段), 一段里有写错的事件时整段不发. 页面的指针拖动和
   HTML5 拖放 (也跨窗口) 都靠它. 窗口 ref 能 focus / restore / minimize / close / key. `open(name)` 按 id、名字找应用或原生程序起它. `query({selector, window?, ref?, limit?, attributes?})` →
   窗口 ref 还能 fill / fullscreen (`setState` 设成 `filled` / `fullscreen`), restore 把这两种设回 `normal`; 桌面和铺满宿主的窗口不行.
   窗口 ref 还能 move / resize / raise (2026-11-23, `dev/inspect/place.ts` 的 `Placing`, 填充、最小化也在那里): `move` 的 arg 是屏幕逻辑坐标 `"100,80"`, 大小不变;

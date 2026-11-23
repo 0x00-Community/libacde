@@ -17,12 +17,13 @@ import {
   type InspectInput,
   type MenuGeometry,
   type NativeNode,
+  type PlayEvent,
   type Point,
   type ShellWindow,
   type Tree,
 } from './inspect/types'
 
-export type { InjectEvent, InspectHost, InspectInput, InspectShell, NativeAccessibility, PlaceChange, ShellWindow } from './inspect/types'
+export type { InjectEvent, InspectHost, InspectInput, InspectShell, NativeAccessibility, PlaceChange, PlayEvent, ShellWindow } from './inspect/types'
 
 export class Inspect {
   static readonly LIMIT = 600
@@ -33,8 +34,6 @@ export class Inspect {
   static readonly OPEN_MS = 5000
   static readonly FIND_LIMIT = 3000
   static readonly DRAG_STEPS = 10
-  static readonly DRAG_STEP_MS = 16
-  static readonly DRAG_HOLD_MS = 150
   static readonly INPUT_WAIT_MS = 10_000
   static readonly GENERIC = new Set([
     ...['generic', 'filler', 'panel', 'section', 'unknown', 'redundant-object', 'split-pane', 'layered-pane'],
@@ -454,24 +453,12 @@ export class Inspect {
       if (window.kind === 'desktop') return { ok: false, text: `covered there by ${Inspect.#label(cover)}; minimize or close it first` }
       this.#focus(window)
     }
-    const shell = this.#host.shell
-    const step = () => Inspect.#sleep(Inspect.DRAG_STEP_MS)
-    shell.inject({ type: 'move', x, y })
-    await step()
-    shell.inject({ type: 'down', x, y, button: LEFT })
-    await Inspect.#sleep(Inspect.DRAG_HOLD_MS)
     const target = spot ?? (await this.#point(to))
-    if ('error' in target) {
-      shell.inject({ type: 'up', x, y, button: LEFT })
-      return { ok: false, text: `cannot drop: ${target.error}` }
-    }
-    for (let i = 1; i <= Inspect.DRAG_STEPS; i++) {
-      const t = i / Inspect.DRAG_STEPS
-      shell.inject({ type: 'move', x: x + (target.x - x) * t, y: y + (target.y - y) * t })
-      await step()
-    }
-    await step()
-    shell.inject({ type: 'up', x: target.x, y: target.y, button: LEFT })
+    if ('error' in target) return { ok: false, text: `cannot drop: ${target.error}` }
+    const path = Array.from({ length: Inspect.DRAG_STEPS }, (_, i) => (i + 1) / Inspect.DRAG_STEPS)
+      .map((t): InspectInput => ({ type: 'move', x: x + (target.x - x) * t, y: y + (target.y - y) * t }))
+    const events: InspectInput[] = [{ type: 'move', x, y }, { type: 'down', x, y }, ...path, { type: 'up', x: target.x, y: target.y }]
+    await this.#play(events, null, (e) => ({ x: e.x, y: e.y }))
     return { ok: true, text: `dragged from ${Math.round(x)},${Math.round(y)} to ${to} (${Math.round(target.x)},${Math.round(target.y)})` }
   }
 
@@ -563,57 +550,55 @@ export class Inspect {
       return { x: window.rect[0] + ox + e.x, y: window.rect[1] + oy + e.y }
     }
     this.#focus(window)
-    const state: { moved: boolean; pointer: { x: number; y: number } | null } = { moved: false, pointer: null }
-    for (const event of events) {
-      if (event?.type === 'move' && state.moved) await Inspect.#sleep(Inspect.DRAG_STEP_MS)
-      state.moved = event?.type === 'move'
-      await this.#inputEvent(event, rpc, at, state)
-    }
+    await this.#play(events, rpc, at)
     await this.#settle(window)
     return { ok: true, text: `sent ${events.length} input events to ${window.ref}` }
   }
 
-  async #inputEvent(
-    event: InspectInput,
-    rpc: Rpc,
-    at: (e: { x: number; y: number }) => { x: number; y: number },
-    state: { pointer: { x: number; y: number } | null },
-  ): Promise<void> {
-    const shell = this.#host.shell
-    const to = (point: { x: number; y: number }) => {
-      const next = at(point)
-      if (state.pointer?.x !== next.x || state.pointer.y !== next.y) shell.inject({ type: 'move', ...next })
-      state.pointer = next
-      return next
+  async #play(events: readonly InspectInput[], rpc: Rpc | null, at: (e: { x: number; y: number }) => { x: number; y: number }): Promise<void> {
+    let run: PlayEvent[] = []
+    const flush = async () => {
+      if (run.length) await this.#host.shell.play(run)
+      run = []
     }
+    for (const event of events) {
+      if (event?.type !== 'text') {
+        run.push(Inspect.#playEvent(event, at))
+        continue
+      }
+      await flush()
+      if (!rpc) throw new Error('input: text needs a page')
+      await rpc.call('inspect', 'text', [String(event.text ?? '')])
+    }
+    await flush()
+  }
+
+  static #playEvent(event: InspectInput, at: (e: { x: number; y: number }) => { x: number; y: number }): PlayEvent {
     switch (event?.type) {
       case 'move':
-        state.pointer = at(event)
-        return shell.inject({ type: 'move', ...state.pointer })
+        return { type: 'move', ...at(event) }
       case 'down':
       case 'up':
-        return shell.inject({ type: event.type, ...to(event), button: Inspect.#button(event.button) })
+        return { type: event.type, ...at(event), button: Inspect.#button(event.button) }
       case 'wheel':
-        return shell.inject({ type: 'wheel', ...to(event), dx: Number(event.dx) || 0, dy: Number(event.dy) || 0, source: 'wheel' })
+        return { type: 'wheel', ...at(event), dx: Number(event.dx) || 0, dy: Number(event.dy) || 0 }
       case 'keydown':
       case 'keyup': {
-        const code = keyCode(String(event.key ?? ''))
+        const key = String(event.key ?? '')
+        const code = keyCode(key)
         if (code === null) throw new Error(`input: unknown key ${JSON.stringify(event.key)}`)
-        return shell.inject({ type: event.type, code })
+        return { type: event.type, key, code }
       }
-      case 'text':
-        return void (await rpc.call('inspect', 'text', [String(event.text ?? '')]))
       case 'wait':
-        return Inspect.#sleep(Inspect.#wait(event.ms))
+        return { type: 'wait', ms: Inspect.#wait(event.ms) }
     }
     const type = JSON.stringify((event as { type?: unknown })?.type)
     throw new Error(`input: an event's type is move, down, up, wheel, keydown, keyup, text or wait, not ${type}`)
   }
 
-  static #button(name: string | undefined): number {
-    const buttons: Record<string, number> = { left: LEFT, right: RIGHT, middle: MIDDLE }
-    const button = buttons[name ?? 'left']
-    if (button === undefined) throw new Error(`input: button is left, right or middle, not ${String(name)}`)
+  static #button(name: string | undefined): 'left' | 'right' | 'middle' {
+    const button = name ?? 'left'
+    if (button !== 'left' && button !== 'right' && button !== 'middle') throw new Error(`input: button is left, right or middle, not ${String(name)}`)
     return button
   }
 

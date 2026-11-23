@@ -39,7 +39,15 @@ export interface InspectShell {
   windows(): ShellWindow[]
   menus?(window: number): string | null
   inject(event: InjectEvent): void
+  play(events: readonly PlayEvent[]): Promise<unknown>
 }
+
+export type PlayEvent =
+  | { readonly type: 'move'; readonly x: number; readonly y: number }
+  | { readonly type: 'down' | 'up'; readonly x: number; readonly y: number; readonly button: 'left' | 'right' | 'middle' }
+  | { readonly type: 'wheel'; readonly x: number; readonly y: number; readonly dx: number; readonly dy: number }
+  | { readonly type: 'keydown' | 'keyup'; readonly key: string; readonly code: number }
+  | { readonly type: 'wait'; readonly ms: number }
 
 export interface PlaceChange {
   readonly x: number

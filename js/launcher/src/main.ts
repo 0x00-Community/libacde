@@ -25,7 +25,7 @@ import { ServiceHost } from './manager/service'
 import { DevChannel, type DevOpen, type DevOpened, type DevShell, type DevTarget } from './dev/dev'
 import { DevToolsEndpoint, type NativeDevTools } from './dev/devtools'
 import { managerRelay, type DevRelay } from './dev/relay'
-import { Inspect, type InspectHost, type InspectShell, type PlaceChange, type ShellWindow } from './dev/inspect'
+import { Inspect, type InspectHost, type InspectShell, type PlaceChange, type PlayEvent, type ShellWindow } from './dev/inspect'
 import { GuestWindows } from './dev/guest'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
@@ -49,7 +49,7 @@ interface GrantOptions {
   readonly anchor?: AnchorWire
 }
 
-interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState' | 'windows' | 'inject' | 'place'> {
+interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState' | 'windows' | 'inject' | 'place' | 'play'> {
   devEvent?(json: string): number
   setMenus?(window: number, menus: string): void
   notify?(title: string, body: string, subtitle: string): void
@@ -68,6 +68,7 @@ interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState
   setState?(window: number, state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
   windows(): ReturnType<InspectShell['windows']>
   inject?(event: Parameters<InspectShell['inject']>[0]): void
+  injectSequence?(events: Parameters<InspectShell['play']>[0]): Promise<unknown>
   screenshot(path: string): Promise<{ width: number; height: number }>
   animate?(window: number, options: object): void
   shortcut?(combo: string, scope: string, owner: number): void
@@ -262,6 +263,10 @@ class Launcher {
         if (!shell.inject) throw new Error('input: this runtime injects no input here (in a guest it goes through the manager)')
         shell.inject(event)
       },
+      play: (events) => {
+        if (!shell.injectSequence) return Promise.reject(new Error('input: this runtime plays no input here (in a guest it goes through the manager)'))
+        return shell.injectSequence(events)
+      },
     }
   }
 
@@ -279,7 +284,9 @@ class Launcher {
       records: () => [this.#window],
     }
     const relay = this.#relay
-    const extras = { ...(relay && { inject: relay.inject, window: relay.window }), panels: () => this.#panelRows() }
+    const manager = this.manager
+    const play = manager && ((events: readonly PlayEvent[]) => manager.call('dev', 'input', [events]))
+    const extras = { ...(relay && { inject: relay.inject, window: relay.window }), ...(play && { play }), panels: () => this.#panelRows() }
     this.#inspect = new Inspect(this.#guest ? this.#guest.host(host, () => this.#window, extras) : host)
     return this.#inspect
   }
