@@ -92,7 +92,7 @@ crate; `acde:` 模块、`@acde/api`、`acde_*` 协议、`ACDE_*` 环境变量、
   表示, 页面拿到 `code` 与 `message`. 没有登记时用上面这份旧实现作缺省 (不收 `open` 的选项, 给了回 400 `unsupported`; `shells()` 回空表,
   `limits()` 回 `{max: 8, open}`); acdes 登记自己的实现并验收后, 旧实现与 ConPTY 删掉, 宿主窗口方式不再提供终端.
   network 第一次调用时连 NetworkManager; office 由启动器在会话授予 office 时 (`grants.office`, 起页面前) 调
-  `sys.openOffice()` 开 (桥的套接字 `$XDG_RUNTIME_DIR/acde/office/office.sock` 一个会话只有一个, 同时有两个声明 office 的进程时后起的那个桥起不来; 文档服务另需 ONLYOFFICE Document Server) (network / office / system 只在 Linux). `acde:system` (清单能力 `system`, src/host `system.rs` → runtime `system.rs`):
+  `sys.openOffice()` 开 (桥的套接字 `$XDG_RUNTIME_DIR/acde/office/office.sock` 一个会话只有一个, 同时有两个声明 office 的进程时后起的那个桥起不来; 文档服务另需 ONLYOFFICE Document Server; `office.state` 的 `server.problem`: `unreachable` 连不上, `missing` 是本机地址连不上而且没有 docker / podman 能起它, `unhealthy` 还没就绪, `secret` 没有共用的 JWT 密钥, `rejected` 密钥不对, `bridge` 桥没监听上, `runtime` 是运行时自己查状态失败 (例如执行器停了), 和 Document Server 无关; 起停脚本是 acdes 包里的 `/usr/lib/acdes/office-ds.sh`) (network / office / system 只在 Linux). `acde:system` (清单能力 `system`, src/host `system.rs` → runtime `system.rs`):
   这台电脑的信息 (主机名、系统、CPU、GPU、NPU、内存、开机时长、序列号)、各卷容量、时区和 NTP (经 timedated)、改时区 /
   NTP / 主机名 (经 hostnamed, 要 polkit 授权)、当前用户; 每次调用在 offload 线程上现读, 没有变化事件.
   `acde:bluetooth` (能力 `bluetooth`, src/host `bluetooth.rs` → runtime `bluetooth.rs`): BlueZ 的适配器和设备 (开关、可见、改名、

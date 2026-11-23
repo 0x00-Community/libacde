@@ -56,8 +56,7 @@ impl OfficeSettings {
     }
 
     fn secret_from_file(&self) -> Outcome<String> {
-        let missing =
-            || Failure::office_config(format!("no JWT secret: {} is missing; run office-ds.sh up first (/usr/lib/acdebin-system/office-ds.sh)", self.env_file));
+        let missing = || Failure::office_config(format!("no JWT secret: {} is missing; run /usr/lib/acdes/office-ds.sh up first", self.env_file));
         let info = std::fs::metadata(&self.env_file).map_err(|_| missing())?;
         if info.mode() & 0o077 != 0 {
             return Err(Failure::office_config(format!("{} must not be readable by group or others (chmod 600)", self.env_file)));

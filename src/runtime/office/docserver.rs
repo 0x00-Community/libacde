@@ -62,6 +62,11 @@ impl DocumentServer {
         response.body().limit(limit).timeout(Millis::ZERO).await.ok().map(|body| body.to_vec())
     }
 
+    fn local(&self) -> bool {
+        let host = self.url.split("://").nth(1).unwrap_or(&self.url).split(['/', ':']).next().unwrap_or_default();
+        matches!(host, "localhost" | "127.0.0.1" | "[::1]" | "")
+    }
+
     pub async fn status(&self) -> Value {
         let failed = |problem: &str, message: String| json!({"ok": false, "url": self.url, "version": null, "problem": problem, "message": message});
         let timeout = Duration::from_millis(2500);
@@ -72,6 +77,9 @@ impl DocumentServer {
         };
         let health = ntex::time::timeout(timeout, health).await.unwrap_or(Err(Unanswered::TimedOut));
         match health {
+            Err(_) if self.local() && !containers() => {
+                return failed("missing", format!("Document Server at {} is not reachable and this machine has neither docker nor podman to run it", self.url));
+            }
             Err(error) => return failed("unreachable", format!("Document Server at {} is not reachable ({})", self.url, Self::reason(&error))),
             Ok((status, text)) => {
                 if !status.is_success() || text != "true" {
@@ -154,4 +162,8 @@ impl DocumentServer {
         };
         ntex::time::timeout(Duration::from_secs(60), fetch).await.unwrap_or_else(|()| Err(failed(&Unanswered::TimedOut)))
     }
+}
+
+fn containers() -> bool {
+    std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|dir| ["docker", "podman"].iter().any(|tool| dir.join(tool).is_file())))
 }

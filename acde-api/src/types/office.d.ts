@@ -1,6 +1,6 @@
 import type { FinderRoot } from './page'
 
-export type OfficeProblem = 'unreachable' | 'unhealthy' | 'secret' | 'rejected' | 'bridge'
+export type OfficeProblem = 'unreachable' | 'missing' | 'unhealthy' | 'secret' | 'rejected' | 'bridge' | 'runtime'
 
 export type OfficeServer =
   | { readonly ok: true; readonly url: string; readonly version: string | null; readonly problem: null; readonly message: null }

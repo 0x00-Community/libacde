@@ -74,7 +74,7 @@ impl Service {
         let server = DocumentServer::new(&self.settings.document_server, credentials, problem);
         let url = server.url.clone();
         let mut value = Service::wait(move || async move { server.status().await })
-            .unwrap_or_else(|failure| json!({"ok": false, "url": url, "version": null, "problem": "unreachable", "message": failure.message}));
+            .unwrap_or_else(|failure| json!({"ok": false, "url": url, "version": null, "problem": "runtime", "message": failure.message}));
         if value["ok"] == true
             && let Some(error) = self.bridge_error.locked().clone()
         {
