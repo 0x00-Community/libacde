@@ -32,7 +32,7 @@ pub use error::{Error, Result};
 pub use geometry::Metrics;
 pub use hud::{Hud, HudStats};
 pub use layers::{Backdrop, Drawing, Layer, LayerFilter};
-pub(crate) use net::resource_file;
+pub(crate) use net::{resource_file, system_file};
 pub use net::{Load, Loader};
 pub use surface::{ClipboardEntry, ClipboardReadReply, ClipboardTypesReply, DragImage, SurfaceCommand, WindowLook, WindowMaterial, WindowShadow};
 

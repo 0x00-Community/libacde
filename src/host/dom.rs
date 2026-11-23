@@ -30,6 +30,9 @@ impl Assets {
             return None;
         }
         let path = parsed.path();
+        if !map && let Some(file) = crate::render::system_file(path) {
+            return Some(file);
+        }
         let (name, dirs) = self.0.iter().filter_map(|r| Some((path.strip_prefix(r.prefix.as_str())?, &r.dirs))).min_by_key(|(name, _)| name.len())?;
         if name.ends_with(".map") != map {
             return None;
