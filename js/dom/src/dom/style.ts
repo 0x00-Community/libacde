@@ -1,6 +1,7 @@
 import { DOMException, guard } from '../core/exception'
 import { constants, getters, listClass, tag } from '../core/host'
 import { setAttribute, type Element } from './element'
+import { counterStyleName, counterStyleParts, counterStyleSettable, counterStyleText, identOf, type CounterStyleDescriptor } from './counter-style'
 import { computedStyleOf } from './layout'
 import { changed, dom, ID, version } from './realm'
 
@@ -303,6 +304,7 @@ export class CSSRule {
     if (text.startsWith('@keyframes')) return 7
     if (text.startsWith('@import')) return 3
     if (text.startsWith('@supports')) return 12
+    if (text.startsWith('@counter-style')) return 11
     return text.startsWith('@') ? 0 : 1
   }
   get selectorText(): string {
@@ -317,7 +319,7 @@ export class CSSRule {
     this.#parent = null
   }
 }
-constants(CSSRule, { STYLE_RULE: 1, IMPORT_RULE: 3, MEDIA_RULE: 4, FONT_FACE_RULE: 5, KEYFRAMES_RULE: 7, SUPPORTS_RULE: 12 })
+constants(CSSRule, { STYLE_RULE: 1, IMPORT_RULE: 3, MEDIA_RULE: 4, FONT_FACE_RULE: 5, KEYFRAMES_RULE: 7, COUNTER_STYLE_RULE: 11, SUPPORTS_RULE: 12 })
 tag(CSSRule)
 export class CSSStyleRule extends CSSRule {}
 tag(CSSStyleRule)
@@ -399,6 +401,93 @@ tag(CSSMediaRule)
 export class CSSSupportsRule extends CSSConditionRule {}
 tag(CSSSupportsRule)
 
+export class CSSCounterStyleRule extends CSSRule {
+  get name(): string {
+    const prelude = counterStyleParts(this[TEXT]).prelude.replace(/^@counter-style/i, '')
+    return identOf(prelude) ?? prelude.trim()
+  }
+  set name(value: string) {
+    const name = counterStyleName(String(value))
+    if (name === null) return
+    rewrite(this, counterStyleText(CSS.escape(name), counterStyleParts(this[TEXT]).descriptors))
+  }
+  get system(): string {
+    return this.#get('system')
+  }
+  set system(value: string) {
+    this.#set('system', value)
+  }
+  get symbols(): string {
+    return this.#get('symbols')
+  }
+  set symbols(value: string) {
+    this.#set('symbols', value)
+  }
+  get additiveSymbols(): string {
+    return this.#get('additive-symbols')
+  }
+  set additiveSymbols(value: string) {
+    this.#set('additive-symbols', value)
+  }
+  get negative(): string {
+    return this.#get('negative')
+  }
+  set negative(value: string) {
+    this.#set('negative', value)
+  }
+  get prefix(): string {
+    return this.#get('prefix')
+  }
+  set prefix(value: string) {
+    this.#set('prefix', value)
+  }
+  get suffix(): string {
+    return this.#get('suffix')
+  }
+  set suffix(value: string) {
+    this.#set('suffix', value)
+  }
+  get range(): string {
+    return this.#get('range')
+  }
+  set range(value: string) {
+    this.#set('range', value)
+  }
+  get pad(): string {
+    return this.#get('pad')
+  }
+  set pad(value: string) {
+    this.#set('pad', value)
+  }
+  get speakAs(): string {
+    return this.#get('speak-as')
+  }
+  set speakAs(value: string) {
+    this.#set('speak-as', value)
+  }
+  get fallback(): string {
+    return this.#get('fallback')
+  }
+  set fallback(value: string) {
+    this.#set('fallback', value)
+  }
+
+  #get(name: CounterStyleDescriptor): string {
+    return counterStyleParts(this[TEXT]).descriptors.get(name) ?? ''
+  }
+
+  #set(name: CounterStyleDescriptor, value: string): void {
+    const text = String(value)
+    const before = this[TEXT]
+    const descriptors = counterStyleParts(before).descriptors
+    if (!counterStyleSettable(descriptors, name, text)) return
+    descriptors.set(name, text)
+    rewrite(this, counterStyleText(CSS.escape(this.name), descriptors))
+    if (!counterStyleParts(this[TEXT]).descriptors.has(name)) rewrite(this, before)
+  }
+}
+tag(CSSCounterStyleRule)
+
 function splitRules(text: string): string[] {
   const rules: string[] = []
   let depth = 0, start = 0, quote = ''
@@ -476,6 +565,7 @@ function ruleOf(text: string, sheet: CSSStyleSheet | null, parent: CSSGroupingRu
   const start = text.trimStart()
   if (/^@media\b/i.test(start)) return new CSSMediaRule(text, sheet, parent)
   if (/^@supports\b/i.test(start)) return new CSSSupportsRule(text, sheet, parent)
+  if (/^@counter-style\b/i.test(start)) return new CSSCounterStyleRule(text, sheet, parent)
   return start.startsWith('@') ? new CSSRule(text, sheet, parent) : new CSSStyleRule(text, sheet, parent)
 }
 
