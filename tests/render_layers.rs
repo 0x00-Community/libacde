@@ -264,3 +264,46 @@ fn a_union_groups_a_circle_and_different_sized_pills_across_dom_branches() {
     assert_eq!(pieces.iter().map(|p| p.radius).collect::<Vec<_>>(), [30.0, 16.0, 15.0]);
     assert_eq!(nodes.len(), 3);
 }
+
+fn glass_groups(page: &Page) -> Vec<usize> {
+    let frame = page.frame();
+    let mut sizes: Vec<usize> = frame.plane.layers.iter().filter_map(|l| l.backdrop.as_ref()?.group()).map(|g| g.len()).collect();
+    sizes.sort_unstable();
+    sizes
+}
+
+fn glass_in(page: &Page, parent: u32, style: &str) -> u32 {
+    let id = page.doc.create_element("div").unwrap();
+    page.doc.set_attribute(id, "class", "pill").unwrap();
+    page.doc.set_attribute(id, "style", style).unwrap();
+    page.doc.append_child(parent, id).unwrap();
+    id
+}
+
+#[test]
+fn glass_inside_glass_is_its_own_layer_and_wrappers_make_none() {
+    let page = Page::new(1.0);
+    let row = page.div("merge");
+    let bar = glass_in(&page, row, "left: 10px; top: 10px; width: 300px; height: 120px; border-radius: 30px");
+    glass_in(&page, row, "left: 316px; top: 10px; width: 60px; height: 40px");
+    for left in ["20px", "86px"] {
+        let wrapper = page.doc.create_element("div").unwrap();
+        page.doc.append_child(bar, wrapper).unwrap();
+        glass_in(&page, wrapper, &format!("left: {left}; top: 20px"));
+    }
+    assert_eq!(glass_groups(&page), [2, 2], "the bar merges with its neighbour, its two buttons with each other, never across");
+    let frame = page.frame();
+    let mut names: Vec<&str> = frame.plane.layers.iter().filter_map(|l| l.backdrop.as_ref()?.group_name.as_deref()).collect();
+    names.sort_unstable();
+    assert_eq!(names, ["g0", "g1"], "each connected group gets its own name within the surface");
+}
+
+#[test]
+fn a_union_name_does_not_reach_across_layers() {
+    let page = Page::new(1.0);
+    let bar = glass_in(&page, page.body, "left: 10px; top: 10px; width: 300px; height: 120px; border-radius: 30px; --acde-glass-union: u");
+    glass_in(&page, page.body, "left: 316px; top: 10px; --acde-glass-union: u");
+    glass_in(&page, bar, "left: 20px; top: 20px; --acde-glass-union: u");
+    glass_in(&page, bar, "left: 86px; top: 20px; --acde-glass-union: u");
+    assert_eq!(glass_groups(&page), [2, 2]);
+}

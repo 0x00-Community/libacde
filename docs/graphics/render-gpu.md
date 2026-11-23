@@ -63,7 +63,7 @@
   - `merged`: 沿合成场整体外缘画, 用归一化距离 `d / max(|∇d|, 0.05)` (只在有块相互作用的地方算梯度, 其余就是 d), 脖子处平滑最小值把梯度压小
     也不会把线画粗, 线连续; 原来每块的内部边界离合成边缘远, 不画.
   单块两种一样. 线上格式 31→37 个 f32 (末六个是轮廓宽度、颜色和画法), 组每块 9 个 vec4 (2304 字节; 轮廓宽度在 `corner.w`, 颜色在 `outline`,
-  画法在 `mode.x`), 页面合成的 `Params` 多一个 vec4 (160 字节), 轮廓宽度在 `shift.y`. "逐位等于单块" 的几条测试都在轮廓关掉 (`none`) 时比; 组的
+  画法在 `mode.x`), 页面合成的 `Params` 多一个 vec4 (160 字节; 再加查找表的 `table` 后 176 字节), 轮廓宽度在 `shift.y`. "逐位等于单块" 的几条测试都在轮廓关掉 (`none`) 时比; 组的
   CPU 测试覆盖 merged 脖子连续、旧边界无线, pieces 旧边界都有线、脖子是玻璃无线, none 无线.
   预设表 (通透度档位, 2026-11-22, 总仓 `.scratch/libacde/glass-transparency-plan.md`; `glass/preset.rs`, 参数表只此一份): `Glass::preset(Role, Level)`,
   `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 模糊 0.5 px (背景有文本时页面自己切到 8 px, 不进预设), 内圈折射 0.8 (2026-11-23 用户定), 不染色、不渗出, 乘暗 0.05, 透镜斜面 34 px、厚度 22 px、折射率 1.5、色散 0.01 (用户 2026-11-23 在调参页定), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3, 内圈折射按比例从 0.4 提到 0.8)、`Tinted`
@@ -104,6 +104,19 @@
   https://github.com/ShengzhiWu/liquid-glass , 演示 https://shengzhiwu.github.io/liquid-glass ; 只借做法, 没有拷代码): 中间不模糊、不加白, 颜色只乘
   `1 − darken` (它是 0.95); 边缘那圈"发光"不是高光, 是只在很窄一圈边缘的强折射把背后亮的颜色挤成一条细线 (它的放大按场值 `exp(−20·(sum − 0.7))`,
   离阈值一点就几乎为 0); 红绿蓝分三次取样出彩边 (它是 485 / 500 / 515, 即绿色上下各 3%). 我们在距离场上做: e 是到边缘的距离, w 是宽度,
+  早退 (2026-11-23): 透镜厚度为 0、折射率不大于 1、在斜面以外或玻璃外面时 (`acde_glass_bends` 为假) 不求梯度也不进斜面计算. 玻璃底图只有一层模糊时
+  (含模糊为 0, 只拷一份底图) 不再画混合那一遍, 直接用这一层; `backdrop-filter` 没有颜色函数时也不画颜色矩阵那一遍.
+  透镜查找表 (2026-11-23, `glass::lens`): 斜面剖面加右侧下包络每像素要算 64 段, 改成按 (厚度/斜面宽 `ratio`、折射率、色散) 预先算好的一维表.
+  一张表三行 (折射率 `n − Δ`、`n`、`n + Δ`, 对应红、绿、蓝), 每行 `TABLE_SIZE` = 2048 个 f32, 第 k 个采样点在 `x = (k/2047)³` (外缘陡,
+  采样点集中在那里), 值是归一化源深度 g(x)/w; 查表时 `at = x^(1/3)·2047` 线性插值. 和逐段算法的误差在 1/255 以内、仍严格递增 (单测按六组参数、三个通道
+  各取 4001 点比对). CPU 侧 `LensTable` 有 `TABLE_SLOTS` = 8 个槽, 按 `Key` (ratio、折射率、色散) 找槽, 命中就复用, 没命中算一张新表放进最久没用的槽
+  (本帧用过的槽不换; 全满且都在本帧用过时返回 None, 这一块退回每像素算法). 纹理格式和绑定约定 (页面合成已接, 合成器照此接):
+  - 纹理 `R32Float`, 宽 2048、高 `8 × 3` = 24, 第 `slot × 3 + 通道` 行 (通道 0 红、1 绿、2 蓝), 用途 `TEXTURE_BINDING | COPY_DST`, 不过滤,
+    着色器 `textureLoad` 取相邻两点自己插值; 更新只在槽换了参数时整三行 `write_texture`.
+  - 着色器拼上 `lens::TABLE_WGSL` (在 `glass::WGSL` 和 `group::WGSL` 之后), 由使用方声明 `var acde_glass_lens_rows: texture_2d<f32>` (页面合成是绑定 4).
+  - 每次绘制给一个 `vec4 table = (槽号或 −1, ratio, 折射率, 色散)` (页面合成放在 `Params.table`); 着色器发现槽号小于 0 或这块的参数和表不一致
+    (组里各块参数不同、按权重混合后) 时退回 `acde_glass_lens` 逐段算法, 结果相同, 只是慢. 单块用 `acde_glass_lens_rgb_tabled`, 组用
+    `acde_glass_group_lens_tabled`.
   斜面透镜 (2026-11-23 用户定方向: 照苹果, 中间平、清楚、不动, 只在边缘一圈斜面弯折, 不翻转; 取代 b210a8a 的"整块放大"): 剖面照 kube.io
   (https://kube.io/blog/liquid-glass-css-svg/ ), x = e/w ∈ [0, 1] (e 到边距离, w 斜面宽度, 不大于半短边), 高度 `y = ⁴√(1 − (1 − x)⁴)` (凸超椭圆),
   x ≥ 1 平坦, 位移严格为 0. 斜率 `y′ = (1 − x)³ (1 − (1 − x)⁴)^(−3/4)` 用解析式 (原文中心差分). 入射光垂直于背景, 表面法线与竖直的夹角
@@ -124,7 +137,12 @@
   (`glassEffectUnion`)、`--acde-glass-id: <名字>` (`glassEffectID`, 出现、消失的动画用); 都是作者自定义属性, 不认它们的浏览器照常显示 backdrop-filter.
   blitz-paint (`render/glass.rs`) 给有系统玻璃的效果图层带出 `LayerShape.group: Option<Membership>` (`acde_scene::glass::Membership`):
   自定义属性会继承, 所以容器是从父元素起往上、值和父元素相同的那一串祖先里最外面的一个 (它的节点号, 间距按 CSS px 乘 scale); 嵌套的两层容器写了同一个
-  值时算作外层一个. 同一个 `--acde-glass-union` 名字不看 DOM 层级、大小与形状, 因此调参页要让大胶囊、小胶囊和圆钮融合时统一写 `--acde-glass-union: tuner`. 单测把三种形状放在三个不同的父节点下, 最终仍是一个三块的 GlassGroup. 名字存成 FNV-1a 64 位散列 (`Name`), `none` 和空串当没写. 没有容器也没有 union 名字的玻璃不成组. src/render `Split` 切完图层后
+  值时算作外层一个. 同一个 `--acde-glass-union` 名字不看 DOM 层级、大小与形状, 因此调参页要让大胶囊、小胶囊和圆钮融合时统一写 `--acde-glass-union: tuner`. 单测把三种形状放在三个不同的父节点下, 最终仍是一个三块的 GlassGroup. 玻璃分层 (用户 2026-11-23): 每块页面玻璃属于一层, 层是离它最近的、自己也是玻璃 (有 `backdrop-filter` 且解析出系统玻璃) 的祖先元素的节点号,
+  没有这样的祖先就是顶层 0 (`Membership.layer`, blitz-paint `glass_layer` 推断); 不是玻璃的包装元素 (`li`、布局用的 `div`) 不产生新层. 只有同一层的玻璃才可能
+  融合 (`Membership::joins` 先比层, 再看同容器或同 union 名): 工具条和它里面的按钮即使在同一容器、写同一 union 名也不合, 按钮之间照常合.
+  页面层也不和窗口层 (窗口材质) 融合, 不跨窗口; 原定的 `--acde-glass-group` 已取消. 送合成器时 (`acompositor_backdrop_v1` v4 `add_glass_area_grouped`, 页面层, 组名只在本表面内有效) 组名用 `render::Backdrop.group_name`:
+  `merge_glass` 按连通组 (同层, 且同容器或同 union 名) 依次编号 `g0`、`g1`…, 只在这一帧这张平面内唯一, 不用会话级组名; 合成器按 (页面层, 表面, 组名) 登记.
+  libacde 自己还没有发这条请求的路径 (会话里由 acdes 的窗口客户端发), 前端照这个名字发即可. 名字存成 FNV-1a 64 位散列 (`Name`), `none` 和空串当没写. 没有容器也没有 union 名字的玻璃不成组. src/render `Split` 切完图层后
   (`merge_glass`): 同一容器或同一 union 名字 (`Membership::joins`, 可传递) 的玻璃图层, 按绘制顺序把各块 (`Backdrop::piece`: 外框、半径、指数、玻璃) 放进
   第一块那层的 `Backdrop.group`, 外框和裁剪取各块的并集, 其余几块的图层去掉 backdrop (只剩内容). 间距取组内最大 (只靠 union 成组时为 0, 各块不鼓出).
   超过 16 块时多出的块各画各的, 记一次 warn. 只有一块的成员也成一组 (一块的组和单块画出来相同, G4 有对照测试), 好让出现、消失的动画有处可放. 底图在第一块的位置取一次, 所以后面几块之前画的内容 (多半没有) 不会出现在玻璃里.
@@ -133,7 +151,7 @@
   进程内合成画组 (`src/vello/compose.rs`, 2026-11-22): `Composer::backdrop` 见到非空的 `group` 走 `glass_group`: 取样区域是 `Backdrop.rect` (各块并集) 外扩
   `GlassGroup::reach()`, 模糊层与颜色矩阵和单块同一段 (`glass_under`, 模糊层取第一块的玻璃), 再用 `fs_glass_group` 逐像素按组场着色. 全部管线共用一个
   绑定布局: 绑定 3 是块数组 (`acde_glass_pieces`, 动态偏移的 uniform, 每组 `GlassGroup::to_uniform` 的 1792 字节一段), 不画组的绘制给偏移 0; 参数缓冲和块缓冲
-  是同一个 `Uniforms` (满了翻倍重建, 已录的绑定组仍指向旧缓冲, 旧缓冲先写好), 任一个重建都清掉绑定组缓存. 块数和间距放在 `Params.shift` (x 块数, y 间距),
+  是同一个 `Uniforms` (满了翻倍重建, 已录的绑定组仍指向旧缓冲, 旧缓冲先写好), 任一个重建都清掉绑定组缓存. 组的块数组不重复传 (2026-11-23): 同一批里内容相同的组复用已有那一段的偏移; 提交时若这一批的内容和上次写进缓冲的完全相同 (前缀一致), 不再 `write_buffer`, 所以组静止时每帧不重传 2304 字节; 缓冲重建时这份记录一并清掉. 块数和间距放在 `Params.shift` (x 块数, y 间距),
   `Params.bias` 是取样区域. 宿主窗口和会话里画页面都经这里, 所以两边跟着生效.
   出现、消失 (`--acde-glass-id`, 2026-11-22; `acde_scene::glass::Appearance`, 渲染侧 `Engine::animate_glass`): 每张平面 (整页一份, 每个钉住的面板各一份, 面板撤掉时丢掉)
   记着上一帧各组里带 `--acde-glass-id` 的块 (`Piece.id`). 新出现的名字从同组里离它最近的那块的中心长出来 (半宽高和半径从 0 按曲线到实际大小, 中心从那块的中心

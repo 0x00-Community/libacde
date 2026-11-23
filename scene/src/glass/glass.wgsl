@@ -72,10 +72,15 @@ fn acde_glass_lens_depth(x: f32, ratio: f32, index: f32) -> f32 {
     return best;
 }
 
+fn acde_glass_bends(d: f32, half_short: f32, lens: vec4<f32>, index: f32) -> bool {
+    let bezel = min(max(lens.w, 0.5), max(half_short, 0.5));
+    return d <= 0.0 && -d < bezel && lens.x > 0.0 && index > 1.0;
+}
+
 fn acde_glass_lens(n: vec2<f32>, d: f32, half_short: f32, lens: vec4<f32>, index: f32) -> vec2<f32> {
     let bezel = min(max(lens.w, 0.5), max(half_short, 0.5));
     let e = -d;
-    if d > 0.0 || e >= bezel || lens.x <= 0.0 || index <= 1.0 {
+    if !acde_glass_bends(d, half_short, lens, index) {
         return vec2<f32>(0.0);
     }
     let source = bezel * acde_glass_lens_depth(e / bezel, lens.x / bezel, index);

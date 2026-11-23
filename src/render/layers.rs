@@ -49,6 +49,7 @@ pub struct Backdrop {
     pub corners: Option<Corners>,
     pub glass: Option<Glass>,
     pub group: Option<GlassGroup>,
+    pub group_name: Option<String>,
     membership: Option<Membership>,
     shaped: bool,
 }
@@ -168,11 +169,15 @@ fn merge_glass(layers: &mut [Layer]) {
     let members: Vec<(usize, Membership)> =
         layers.iter().enumerate().filter_map(|(i, l)| l.backdrop.as_ref().filter(|b| b.glass.is_some()).and_then(|b| Some((i, b.membership?)))).collect();
     let mut taken = vec![false; members.len()];
+    let mut named = 0;
     for start in 0..members.len() {
         if !taken[start] {
             let joined = joined_with(&members, &mut taken, start);
             let spacing = joined.iter().map(|&k| members[k].1.spacing).fold(0.0, f32::max);
-            merge_into_first(layers, joined.iter().map(|&k| members[k].0), spacing);
+            if let Some(b) = merge_into_first(layers, joined.iter().map(|&k| members[k].0), spacing) {
+                b.group_name = Some(format!("g{named}"));
+                named += 1;
+            }
         }
     }
 }
@@ -194,7 +199,7 @@ fn joined_with(members: &[(usize, Membership)], taken: &mut [bool], start: usize
     joined
 }
 
-fn merge_into_first(layers: &mut [Layer], members: impl Iterator<Item = usize>, spacing: f32) {
+fn merge_into_first(layers: &mut [Layer], members: impl Iterator<Item = usize>, spacing: f32) -> Option<&mut Backdrop> {
     let mut group = GlassGroup::new(spacing);
     let mut merged = Vec::new();
     for i in members {
@@ -205,13 +210,13 @@ fn merge_into_first(layers: &mut [Layer], members: impl Iterator<Item = usize>, 
             log::warn!("glass: more than {} pieces merge together; the rest are drawn on their own", acde_scene::glass::group::MOST_PIECES);
         }
     }
-    let [first, rest @ ..] = merged.as_slice() else { return };
+    let [first, rest @ ..] = merged.as_slice() else { return None };
     let area = |i: usize| layers[i].backdrop.as_ref().map(|b| (b.bounds, b.clip)).expect("a member has a backdrop");
     let (bounds, clip) = rest.iter().map(|&i| area(i)).fold(area(*first), |(b, c), (bi, ci)| (b.union(bi), c.union(ci)));
     rest.iter().for_each(|&i| layers[i].backdrop = None);
-    if let Some(b) = layers[*first].backdrop.as_mut() {
-        (b.group, b.bounds, b.clip) = (Some(group), bounds, clip);
-    }
+    let b = layers[*first].backdrop.as_mut()?;
+    (b.group, b.bounds, b.clip) = (Some(group), bounds, clip);
+    Some(b)
 }
 
 const LOGGED_FILTERS: usize = 64;
@@ -314,6 +319,7 @@ impl<'a> Split<'a> {
                     corners: l.shape.map(|s| Corners { radius: s.corners.radius * Self::linear(t * l.transform), ..s.corners }),
                     glass: l.shape.and_then(|s| s.glass).map(|g| g.scaled(Self::linear(t * l.transform))),
                     group: None,
+                    group_name: None,
                     membership: l.shape.and_then(|s| s.group).map(|m| m.scaled(Self::linear(t * l.transform))),
                     shaped: false,
                 };
