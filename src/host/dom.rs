@@ -519,6 +519,7 @@ natives! {
         dom.closest(id, &selector).map(Id)
     }
     "getElementById" => fn get_element_by_id(scope, args, dom) { text!(name = scope, args, 0); Ok(Id(dom.get_element_by_id(&name))) }
+    "namedElement" => fn named_element(scope, args, dom) { text!(name = scope, args, 0); Ok(Id(dom.named_element(&name))) }
     "getElementsByClassName" => fn get_elements_by_class_name(scope, args, dom) {
         let root = id(scope, &args, 0); text!(names = scope, args, 1);
         dom.get_elements_by_class_name(root, &names).map(Ids)

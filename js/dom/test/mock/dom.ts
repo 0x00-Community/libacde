@@ -424,6 +424,11 @@ export class MockDom implements DomNative {
   closest(id: number, selector: string): number {
     return this._call(() => this._id(this._node(id).closest(selector)))
   }
+  namedElement(name: string): number {
+    if (!name) return NONE
+    const quoted = JSON.stringify(name)
+    return this._id(this.doc.querySelector([`[id=${quoted}]`, ...['embed', 'form', 'img', 'object'].map((tag) => `${tag}[name=${quoted}]`)].join(',')))
+  }
   getElementById(id: string): number {
     return this._id(this.doc.getElementById(id))
   }

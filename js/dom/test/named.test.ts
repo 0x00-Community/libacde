@@ -426,3 +426,26 @@ test('window: a name no element has is answered from a cached name set, rebuilt 
   assert.ok(result.perMiss < 0.05, `a missing name took ${result.perMiss} ms`)
 })
 
+
+test('window named properties: ids and the names of forms, images, embeds and objects; a mutate-then-read loop does not scan the document', async () => {
+  using web = await page(FORM)
+  const result = web.json(`(() => {
+    const before = [window.login === document.forms.login, window.pic?.localName, window.byid?.id, window.title === undefined, window.nothere === undefined, 'pic' in window, 'title' in window]
+    document.querySelector('img[name=pic]').name = 'renamed'
+    const after = [window.pic === undefined, window.renamed?.localName]
+    const p = document.createElement('p')
+    p.id = 'late'
+    document.body.append(p)
+    const added = window.late === p
+    p.remove()
+    return { before, after, added, removed: window.late === undefined }
+  })()`)
+  assert.deepEqual(result, { before: [true, 'img', 'byid', true, true, true, false], after: [true, 'img'], added: true, removed: true })
+  const calls = callsOf(web, `
+    const made = document.createElement('div')
+    made.id = 'holder'
+    document.body.append(made)
+    for (let i = 0; i < 200; i++) window.holder.appendChild(document.createElement('span'))
+  `)
+  assert.equal(calls.get('querySelectorAll') ?? 0, 0, 'named access answers from the id and name maps')
+})

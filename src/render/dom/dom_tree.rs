@@ -478,6 +478,10 @@ impl Dom {
         self.read(|e| Ok(e.out(e.doc.get_element_by_id(id)))).unwrap_or(NONE)
     }
 
+    pub fn named_element(&self, name: &str) -> u32 {
+        self.read(|e| Ok(e.out(e.doc.named_element(name)))).unwrap_or(NONE)
+    }
+
     pub fn get_elements_by_class_name(&self, root: u32, class_names: &str) -> Result<Vec<u32>> {
         let wanted: Vec<&str> = class_names.split_ascii_whitespace().collect();
         self.elements(root, |el| {

@@ -115,6 +115,7 @@ export interface DomNative {
   matches(id: number, selector: string): boolean
   closest(id: number, selector: string): number
   getElementById(id: string): number
+  namedElement(name: string): number
   getElementsByClassName(root: number, classNames: string): Uint32Array
   getElementsByTagName(root: number, qualifiedName: string): Uint32Array
   getElementsByTagNameNS(root: number, namespace: string, localName: string): Uint32Array
