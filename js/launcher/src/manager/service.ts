@@ -2,9 +2,8 @@ import type { AcdeVoice, BackendConnection, ServiceBackend, ServiceFactory, Serv
 import { sys } from '../../../page/src/sys/natives'
 import { pathToFileURL } from '../../../page/src/sys/url'
 import { process, stopGroup } from '../../../page/src/sys/process'
-import { nativeArgs, withoutUndefined, type BackendLink, type ManagerEvent, type ManagerLink, type ServiceShape, type Welcome } from './manager'
+import { nativeArgs, withCallbacks, withoutUndefined, type BackendLink, type ManagerEvent, type ManagerLink, type ServiceShape, type Welcome } from './manager'
 
-const FN = '__acdeFn'
 const STOP_MS = 3000
 const HOLD_MS = 1 << 30
 
@@ -133,14 +132,6 @@ function synced(target: unknown, methods: Set<string>, sync: readonly string[]):
 export function shapeOf(target: unknown, sync: readonly string[]): ServiceShape {
   const { methods, values } = members(target)
   return { methods: [...methods], values, sync: synced(target, methods, sync), callable: typeof target === 'function' }
-}
-
-export function withCallbacks(value: unknown, call: (fn: number) => (...args: unknown[]) => void): unknown {
-  if (Array.isArray(value)) return value.map((item) => withCallbacks(item, call))
-  if (typeof value !== 'object' || value === null || Object.getPrototypeOf(value) !== Object.prototype) return value
-  const marked = (value as Record<string, unknown>)[FN]
-  if (typeof marked === 'number') return call(marked)
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withCallbacks(item, call)]))
 }
 
 function failure(error: unknown): { status: number; code: string; message: string } {

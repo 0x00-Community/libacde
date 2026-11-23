@@ -147,3 +147,13 @@ export function sessionOf(welcome: Welcome, wanted: 'app' | 'desktop' | 'service
   const instance = Number.isInteger(welcome.instance) && welcome.instance! > 0 ? { instance: welcome.instance } : {}
   return { kind: 'app', found, page: null, resources: welcome.resources, label: app.label, heapMb: app.heapMb, ...shared, ...instance }
 }
+
+export const CALLBACK = '__acdeFn'
+
+export function withCallbacks(value: unknown, call: (fn: number) => unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => withCallbacks(item, call))
+  if (typeof value !== 'object' || value === null || Object.getPrototypeOf(value) !== Object.prototype) return value
+  const marked = (value as Record<string, unknown>)[CALLBACK]
+  if (typeof marked === 'number') return call(marked)
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withCallbacks(item, call)]))
+}
