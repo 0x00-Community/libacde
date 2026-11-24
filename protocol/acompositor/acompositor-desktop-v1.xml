@@ -11,7 +11,7 @@
     background use wlr-layer-shell.
   </description>
 
-  <interface name="acompositor_desktop_v1" version="18">
+  <interface name="acompositor_desktop_v1" version="19">
     <description summary="the desktop's handle on acompositor">
       On bind acompositor sends a window event for every toplevel already shown, then
       work_area, then done. Later windows come as they are shown. From version 2 the
@@ -39,7 +39,8 @@
       height of the titlebar the runtime draws on app windows. From version 16 it also sets the
       measures of that titlebar's controls and title. From version 17 it tells which shell
       sub-layer each of its panels belongs to (set_panel_kind). From version 18 windows
-      (acompositor_window_v1 version 10) can be kept on top (set_topmost, topmost).
+      (acompositor_window_v1 version 10) can be kept on top (set_topmost, topmost). From
+      version 19 a dev-level client lists every surface's layer (layers).
     </description>
 
     <enum name="error">
@@ -470,6 +471,14 @@
       <arg name="x" type="fixed"/>
       <arg name="y" type="fixed"/>
     </request>
+
+    <request name="layers" since="19">
+      <description summary="dev level: every surface and the layer it is drawn in">
+        The new object reports each surface from the bottom up, then done. Another client
+        gets the dev_only error.
+      </description>
+      <arg name="id" type="new_id" interface="acompositor_layers_v1"/>
+    </request>
   </interface>
 
   <interface name="acompositor_window_v1" version="10">
@@ -762,6 +771,29 @@
       <arg name="width" type="int"/>
       <arg name="height" type="int"/>
       <arg name="drawn" type="uint" enum="drawn"/>
+    </event>
+
+    <event name="done"/>
+  </interface>
+
+  <interface name="acompositor_layers_v1" version="1">
+    <description summary="one answer to layers"/>
+    <request name="destroy" type="destructor"/>
+
+    <event name="surface">
+      <description summary="one surface, from the bottom up">
+        window is the N of the toplevel it is or belongs to, 0 for none; role is toplevel,
+        popup, layer, anchor, ime, lock or drag; layer is the z band (the numbering of the
+        z order spec); sub is the shell sub-layer (dock, floating, notice, confirm), empty
+        outside the shell band; parent is the N of the window an anchored panel, popup or
+        input method float belongs to, 0 for none; topmost is 1 when it is kept on top.
+      </description>
+      <arg name="window" type="uint"/>
+      <arg name="role" type="string"/>
+      <arg name="layer" type="uint"/>
+      <arg name="sub" type="string"/>
+      <arg name="parent" type="uint"/>
+      <arg name="topmost" type="uint"/>
     </event>
 
     <event name="done"/>
