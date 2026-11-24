@@ -11,7 +11,7 @@
     background use wlr-layer-shell.
   </description>
 
-  <interface name="acompositor_desktop_v1" version="15">
+  <interface name="acompositor_desktop_v1" version="16">
     <description summary="the desktop's handle on acompositor">
       On bind acompositor sends a window event for every toplevel already shown, then
       work_area, then done. Later windows come as they are shown. From version 2 the
@@ -36,7 +36,8 @@
       where a point lands (hit). From version 13 windows (acompositor_window_v1 version 8)
       say whether their client answers acompositor's pings. From version 14 the desktop
       sets windows aside (acompositor_window_v1 version 9). From version 15 the desktop sets the
-      height of the titlebar the runtime draws on app windows.
+      height of the titlebar the runtime draws on app windows. From version 16 it also sets the
+      measures of that titlebar's controls and title.
     </description>
 
     <enum name="error">
@@ -303,6 +304,25 @@
         windows it opens from then on that tall. Windows already open keep their titlebar.
       </description>
       <arg name="height" type="uint"/>
+    </request>
+
+    <request name="set_frame_metrics" since="16">
+      <description summary="the measures of the window controls and title the runtime draws">
+        In logical pixels: inset is the distance of the controls from the edge, dot the
+        diameter of a mac style control, gap the space between them, caption the width of
+        a Windows style control, title_size the title's font size; title_weight is its font
+        weight (100 to 1000). A negative value stands for the runtime's own default. The
+        values are handed on to every client (in acdes over
+        acompositor_backdrop_manager_v1.frame_metrics) as they are; acompositor keeps the
+        last ones but does not read them. Until the desktop sends them, clients hear
+        nothing and the runtime uses its defaults.
+      </description>
+      <arg name="inset" type="fixed"/>
+      <arg name="dot" type="fixed"/>
+      <arg name="gap" type="fixed"/>
+      <arg name="caption" type="fixed"/>
+      <arg name="title_size" type="fixed"/>
+      <arg name="title_weight" type="fixed"/>
     </request>
 
     <request name="create_embed_slot">
