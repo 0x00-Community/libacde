@@ -186,6 +186,7 @@ export class ServiceHost {
     readonly welcome: Welcome,
     readonly native: Readonly<Record<string, unknown>>,
     readonly hold: Hold = holdTheLoop,
+    readonly generation = 0,
   ) {
     if (!manager.send) throw new Error('this native.Manager cannot answer as a service (no send)')
     const given = welcome.backend
@@ -244,7 +245,8 @@ export class ServiceHost {
   async start(): Promise<void> {
     const { module: path, dir, stateDir } = this.welcome
     if (!path) throw new Error('the session manager sent no service module in its welcome')
-    const loaded = (await import(pathToFileURL(path).href)) as { default?: ServiceFactory }
+    const url = pathToFileURL(path).href + (this.generation > 0 ? `?generation=${this.generation}` : '')
+    const loaded = (await import(url)) as { default?: ServiceFactory }
     if (typeof loaded.default !== 'function') throw new Error(`${path} has no default export function`)
     const context = {
       name: this.name,

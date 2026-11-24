@@ -20,7 +20,7 @@ import { LaunchArgs } from './args'
 import { refused, route, unsupported, wallpaperOf } from './app/calls'
 import { rejectingCalls, sessionOf, windowGrant, type ManagerEvent, type ManagerLink, type ServiceShape, type Session, type Welcome } from './manager/manager'
 import { WindowSnapshots, type ShellEvent } from './app/events'
-import { ServiceHost } from './manager/service'
+import { holdTheLoop, ServiceHost } from './manager/service'
 import { DevChannel, type DevOpen, type DevOpened, type DevShell, type DevTarget } from './dev/dev'
 import { DevToolsEndpoint, type NativeDevTools } from './dev/devtools'
 import { managerRelay, type DevRelay } from './dev/relay'
@@ -269,7 +269,7 @@ class Launcher {
 
   #grant(): Grant {
     if (this.#desktop) return this.#shell.grant({ desktop: true })
-    if (this.#seat?.grant) return this.#shell.grant(this.#seat.grant)
+    if (this.#seat?.grant) return this.#shell.grant({ ...this.#seat.grant(), ...(this.#window !== 0 && { window: this.#window }) })
     return this.#shell.grant({ window: 1, mode: 'fullscreen', host: true, ...windowGrant(this.manager?.welcome, this.session.found!.app.size) })
   }
 
@@ -738,7 +738,8 @@ async function localDesktop(natives: LauncherNatives, args: LaunchArgs): Promise
     registry,
     rescan: scan,
     launcher: (given: Session, link: LocalLink, seat: Seat) => new Launcher(natives, given, link, args, seat),
-    service: (link: LocalLink, welcome: Welcome) => new ServiceHost(link, welcome, natives.native as unknown as Record<string, unknown>),
+    service: (link: LocalLink, welcome: Welcome, generation: number) =>
+      new ServiceHost(link, welcome, natives.native as unknown as Record<string, unknown>, holdTheLoop, generation),
   })
   for (const signal of Launcher.SIGNALS) onceSignal(signal, () => session.end(0))
   if (args.seconds !== null) setTimeout(() => session.end(0), args.seconds * 1000)

@@ -88,19 +88,22 @@
     `windows.invokeMenu` (按窗口号给应用 `menuinvoke`)、`capabilities.request`、`permissions.list` / `pending` (空)、`desktops.list`、`session.others` (空)、
     `session.logout` (结束会话); 别的回 501 `unsupported`. 还没有: `open-file`、`openPath`、`handlers` (按类型选应用, 宿主上回 501)、借文件夹 (`options.root`).
   - 应用开在桌面之上的 `free` 窗口里 (`grant({mode: 'free', size?})`, 尺寸同上), 起来后告诉桌面 `windowopen {window, appId, title, web, instance}`,
-    退出时放掉它的窗口并告诉 `windowclose`; 页面名 `<应用 id>#<实例号>`. 位置、状态、焦点的变化由宿主窗口自己发 (`windowgeometry`、`windowstate`、
+    退出时放掉它的窗口并告诉 `windowclose`; 页面名 `<应用 id>#<实例号>`. 页面重起 (重载、重建后的 `devreload`) 时启动器带着原来的窗口号再要窗口,
+    会话把宿主窗口删掉旧表项时发的 `windowgone` (正常状态的位置; 不交给桌面, acdes 不发这个) 或最后一次正常状态的 `windowgeometry` 作 `rect` 给它,
+    所以窗口号、位置都不变 (要之前先把宿主窗口积压的事件取完). 位置、状态、焦点的变化由宿主窗口自己发 (`windowgeometry`、`windowstate`、
     `windowactivate`), 启动器折成 `window` 快照交给桌面 (下面「窗口」).
   - 服务: 先起服务 (`ServiceHost`, 本进程 `import()` 它的模块), 至多等 5 秒它们 `ready`, 再起桌面; 服务提供的命名空间 (保留名和系统能力名丢掉, 同 acdes)
     进桌面和列了它的应用的 `services`, 变了推 `services`. 调用转成 `{type: 'call', id, service, method, args, caller}` 给服务, 30 秒没回答回 504;
     回调参数 (`__acdeFn`) 换成会话里的全局号, 服务的 `invoke` 换回调用方自己的号, `release` 两头转, 同 acdes `desktop/services.rs`. 服务结束时等它回答的
-    调用回 503.
+    调用回 503. 桌面包重建后的 `devreload` (没有 `app`): 先关掉所有服务 (`managerclosed`, 照常 `close`、结束它起的进程), 重扫 `ACDE_PATH`, 再按新清单起服务,
+    模块地址带 `?generation=<n>` 让 `import()` 不用缓存里的旧模块 (acdev 把服务打成单文件; 别的多文件服务里的相对导入仍是旧的), 然后才重载桌面.
   - 宿主窗口的事件 (`local/hub.ts`): 一个 `Shell`, 每个启动器一个视图, 视图授予的窗口记在它名下. 带窗口号的 `windowcloserequest`、`menuselect`、
     `devtools` 和作用域是 `app` / `menu` 的 `shortcut` 给窗口的主人, `devrequest` / `devreload` / `quit` 由会话处理, 其余给桌面.
   - 调试通道: `webs` 问每个页面再合并 (每个限 1.5 秒, 不答的列 `stalled: true`); 带 `web` 的 (页面名、应用 id 取实例号最小的、`desktop`) 交给那个页面的启动器,
     不带的给桌面, 不带 `web` 的 `snapshot` 给拿着焦点的窗口的主人; `open {name|url}` 会话自己答 (`path` 回 501); `console` / `network` 带 `pages: true`
     时每个页面各答一份 (键 `<应用 id 或 desktop>:<pid>#<序号>`). 各启动器的 Inspect 经会话看到所有窗口 (`Seat.windows`: 页面的 rpc、记录、关窗、
     统一的 `w<n>` 编号), 所以 `hit`、`act`、`snapshot` 落在别的应用的窗口上也能做. `devreload {app}` 先重扫 `ACDE_PATH`, 再交给那个应用的启动器 (它按新清单重起页面),
-    没有 `app` 给桌面.
+    没有 `app` 时先重起服务 (见上) 再给桌面.
   - SIGTERM / SIGINT / SIGHUP、`quit`、`session.logout`、`--seconds` 或桌面退出结束会话: 先关所有应用, 再断服务和桌面的连接; `--shot` 截整个宿主窗口.
 - **锁屏页预览** (`lock <桌面 id|目录>`, 只在没有管家时, `acdev dev --lock` 用, 日常桌面工作项 23): 按 `ACDE_PATH` 或目录找桌面包, 打开它清单 `lock`
   写的页面 (桌面窗口, 等级最低, 授予全无, 页面初始化数据带 `lock: true`, 所以只有 `acde:lock` 和 `acde:services`). `lock.user` / `lock.unlock` / `lock.cancel` 由

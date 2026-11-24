@@ -118,7 +118,7 @@ class FakeLauncher implements SeatedLauncher {
   }
 
   start(): void {
-    this.window = this.seat.shell.grant(this.seat.grant ?? { desktop: true }).window
+    this.window = this.seat.shell.grant(this.seat.grant?.() ?? { desktop: true }).window
   }
 
   run(): Promise<number> {
@@ -146,8 +146,12 @@ class FakeLauncher implements SeatedLauncher {
 }
 
 class FakeService implements ServiceRunner {
-  #end: (() => void) | null = null
-  constructor(readonly link: LocalLink, readonly welcome: Welcome, readonly provides: Record<string, unknown>) {}
+  readonly events: ShellEvent[] = []
+  constructor(readonly link: LocalLink, readonly welcome: Welcome, readonly provides: Record<string, unknown>, readonly generation: number) {}
+
+  take(): ShellEvent[] {
+    return this.events.splice(0)
+  }
 
   start(): Promise<void> {
     this.link.send({ ready: { provides: this.provides } })
@@ -156,7 +160,12 @@ class FakeService implements ServiceRunner {
 
   run(): Promise<number> {
     return new Promise((resolve) => {
-      this.#end = () => resolve(0)
+      this.link.onEvents(() => {
+        for (const event of this.link.pump()) {
+          this.events.push(event as ShellEvent)
+          if (event.type === 'managerclosed') resolve(0)
+        }
+      })
     })
   }
 }
@@ -178,8 +187,8 @@ function session() {
       launchers.push(launcher)
       return launcher
     },
-    service: (link, welcome) => {
-      const service = new FakeService(link, welcome, welcome.name === 'clock' ? { clock: shape(['now', 'watch']), apps: shape(['x']) } : {})
+    service: (link, welcome, generation) => {
+      const service = new FakeService(link, welcome, welcome.name === 'clock' ? { clock: shape(['now', 'watch']), apps: shape(['x']) } : {}, generation)
       services.push(service)
       return service
     },
@@ -213,7 +222,7 @@ describe('the local session of acdev dev: a desktop and its apps in one host win
     const opened = (await desktop.link.call('apps', 'open', ['appa'])) as Record<string, unknown>
     const appa = launchers[1]!
     assert.deepEqual([opened['app'], opened['instance'], opened['window'], opened['pid']], ['appa', 1, appa.window, 4242])
-    assert.deepEqual(appa.seat.grant, { mode: 'free' })
+    assert.deepEqual(appa.seat.grant!(), { mode: 'free' })
     assert.deepEqual([appa.link.welcome.kind, appa.link.welcome.level, appa.link.welcome.tier.shell], ['app', 'third-party', []])
     const told = desktop.link.pump()
     assert.ok(told.some((e) => e.type === 'windowopen' && e['window'] === appa.window && e['appId'] === 'appa' && e['web'] === 'appa#1'))
@@ -318,7 +327,7 @@ describe('desktop services in the local session', () => {
     const appa = launchers[1]!
     const clock = services[0]!
     const answer = appa.link.call('clock', 'watch', [{ __acdeFn: 7 }])
-    const call = clock.link.pump().find((e) => e.type === 'call')!
+    const call = clock.take().find((e) => e.type === 'call')!
     assert.deepEqual([call['service'], call['method'], call['caller']], ['clock', 'watch', { kind: 'app', app: 'appa', instance: 1 }])
     const global = ((call['args'] as unknown[])[0] as { __acdeFn: number }).__acdeFn
     clock.link.send({ invoke: { fn: global, args: ['tick'] } })
@@ -326,7 +335,7 @@ describe('desktop services in the local session', () => {
     clock.link.send({ id: call['id'], ok: 'watching' })
     assert.equal(await answer, 'watching')
     appa.link.send({ release: { fn: 7 } })
-    assert.deepEqual(clock.link.pump().filter((e) => e.type === 'release').map((e) => e['fn']), [global])
+    assert.deepEqual(clock.take().filter((e) => e.type === 'release').map((e) => e['fn']), [global])
     local.end(0)
   })
 
@@ -363,6 +372,17 @@ describe('host window events and dev requests in the local session', () => {
     local.end(0)
   })
 
+  test('an app window that goes away is remembered where it was, and a new grant for it (a reload) asks for that place', async () => {
+    const { desktop, launchers, fake, local } = await started()
+    await desktop.link.call('apps', 'open', ['appa'])
+    const appa = launchers[1]!
+    desktop.seen.length = 0
+    fake.emit({ type: 'windowgone', window: appa.window, x: 100, y: 120, width: 640, height: 480 })
+    assert.deepEqual(appa.seat.grant!(), { mode: 'free', rect: [100, 120, 640, 480] })
+    assert.deepEqual(desktop.seen.map((e) => e.type), [])
+    local.end(0)
+  })
+
   test('webs answers for every page; a request naming a web goes to that page; reload of one app goes to it', async () => {
     const { desktop, launchers, fake, local } = await started()
     await desktop.link.call('apps', 'open', ['appa'])
@@ -383,6 +403,23 @@ describe('host window events and dev requests in the local session', () => {
     fake.emit({ type: 'devrequest', key: JSON.stringify({ id: 6, op: 'open', name: 'APPB' }) })
     await tick()
     assert.match(fake.responses.find((r) => r[0] === 6)![2], /opened appb/)
+    local.end(0)
+  })
+
+  test('a rebuilt desktop: the services end and start again from a fresh module, then the desktop reloads', async () => {
+    const { desktop, services, fake, local } = await started()
+    const clock = services[0]!
+    clock.take()
+    fake.emit({ type: 'devreload' })
+    for (let i = 0; i < 20 && services.length < 4; i++) await tick()
+    assert.deepEqual(services.map((s) => [s.welcome.name, s.generation]), [['clock', 0], ['notes', 0], ['clock', 1], ['notes', 1]])
+    for (let i = 0; i < 20 && !desktop.seen.some((e) => e.type === 'devreload'); i++) await tick()
+    assert.ok(desktop.seen.some((e) => e.type === 'devreload'))
+    await desktop.link.call('apps', 'open', ['appa'])
+    const answer = desktop.link.call('clock', 'now', [])
+    assert.ok(services[2]!.take().some((e) => e.type === 'call'))
+    assert.deepEqual(services[0]!.take().filter((e) => e.type === 'call'), [])
+    void answer.catch(() => null)
     local.end(0)
   })
 

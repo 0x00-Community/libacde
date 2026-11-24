@@ -28,7 +28,7 @@ export interface SessionWindows {
 
 export interface Seat {
   readonly shell: LauncherShell
-  readonly grant: GrantOptions | null
+  readonly grant: (() => GrantOptions) | null
   readonly windows: SessionWindows
   fresh(): Found | null
 }
@@ -50,7 +50,7 @@ export interface LocalHost {
   readonly shell: LauncherShell
   readonly registry: LocalRegistry
   launcher(session: Session, link: LocalLink, seat: Seat): SeatedLauncher
-  service(link: LocalLink, welcome: Welcome): ServiceRunner
+  service(link: LocalLink, welcome: Welcome, generation: number): ServiceRunner
   rescan(): LocalRegistry
 }
 
@@ -108,13 +108,15 @@ export class LocalSession implements PeerSide {
   readonly hub: ShellHub
   #registry: LocalRegistry
   readonly #running: Running[] = []
-  readonly #services = new Map<string, { peer: Peer; link: LocalLink; spec: LocalService }>()
+  readonly #services = new Map<string, { peer: Peer; link: LocalLink; spec: LocalService; ended: Promise<void> }>()
+  #generation = 0
   readonly #provided: Provided[] = []
   readonly #forwards = new Map<number, Forward>()
   readonly #functions = new Map<number, LentFn>()
   readonly #instances = new Map<string, number>()
   #desktop: Running | null = null
   readonly #refs = new Map<number, string>()
+  readonly #places = new Map<number, readonly [number, number, number, number]>()
   #nextRef = 1
   #next = 0
   readonly windows: SessionWindows = {
@@ -171,20 +173,26 @@ export class LocalSession implements PeerSide {
       const peer = this.#peer('service', null, spec.grant.name)
       const welcome = this.#serviceWelcome(spec)
       const link = new LocalLink(welcome, peer, this)
-      this.#services.set(spec.grant.name, { peer, link, spec })
-      const runner = this.host.service(link, welcome)
+      const runner = this.host.service(link, welcome, this.#generation)
+      let ended: () => void = () => {}
+      this.#services.set(spec.grant.name, { peer, link, spec, ended: new Promise<void>((done) => (ended = done)) })
       try {
         await runner.start()
       } catch (error) {
         process.stderr.write(`acdev: service ${spec.grant.name}: ${(error as Error).message}\n`)
-        this.#services.delete(spec.grant.name)
+        this.#serviceGone(peer)
+        ended()
         return
       }
       void runner.run().then(
-        () => this.#serviceGone(peer),
+        () => {
+          this.#serviceGone(peer)
+          ended()
+        },
         (error: Error) => {
           process.stderr.write(`acdev: service ${spec.grant.name}: ${error.message}\n`)
           this.#serviceGone(peer)
+          ended()
         },
       )
     })
@@ -311,6 +319,13 @@ export class LocalSession implements PeerSide {
   }
 
   #route(event: ShellEvent, owner: ShellView | null): void {
+    if ((event.type === 'windowgone' || event.type === 'windowgeometry') && typeof event.window === 'number') {
+      const { x, y, width, height } = event as { x?: unknown; y?: unknown; width?: unknown; height?: unknown }
+      const rect = [x, y, width, height]
+      const normal = event.type === 'windowgone' || this.host.shell.windows().find((r) => (r.window ?? r.id) === event.window)?.state === 'normal'
+      if (normal && rect.every((n) => typeof n === 'number' && Number.isFinite(n))) this.#places.set(event.window, rect as [number, number, number, number])
+      if (event.type === 'windowgone') return
+    }
     switch (event.type) {
       case 'devrequest':
         return void this.#devRequest(String(event['key'] ?? ''))
@@ -336,9 +351,20 @@ export class LocalSession implements PeerSide {
 
   #devReload(event: ShellEvent): void {
     const app = typeof event['key'] === 'string' ? event['key'] : null
-    if (app !== null) this.#registry = this.host.rescan()
-    const targets = app === null ? [this.#desktop] : this.#apps().filter((r) => r.app!.app.id === app)
-    for (const target of targets) target?.view.push(event)
+    this.#registry = this.host.rescan()
+    if (app !== null) {
+      for (const target of this.#apps().filter((r) => r.app!.app.id === app)) target.view.push(event)
+      return
+    }
+    void this.#restartServices().then(() => this.#desktop?.view.push(event))
+  }
+
+  async #restartServices(): Promise<void> {
+    const old = [...this.#services.values()]
+    for (const service of old) service.link.close()
+    await Promise.all(old.map((service) => service.ended))
+    this.#generation++
+    await this.#startServices()
   }
 
   #byWeb(name: unknown): Running | null {
@@ -653,11 +679,17 @@ export class LocalSession implements PeerSide {
     const welcome = this.#appWelcome(app, instance, request)
     const link = new LocalLink(welcome, peer, this)
     const view = this.hub.view()
-    const grant: GrantOptions = { mode: 'free', ...windowGrant(welcome, app.app.size) }
+    const sized: GrantOptions = { mode: 'free', ...windowGrant(welcome, app.app.size) }
+    let record: Running | null = null
+    const grant = (): GrantOptions => {
+      this.hub.flush()
+      const place = record && record.window !== 0 ? this.#places.get(record.window) : undefined
+      return place ? { ...sized, rect: [...place] } : sized
+    }
     const seat: Seat = { shell: view.shell, grant, windows: this.windows, fresh: () => this.host.rescan().app(id) ?? null }
     const launcher = this.host.launcher(sessionOf(welcome, 'app'), link, seat)
     const web = `${id}#${instance}`
-    const record: Running = { peer, link, view, launcher, app, window: 0, title: app.app.label, menus: null, web }
+    record = { peer, link, view, launcher, app, window: 0, title: app.app.label, menus: null, web }
     this.#running.push(record)
     try {
       launcher.start()
@@ -685,6 +717,7 @@ export class LocalSession implements PeerSide {
     record.link.close()
     record.view.releaseAll()
     this.#refs.delete(record.window)
+    this.#places.delete(record.window)
     if (record.window && !this.#ending) this.#toDesktop({ type: 'windowclose', window: record.window })
   }
 
@@ -804,7 +837,7 @@ export class LocalSession implements PeerSide {
     for (const f of this.#functions.values()) f.services.delete(peer.id)
     const had = this.#provided.length
     for (let i = this.#provided.length - 1; i >= 0; i--) if (this.#provided[i]!.peer.id === peer.id) this.#provided.splice(i, 1)
-    this.#services.delete(peer.service ?? '')
+    if (this.#services.get(peer.service ?? '')?.peer.id === peer.id) this.#services.delete(peer.service ?? '')
     if (this.#provided.length !== had) this.#tellShapes()
   }
 }
