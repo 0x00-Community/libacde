@@ -32,6 +32,7 @@ export interface GuestWindowChange {
   readonly state?: NonNullable<ShellWindow['state']>
   readonly focus?: true
   readonly close?: true
+  readonly topmost?: boolean
 }
 
 export class GuestWindows {
@@ -107,6 +108,12 @@ export class GuestWindows {
       if (change) change({ window: id, state })
       else base.shell.setState?.(to(id), state)
     }
+    const setTopmost = (id: number, on: boolean) => {
+      const change = winman(id)
+      if (!change) return base.shell.setTopmost?.(to(id), on) ?? false
+      change({ window: id, topmost: on })
+      return true
+    }
     const shell: InspectShell = {
       ...base.shell,
       focus: (id) => {
@@ -115,6 +122,7 @@ export class GuestWindows {
         else base.shell.focus(to(id))
       },
       ...((base.shell.setState || window) && { setState }),
+      ...((base.shell.setTopmost || window) && { setTopmost }),
       ...(base.shell.place && {
         place: (id, change) =>
           this.placed ? Promise.reject(new Error('in the guest acdev places windows through the session manager')) : base.shell.place!(to(id), change),

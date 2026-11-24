@@ -201,8 +201,10 @@ describe('window changes in the guest', () => {
     host.hide(9, false)
     await host.close(9)
     host.shell.focus(0)
+    assert.equal(host.shell.setTopmost!(9, true), true)
     assert.deepEqual(changes, [
       { window: 7, state: 'minimized' }, { window: 9, focus: true }, { window: 9, state: 'normal' }, { window: 9, close: true }, { window: 0, focus: true },
+      { window: 9, topmost: true },
     ])
     assert.deepEqual(focused, [])
   })
