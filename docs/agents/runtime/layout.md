@@ -265,7 +265,7 @@
   CSS 动画和过渡的事件 (`dom/cssevents.ts`): 页面第一次给这 8 种事件 (或 webkit 前缀的 4 种) 加监听或 on 处理器时调 `wantAnimationEvents`
   (render 从这时起留下事件, 之前的丢掉), 之后每帧开头 `takeFrame(true)` 一次锁里取滚动、加载和动画事件 (没有监听时 `takeFrame(false)`, 不取动画事件)
   (文档改过、样式待算时 render 先算到最新; 只是动画在走时不重算, 拿出帧线程上一次重算记下的事件, 最多晚一帧), 照规范在 rAF 回调之前在元素上发 `AnimationEvent` / `TransitionEvent` (冒泡, 不可取消, 伪元素的发在宿主元素上带 `pseudoElement`);
-  Web Animations 自己的 `acde-animation-<n>` 关键帧不发. 还有动画在跑或刚有事件就再要一帧; 改了 DOM 的任务结束时也要一帧, 好让新开始的动画被看到.
+  Web Animations 自己的 `acde-animation-<n>` 关键帧不发. 出帧线程的重算记下新事件时经 `wantAnimationEvents` 挂上的回调给页面要一帧 (`webnative::request_frame_now`), 页面不再因为动画在跑每帧都要一帧, 只在刚有事件时再要一帧; 改了 DOM 的任务结束时也要一帧, 好让新开始的动画被看到.
   还没有: 只有 webkit 前缀监听时改发旧名 (DOM 的 legacy event types), `getAnimations()` 里的 CSS 动画.
   拖滚动条 (`dom/scrollbar.ts`, `Input` 在别的指针处理之前调, AC/dopame#20): 左键按下时问原生 `scrollbarAt()` (render 里指针下、看得见的覆盖式滚动条滑块,
   `hovered_scrollbar`; 回 `[元素 id, 轴 0 横 1 竖, 每像素滑块对应的内容像素]`, 没有就是空), 按在滑块上就开始拖: 移动时按起点的滚动位置加位移乘比例

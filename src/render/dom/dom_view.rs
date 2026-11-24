@@ -316,6 +316,14 @@ impl Dom {
         })
     }
 
+    pub fn wake_on_animation_events(&self, wake: Box<dyn Fn() + Send>) -> Result<()> {
+        self.read(|e| {
+            e.doc.want_animation_events();
+            e.animation_waker = Some(wake);
+            Ok(())
+        })
+    }
+
     pub fn take_animation_events(&self) -> AnimationEvents {
         self.read(|e| Ok(e.take_animation_events())).unwrap_or_default()
     }

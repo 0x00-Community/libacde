@@ -344,7 +344,9 @@ impl Engine {
     pub(in crate::render::dom) fn take_animation_events(&mut self) -> AnimationEvents {
         self.laid_out();
         let mut events = Vec::new();
-        for event in self.doc.take_animation_events() {
+        let mut taken = std::mem::take(&mut self.animation_events);
+        taken.extend(self.doc.take_animation_events());
+        for event in taken {
             let connected = self.doc.get_node(event.node).is_some_and(|n| n.flags.is_in_document());
             let target = if connected { Some(self.ids.id_of(event.node)) } else { self.ids.handle(event.node) };
             let Some(target) = target else { continue };

@@ -735,7 +735,12 @@ natives! {
     "takeScrolled" => fn take_scrolled(scope, args, dom) { Ok(Ids(dom.take_scrolled())) }
     "imageState" => fn image_state(scope, args, dom) { let id = id(scope, &args, 0); dom.image_state(id).map(|s| Floats(s.to_vec())) }
     "takeLoaded" => fn take_loaded(scope, args, dom) { Ok(Ids(dom.take_loaded())) }
-    "wantAnimationEvents" => fn want_animation_events(scope, args, dom) { dom.want_animation_events() }
+    "wantAnimationEvents" => fn want_animation_events(scope, args, dom) {
+        let tasks = crate::host::rt::current().sender();
+        dom.wake_on_animation_events(Box::new(move || {
+            _ = tasks.send(crate::host::rt::Msg::Task(Box::new(|_| crate::host::webnative::request_frame_now())));
+        }))
+    }
     "takeAnimationEvents" => fn take_animation_events(scope, args, dom) { Ok(dom.take_animation_events()) }
     "takeFrame" => fn take_frame(scope, args, dom) { let wanted = bind::arg_bool(scope, &args, 0); Ok(dom.take_frame(wanted)) }
     "sheetState" => fn sheet_state(scope, args, dom) { let id = id(scope, &args, 0); dom.sheet_state(id).map(f64::from) }

@@ -58,6 +58,8 @@ pub(crate) struct Engine {
     pub(crate) input: Option<crate::log::Trace>,
     pub(crate) held: Vec<crate::render::Cmd>,
     pub(crate) cursor: &'static str,
+    pub(crate) animation_events: Vec<blitz_dom::AnimationEvent>,
+    pub(crate) animation_waker: Option<Box<dyn Fn() + Send>>,
 }
 
 unsafe impl Send for Engine {}
@@ -125,6 +127,8 @@ impl Engine {
             input: None,
             held: Vec::new(),
             cursor: "default",
+            animation_events: Vec::new(),
+            animation_waker: None,
         };
         let document = this.doc.root_node().id;
         {
@@ -525,6 +529,13 @@ impl Engine {
             let start = Instant::now();
             self.resolved_at = now;
             self.doc.resolve(self.resolved_at);
+            if let Some(wake) = &self.animation_waker {
+                let fresh = self.doc.take_animation_events();
+                if !fresh.is_empty() && self.in_task.is_none() {
+                    wake();
+                }
+                self.animation_events.extend(fresh);
+            }
             self.cursor = crate::render::cursor::of(&self.doc);
             self.stats.resolve_ms = crate::log::since_ms(start);
             self.stats.resolve.add(self.stats.resolve_ms);

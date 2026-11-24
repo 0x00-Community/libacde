@@ -30,7 +30,7 @@ export function onCssEventsWanted(callback: () => void): void {
 
 export function deliverCssEvents(taken: AnimationEvents | null): boolean {
   if (!taken) return false
-  const { animating, events } = taken
+  const { events } = taken
   for (const record of events) {
     if (!record.transition && record.name.startsWith(OWN)) continue
     const target = existing(record.target) ?? wrap(record.target)
@@ -41,5 +41,5 @@ export function deliverCssEvents(taken: AnimationEvents | null): boolean {
       : new AnimationEvent(record.type, { ...init, animationName: record.name })
     fire(target as never, event)
   }
-  return animating || events.length > 0
+  return events.length > 0
 }

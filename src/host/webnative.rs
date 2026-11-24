@@ -274,6 +274,10 @@ fn request_frame(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, _: 
     with_surface(scope, Surface::request_frame);
 }
 
+pub(crate) fn request_frame_now() {
+    STATE.with(|s| s.borrow().surface.as_ref().map(Surface::request_frame));
+}
+
 fn request_mode(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
     let mode = match bind::arg_string(scope, &args, 0).as_str() {
         "free" => 1,
