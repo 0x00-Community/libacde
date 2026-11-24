@@ -401,7 +401,7 @@ class Launcher {
       case 'reload':
         return this.#reload(args[0])
       case 'devreload':
-        return void this.#devReload(false)
+        return void this.#devReload(false, true)
       case 'capabilities':
         return this.#capabilities(method, args)
       case 'panel':
@@ -433,7 +433,11 @@ class Launcher {
     return true
   }
 
-  async #devReload(hot: boolean): Promise<void> {
+  static #backendSame(data: unknown): boolean {
+    return typeof data === 'object' && data !== null && (data as Record<string, unknown>)['backend'] === 'same'
+  }
+
+  async #devReload(hot: boolean, backendSame = false): Promise<void> {
     if (hot) return void this.#thread?.post({ type: 'devhot' })
     if (this.#closing || this.#reloading) return
     this.#devState = await this.#dev.snapshot()
@@ -442,7 +446,7 @@ class Launcher {
     if (fresh) this.#init = webInit(fresh, 0n, this.#place(), given, this.#window)
     this.#reloading = true
     this.#devtools.reloading(this.#init!.name)
-    void this.#backend?.restart(fresh ?? undefined)
+    if (!backendSame || !this.#backend?.running) void this.#backend?.restart(fresh ?? undefined)
     this.#thread?.terminate()
   }
 
@@ -639,7 +643,7 @@ class Launcher {
       else if (event.type === 'devrequest') void this.#dev.request(String(event['key'] ?? ''))
       else if (event.type === 'devtools') this.#devtools.pressed()
       else if (!this.#desktop && (event.type === 'menuselect' || event.type === 'shortcut')) this.#appKey(event)
-      else if (event.type === 'devreload') void this.#devReload(event['title'] === 'hot')
+      else if (event.type === 'devreload') void this.#devReload(event['title'] === 'hot', Launcher.#backendSame(event['data']))
       else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event))
     }
     this.#walls.check()
@@ -675,7 +679,7 @@ class Launcher {
       if (event.type === 'managerclosed') this.#end(0, 'the manager closed the channel')
       else if (event.type === 'services') this.#replaceServices(event['services'] as Readonly<Record<string, ServiceShape>> | undefined)
       else if (event.type === 'devrequest') void this.#dev.request(String(event['key'] ?? ''))
-      else if (event.type === 'devreload') void this.#devReload(event['hot'] === true)
+      else if (event.type === 'devreload') void this.#devReload(event['hot'] === true, event['backend'] === false)
       else if (event.type === 'invoke') { const message = this.#lent.invoke(event); if (message) this.#thread?.post(message) }
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
       else if (event.type === 'lend' && !this.#desktop && this.#seat) this.#thread?.post({ type: 'fsroots', added: [String(event['name'] ?? '')], removed: [] })

@@ -117,6 +117,10 @@ export class AppBackend {
     return BackendPlace.init(this.#app)
   }
 
+  get running(): boolean {
+    return this.#pid !== null
+  }
+
   start(): void {
     if (!this.#app.backend || this.#pid !== null) return
     this.#crashes = []
