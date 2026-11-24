@@ -133,13 +133,22 @@ export class ImePanel {
     if (event.auxDown) parts.push(line('ime-aux down', event.auxDown))
     panel.replaceChildren(...parts)
     const view = doc.defaultView
-    const height = (view?.innerHeight ?? 0) || 800
-    const below = caret.y + caret.height + 6
-    const flips = !this.#layer.floating && below + 72 > height
-    const style = flips ? `left:${caret.x - 8}px;bottom:${height - caret.y + 6}px` : `left:${caret.x - 8}px;top:${below}px`
-    panel.setAttribute('style', `position:${this.#layer.position};${ImePanel.#STYLE};${style}`)
+    const base = `position:${this.#layer.position};${ImePanel.#STYLE}`
+    const place = (left: number, top: number) => panel.setAttribute('style', `${base};left:${left}px;top:${top}px`)
+    const [left, below] = [caret.x - 8, caret.y + caret.height + 6]
+    place(left, below)
     this.#layer.mount(panel)
+    const page: [number, number] = [(view?.innerWidth ?? 0) || 1280, (view?.innerHeight ?? 0) || 800]
+    const fitted = ImePanel.fit(panel.getBoundingClientRect(), { left, below, above: caret.y - 6 }, page)
+    if (fitted[0] !== left || fitted[1] !== below) place(...fitted)
     this.#layer.changed()
+  }
+
+  static fit(box: { width: number; height: number }, at: { left: number; below: number; above: number }, page: readonly [number, number]): [number, number] {
+    const [width, height] = page
+    const left = Math.max(0, Math.min(at.left, width - box.width))
+    const flips = at.below + box.height > height && at.above - box.height >= 0
+    return [left, flips ? at.above - box.height : at.below]
   }
 
   hide(): void {

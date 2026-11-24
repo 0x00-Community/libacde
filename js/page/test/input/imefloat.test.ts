@@ -134,3 +134,31 @@ test('when the float content gets shorter the float rect shrinks with it', async
   text.preedit('你hao')
   assert.deepEqual(shell.slice(-2), [[50, 40, 200, 18], [50, 40, 60, 18]])
 })
+
+test('a candidate box that would cross the right or bottom edge moves left or above the caret', () => {
+  const at = { left: 427, below: 415, above: 388 }
+  assert.deepEqual(ImePanel.fit({ width: 272, height: 37 }, at, [640, 480]), [368, 415], 'pulled left to end at the right edge')
+  assert.deepEqual(ImePanel.fit({ width: 100, height: 37 }, at, [640, 480]), [427, 415], 'it fits as it is')
+  assert.deepEqual(ImePanel.fit({ width: 100, height: 80 }, at, [640, 480]), [427, 308], 'above the caret when it does not fit below')
+  assert.deepEqual(ImePanel.fit({ width: 900, height: 37 }, at, [640, 480]), [0, 415], 'wider than the page: from its left edge')
+})
+
+test('the float the host gets stays inside the page, with its content where the rect says', async () => {
+  const { web, shell, native, surface } = await floating()
+  using _ = web
+  const width = web.run<number>('innerWidth')
+  ;(web.dom as unknown as { _box: (id: number) => typeof BOX })._box = (id) => {
+    const element = web.internals.nodeOf?.(id) as unknown as Element | undefined
+    const style = element?.getAttribute?.('style') ?? ''
+    const left = Number(/left:(-?[\d.]+)px/.exec(style)?.[1] ?? 0)
+    const top = Number(/top:(-?[\d.]+)px/.exec(style)?.[1] ?? 0)
+    return style.includes('data-acde') || !style ? { x: 0, y: 0, width: 0, height: 0 } : { x: left, y: top, width: 272, height: 37 }
+  }
+  const layer = new ImeLayer(web.context['document'] as Document, native, (node) => web.internals.idOf(node as never))
+  layer.attach(surface)
+  const panel = new ImePanel(web.context['document'] as Document, layer, { select: () => {}, page: () => {} })
+  panel.show(EVENT, { x: width - 60, y: 40, width: 1, height: 18 })
+  const [x, , w] = shell.at(-1)!
+  assert.ok(x + w <= width, `the float ends inside the page: ${shell.at(-1)} in ${width}`)
+  assert.equal(web.run(`document.querySelector('[data-acde-ime-panel]').getAttribute('style').match(/left:([\\d.]+)px/)[1]`), String(x))
+})

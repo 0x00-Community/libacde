@@ -49,7 +49,7 @@
   `[半径, 模糊, 饱和, 亮度, 指数]`; C 接口不改结构, 指数放在 `AcdeCommand.thickness` (Backdrop 本来不用它). 没写 shape 时是圆弧 (n = 2).
 - 输入法浮层 (2026-11-24, 总仓 `.scratch/system/zorder.md` 5.1): 页面自画的候选框 (`ImePanel`) 和预编辑文字原来挂在 `document.body` 上, 只能画进页面所在的表面,
   会被钉住的面板和更靠前的窗口盖住. 宿主的 `platform::Window::ime_float()` 返回 true 时 (surface 的 `imeFloat`, 默认 false; acdes 的窗口 crate 返回 true), 两者改挂到一个
-  `position:fixed; inset:0` 的容器 (`data-acde-ime-float`, `js/page/src/panel.ts` 的 `ImeLayer`) 里, 自身改 `position:absolute`, 不再在窗口下沿翻到光标上方 (越出屏幕由合成器平移).
+  `position:fixed; inset:0` 的容器 (`data-acde-ime-float`, `js/page/src/panel.ts` 的 `ImeLayer`) 里, 自身改 `position:absolute`. 候选框放下后量一次大小 (`ImePanel::fit`, 2026-11-24): 右边越出页面就往左挪到贴右沿, 下边放不下而上方放得下就翻到光标上方, 所以内容不出页面; 越出屏幕时合成器裁掉而不平移 (acdes).
   每次变动后量出各子元素外框的并集 (CSS 像素, 页面坐标), 变了才发: dom `setImeFloat(容器, x, y, w, h)` 把容器的子树当作一块面板画, 面板号固定为
   `render::IME_FLOAT_PANEL` (`u32::MAX`, 在 `Frame.panels` 里, 只在浮层显示的帧里有); surface `setImeFloat(x, y, w, h)` 发 `SurfaceCommand::Ime(Some(ImeFloat {x, y, width, height}))`
   (整数, 逻辑像素, 原点是页面内容区左上角). 每次发出都记一行 info 日志 (target `acde::ime`, `ime float x=… y=… width=… height=…` 或 `hidden`), 取证用. 宽或高为 0 即 `Ime(None)`: 输入结束 (预编辑清空且候选框收起)、输入框失焦或窗口失去激活、候选框收起后都立刻发 None, 合成器看不到
