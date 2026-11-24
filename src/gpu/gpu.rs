@@ -13,7 +13,7 @@ type Waiter = Box<dyn FnOnce(Option<Arc<Gpu>>) + Send>;
 pub type ErrorSink = Box<dyn FnMut(wgpu::Error)>;
 
 const WAIT: Duration = Duration::from_secs(10);
-const POLL_BUSY: Duration = Duration::from_micros(500);
+const POLL_BUSY: Duration = Duration::from_millis(2);
 const POLL_IDLE: Duration = Duration::from_millis(4);
 
 pub struct Gpu {
