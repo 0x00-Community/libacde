@@ -133,6 +133,15 @@ describe('the session from the manager\'s welcome', () => {
     assert.deepEqual(sessionOf({ ...base, kind: 'desktop', desktop } as Welcome, 'desktop').page, '/p/desktop.html')
   })
 
+  test('a desktop welcome marked greeter is the login page; a lock page or an app never is', () => {
+    const desktop = { id: 'greet', name: 'Login', entry: 'index.html' }
+    assert.equal(sessionOf({ ...base, kind: 'desktop', greeter: true, desktop } as Welcome, 'desktop').greeter, true)
+    assert.equal(sessionOf({ ...base, kind: 'desktop', desktop } as Welcome, 'desktop').greeter, false)
+    assert.equal(sessionOf({ ...base, kind: 'desktop', lock: true, greeter: true, desktop } as Welcome, 'desktop').greeter, false)
+    const app = { id: 'notes', label: 'Notes', icon: 'apps', entry: '/index.html', capabilities: {} } as never
+    assert.equal(sessionOf({ ...base, kind: 'app', greeter: true, app } as Welcome, 'app').greeter, false)
+  })
+
   test('the lock page with a confirm in its welcome is the system confirm page', () => {
     const desktop = { id: 'lock', name: 'Lock', entry: 'index.html' }
     const confirm = { id: 'r-1', waiting: { op: 'tool.call' }, agent: false }

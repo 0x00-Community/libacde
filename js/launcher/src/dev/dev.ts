@@ -83,6 +83,7 @@ type Request = Record<string, unknown> & { readonly id: number; readonly op: str
 export class DevChannel {
   static readonly LOCK = 'lock'
   static readonly CONFIRM = 'confirm'
+  static readonly GREETER = 'greeter'
   readonly #inflight = new Set<Promise<void>>()
   static readonly STATE_MS = 500
   static readonly SINGLE = 'a single-app session (acdev dev --app) has no other apps'

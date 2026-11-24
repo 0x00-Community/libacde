@@ -325,6 +325,7 @@ class Launcher {
   #webName(given: string): string {
     const { session } = this
     if (this.manager && session.lock) return session.confirm ? DevChannel.CONFIRM : DevChannel.LOCK
+    if (this.manager && session.greeter) return DevChannel.GREETER
     if (session.instance !== undefined && session.found) return `${session.found.app.id}#${session.instance}`
     return given
   }

@@ -36,7 +36,7 @@ export function standalone(args: LaunchArgs): Session {
   const grants = grantsFor(found)
   return {
     kind: 'app', found, page: null, resources: found.resources, label: app.label, heapMb: app.heapMb,
-    tier: null, grants, request: null, services: {}, own: false, lock: false, confirm: false,
+    tier: null, grants, request: null, services: {}, own: false, lock: false, confirm: false, greeter: false,
   }
 }
 
@@ -52,6 +52,6 @@ function lockPreview(args: LaunchArgs): Session {
   return {
     kind: 'desktop', found: null, page: join(found.dir, entry), resources: found.resources, label: `${found.desktop.name} (lock)`,
     heapMb: found.desktop.heapMb, tier: { level: API_LEVEL, shell: [], refused: {} }, grants, request: null, services: {},
-    own: false, lock: true, confirm: false,
+    own: false, lock: true, confirm: false, greeter: false,
   }
 }

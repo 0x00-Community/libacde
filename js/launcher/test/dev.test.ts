@@ -143,6 +143,30 @@ describe('the lock page in a session', () => {
   })
 })
 
+describe('the login page in a greeter session', () => {
+  test('answers as greeter, and also as the desktop it is in its session', async () => {
+    const answers: { id: number; ok: boolean; payload: string }[] = []
+    const page: DevTarget = {
+      name: DevChannel.GREETER, app: null, kind: 'desktop', window: 0, title: 'Login', frame: 0,
+      call: async () => 'shown', post: () => {},
+    }
+    const dev = new DevChannel({
+      shell: { screenshot: async () => ({ width: 0, height: 0 }) },
+      page: () => page,
+      inspect: () => { throw new Error('no inspect') },
+      reload: async () => {},
+      respond: (id, ok, payload) => void answers.push({ id, ok, payload }),
+    })
+    await dev.request(JSON.stringify({ id: 1, op: 'webs' }))
+    await dev.request(JSON.stringify({ id: 2, op: 'clock', web: 'greeter', action: 'state' }))
+    await dev.request(JSON.stringify({ id: 3, op: 'clock', web: 'desktop', action: 'state' }))
+    await dev.request(JSON.stringify({ id: 4, op: 'clock', web: 'lock', action: 'state' }))
+    assert.deepEqual(JSON.parse(answers[0]!.payload), { webs: [{ name: 'greeter', app: null, kind: 'desktop', window: 0, title: 'Login' }] })
+    assert.deepEqual(answers.slice(1).map((a) => a.ok), [true, true, false])
+    assert.match(answers[3]!.payload, /no web lock \(webs: greeter;/)
+  })
+})
+
 describe('a dev request still running when the launcher ends', () => {
   test('settle waits for it, but no longer than it is told', async () => {
     const answers: number[] = []

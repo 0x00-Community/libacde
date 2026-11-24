@@ -35,6 +35,7 @@ export interface Welcome {
   readonly session?: { readonly own: boolean }
   readonly lock?: boolean
   readonly confirm?: unknown
+  readonly greeter?: boolean
   readonly instance?: number
   readonly lent?: readonly Lent[]
   readonly fds?: readonly string[]
@@ -126,6 +127,7 @@ export interface Session {
   readonly own: boolean
   readonly lock: boolean
   readonly confirm: boolean
+  readonly greeter: boolean
   readonly instance?: number
 }
 
@@ -134,7 +136,8 @@ export function sessionOf(welcome: Welcome, wanted: 'app' | 'desktop' | 'service
   const own = welcome.session?.own === true
   const lock = welcome.kind === 'desktop' && welcome.lock === true
   const confirm = lock && typeof welcome.confirm === 'object' && welcome.confirm !== null
-  const shared = { tier: welcome.tier, grants: welcome.grants, request: welcome.request ?? null, services: welcome.services ?? {}, own, lock, confirm }
+  const greeter = welcome.kind === 'desktop' && !lock && welcome.greeter === true
+  const shared = { tier: welcome.tier, grants: welcome.grants, request: welcome.request ?? null, services: welcome.services ?? {}, own, lock, confirm, greeter }
   if (welcome.kind === 'desktop') {
     const desktop = welcome.desktop
     if (!desktop) throw new Error('the session manager sent no desktop in its welcome')
