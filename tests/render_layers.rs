@@ -367,3 +367,37 @@ fn the_ime_float_is_drawn_as_its_own_panel_until_it_is_dropped() {
     page.doc.dom.set_ime_float(float, None).unwrap();
     assert!(page.frame().panels.iter().all(|p| p.id != acde::render::IME_FLOAT_PANEL), "a dropped float leaves no panel");
 }
+
+#[test]
+fn a_shorter_preedit_leaves_the_vacated_part_of_the_ime_float_clear() {
+    let page = Page::new(1.0);
+    let root = page.div("");
+    page.doc.set_attribute(root, "style", "position:fixed;inset:0;z-index:2147483647;pointer-events:none;overflow:visible").unwrap();
+    let preedit = page.doc.create_element("span").unwrap();
+    let look = "z-index:2147483647;text-decoration:underline;background:Canvas;color:CanvasText;pointer-events:none;white-space:pre";
+    page.doc.set_attribute(preedit, "style", &format!("position:absolute;left:20px;top:20px;height:18px;line-height:18px;{look}")).unwrap();
+    page.doc.append_child(root, preedit).unwrap();
+    page.doc.set_text_content(preedit, "nihaonihaonihao").unwrap();
+    let candidates = page.doc.create_element("div").unwrap();
+    page.doc.set_attribute(candidates, "style", "position:absolute;left:10px;top:44px;width:150px;height:30px;background:#eee").unwrap();
+    page.doc.append_child(root, candidates).unwrap();
+    page.doc.dom.set_ime_float(root, Some([10.0, 20.0, 150.0, 54.0])).unwrap();
+    page.frame();
+    let wide = page.doc.rect(preedit).unwrap();
+    page.doc.set_text_content(preedit, "你hao").unwrap();
+    let frame = page.frame();
+    let narrow = page.doc.rect(preedit).unwrap();
+    assert!(narrow.width < wide.width / 2.0, "the preedit box follows its text: {wide:?} then {narrow:?}");
+    let float = frame.panels.iter().find(|p| p.id == acde::render::IME_FLOAT_PANEL).expect("the float panel");
+    let vacated = (narrow.x + narrow.width + 4.0 - 10.0, 8.0);
+    let covered = float.plane.damage_rects.iter().any(|r| r.x <= vacated.0 && vacated.0 < r.x + r.width && r.y <= vacated.1 && vacated.1 < r.y + r.height);
+    assert!(covered, "the vacated part is repainted: {:?}", float.plane.damage_rects);
+    let pixels = raster(float.size, vec![float.plane.drawing.scene()]);
+    let at = |(x, y): (f64, f64)| {
+        let i = ((y as u32 * float.size.0 + x as u32) * 4) as usize;
+        pixels[i + 3]
+    };
+    assert_eq!(at(vacated), 0, "nothing is drawn where the longer preedit was");
+    assert_eq!(at((3.0, 8.0)), 0, "nor in the float rect around the preedit");
+    assert_eq!(at((100.0, 40.0)), 255, "the candidates are still drawn");
+}

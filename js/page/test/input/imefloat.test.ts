@@ -119,3 +119,18 @@ test('a click on the float picks the word under it and the wheel turns the page,
   assert.equal(web.run('globalThis.__kept'), true, 'the press does not take the focus')
   assert.equal(web.run(`document.activeElement.id`), 'field')
 })
+
+test('when the float content gets shorter the float rect shrinks with it', async () => {
+  const { web, shell, native, surface } = await floating()
+  using _ = web
+  const boxes = new Map<number, typeof BOX>()
+  ;(web.dom as unknown as { _box: (id: number) => typeof BOX })._box = (id) => boxes.get(id) ?? { x: 0, y: 0, width: 0, height: 0 }
+  const text = entry(native, surface, web)
+  const preedit = () => web.internals.idOf(web.run(`document.querySelector('[data-acde-ime-float] > span')`))
+  text.preedit('nihaonihao')
+  boxes.set(preedit(), { x: 50, y: 40, width: 200, height: 18 })
+  text.preedit('nihaonihao ')
+  boxes.set(preedit(), { x: 50, y: 40, width: 60, height: 18 })
+  text.preedit('你hao')
+  assert.deepEqual(shell.slice(-2), [[50, 40, 200, 18], [50, 40, 60, 18]])
+})
