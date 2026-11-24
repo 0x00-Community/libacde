@@ -1,4 +1,4 @@
-use super::{MOST_LENGTH, px};
+use super::{MOST_LENGTH, px, uncommented};
 
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -27,7 +27,8 @@ pub struct Membership {
 
 impl Membership {
     pub fn from_properties(layer: u64, container: Option<(u64, &str)>, property: impl Fn(&str) -> Option<String>, warn: impl Fn(String)) -> Option<Self> {
-        let spacing = container.and_then(|(_, text)| match text.trim() {
+        let property = |key: &str| property(key).map(|text| uncommented(&text));
+        let spacing = container.and_then(|(_, text)| match uncommented(text).trim() {
             "none" | "" => None,
             given => {
                 let spacing = px(given);

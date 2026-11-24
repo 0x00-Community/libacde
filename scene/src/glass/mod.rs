@@ -90,6 +90,7 @@ impl Glass {
     }
 
     pub fn from_properties_at(level: Level, property: impl Fn(&str) -> Option<String>, warn: impl Fn(String)) -> Option<Self> {
+        let property = |key: &str| property(key).map(|text| uncommented(&text));
         let name = property("acde-glass")?;
         let name = name.trim();
         if name == "none" || name.is_empty() {
@@ -349,6 +350,18 @@ impl Glass {
     }
 }
 
+pub(crate) fn uncommented(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("/*") {
+        out.push_str(&rest[..start]);
+        out.push(' ');
+        rest = rest[start + 2..].find("*/").map_or("", |end| &rest[start + 2 + end + 2..]);
+    }
+    out.push_str(rest);
+    out
+}
+
 fn words<const N: usize>(text: &str) -> Option<[&str; N]> {
     let parts: Vec<&str> = text.split_whitespace().collect();
     parts.try_into().ok()
@@ -546,6 +559,16 @@ mod tests {
         assert!((glass.highlight.angle - core::f32::consts::FRAC_PI_2).abs() < 1e-6);
         assert_eq!(glass.tint[3], 0.5);
         assert_eq!(glass.bleed, Glass::preset(Role::Regular, Level::Clear).bleed);
+    }
+
+    #[test]
+    fn comments_in_a_glass_value_are_skipped_as_in_any_typed_css_value() {
+        assert_eq!(uncommented("1px #28105038/**/merged"), "1px #28105038 merged");
+        assert_eq!(uncommented("/* a */regular/*b*/"), " regular ");
+        assert_eq!(uncommented("2px /* unclosed").trim(), "2px");
+        let with = Glass::from_properties(properties(&[("acde-glass", "clear"), ("acde-glass-outline", "1px #28105038/**/merged")]), |w| panic!("{w}"));
+        let without = Glass::from_properties(properties(&[("acde-glass", "clear"), ("acde-glass-outline", "1px #28105038 merged")]), |w| panic!("{w}"));
+        assert_eq!(with.expect("glass").outline, without.expect("glass").outline);
     }
 
     #[test]
