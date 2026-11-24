@@ -27,7 +27,7 @@ export class Placing {
     return 'a standalone app has no Dock to bring it back'
   }
 
-  static readonly CHANGES: ReadonlySet<string> = new Set(['fill', 'fullscreen', 'minimize', 'move', 'resize', 'raise', 'close'])
+  static readonly CHANGES: ReadonlySet<string> = new Set(['fill', 'fullscreen', 'minimize', 'move', 'resize', 'raise', 'close', 'topmost'])
 
   static managed(window: InspectWindow, action: string): string | null {
     if (!Placing.CHANGES.has(action)) return null

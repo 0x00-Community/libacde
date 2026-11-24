@@ -309,6 +309,19 @@ describe('move, resize and raise on a window ref', () => {
     assert.deepEqual(focused, [3])
     assert.match((await inspect.act('w0', 'raise', null)).text, /the desktop stays behind every window/)
   })
+
+  test('topmost keeps the window on top through the shell, off lets it go, and says when the window system cannot', async () => {
+    const asked: [number, boolean][] = []
+    const shell = host().shell
+    const inspect = new Inspect({ ...host(), shell: { ...shell, setTopmost: (w, on) => asked.push([w, on]) > 0 } })
+    assert.match((await inspect.act('w1', 'topmost', null)).text, /^w1 is kept on top/)
+    assert.match((await inspect.act('w1', 'topmost', 'off')).text, /^w1 is back among the windows/)
+    assert.deepEqual(asked, [[3, true], [3, false]])
+    assert.match((await inspect.act('w0', 'topmost', null)).text, /the desktop stays behind every window/)
+    const old = await new Inspect(host()).act('w1', 'topmost', null)
+    assert.equal(old.ok, false)
+    assert.match(old.text, /keeps no window on top/)
+  })
 })
 
 describe('the keyboard follows the driver to the desktop', () => {

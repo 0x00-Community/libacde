@@ -184,6 +184,7 @@ class Launcher {
     return {
       focus: (window) => shell.focus(window),
       ...(shell.setState && { setState: (window, state) => shell.setState!(window, state) }),
+      ...(shell.setTopmost && { setTopmost: (window, on) => shell.setTopmost!(window, on) }),
       place: (window, change) => Promise.resolve(Launcher.place(shell, window, change)),
       windows: () => shell.windows(),
       ...(shell.menus && { menus: (window) => shell.menus!(window) }),

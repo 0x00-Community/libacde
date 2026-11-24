@@ -44,11 +44,12 @@
   `resize` 的 arg 是 `"800x600"`, 位置不变 (先读窗口表里当前的 x、y); 经 `InspectShell.place(window, {x, y, width?, height?})` 做, 宿主窗口里是启动器
   `Shell.place` (`Launcher.place` 读回新矩形), 回 `w1 is at X,Y WxH`; 应用迟交新尺寸时最多轮询窗口表 2 秒, 还没到就照实说"还没接受这个尺寸". 拒绝 (回 `ok: false`
   并说原因): 桌面、铺满宿主窗口的单应用窗口、钉住的面板、最小化的窗口、状态不是 `normal` 的窗口 (提示先 `act <窗口> restore`), `resize` 另拒固定大小的窗口.
-  `raise` 就是给焦点提到最前, 不改状态; 桌面和最小化的窗口不行. 客户机会话里 (窗口表来自管家) 启动器不摆放, acdev 的驱动直接经管家开发连接发
+  `raise` 就是给焦点提到最前, 不改状态; 桌面和最小化的窗口不行. `topmost` (2026-11-24, z 轴分段) 让窗口置顶, arg 是 `off` / `false` / `0` 时取消, 别的 (含不给) 都是置顶;
+  经宿主的 `setTopmost` (acdes 的 napi, 发 `acompositor_window_v1.set_topmost`), 宿主没有或合成器太旧时回 `ok: false`. 审批不在这里: Agent 代用户置顶由 dopame 后台调之前先请系统总管审批. 客户机会话里 (窗口表来自管家) 启动器不摆放, acdev 的驱动直接经管家开发连接发
   `{op: "window", window: <acompositor 窗口号>, change: {place | focus}}` (acdes docs/agents/manager.md 开发通道).
   客户机里锁屏页和系统确认页是管家插进窗口表的伪窗口 (行带 `lock: true` 或 `confirm: true`), 快照里它们的 `mode` 是 `lock`、`confirm` (窗口行显示 `[lock]`、`[confirm]`),
   叠在所有窗口之上; 系统确认页的开发名是 `confirm` (锁屏页是 `lock`), 启动器按欢迎消息里有没有 `confirm` 区分 (登录页会话里的登录页不是伪窗口, 是那个会话的桌面 `w0`, 开发名 `greeter`, 见 `docs/dev/dev-ipc.md`). 这两种窗口只由管家显示和收起, 对它们的
-  `fill`、`fullscreen`、`minimize`、`move`、`resize`、`raise`、`close` 一律回 `ok: false` 并说明; 确认页的允许、拒绝、输密码用 act 点它自己的按钮.
+  `fill`、`fullscreen`、`minimize`、`move`、`resize`、`raise`、`topmost`、`close` 一律回 `ok: false` 并说明; 确认页的允许、拒绝、输密码用 act 点它自己的按钮.
   `{window, count, nodes, windows}` (`windows` 只有被查的那个窗口, 形状同快照的 `windows`): 在窗口 (默认焦点窗口) 或某个元素下按 CSS 选择器找, 节点是 `InspectMatch` (`InspectNode` 加 `tag`、`visible`, 给了
   `attributes` (最多 20 个属性名) 再加 `attributes: {名字: 值或 null}`), ref
   能直接给 act (不在语义树里的元素也行: `point` 按 render 节点 id 找元素).

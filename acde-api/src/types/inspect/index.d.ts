@@ -56,6 +56,7 @@ export type InspectAction =
   | 'move'
   | 'resize'
   | 'raise'
+  | 'topmost'
 
 export type InspectArg = string | number | readonly string[] | null
 

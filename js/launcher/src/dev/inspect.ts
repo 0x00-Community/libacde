@@ -280,6 +280,13 @@ export class Inspect {
         return this.#placing().resize(window, arg)
       case 'raise':
         return this.#placing().raise(window)
+      case 'topmost': {
+        if (window.kind === 'desktop') return { ok: false, text: 'the desktop stays behind every window' }
+        const on = !['off', 'false', '0'].includes(String(arg ?? 'on'))
+        const kept = this.#host.shell.setTopmost?.(window.id, on)
+        if (!kept) return { ok: false, text: 'this window system keeps no window on top (acompositor_window_v1 before version 10)' }
+        return { ok: true, text: `${window.ref} is ${on ? 'kept on top' : 'back among the windows'}` }
+      }
       case 'close':
         if (window.kind === 'desktop') return { ok: false, text: 'the desktop cannot be closed' }
         await this.#host.close(window.id)
