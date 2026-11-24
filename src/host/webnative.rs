@@ -162,7 +162,7 @@ fn traced(events: &[Event]) {
     let trace = events
         .iter()
         .filter_map(|e| {
-            let kind = match e.kind.as_str() {
+            let kind = match &*e.kind {
                 "pointerdown" => "pointerdown",
                 "pointerup" => "pointerup",
                 "keydown" => "keydown",

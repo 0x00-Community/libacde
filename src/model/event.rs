@@ -7,7 +7,7 @@ use napi_derive::napi;
 #[derive(Default, Clone, Debug)]
 pub struct Event {
     #[cfg_attr(feature = "napi", napi(js_name = "type"))]
-    pub kind: String,
+    pub kind: EventName,
     pub window: Option<u32>,
     pub x: Option<f64>,
     pub y: Option<f64>,
@@ -33,8 +33,14 @@ pub struct Event {
     pub desk: Option<u32>,
 }
 
+#[cfg(feature = "napi")]
+pub type EventName = String;
+
+#[cfg(not(feature = "napi"))]
+pub type EventName = std::borrow::Cow<'static, str>;
+
 impl Event {
-    pub fn named(kind: &str) -> Self {
+    pub fn named(kind: impl Into<EventName>) -> Self {
         Self { kind: kind.into(), ..Default::default() }
     }
 }
@@ -137,7 +143,7 @@ mod tests {
         inbox.push_all([Event::named("workarea"), Event::named("output")]);
         assert_eq!(woken.load(Ordering::SeqCst), 1);
         let drained = inbox.drain();
-        assert_eq!(drained.iter().map(|e| e.kind.as_str()).collect::<Vec<_>>(), ["workarea", "output"]);
+        assert_eq!(drained.iter().map(|e| &*e.kind).collect::<Vec<_>>(), ["workarea", "output"]);
         assert!(drained.iter().all(|e| e.stamp.is_some()));
         inbox.push_all([]);
         assert_eq!(woken.load(Ordering::SeqCst), 1);
@@ -157,7 +163,7 @@ mod tests {
         inbox.push(Event::named("frame"));
         inbox.push(moved(9.0, None));
         let drained = inbox.drain();
-        let xs: Vec<_> = drained.iter().map(|e| (e.kind.as_str(), e.x, e.stamp)).collect();
+        let xs: Vec<_> = drained.iter().map(|e| (&*e.kind, e.x, e.stamp)).collect();
         assert_eq!(xs.len(), 7);
         assert_eq!(xs[..5].iter().map(|(_, x, s)| (x.unwrap(), s.unwrap())).collect::<Vec<_>>(), [(0.0, 0.0), (1.0, 1.0), (2.0, 2.0), (3.0, 3.0), (4.0, 4.0)]);
         assert_eq!(xs[5].0, "frame");

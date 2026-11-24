@@ -206,7 +206,7 @@ impl From<&AcdeEvent> for Event {
         let keys: Option<Vec<String>> = Texts(event.data_keys, event.data_len).into();
         let values: Option<Vec<String>> = Texts(event.data_values, event.data_len).into();
         Event {
-            kind: Option::from(Text(event.kind)).unwrap_or_default(),
+            kind: Option::<String>::from(Text(event.kind)).unwrap_or_default().into(),
             window: count(event.window),
             parent: count(event.parent),
             button: count(event.button),
