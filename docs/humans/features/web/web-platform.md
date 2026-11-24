@@ -1,0 +1,64 @@
+# The web platform: pages, styles, forms and input
+
+Synced with docs/agents on 2026-11-24
+
+An app is a web page. libacde has no browser inside, but the web interfaces it implements behave as the standards say: the same signatures, events and errors, and nothing private added to `window` or to standard objects. Where something is missing it is a gap, listed as such, not replaced by a look-alike. This page describes what a page can rely on when it loads, styles itself, takes input and talks to the user. Storage, the network, media and files have their own pages.
+
+## Two globals and one entry for the system
+
+- There are only two globals: `window` (as in a browser) and `globalThis` (as in Node). There is no `acde` global.
+- Every system feature comes from an `acde:` module imported like `node:fs`: `import { fs } from 'acde:fs'`, `import self from 'acde:window'`. The module is injected into the page's own V8 isolate and calls straight into Rust; it is not RPC. Types are in the SDK `@acde/api`. Which modules a page may import is decided by its manifest (see [the manifest](../apps/manifest.md)).
+- Every host presents the same Linux environment to apps: `navigator.userAgent` and `navigator.platform` report Linux (`X11; Linux x86_64`, product `acde/<version>`) on Linux, Windows and macOS alike, so editing shortcuts are Ctrl everywhere and an editor library never switches to Command halfway through a window. Apps that need to know the real host will get it from an `acde:` module, not by sniffing `navigator`.
+
+## Loading a page
+
+- **The address** of every app page is `http://acde.local/`, with the app's folder mounted at `/`. The entry is either an HTML file in the package, or a path ending in `/` that the app's backend renders (the runtime fetches the HTML from the backend once its transport is up).
+- **Scripts**: classic `<script>` (with `src`, read from the package first and from the backend otherwise; non-async ones run in document order before `DOMContentLoaded`), `type="module"`, and `type="importmap"` (`imports` and `scopes`, exact or prefix matches; several maps merge, first one wins). Module scripts may come from `blob:` and `data:`; importing ES modules from other hosts is not supported.
+- **Relative URLs** resolve against the document's current address, exactly as in a browser, including after `pushState` / `replaceState`. This covers attributes in the HTML, properties set from JS (`img.src`), inline styles and `url()` / `@import` inside style sheets (which resolve against the sheet's own address). `getAttribute` returns what was written. `<base href>` is not supported yet.
+- **Content types**: files from the package fetched with `fetch` or XHR get a fixed `Content-Type` by extension for the types a page loads (HTML, scripts, styles, JSON, wasm, fonts, images, audio, video); everything else is `application/octet-stream`. Users' files are typed differently, by the host system (see [files](../apps/files.md)).
+- **XML pages**: a page served by the backend with an XML type (`application/xhtml+xml`, `image/svg+xml`, `text/xml` …) is parsed as an XML document: case-sensitive names, XML fragment parsing for `innerHTML`, and a single `parsererror` element when it is not well formed. A page read from a file is only recognised by a `.html` entry.
+
+## Style sheets and other subresources
+
+- `<link rel=stylesheet>`, `<img>`, `@font-face` and CSS background images inside the package are read straight from disk. Other `http`, `https` and `blob:` addresses go through the page's own network stack, with the same routing, proxy, certificates and redirects as `fetch`, and appear in `acdev network` as `image`, `stylesheet` or `font`.
+- The rules follow the browser by destination: images and style sheets are fetched without CORS, fonts with CORS; a style sheet needs a 2xx `text/css` answer. `<link crossorigin>` makes a CORS request. A failure prints `Failed to load resource: <url>: <reason>` to the console.
+- `<link>` fires `load` when its sheet (and every sheet it `@import`s) arrived and applies, and `error` when something failed; rules that did arrive still apply, as in Chrome. Changing `href`, `rel` or `crossorigin` fetches again; the old sheet stays until the new answer comes.
+- `link.sheet` and `document.styleSheets` exist once the sheet has arrived. A sheet whose response is opaque to the page (cross-origin without CORS) throws `SecurityError` on `cssRules`, as in browsers. `media` and `disabled` work as specified. `replaceSync` / `replace` only work on sheets made with `new CSSStyleSheet()`.
+- `element.style` and rule styles read and write through the style engine, so values come back in their canonical form and shorthands expand to longhands. `@counter-style` rules are editable through `CSSCounterStyleRule`. `document.fonts` lists the `@font-face` rules of all sheets.
+- Not supported yet: `window`'s `load` does not wait for style sheets and images; alternate style sheets; `CSSImportRule.styleSheet`; `<img crossorigin>`; `<style>` inside a shadow root is not scoped.
+
+## Forms
+
+- **`<select>`** behaves as specified: one selected option unless `multiple`, a drop-down for display size 1 and a list box otherwise (`multiple` defaults to 4 rows). The drop-down opens on mouse down, follows a drag, closes on a second click, Esc or a click outside; while open, Up / Down / Home / End / PageUp / PageDown move, Enter / Space select and typing jumps to a matching option. A closed drop-down with focus changes its value with arrow keys or typing; Space, Alt+Up/Down and F4 open it. In a list box, Ctrl toggles and Shift extends. The open list is drawn on top of the frame, never outside the window, and closes when focus leaves, the window deactivates or resizes. `showPicker()` opens it.
+- **`<input type=range>`** sanitises its value as browsers do (min 0, max 100, step 1, rounding to the step without float noise), draws a grey track with the filled part and a round thumb in the text colour, like checkboxes (unless `appearance: none`), follows the pointer, and answers arrow keys, PageUp / PageDown (a tenth) and Home / End with `input` and `change`.
+- **Password and other secret fields**: `<input type=password>` and fields whose `autocomplete` contains `current-password`, `new-password` or `one-time-code` are drawn masked (one `•` per character), show `•••` to assistive technology, never copy or cut out (no `copy` / `cut` event, nothing written to the clipboard; pasting works), and never enable the input method: no preedit, no candidate panel, and the text is never sent to the input method as surrounding text.
+- **`alert`** draws a dialog inside the window. `confirm` returns `false` and `prompt` returns `null`, because a modal dialog the page can wait on does not exist yet; acdev's test driver and MCP server can answer them in advance during development.
+
+## XML and the DOM
+
+`DOMParser` with an XML type uses a real XML 1.0 parser with namespaces (well-formedness checks, the five predefined entities, character references, internal-subset entities with limits; external entities are never read). Elements and attributes carry any namespace and prefix; `createElementNS`, `setAttributeNS`, `lookupNamespaceURI` and friends follow the DOM standard, and `XMLSerializer` follows DOM Parsing. Collections behave as WebIDL "legacy platform objects": `document.forms.login`, `form.elements.title`, `select[2]`, a `RadioNodeList` whose `value` reads the checked button, and named access on `window` (an element with `id="x"` is `window.x`).
+
+## Input
+
+- **Pointer events**: the pointer is a mouse (`pointerId` 1, `pointerType` `mouse`, pressure 0.5 while a button is down). `pointermove` is dispatched once per frame; every position the host delivered in between is kept and returned, in order, by `getCoalescedEvents()`, each with its own coordinates and time stamp. `getPredictedEvents()` is always empty. Pens with pressure and tilt are not supported yet, and `pointermove`'s `button` is still 0 instead of -1.
+- **Cursor**: the CSS `cursor` keyword of the element under the pointer is shown, and `auto` means a pointer over links, a text cursor over editable fields and selectable text, and the arrow elsewhere. It updates when the page changes styles under a still pointer. Image cursors (`url(…)`) use their fallback keyword. In a Dopame OS session the cursor is still always the default arrow.
+- **Pointer lock**: `requestPointerLock()`, `pointerLockElement`, `exitPointerLock()` and the change / error events work as specified, in windows whose host supports it (the acdev host window does; the session does not yet). While locked, `movementX` / `movementY` report motion, the position stays put and all pointer events go to the locked element. Esc releases the lock and the page cannot stop it. Locking needs a recent user activation, except right after the page itself released the lock.
+- **User activation**: a real button press or key press (other than Esc) gives the page a transient activation for 5 seconds, visible through `navigator.userActivation`. Today only pointer lock checks it.
+- **Clipboard**: `navigator.clipboard.readText` / `writeText`, `read()` / `write()` with `ClipboardItem`, and `paste` / `copy` / `cut` events. The types that travel are `text/plain`, `image/png` and `text/uri-list`; a pasted image arrives as a file item named `image.png`. Reading and writing use the `clipboard-read` / `clipboard-write` permissions. Each host has its own limits (see acdev's host window docs).
+- **Text input methods** work in every text field: in a Dopame OS session the candidate panel and preedit text float above panels and other windows, and a field focused by script is connected to the input method at once, so the first key already goes through it.
+
+## Talking to the user and the system
+
+- **Notifications**: `new Notification(...)` goes to the desktop, which decides how to show it. A single app with no desktop (`acdev dev` on one app) shows a system notification instead on Linux and macOS; on Windows a single app has no notifications, so `Notification.permission` is `denied` and the constructor fires `error`.
+- **Window behaviour through web APIs**: `window.close()` closes the window, `location.reload()` restarts the page (also on the desktop page, where F5 and Ctrl+R reload too unless the page prevents them; app windows do not take these keys, because a terminal needs Ctrl+R). External links open in the browser app (in a host window an app that needs `slots`, like Dopame's browser, cannot run, so the link is not opened and a warning is logged). Downloads are meant to land in the Downloads folder and be reported to the desktop; a Dopame OS session and a single app in a host window still answer downloads with "unsupported". Hiding and showing a window fires `visibilitychange`; a hidden page runs no `requestAnimationFrame` callbacks. `screen.*` is the logical size of the main output.
+- **Messages**: `MessageChannel` and `MessagePort` work inside a page; closing one end fires `close` on the other, as in current Chrome. When the system hands a page a connection at start (for example a Dopame plug-in window), the page receives one standard `message` event on `window` with a `MessagePort` in `ports[0]`, in the task right after `load`. The listener must be in place before `load`, only plain JSON travels on that port, and nothing private is added to the global object.
+- **Web Workers**: dedicated workers run on their own thread and isolate, share the page's heap budget, and load their script from the package, `blob:` or `data:` (same origin only). Messages are structured clones; `ArrayBuffer`s can be transferred. `importScripts`, `fetch` and `location` work in a worker. A page runs at most 64 workers at a time; more wait in a queue. Not yet: transferring a `MessagePort`, `SharedArrayBuffer`, cloning a `WebAssembly.Module`, `SharedWorker`, Service Workers.
+- **`crypto.subtle`** has `digest` only (SHA-1, SHA-256, SHA-384, SHA-512), computed off the page thread. `encrypt`, `sign`, `importKey`, `generateKey` and the rest are not there yet; `crypto.getRandomValues` and `randomUUID` are the usual web ones.
+
+## Not supported yet
+
+Beyond the items above: `DecompressionStream` / `CompressionStream`, `speechSynthesis`, `<datalist>`, the customizable `<select>`, Storage Buckets, `OffscreenCanvas`, the Fullscreen API, `:target`, decoding a page in a character set other than UTF-8, and XML style sheet processing instructions.
+
+## For developers
+
+[web/web-apps.md](../../../agents/web/web-apps.md) (every interface above, with the code that implements it), [runtime/layout.md](../../../agents/runtime/layout.md) ("js": the web API layer and page glue, secret fields).
