@@ -218,6 +218,34 @@ impl Device {
     }
 
     fn open_tier(adapter: &wgpu::Adapter, request: &DeviceRequest) -> Result<(wgpu::Device, wgpu::Queue), String> {
+        let low = Self::low_priority(adapter);
+        if let Some(extension) = low {
+            match Self::open_vulkan(adapter, request, Some(extension)) {
+                Ok(opened) => {
+                    Self::note_priority(&format!("low ({})", extension.to_string_lossy()));
+                    return Ok(opened);
+                }
+                Err(e) => log::debug!("a low-priority queue: {e}"),
+            }
+        }
+        let opened = Self::open_vulkan(adapter, request, None)?;
+        Self::note_priority(if low.is_some() { "normal (low was refused)" } else { "normal (no global priority extension)" });
+        Ok(opened)
+    }
+
+    fn low_priority(adapter: &wgpu::Adapter) -> Option<&'static std::ffi::CStr> {
+        let hal_adapter = unsafe { adapter.as_hal::<Vk>() }?;
+        let caps = hal_adapter.physical_device_capabilities();
+        [ash::khr::global_priority::NAME, ash::ext::global_priority::NAME].into_iter().find(|e| caps.supports_extension(e))
+    }
+
+    fn note_priority(granted: &str) {
+        static NOTED: std::sync::Once = std::sync::Once::new();
+        NOTED.call_once(|| log::info!("web GPU queue priority: {granted}"));
+    }
+
+    fn open_vulkan(adapter: &wgpu::Adapter, request: &DeviceRequest, priority: Option<&'static std::ffi::CStr>) -> Result<(wgpu::Device, wgpu::Queue), String> {
+        let mut low = vk::DeviceQueueGlobalPriorityCreateInfoKHR::default().global_priority(vk::QueueGlobalPriorityKHR::LOW);
         let hal = unsafe {
             let hal_adapter = adapter.as_hal::<Vk>().ok_or("not a Vulkan adapter")?;
             hal_adapter
@@ -225,7 +253,15 @@ impl Device {
                     request.features,
                     &request.limits,
                     &wgpu::MemoryHints::MemoryUsage,
-                    Some(Box::new(|args| args.extensions.extend(EXTENSIONS))),
+                    Some(Box::new(|args| {
+                        args.extensions.extend(EXTENSIONS);
+                        if let Some(extension) = priority {
+                            args.extensions.push(extension);
+                            if let Some(queue) = args.queue_create_infos.first_mut() {
+                                *queue = queue.push_next(&mut low);
+                            }
+                        }
+                    })),
                 )
                 .map_err(|e| format!("opening the Vulkan device: {e}"))?
         };
