@@ -4,6 +4,7 @@ import type { FileFilter, Lent, WebGrants, WebThreadHandle } from '../../page/sr
 import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
 import { Log } from '../../page/src/log'
 import { screenshotFile } from '../../page/src/sys/os'
+import { readDirOr, readTextOr, stat } from '../../page/src/sys/fs'
 import { join } from '../../page/src/sys/path'
 import { onceSignal, process } from '../../page/src/sys/process'
 import { Rpc } from '../../page/src/rpc'
@@ -17,7 +18,7 @@ import { Lending } from './app/lending'
 import type { WireMenu } from '../../page/src/contract'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported, wallpaperOf } from './app/calls'
-import { rejectingCalls, sessionOf, windowGrant, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
+import { rejectingCalls, sessionOf, windowGrant, type ManagerEvent, type ManagerLink, type ServiceShape, type Session, type Welcome } from './manager/manager'
 import { WindowSnapshots, type ShellEvent } from './app/events'
 import { ServiceHost } from './manager/service'
 import { DevChannel, type DevOpen, type DevOpened, type DevShell, type DevTarget } from './dev/dev'
@@ -26,62 +27,16 @@ import { managerRelay, type DevRelay } from './dev/relay'
 import { Inspect, type InspectHost, type InspectShell, type PlaceChange, type PlayEvent, type ShellWindow } from './dev/inspect'
 import { GuestWindows } from './dev/guest'
 import { standalone } from './standalone'
+import { LocalRegistry } from './local/registry'
+import { LocalSession, type Seat } from './local/session'
+import type { LocalLink } from './local/link'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
 import { fixedScheme, followAppearance, type AppearanceChange, type AppearancePortal, type Glass, WallToneOf } from './app/appearance'
 import { PagePort } from './manager/pageport'
 import { LentCallbacks } from './manager/lent'
 import type { AnchorWire } from '../../page/src/pinanchor'
-
-interface Grant {
-  readonly window: number
-  readonly token: bigint
-}
-
-interface GrantOptions {
-  readonly desktop?: boolean
-  readonly window?: number
-  readonly mode?: 'fullscreen' | 'free' | 'pinned'
-  readonly size?: readonly number[]
-  readonly outerSize?: readonly number[]
-  readonly rect?: readonly number[]
-  readonly host?: boolean
-  readonly anchor?: AnchorWire
-}
-
-interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState' | 'windows' | 'inject' | 'place' | 'play'> {
-  devEvent?(json: string): number
-  setMenus?(window: number, menus: string): void
-  notify?(title: string, body: string, subtitle: string): void
-  readonly socketName?: string
-  pump(): ShellEvent[]
-  onEvents(callback: () => void): void
-  grant(options: GrantOptions): Grant
-  place(window: number, x: number, y: number, width: number, height: number): void
-  hide(window: number, hidden: boolean): void
-  release?(window: number): void
-  readonly anchors?: boolean
-  reanchor?(window: number, anchor: AnchorWire): void
-  focus(window: number): void
-  close(window: number): void
-  kill?(window: number): void
-  setState?(window: number, state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
-  setAside?(window: number, on: boolean): boolean
-  titlebarHeight?(): number
-  windows(): ReturnType<InspectShell['windows']>
-  inject?(event: Parameters<InspectShell['inject']>[0]): void
-  injectSequence?(events: Parameters<InspectShell['play']>[0]): Promise<unknown>
-  screenshot(path: string): Promise<{ width: number; height: number }>
-  animate?(window: number, options: object): void
-  shortcut?(combo: string, scope: string, owner: number): void
-  unshortcut?(combo: string, scope: string, owner: number): void
-  stats?(reset?: boolean): Record<string, unknown>
-  addDesk?(desk: number): unknown
-  removeDesk?(desk: number, into: number): unknown
-  showDesk?(desk: number): unknown
-  moveToDesk?(window: number, desk: number): unknown
-  setWallpaper?(color: string, image?: string | null): unknown
-}
+import type { Grant, GrantOptions, LauncherShell } from './shell'
 
 interface LauncherNatives extends Natives {
   readonly native: {
@@ -142,8 +97,11 @@ class Launcher {
   readonly #walls = new WallToneOf(() => this.#shell.windows().find((r) => (r.window ?? r.id) === this.#window)?.output ?? null,
     (tone) => this.#thread?.post({ type: 'walltone', tone }))
 
-  constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs) {
-    this.#shell = Launcher.shell(natives, session.label)
+  readonly #seat: Seat | null
+
+  constructor(natives: LauncherNatives, readonly session: Session, readonly manager: ManagerLink | null, readonly args: LaunchArgs, seat: Seat | null = null) {
+    this.#seat = seat
+    this.#shell = seat?.shell ?? Launcher.shell(natives, session.label)
     this.#replays = !natives.native.Windows
     this.#shell.onEvents(() => this.#wake?.())
     manager?.onEvents(() => this.#wake?.())
@@ -164,9 +122,9 @@ class Launcher {
       dropped: (uris: string) => this.#lending.dropped(uris),
       ...(this.#shell.notify && { notify: (title: string, body: string, subtitle: string) => this.#shell.notify!(title, body, subtitle) }),
     })
-    const relay = managerRelay(manager)
+    const relay = seat ? null : managerRelay(manager)
     this.#relay = relay
-    this.#guest = manager ? new GuestWindows(process.pid, GuestWindows.roleOf(session)) : null
+    this.#guest = manager && !seat ? new GuestWindows(process.pid, GuestWindows.roleOf(session)) : null
     const page = () => {
       const target = this.#target()
       return target && { ...target, url: this.#init?.url ?? null }
@@ -232,16 +190,18 @@ class Launcher {
 
   #inspector(): Inspect {
     if (this.#inspect) return this.#inspect
+    const others = this.#seat?.windows
     const host: InspectHost = {
       shell: this.#inspectShell(),
-      web: (window) => (window === this.#window ? this.#rpc : null),
-      record: (window) => (window === this.#window ? { kind: 'web', app: this.session.found?.app.id ?? null, title: this.#title } : null),
+      web: (window) => (window === this.#window ? this.#rpc : (others?.web(window) ?? null)),
+      record: (window) => (window === this.#window ? this.page().record : (others?.record(window) ?? null)),
       panel: (window) => this.#panels.has(window),
-      close: (window) => (window === this.#window ? this.close(true) : Promise.resolve(this.#shell.close(window))),
+      close: (window) => (window === this.#window ? this.close(true) : others ? others.close(window) : Promise.resolve(this.#shell.close(window))),
       hide: (window, hidden) => this.#shell.hide(window, hidden),
       open: () => Promise.reject(new Error(`open: ${DevChannel.SINGLE}`)),
       accessibility: () => Promise.resolve(null),
-      records: () => [this.#window],
+      records: () => others?.records() ?? [this.#window],
+      ...(others && { ref: (window: number) => others.ref(window) }),
     }
     const relay = this.#relay
     const manager = this.manager
@@ -309,6 +269,7 @@ class Launcher {
 
   #grant(): Grant {
     if (this.#desktop) return this.#shell.grant({ desktop: true })
+    if (this.#seat?.grant) return this.#shell.grant(this.#seat.grant)
     return this.#shell.grant({ window: 1, mode: 'fullscreen', host: true, ...windowGrant(this.manager?.welcome, this.session.found!.app.size) })
   }
 
@@ -329,7 +290,7 @@ class Launcher {
       : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request, services: session.services }, grant.window)
     this.#backend?.start()
     if (session.grants?.office) Launcher.#openOffice()
-    if (this.#desktop && this.manager && session.grants?.devices) sys().startDevices?.()
+    if (this.#desktop && this.manager && !this.#seat && session.grants?.devices) sys().startDevices?.()
     this.#spawn({ ...init, name: this.#webName(init.name) })
     this.#watchRemovable()
   }
@@ -464,8 +425,9 @@ class Launcher {
     if (hot) return void this.#thread?.post({ type: 'devhot' })
     if (this.#closing || this.#reloading) return
     this.#devState = await this.#dev.snapshot()
-    const fresh = !this.manager && this.session.found ? standalone(this.args).found : null
-    if (fresh) this.#init = webInit(fresh, 0n, this.#place(), { tier: null, request: null, services: {} }, this.#window)
+    const fresh = this.#seat ? this.#seat.fresh() : !this.manager && this.session.found ? standalone(this.args).found : null
+    const given = this.#seat ? { tier: this.session.tier, request: null, services: this.#services } : { tier: null, request: null, services: {} }
+    if (fresh) this.#init = webInit(fresh, 0n, this.#place(), given, this.#window)
     this.#reloading = true
     this.#devtools.reloading(this.#init!.name)
     void this.#backend?.restart(fresh ?? undefined)
@@ -728,10 +690,16 @@ class Launcher {
     void this.#rpc?.call('window', 'request', [handed]).catch(() => undefined)
   }
 
+  page(): { window: number; rpc: Rpc | null; record: { kind: 'web'; app: string | null; title: string | null } } {
+    return { window: this.#window, rpc: this.#rpc, record: { kind: 'web', app: this.session.found?.app.id ?? null, title: this.#title } }
+  }
+
+  devAnswer(request: Record<string, unknown>): Promise<unknown> {
+    return this.#dev.answer(request as Parameters<DevChannel['answer']>[0])
+  }
+
   async run(): Promise<number> {
-    for (const signal of Launcher.SIGNALS) onceSignal(signal, () => this.#end(0))
-    if (this.args.shot) this.#shoot(this.args.shot).catch((error: Error) => process.stderr.write(`acdev: screenshot: ${error.message}\n`))
-    if (this.args.seconds !== null) setTimeout(() => this.#end(0), this.args.seconds * 1000)
+    if (!this.#seat) this.#own()
     while (this.#ended === null) {
       this.#shellEvents()
       this.#managerEvents()
@@ -746,11 +714,44 @@ class Launcher {
     return this.#ended
   }
 
+  #own(): void {
+    for (const signal of Launcher.SIGNALS) onceSignal(signal, () => this.#end(0))
+    if (this.args.shot) this.#shoot(this.args.shot).catch((error: Error) => process.stderr.write(`acdev: screenshot: ${error.message}\n`))
+    if (this.args.seconds !== null) setTimeout(() => this.#end(0), this.args.seconds * 1000)
+  }
+
   async #shoot(file: string): Promise<void> {
     await new Promise((later) => setTimeout(later, this.args.shotAfterMs))
     const { width, height } = await this.#shell.screenshot(file)
     process.stderr.write(`acdev: screenshot ${width}x${height} -> ${file}\n`)
   }
+}
+
+async function localDesktop(natives: LauncherNatives, args: LaunchArgs): Promise<number> {
+  const files = { readText: (file: string) => readTextOr(file, null), readDir: readDirOr, isFile: (file: string) => stat(file)?.isFile === true }
+  const path = (process.env['ACDE_PATH'] ?? '').split(':').filter(Boolean)
+  const scan = () => LocalRegistry.scan(files, path, args.app || null)
+  const registry = scan()
+  const shell = Launcher.shell(natives, registry.desktop.desktop.name)
+  const session = new LocalSession({
+    shell,
+    registry,
+    rescan: scan,
+    launcher: (given: Session, link: LocalLink, seat: Seat) => new Launcher(natives, given, link, args, seat),
+    service: (link: LocalLink, welcome: Welcome) => new ServiceHost(link, welcome, natives.native as unknown as Record<string, unknown>),
+  })
+  for (const signal of Launcher.SIGNALS) onceSignal(signal, () => session.end(0))
+  if (args.seconds !== null) setTimeout(() => session.end(0), args.seconds * 1000)
+  if (args.shot) {
+    const file = args.shot
+    setTimeout(() => {
+      shell.screenshot(file).then(
+        ({ width, height }) => process.stderr.write(`acdev: screenshot ${width}x${height} -> ${file}\n`),
+        (error: Error) => process.stderr.write(`acdev: screenshot: ${error.message}\n`),
+      )
+    }, args.shotAfterMs)
+  }
+  return session.run()
 }
 
 export default async function launch(natives: LauncherNatives): Promise<void> {
@@ -767,6 +768,7 @@ export default async function launch(natives: LauncherNatives): Promise<void> {
       process.exit(await host.run())
     }
     if (manager && args.kind === 'lock') throw new Error('lock is the lock page preview of acdev dev; in a session the manager opens the lock page')
+    if (!manager && args.kind === 'desktop') process.exit(await localDesktop(natives, args))
     const session = manager ? sessionOf(manager.welcome, args.kind as 'app' | 'desktop') : standalone(args)
     const launcher = new Launcher(natives, session, manager, args)
     launcher.start()
