@@ -19,6 +19,12 @@ export class WebAppPage {
         void rpc.call('window', 'reload', [page.env.url]).catch((error: Error) => say(Level.Warn, `[${name}] window.reload: ${error.message}`))
       })
     }
+    const window = page.window as unknown as EventTarget
+    window.addEventListener('keydown', (event) => {
+      const key = event as KeyboardEvent
+      const reload = key.key === 'F5' || (key.ctrlKey && !key.altKey && !key.metaKey && key.key.toLowerCase() === 'r')
+      if (reload && !key.repeat) hostTime.setTimeout(() => key.defaultPrevented || page.env.reload())
+    })
   }
 
   readonly #page: WebInternals

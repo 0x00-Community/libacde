@@ -58,3 +58,23 @@ test('the desktop page reloads through the launcher too, once, and stays when be
   await nextTask()
   assert.deepEqual(calls, [['window', 'reload', ['http://acde.local/']]])
 })
+
+test('F5 and Ctrl+R reload the desktop page unless the page took the key', async () => {
+  const calls: [string, string, unknown[]][] = []
+  const window = new EventTarget() as EventTarget & { Event: typeof Event }
+  window.Event = Event
+  const env = { url: 'http://acde.local/' } as { url: string; reload(): void }
+  const rpc = { call: async (service: string, method: string, args: unknown[]) => void calls.push([service, method, args]) }
+  WebAppPage.reloadable({ env, window, document: {} } as never, rpc as never, 'desktop', () => {})
+  const plain = { ctrlKey: false, altKey: false, metaKey: false, repeat: false }
+  const key = (init: Record<string, unknown>) => Object.assign(new Event('keydown', { cancelable: true }), { ...plain, ...init })
+  const taken = key({ key: 'F5' })
+  taken.preventDefault()
+  window.dispatchEvent(taken)
+  window.dispatchEvent(key({ key: 'r' }))
+  await nextTask()
+  assert.deepEqual(calls, [], 'a key the page prevented, and a plain r, do nothing')
+  window.dispatchEvent(key({ key: 'R', ctrlKey: true }))
+  await nextTask()
+  assert.deepEqual(calls, [['window', 'reload', ['http://acde.local/']]])
+})

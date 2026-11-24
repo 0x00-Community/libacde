@@ -52,7 +52,7 @@
   (HTML、脚本、样式、JSON、wasm、字体、图片、音视频), 固定、和系统无关; 别的 (文稿、表格、压缩包、`.md` …) 是 `application/octet-stream` (#106).
   用户文件的类型不走这张表, 走宿主系统 (`env.fileType`, #98).
 - **浏览器接口 → 窗口** (acde-host `webapp.ts` / `pagecalls.ts` / `downloads.ts`): `window.close()` / `location.reload()` 关闭 / 重启这个 web;
-  桌面页也接 `location.reload()` (F5、Ctrl+R 同样走它; 2026-11-24 起, 之前桌面页没接, 重载什么也不做): `WebAppPage.reloadable` 先派 `beforeunload`, 没被拦下就发 `window.reload`, 启动器按桌面重新拿面再起页面;
+  桌面页也接 `location.reload()` (2026-11-24 起, 之前桌面页没接, 重载什么也不做), F5、Ctrl+R 在桌面页上也重载 (页面自己 `preventDefault` 了就不管; 只在桌面页, 应用窗口不抢这两个键, 终端要用 Ctrl+R): `WebAppPage.reloadable` 先派 `beforeunload`, 没被拦下就发 `window.reload`, 启动器按桌面重新拿面再起页面;
   `localStorage` / `sessionStorage` 见 `docs/agents/web/storage.md`「网页存储」; `alert` 画在窗口里 (`confirm` / `prompt` 返回 false / null; acdev dev 里能事先答复, 见
   `docs/agents/dev/dev-ipc.md`「acdev dev」的 `dialog`. 页面可以等用户回答的模态对话框还没有);
   外部链接交给浏览器应用 (宿主窗口里要 slots 的浏览器应用跑不了, 不打开, 见 `docs/agents/web/default-apps.md`「默认应用」), 下载存进下载目录 (桌面收 `on('download')`); 打开 / 保存文件的选择器见 `docs/agents/web/fs.md`「打开和保存文件」; 隐藏 / 显示是 `visibilitychange`;
