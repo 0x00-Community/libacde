@@ -45,6 +45,7 @@ interface Panel {
   window: number | null
   opening: boolean
   rect: Box | null
+  input: Box | null
   extent: Box | null
   view: string
   stops: (() => void)[]
@@ -53,12 +54,15 @@ interface Panel {
 export class Pinned {
   static readonly #EDGES: Record<WindowEdge, number> = { top: 1, bottom: 2, left: 4, right: 8 }
   static readonly #SETTLED = ['animationend', 'transitionend'] as const
+  static readonly #SETTLE_MS = 700
   readonly #rpc: Rpc
   readonly #surface: PanelSurface
   readonly #dom: PanelDom
   readonly #page: PinnedPage
   readonly #panels = new Map<Element, Panel>()
   readonly #handles = new WeakMap<PinnedPanel, Panel>()
+  readonly #due = new Set<Panel>()
+  #framed = false
 
   readonly #anchors: boolean
 
@@ -94,27 +98,34 @@ export class Pinned {
     })
     const panel: Panel = {
       element, id, margin, exclusive, userOnly, popup, parent, popped: false, reserve, reserved: '', anchor, sent: '', closed, end,
-      window: null, opening: false, rect: null, extent: null, view: '', stops: [],
+      window: null, opening: false, rect: null, input: null, extent: null, view: '', stops: [],
     }
     this.#panels.set(element, panel)
     const { ResizeObserver, MutationObserver } = this.#page.window
     const resized = new ResizeObserver(() => this.#place(panel))
     resized.observe(element)
     let settle: number | null = null
-    const changed = new MutationObserver(() => {
+    let settleAt = 0
+    const settled = () => {
+      const left = settleAt - hostTime.now()
+      if (left > 0) {
+        settle = hostTime.setTimeout(settled, left)
+        return
+      }
+      settle = null
       this.#place(panel)
-      if (settle !== null) hostTime.clearTimeout(settle)
-      settle = hostTime.setTimeout(() => {
-        settle = null
-        this.#place(panel)
-      }, 700)
+    }
+    const changed = new MutationObserver(() => {
+      this.#schedule(panel)
+      settleAt = hostTime.now() + Pinned.#SETTLE_MS
+      if (settle === null) settle = hostTime.setTimeout(settled, Pinned.#SETTLE_MS)
     })
     for (let at: Element | null = element; at; at = at.parentElement) changed.observe(at, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] })
-    panel.stops.push(() => resized.disconnect(), () => changed.disconnect(), () => settle !== null && hostTime.clearTimeout(settle))
-    const settled = () => this.#place(panel)
-    for (const type of Pinned.#SETTLED) element.addEventListener(type, settled)
+    panel.stops.push(() => resized.disconnect(), () => changed.disconnect(), () => settle !== null && hostTime.clearTimeout(settle), () => this.#due.delete(panel))
+    const ended = () => this.#place(panel)
+    for (const type of Pinned.#SETTLED) element.addEventListener(type, ended)
     panel.stops.push(() => {
-      for (const type of Pinned.#SETTLED) element.removeEventListener(type, settled)
+      for (const type of Pinned.#SETTLED) element.removeEventListener(type, ended)
     })
     this.#place(panel)
     return this.#handle(panel)
@@ -165,6 +176,18 @@ export class Pinned {
     for (const panel of this.#panels.values()) this.#place(panel)
   }
 
+  #schedule(panel: Panel): void {
+    this.#due.add(panel)
+    if (this.#framed) return
+    this.#framed = true
+    this.#page.window.requestAnimationFrame(() => {
+      this.#framed = false
+      const due = [...this.#due]
+      this.#due.clear()
+      for (const each of due) this.#place(each)
+    })
+  }
+
   extend(id: number, [x, y, width, height]: readonly [number, number, number, number]): void {
     const panel = [...this.#panels.values()].find((p) => p.id === id)
     if (!panel) return
@@ -210,6 +233,7 @@ export class Pinned {
     if (this.#panels.get(panel.element) !== panel) return
     panel.anchor = anchor
     panel.sent = ''
+    panel.input = null
     this.#place(panel)
   }
 
@@ -281,14 +305,18 @@ export class Pinned {
     }
     const { rect, input } = measured
     const moved = !same(rect, panel.rect)
+    const reshaped = moved || !same(input, panel.input)
     panel.rect = rect
     if (panel.window === null) return this.#open(panel, rect, input)
     if (moved) {
       this.#dom.setPanel(panel.id, ...rect)
       void this.#rpc.call('panel', 'place', [panel.window, rect]).catch(() => undefined)
     }
-    this.#surface.placePanel(panel.id, ...rect, ...input)
-    this.#sendAnchor(panel, input)
+    if (reshaped) {
+      panel.input = input
+      this.#surface.placePanel(panel.id, ...rect, ...input)
+      this.#sendAnchor(panel, input)
+    }
     this.#reserve(panel, rect)
   }
 
@@ -319,6 +347,7 @@ export class Pinned {
         panel.popped = panel.popup && popped === true
         this.#dom.setPanel(panel.id, ...rect)
         this.#surface.placePanel(panel.id, ...rect, ...input)
+        panel.input = input
         this.#place(panel)
       },
       () => {
