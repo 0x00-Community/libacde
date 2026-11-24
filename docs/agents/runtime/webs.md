@@ -34,7 +34,7 @@
   `pin(element, {reserve: {edge, thickness?}})` 让面板在输出的一条边上占一条 (像 layer-shell 的 exclusive zone; 不给 thickness 时是从那条边到面板远端的距离,
   跟着量的结果变), 经 surface 的 `reservePanel(id, edge, thickness)` 交给运行时. 宿主窗口 (`State::work_area`) 用输出减去显示着的面板占的边得到工作区,
   面板隐藏、挪动、改尺寸、取消钉住或输出变了时重算 (`refill`): `filled` 的窗口跟着改 rect, 全屏不管工作区; 工作区变了给 Broker 发
-  `workarea {x, y, width, height}`, Broker (`broker/output.ts`) 把它放进发给每个 web 的 `screen` 消息和 `WebInit.screen.workArea`
+  `workarea {x, y, width, height}`, 启动器把它放进发给每个 web 的 `screen` 消息和 `WebInit.screen.workArea`
   (`acde:window.output.workArea`). 不写 reserve 的面板什么都不占. 钉住后用句柄的 `reserve({edge, thickness?} | null)` 就地换占的边或厚度 (不用 unpin 再钉,
   工作区只变一次, 中间没有整个输出的一步; `null` 不再占, 不认识的边或负的厚度抛 TypeError). 一个宿主窗口就是一个输出. 会话里 acdes 的 `crates/window` 把面板做成 wlr-layer-shell 的面, `reservePanel` 设它的独占区, 工作区由 acompositor 算 (输出减去各面的独占区),
   变了经 `acompositor_desktop_v1.work_area` 报给桌面进程, 铺满的窗口由 acompositor 跟着改 rect (acdes 的 `docs/agents/acompositor/desktop.md`「面板」). 元素要是 stacking context, 不带祖先的裁剪和透明度.
@@ -113,7 +113,7 @@
     **私有请求** (SDK `AppRequest<K, Fields>`: 接收方声明自己收的 `kind` 和字段, `on<Task | Page>('request', …)` 按 `kind` 收窄; 和系统请求合成
     `WindowRequest`): `acde.open(<id>, {kind, …})`, 运行时只查目标清单的 `requests`
     有这个 `kind` (没有时 409 `not_accepted`, 不交给对方), 内容由接收方自己查; `open` 照旧决定能叫哪些应用. 目标没写 `requests` 就什么私有请求都不收.
-    `open(<id>, request, {parent, modal})` 给新窗口一个父窗口 (`broker/family.ts`: 应用只能写自己应用的
+    `open(<id>, request, {parent, modal})` 给新窗口一个父窗口 (应用只能写自己应用的
     web 窗口, 桌面可以写任何开着的窗口; 不存在 404, 别人的 403, 不是窗口号 400); 新窗口居中在父窗口上方, 不用记住的位置; 已在运行的单例应用只收请求,
     不改父窗口. `{newWindow: true}` 要求给已在运行的应用再开一个窗口, 回答的 `running: true` 表示应用本来就在运行; 页面运行时把这些选项原样交给会话管家,
     什么时候真的另开由管家 (acdes) 定. 父窗口、模态记在合成器的窗口表 (hostwin `Entry`、会话 model `Window`), `acde.inspect` 的窗口带 `parent` / `modal`;
@@ -122,7 +122,7 @@
     `invokeMenu`、`stats`、`focus` / `hide` / `show`、`animate`、session / desktop 级 `shortcut`); `acde.session`; `acde.inspect`. 另收
     `windowmenus`、`windowready`、`windowcrash {reason}`、`windowhang` / `windowresponsive`、`windowshow`.
   - 不在清单里的调用拒绝 (403, `forbidden`).
-  - **按调用者层级注入** (`broker/tier.ts`): 外壳模块 (`SHELL_MODULES`: `windows`、`packages`、`session`、`desktops`、`inspect`、
+  - **按调用者层级注入** (外壳模块名单是清单规则 `@acde/api/manifest` 的 `SHELL_MODULES`; 会话里按管家 welcome 的 `tier` 给, 宿主窗口的单应用会话见 `js/launcher/src/local/session.ts`): 外壳模块 (`SHELL_MODULES`: `windows`、`packages`、`session`、`desktops`、`inspect`、
     `desktop`、`setDefault`) 只给桌面页面、声明了它的桌面服务和声明了它的系统应用 (与某个已安装桌面同包的应用); 应用模块 (`APP_MODULES`: `launch`、
     `apps` 只有 list / open、`open`、`openPath`、`handlers`、`window`, 以及管家自己给每个应用页面的 `icons`、`sounds` (按名查图标和声音, acdes
     `docs/agents/manager.md`「主题」, 2026-11-23 起; 这两个名字也因此不许桌面服务占用, 和管家的保留名单一致)) 给所有应用, 不用声明, 也不用列服务
@@ -192,7 +192,7 @@
   `code` 是 `denied`、`not_asked` 或 `asking`, 文字是 `<label>: ` 加同一句: `acde:fs` / `acde:office` 里还没问过的公共位置 (`FileAccess.guard`)、
   `acde.launch` / `acde.windows.launch` (`Approvals.allow`)、撤销后的 terminal / network 都走这里 (camera / microphone 走标准接口: `getUserMedia` 自己弹提示, 见 `docs/agents/web/web-apps.md`「摄像头和麦克风」). 决定按应用持久 (`$XDG_CONFIG_HOME/acde/permissions.json`, `{"<app>:<能力>": "granted" | "denied"}`, 不看 `ACDE_STORAGE`);
   拒绝也记 (不影响列表), 桌面收 `appschanged` (`acde:apps` 的 `on('changed')`): 每次决定变了 (`Approvals` 的 `changed`) 都经
-  `broker/listing.ts` `AppListing.changed()` 比一次, 列表和桌面上次拿到的 (桌面页面起来时、`list()` 的结果或上一次事件) 不一样才发; `refreshApps` 也走它 (清单变了一定发). 撤销 (`revoke`) 删掉记录: 这一次运行里当作拒绝 (同一次运行不问第二次), 下次运行再问. 撤销后的调用报同样的
+  页面胶水 (`js/page/src/host.ts`) 比一次, 列表和桌面上次拿到的 (桌面页面起来时、`list()` 的结果或上一次事件) 不一样才发; `refreshApps` 也走它 (清单变了一定发). 撤销 (`revoke`) 删掉记录: 这一次运行里当作拒绝 (同一次运行不问第二次), 下次运行再问. 撤销后的调用报同样的
   403 `denied`: Broker 侧 (`acde.launch` / `acde.windows.launch`) 当场查, web 侧 terminal / network 的模块和 camera / microphone 的 capture 经
   `broker/access/approval/permits.ts` `Permits` 包一层. 外壳模块 `acde:permissions` (桌面和声明它的系统应用): `pending()`、`answer(id, allow)`、`list(app?)`、
   `revoke(app, capability)`、`on('prompt' | 'answered')` (`permissionprompt {id, app, label, capability, reason: 'request'}`、
@@ -204,7 +204,7 @@
   同一个页面撤销后再选同一个文件夹, `acde:fs` 仍报 `denied` 到页面重开. 开发、无头和 driver 照常问: dev 请求 `permissions` (待答和已有决定)、`answer {prompt, allow}`、`revoke {app, capability}` (#95, 和 `acde:permissions.revoke` 同一份记录和效果,
   回 `{app, capability, revoked}`, 没有决定过的回 `revoked: false`; 桌面和 `<运行时> app` 都能用)
   给 acdev 用 (driver、MCP, 和命令行的 `acdev permissions` / `allow` / `deny` / `revoke`); 每个提示记一行 info (`waits for the user to allow … answer it with acdev allow or acdev deny, …`: 这一行出现在 `acdev dev` 的输出里, 是没有对话框的会话里用户和 agent 知道该做什么的地方), 没人答就一直等, 不自动批准.
-  **单应用模式的原生对话框** (`<运行时> app`, 宿主窗口; `broker/access/approval/dialog.ts` `ApprovalDialogs`, 由 `broker/approvals.ts` 接上): 提示同时交给宿主的
+  **单应用模式的原生对话框** (`<运行时> app`, 宿主窗口): 提示同时交给宿主的
   `approve(title, message)` (hostwin `Cmd::Approve`, Windows 是 `platform/win32/approve.rs` 的 `MessageBoxW`, 以宿主窗口为 owner, 是 / 否, 默认否),
   一次只开一个, 其余排队; 答案经 `Approvals.answer` 写进同一份 `permissions.json`, 和桌面答的一样. driver 或别处先答了, Broker 调
   `dismissApproval` 关掉还开着的对话框 (它不算回答), 排队的直接丢掉. macOS 是宿主窗口上的 `NSAlert` sheet (`system/approve.rs`, 「Don't Allow」在前、是默认,

@@ -19,7 +19,7 @@
   清单的 `services` 里写服务名才能调 (写在 capabilities 里是校验错误). 服务名不能用系统模块的名字 (`RESERVED_NAMES`). 重活放进 `ctx.spawn(argv, {cwd, env, onLine, onExit})` 起的进程 (`child.rs`: 自己的进程组, stderr 进日志加前缀
   `[<服务名>]`, 服务关闭后 SIGTERM, 3 秒后 SIGKILL).
   桌面清单的 `services` 项可以写成 `{name, modules}`, 列出这个服务能用的外壳模块; 服务经 `ctx.import('acde:<模块>')` 拿到 `{<模块>, default}`
-  (Broker 侧 `broker/access/modules.ts` `ServiceModules.module(名字, 服务名)`), 没列的拒绝并说缺哪条声明. 服务还另有 `ctx.inspect`.
+  (启动器的服务模式只放行 welcome 的 `modules`, 见 [layout.md](layout.md)「服务模式」), 没列的拒绝并说缺哪条声明. 服务还另有 `ctx.inspect`.
   `{name, modules, backend}` 的 `backend` 是这个服务连桌面后台时的角色名 (非空字符串, 否则校验错误); 写了角色而桌面没有 `backend` 时是警告.
   桌面的 `backend` 是 `{unit}` (systemd 系统单元模板名, 以 `@` 结尾、不含 `/`, 否则校验错误; `Manifest.desktopBackend`).
   **配置里怎么写这条授权** (`acde.config.jsonc`, SDK `DesktopConfig.services`: `Record<string, string | ServiceConfig>`, `config.schema.json` 同):

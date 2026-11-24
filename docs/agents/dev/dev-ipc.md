@@ -25,7 +25,7 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
 - `{"type":"quit"}` (dev 连接断开也一样) → Broker 的 `quit` 事件 (结束原因 `quit`, 退出码 0; `exit` 是意外退出, 退出码 1), 照常收尾 (关页面、停后端、删 socket 目录) 后退出; 6 秒没退完
   直接 `Cmd::Exit(0)`.
 - `{"type":"request","id","op",…}` (id 是数字或字符串, 只在这条连接里有意义) → id 换成进程内递增的号, 整行作为 `devrequest` 推给 Broker
-  (`broker/dev.ts` `DevRequests.request`), 做完调 `Shell.devRespond`, 按号找回连接、换回原 id 写出 `{"type":"response","id","ok":true,"result"}` 或
+  (启动器 `js/launcher/src/dev/dev.ts`), 做完调 `Shell.devRespond`, 按号找回连接、换回原 id 写出 `{"type":"response","id","ok":true,"result"}` 或
   `{…,"ok":false,"error":"<文字>"}`, 每个请求恰好一次 (超时在工具一侧); 连接断了, 它还没回答的请求作废. `web` 参数是 web 名
   (`ledger#1048576`)、应用 id (window 号最小的那个 web) 或 `desktop`:
   - `webs` → `{webs: [{name, app, kind, window, title, stalled?}]}`. `stalled: true` 标出在限时 (客户机里 1.5 秒) 内没回答的页面 (进程被 `kill -STOP`、

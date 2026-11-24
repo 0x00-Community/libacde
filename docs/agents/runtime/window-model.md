@@ -40,7 +40,7 @@
 - **全局快捷键** (src/model `shortcut.rs`): 组合写成 `ctrl+alt+t` (键是 xkb keysym 名, 按未修饰的那层匹配, Shift 写进组合; `mod` 在 macOS 上是 `super` (⌘), 别处是 `ctrl`, 同 Dopame 桌面的写法). 作用域 session /
   desktop / app / menu, 先到先得, 冲突拒绝, session 级不可覆盖; 匹配顺序 session → 焦点窗口的 menu 级 → 焦点窗口的 app 级 → desktop. 命中的键 (连同松开) 不发给窗口, 发
   `shortcut {window: owner, key, title: 作用域}`, `key` 是这一条绑定注册时写的文字 (同一组合的 app 级和 menu 级各记各的). keyboard-shortcuts-inhibit 生效时只有 session 级还拦.
-  menu 级是窗口菜单项的快捷键 (acde-host `broker/menukeys.ts`), 只在没有桌面、菜单画在窗框上时 (`framesMenus`): 应用 `setMenus` 时 Broker 给有 `onSelect`、没禁用、带 `shortcut` 的项注册
+  menu 级是窗口菜单项的快捷键 (启动器 `js/launcher/src/main.ts` 经 `menukeys` 消息交给页面, `js/page/src/worker.ts`), 只在没有桌面、菜单画在窗框上时 (`framesMenus`): 应用 `setMenus` 时 Broker 给有 `onSelect`、没禁用、带 `shortcut` 的项注册
   (同一文字只给第一项; 被占的记一行 warn 跳过), 再 `setMenus` 时按差异增删, 窗口关掉时随 app 级一起忘掉. 按下时 Broker 不转发事件, 直接
   调应用窗口的 `menu` (同桌面的 `invokeMenu`), 所以应用另用 `self.shortcut()` 注册了同一组合也只跑一次 (菜单项赢). 有桌面时不绑:
   菜单归桌面管 (Dopame 的编辑器给「编辑」菜单配了 `mod+C` / `mod+V` 等, 页面自己也处理这些键, 运行时抢走它们会改变编辑器的行为).
