@@ -1,5 +1,5 @@
 export class LaunchArgs {
-  static readonly USAGE = 'the single-app launcher: app <id|dir> | desktop [id] | lock <desktop id|dir> | service <name> '
+  static readonly USAGE = 'the launcher: app <id|dir> | desktop [id] | lock <desktop id|dir> | service <name> '
     + '[--size WxH] [--scale N] [--seconds N] [--shot FILE] [--shot-after MS]'
 
   constructor(

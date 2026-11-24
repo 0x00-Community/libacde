@@ -52,7 +52,7 @@ export function route(service: string, method: string, args: readonly unknown[],
 }
 
 export function unsupported(service: string, method: string): Error {
-  return Object.assign(new Error(`acdev: ${service}.${method} is not supported by the single-app launcher`), { status: 501, code: 'unsupported' })
+  return Object.assign(new Error(`acdev: ${service}.${method} is not supported in this session`), { status: 501, code: 'unsupported' })
 }
 
 export function refused(what: string): Error {
