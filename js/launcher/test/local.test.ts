@@ -31,13 +31,13 @@ function files(given: Record<string, string>, extra: readonly string[] = []): Lo
 const DESK = pkg('desk', {
   desktops: [{ id: 'desk', name: 'Desk', entry: 'index.html', services: ['clock', { name: 'notes', modules: ['windows'] }, 'missing'] }],
   services: [{ name: 'clock', module: 'services/clock.js' }, { name: 'notes', module: 'services/notes.js' }],
-  apps: [app('settings', { capabilities: { windows: true, network: true } })],
+  apps: [app('settings', { capabilities: { windows: true, network: true, terminal: true } })],
 })
 
 const TREE = {
   '/work/desk/package.json': DESK,
   '/work/appa/package.json': pkg('appa', { apps: [app('appa', { requests: ['greet'], services: ['clock'], icon: '/img/a.svg' })], assets: { '/img/': ['art'] } }),
-  '/work/appb/package.json': pkg('appb', { apps: [app('appb', { capabilities: { open: ['appa'] } }), app('appa')] }),
+  '/work/appb/package.json': pkg('appb', { apps: [app('appb', { capabilities: { open: ['appa'], terminal: true, windows: true, fs: { roots: ['documents', 'nowhere'] } } }), app('appa')] }),
 }
 
 describe('the local registry of acdev dev', () => {
@@ -203,7 +203,7 @@ describe('the local session of acdev dev: a desktop and its apps in one host win
     assert.deepEqual([welcome.kind, welcome.level, welcome.tier.shell], ['desktop', 'desktop', [...SHELL_MODULES]])
     assert.deepEqual(Object.keys(welcome.services ?? {}), ['clock'])
     assert.ok(welcome.resources.some((r) => r.prefix === '/acde-packages/dev-0/'))
-    assert.equal((welcome.grants as unknown as { fs: unknown }).fs, true)
+    assert.deepEqual((welcome.grants as unknown as { fs: unknown }).fs, { places: [], paths: false })
     assert.equal(desktop.window, 1)
     local.end(0)
   })
@@ -271,6 +271,42 @@ describe('the local session of acdev dev: a desktop and its apps in one host win
     assert.equal(told[0]!['title'], 'Draft')
     await desktop.link.call('windows', 'invokeMenu', [{ window: appa.window }, 'file', 'open'])
     assert.deepEqual(appa.link.pump().filter((e) => e.type === 'menuinvoke').map((e) => [e['menu'], e['item']]), [['file', 'open']])
+    local.end(0)
+  })
+})
+
+describe('what an app may do in the local session (as acdes checks it)', () => {
+  test('a third-party app gets no privileged grant it declares and no file paths; a system app of the desktop gets what it declares', async () => {
+    const { desktop, launchers, local } = await started()
+    await desktop.link.call('apps', 'open', ['appb'])
+    await desktop.link.call('apps', 'open', ['settings'])
+    const grants = (i: number) => launchers[i]!.link.welcome.grants as unknown as Record<string, unknown>
+    assert.deepEqual([grants(1)['terminal'], grants(1)['fs']], [false, { places: [], paths: false }])
+    assert.deepEqual([grants(2)['terminal'], grants(2)['network'], grants(2)['fs']], [true, true, null])
+    local.end(0)
+  })
+
+  test('shell modules are for the desktop and the system apps that declare them', async () => {
+    const { desktop, launchers, local } = await started()
+    await desktop.link.call('apps', 'open', ['appb'])
+    const appb = launchers[1]!
+    await assert.rejects(appb.link.call('windows', 'screenshot', [{ path: '/tmp/x.png' }]), { status: 403, message: /is not a system app/ } as never)
+    await assert.rejects(appb.link.call('session', 'logout', []), { status: 403 } as never)
+    await assert.rejects(appb.link.call('permissions', 'list', []), { status: 403 } as never)
+    await assert.rejects(appb.link.call('apps', 'openPath', ['/x']), { status: 403, message: /openFiles/ } as never)
+    await assert.rejects(appb.link.call('capabilities', 'request', ['camera']), { status: 403 } as never)
+    await desktop.link.call('apps', 'open', ['settings'])
+    assert.deepEqual(await launchers[2]!.link.call('windows', 'screenshot', [{ path: '/tmp/x.png' }]), { path: '/tmp/x.png', width: 10, height: 10 })
+    await assert.rejects(launchers[2]!.link.call('session', 'logout', []), { status: 403, message: /declare "session"/ } as never)
+    local.end(0)
+  })
+
+  test('an app names only the apps its capabilities.open lists, also with a link; opening by type needs openFiles', async () => {
+    const { desktop, launchers, local } = await started()
+    await desktop.link.call('apps', 'open', ['appb'])
+    const appb = launchers[1]!
+    await assert.rejects(appb.link.call('apps', 'open', ['settings', { kind: 'open-link', url: 'https://a.b' }]), { status: 403 } as never)
+    await assert.rejects(appb.link.call('apps', 'open', [{ kind: 'open-link', url: 'https://a.b' }]), { status: 403, message: /openFiles/ } as never)
     local.end(0)
   })
 })

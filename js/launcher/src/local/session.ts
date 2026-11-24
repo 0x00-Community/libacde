@@ -1,4 +1,4 @@
-import { API_LEVEL, SHELL_MODULES } from '@acde/api/manifest'
+import { API_LEVEL, Manifest, SHARED_PLACES, SHELL_MODULES } from '@acde/api/manifest'
 import type { ShellEvent } from '../app/events'
 import type { Found } from '../app/app'
 import { CALLBACK, sessionOf, windowGrant, type ServiceShape, type Session, type Welcome } from '../manager/manager'
@@ -90,6 +90,7 @@ const RESERVED = new Set(['lock', 'supervisor', 'windows', 'apps', 'window', 'op
   'openPath', 'handlers', 'setDefault', 'capabilities', 'permissions', 'icons', 'sounds', 'dev'])
 const SYSTEM_CAPABILITIES = new Set(['fs', 'terminal', 'network', 'system', 'bluetooth', 'audio', 'devices', 'power', 'input', 'display', 'office', 'launch', 'slots',
   'open', 'openFiles', 'camera', 'microphone', 'idleDetection'])
+const PRIVILEGED = ['terminal', 'system', 'bluetooth', 'devices', 'power', 'input', 'display', 'office'] as const
 const SERVICE_READY_MS = 5000
 const WEBS_MS = 1500
 const SERVICE_ANSWER_MS = 30000
@@ -230,23 +231,23 @@ export class LocalSession implements PeerSide {
     return this.#all().find((r) => r.window === window || r.view.windows.has(window)) ?? null
   }
 
+  static #declares(app: LocalApp, capability: string): boolean {
+    return !!(app.app.capabilities as Record<string, unknown>)[capability]
+  }
+
   #grants(app: LocalApp | null, key: string): Record<string, unknown> {
-    const has = (capability: string) => app === null || Object.hasOwn(app.app.capabilities, capability) && !!(app.app.capabilities as Record<string, unknown>)[capability]
+    const trusted = app === null || app.package.system
+    const has = (capability: string) => app === null || LocalSession.#declares(app, capability)
+    const privileged = (capability: (typeof PRIVILEGED)[number]) => trusted && has(capability)
     const root = process.env['ACDE_STORAGE'] || join(xdgHome('data'), 'acde', 'storage')
-    const fs = app === null ? true : LocalSession.#fileGrant(app)
+    const sandbox = !!process.env['ACDE_DEV_PLACES']
+    const fs = app === null ? { places: sandbox ? [...SHARED_PLACES] : [], paths: false } : LocalSession.#declares(app, 'fs') ? { places: sandbox ? Manifest.places(app.app.capabilities) : [], paths: false } : null
     return {
-      app: app?.app.id ?? null, fs, terminal: has('terminal'), network: has('network'), system: has('system'), bluetooth: has('bluetooth'), audio: has('audio'),
-      devices: has('devices'), power: has('power'), input: has('input'), display: has('display'), office: has('office'),
+      app: app?.app.id ?? null, fs, network: has('network'), audio: has('audio'),
+      ...Object.fromEntries(PRIVILEGED.map((capability) => [capability, privileged(capability)])),
       camera: app !== null && has('camera'), microphone: app !== null && has('microphone'),
       storage: { key, dir: join(root, key), legacy: null },
     }
-  }
-
-  static #fileGrant(app: LocalApp): unknown {
-    const fs = (app.app.capabilities as Record<string, unknown>)['fs']
-    if (!fs) return null
-    const roots = typeof fs === 'object' && fs !== null && Array.isArray((fs as { roots?: unknown }).roots) ? [...(fs as { roots: string[] }).roots] : []
-    return { places: roots, paths: app.package.system && roots.length > 0 }
   }
 
   #desktopWelcome(): Welcome {
@@ -438,15 +439,63 @@ export class LocalSession implements PeerSide {
 
   call(peer: Peer, service: string, method: string, args: readonly unknown[]): Promise<unknown> {
     try {
-      const provided = this.#provided.find((p) => p.namespace === service)
-      if (peer.kind !== 'service' && (provided || (!RESERVED.has(service) && !SYSTEM_CAPABILITIES.has(service)))) {
-        return this.#callService(peer, service, method, args)
+      if (peer.kind === 'service') {
+        this.#serviceMay(peer, service, method)
+        return Promise.resolve(this.#answer(peer, service, method, args))
       }
-      if (peer.kind === 'service') this.#serviceMay(peer, service, method)
+      if (this.#admit(peer, service, method, args) === 'service') return this.#callService(peer, service, method, args)
       return Promise.resolve(this.#answer(peer, service, method, args))
     } catch (error) {
       return Promise.reject(error as Error)
     }
+  }
+
+  #admit(peer: Peer, service: string, method: string, args: readonly unknown[]): 'manager' | 'service' {
+    const desktop = peer.kind === 'desktop'
+    const app = peer.app ? (this.#registry.app(peer.app) ?? null) : null
+    const label = app?.app.label ?? 'the desktop'
+    const declares = (capability: string) => desktop || (app !== null && LocalSession.#declares(app, capability))
+    const needs = (what: string, capability: string) => forbidden(`${what} needs "${capability}" in the capabilities of ${label}`)
+    const shell = (module: string) => {
+      if (desktop) return
+      if (!app?.package.system) throw forbidden(`acde:${module} is a shell module: only the desktop, its services and system apps may import it, and ${label} is not a system app`)
+      if (!declares(module)) throw forbidden(`acde:${module} is a shell module: declare "${module}" in the capabilities of ${label}`)
+    }
+    const call = `${service}.${method}`
+    if (service === 'session' || service === 'desktops') {
+      shell(service)
+      return 'manager'
+    }
+    if (['window.ready', 'window.setTitle', 'window.setMenus', 'window.requestAttention', 'window.openUrl', 'page.shown', 'page.notify', 'apps.list'].includes(call)) return 'manager'
+    if (call === 'apps.open') {
+      this.#mayOpen(peer, args)
+      return 'manager'
+    }
+    if (call === 'apps.openPath' || call === 'apps.handlers') {
+      if (!declares('openFiles')) throw needs(`acde:${method}`, 'openFiles')
+      return 'manager'
+    }
+    if (call === 'apps.setDefault') return shell('setDefault'), 'manager'
+    if (service === 'apps' || service === 'packages') return shell('packages'), 'manager'
+    if (call === 'capabilities.request') {
+      const name = args[0]
+      if (typeof name !== 'string') throw badRequest('capabilities.request needs a capability name')
+      if (!declares(name)) throw needs(`capabilities.request(${JSON.stringify(name)})`, name)
+      return 'manager'
+    }
+    if (service === 'launch') {
+      if (!declares('launch') && !declares('slots')) throw needs('acde:launch', 'launch" or "slots')
+      return 'manager'
+    }
+    if (service === 'windows' || service === 'permissions' || service === 'software') return shell(service), 'manager'
+    if ((SHELL_MODULES as readonly string[]).includes(service)) return shell(service), 'manager'
+    if (service === 'inspect' || service === 'debug' || service === 'dev') {
+      if (!desktop) throw forbidden(`${call}: only the desktop or a development session`)
+      return 'manager'
+    }
+    if (RESERVED.has(service) || SYSTEM_CAPABILITIES.has(service)) throw unsupported(service, method)
+    if (desktop || (app?.app.services ?? []).length > 0) return 'service'
+    throw forbidden(`acde:${service} is not a system module; if a desktop service provides it, list that service's name in the services of ${label}`)
   }
 
   #serviceMay(peer: Peer, service: string, method: string): void {
@@ -561,15 +610,23 @@ export class LocalSession implements PeerSide {
       if (typeof kind !== 'string') throw refusal(400, 'untyped_request', `a request to ${target} needs a kind`)
       if (!app.app.requests.includes(kind)) throw refusal(409, 'not_accepted', `${target} does not accept ${kind} requests (its manifest's requests)`)
     }
-    if (!desktop) this.#mayOpen(peer, target)
     return this.#start(app, request, newWindow)
   }
 
-  #mayOpen(peer: Peer, target: string): void {
-    const caller = peer.app ? this.#registry.app(peer.app) : null
+  #mayOpen(peer: Peer, args: readonly unknown[]): void {
+    if (peer.kind === 'desktop') return
+    const caller = peer.app ? (this.#registry.app(peer.app) ?? null) : null
+    const label = caller?.app.label ?? 'this caller'
+    const [target, request] = typeof args[0] === 'string' ? [args[0], args[1]] : [null, args[0]]
+    const kind = (request as { kind?: unknown } | null | undefined)?.kind
+    if (target === null) {
+      if (kind !== 'open-file' && kind !== 'open-link') throw badRequest('apps.open needs an app id or a system request (open-file, open-link)')
+      if (caller && LocalSession.#declares(caller, 'openFiles')) return
+      throw forbidden(`opening files and links by type needs "openFiles" in the capabilities of ${label}`)
+    }
     const open = (caller?.app.capabilities as Record<string, unknown> | undefined)?.['open']
     if (open === true || (Array.isArray(open) && open.includes(target))) return
-    throw forbidden(`${peer.app ?? 'this caller'} may not open ${target}: list it in capabilities.open`)
+    throw forbidden(`open ${target} needs "open" (true or a list with ${target}) in the capabilities of ${label}`)
   }
 
   #openLink(url: string, target: string | null, newWindow: boolean): unknown {
