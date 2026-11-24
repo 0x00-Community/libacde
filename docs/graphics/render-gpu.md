@@ -50,7 +50,7 @@
   胶水只传 k, 原生层 (`webnative.rs` `set_backdrop`) 用 `acde_scene::corner::exponent` 换成 n, `SurfaceCommand::Backdrop` 的效果是
   `[半径, 模糊, 饱和, 亮度, 指数]`; C 接口不改结构, 指数放在 `AcdeCommand.thickness` (Backdrop 本来不用它). 没写 shape 时是圆弧 (n = 2).
 - 模糊 (src/vello `Composer`、shell `effects.rs`) 是降采样 / 升采样链, 几层、采样偏移多大由 acde-model `Blur::of(sigma)` 一处决定
-  系统玻璃 (2026-11-22, 总仓 `.scratch/libacde/glass-plan.md`): 元素有 `backdrop-filter` 又声明了作者自定义属性 `--acde-glass` (`regular`、`clear`, 其余分项
+  系统玻璃 (2026-11-22, 总仓 `.scratch/libacde/glass-plan.md`): 元素有 `backdrop-filter` 又声明了作者自定义属性 `--acde-glass` (`regular`、`clear`; `blur` (2026-11-24, `Glass::BLUR`) 是和窗口材质 `blur` 同一份的背景模糊: 取 `Glass::blur(档位, 深浅)`, 没有透镜、高光、轮廓和折射, 跟着系统档位、深浅和"减少透明度" (此时是 `Opaque` 档, 着色不透明) 变, 页面的菜单、提示条、搜索框用它; 其余分项
   `--acde-glass-refraction`、`-blur`、`-bleed`、`-highlight`、`-white-point`、`-smoothing`、`-tint` 盖在预设上; `-highlight: <角度> <强度> [<宽度>]` 的角度按 CSS
   的约定, 0deg 朝上、顺时针, 表示光从哪边来, 打亮朝向光源的边, 对侧的边另有一条约三分之一强度的亮线; 宽度是从边缘往里的一条细带 (长度, 随缩放, 不写沿用预设),
   强度在带内从边缘线性降到 0 (2026-11-22 改: 原来带宽借折射的 inner_height, clear 档 18 px 一整条加白, 面积太大; 苹果的镜面光是 1–2 px 的细边, 上亮下暗,

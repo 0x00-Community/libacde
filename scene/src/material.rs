@@ -20,7 +20,7 @@ pub struct Material {
 
 static BUILT_IN: [Material; 3] = [
     Material { name: Cow::Borrowed("glass"), look: Look::Glass },
-    Material { name: Cow::Borrowed("blur"), look: Look::Blur },
+    Material { name: Cow::Borrowed(Glass::BLUR), look: Look::Blur },
     Material { name: Cow::Borrowed("none"), look: Look::Nothing },
 ];
 static WARNED: Mutex<Vec<String>> = Mutex::new(Vec::new());

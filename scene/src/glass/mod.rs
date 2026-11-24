@@ -85,6 +85,8 @@ pub struct Glass {
 }
 
 impl Glass {
+    pub const BLUR: &str = "blur";
+
     pub fn from_properties(property: impl Fn(&str) -> Option<String>, warn: impl Fn(String)) -> Option<Self> {
         Self::from_properties_at(Level::default(), property, warn)
     }
@@ -96,8 +98,13 @@ impl Glass {
         if name == "none" || name.is_empty() {
             return None;
         }
-        let Some(mut glass) = Role::parse(name).map(|role| Self::preset_in(role, level, preference().dark)) else {
-            warn(format!("--acde-glass: no glass called {name:?} (none, regular, clear)"));
+        let dark = preference().dark;
+        let preset = match name {
+            Self::BLUR => Some(Self::blur(level, dark)),
+            role => Role::parse(role).map(|role| Self::preset_in(role, level, dark)),
+        };
+        let Some(mut glass) = preset else {
+            warn(format!("--acde-glass: no glass called {name:?} (none, regular, clear, {})", Self::BLUR));
             return None;
         };
         let mut read = |key: &str, apply: &mut dyn FnMut(&mut Glass, &str) -> Option<()>| {
@@ -774,5 +781,17 @@ mod tests {
         assert!(spread(&flat) > 150, "glass without a lens keeps its own light blur: {}", spread(&flat));
         let tinted = Glass::preset(Role::Regular, Level::Tinted);
         assert_eq!(tinted.unrefracted_layers(), tinted.two_layers(), "glass blurred more than the frost keeps its own layers");
+    }
+
+    #[test]
+    fn blur_is_the_system_blur_material_at_the_given_level() {
+        let read = |level: Level, given: &[(&str, &str)]| Glass::from_properties_at(level, properties(given), |w| panic!("{w}")).expect("glass");
+        assert_eq!(read(Level::Clear, &[("acde-glass", "blur")]), Glass::blur(Level::Clear, false));
+        assert_eq!(read(Level::Tinted, &[("acde-glass", " blur ")]), Glass::blur(Level::Tinted, false));
+        let opaque = read(Level::Opaque, &[("acde-glass", "blur")]);
+        assert_eq!((opaque.tint[3], opaque.highlight.amount, opaque.lens.thickness), (1.0, 0.0, 0.0));
+        let tinted = read(Level::Clear, &[("acde-glass", "blur"), ("acde-glass-tint", "#ff000080")]);
+        assert_eq!(Glass { tint: Glass::blur(Level::Clear, false).tint, ..tinted }, Glass::blur(Level::Clear, false));
+        assert!(!read(Level::Clear, &[("acde-glass", "blur")]).refracts());
     }
 }
