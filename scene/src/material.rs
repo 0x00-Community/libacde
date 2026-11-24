@@ -95,7 +95,7 @@ impl Material {
     }
 }
 
-const OVERRIDES: [(&str, &[usize]); 10] = [
+const OVERRIDES: [(&str, &[usize]); 11] = [
     ("refraction", &[0, 1, 2, 3]),
     ("blur", &[4, 5, 6, 7, 8, 9, 10, 11, 12, 13]),
     ("bleed", &[14, 15, 16]),
@@ -106,6 +106,7 @@ const OVERRIDES: [(&str, &[usize]); 10] = [
     ("lens", &[28, 25, 30, 26]),
     ("darken", &[27]),
     ("outline", &[31, 32, 33, 34, 35, 36]),
+    ("film", &[37, 38]),
 ];
 
 pub fn overrides<'a>(given: impl IntoIterator<Item = (&'a str, &'a str)>, warn: impl Fn(String)) -> Vec<f32> {

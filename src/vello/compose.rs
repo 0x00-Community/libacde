@@ -21,10 +21,11 @@ struct Params {
     bias: [f32; 4],
     outline: [f32; 4],
     table: [f32; 4],
+    film: [f32; 4],
 }
 
 impl Params {
-    const SIZE: u64 = 176;
+    const SIZE: u64 = 192;
 
     fn bytes(&self) -> [u8; Self::SIZE as usize] {
         let head = [
@@ -41,7 +42,7 @@ impl Params {
             self.shift[0],
             self.shift[1],
         ];
-        let f = head.iter().chain(&self.color).chain(&self.matrix).chain(&self.bias).chain(&self.outline).chain(&self.table);
+        let f = head.iter().chain(&self.color).chain(&self.matrix).chain(&self.bias).chain(&self.outline).chain(&self.table).chain(&self.film);
         let mut out = [0u8; Self::SIZE as usize];
         for (chunk, v) in out.as_chunks_mut::<4>().0.iter_mut().zip(f) {
             *chunk = v.to_le_bytes();
@@ -631,6 +632,7 @@ impl Composer {
             bias,
             outline: glass.outline.color,
             table: self.lens_slot(glass.lens, b.rect[2].min(b.rect[3]) / 2.0),
+            film: glass.film.uniform(),
             ..Default::default()
         };
         self.pass(encoder, canvas, false, &[Draw { pipe: Pipe::Glass, src: &filtered, params, scissor: Some(region), mix: None, group: None }]);

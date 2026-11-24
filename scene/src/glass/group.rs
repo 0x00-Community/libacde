@@ -43,6 +43,10 @@ impl Piece {
         (f64::from(self.half[0]), f64::from(self.half[1]))
     }
 
+    fn half_short(&self) -> f64 {
+        f64::from(self.half[0].min(self.half[1]))
+    }
+
     fn distance(&self, p: (f64, f64)) -> f64 {
         corner::distance(self.relative(p), self.halves(), f64::from(self.radius), f64::from(self.exponent))
     }
@@ -88,9 +92,9 @@ impl Piece {
             g.outline.color[2],
             g.outline.color[3],
             if g.outline.merged { 1.0 } else { 0.0 },
-            0.0,
-            0.0,
-            0.0,
+            g.film.amount,
+            g.film.cell,
+            g.film.uniform()[2],
         ]
     }
 }
@@ -108,6 +112,7 @@ pub struct Field {
     pub line: f32,
     pub toward: (f64, f64),
     pub merging: f64,
+    pub bevel: f64,
     pub glass: Glass,
 }
 
@@ -184,7 +189,7 @@ impl GlassGroup {
         let k = self.k();
         let (first, rest) = self.pieces().split_first()?;
         let d = first.distance(p);
-        let mut field = Field { d, line: 0.0, toward: first.toward(p), merging: 0.0, glass: first.glass };
+        let mut field = Field { d, line: 0.0, toward: first.toward(p), merging: 0.0, bevel: first.half_short(), glass: first.glass };
         let mut pieces_line = first.glass.outline.coverage(d);
         for piece in rest {
             let di = piece.distance(p);
@@ -195,6 +200,7 @@ impl GlassGroup {
                 field.toward = lerp2(unit(field.toward), unit(piece.toward(p)), h);
             }
             field.glass = field.glass.mixed(&piece.glass, h as f32);
+            field.bevel = lerp(field.bevel, piece.half_short(), h);
             pieces_line = pieces_line.max(piece.glass.outline.coverage(di));
             field.d = lerp(field.d, di, h) - k * h * (1.0 - h);
             field.merging = field.merging.max(4.0 * h * (1.0 - h));
@@ -216,8 +222,10 @@ impl GlassGroup {
         let mut data = Vec::with_capacity(width * height);
         for y in 0..height {
             for x in 0..width {
-                let field = self.field((x as f64 + 0.5, y as f64 + 0.5)).expect("the group has a piece");
-                data.push(packed(Look::of(&field.glass).pixel_lined(under.at(y * width + x), field.toward, field.d, field.line, &field.glass)));
+                let p = (x as f64 + 0.5, y as f64 + 0.5);
+                let field = self.field(p).expect("the group has a piece");
+                let shaded = Look::of(&field.glass).pixel_lined(under.at(y * width + x), field.toward, field.d, field.line, (p, field.bevel), &field.glass);
+                data.push(packed(shaded));
             }
         }
         Pixels { width, height, data }

@@ -20,6 +20,7 @@ struct AcdeGlassLook {
     tint: vec4<f32>,
     lens: vec4<f32>,
     outline: vec4<f32>,
+    mode: vec4<f32>,
 }
 
 struct AcdeGlassField {
@@ -30,6 +31,7 @@ struct AcdeGlassField {
     index: f32,
     line: f32,
     look: AcdeGlassLook,
+    at: vec2<f32>,
 }
 
 fn acde_glass_piece_distance(i: u32, p: vec2<f32>) -> f32 {
@@ -40,11 +42,11 @@ fn acde_glass_piece_distance(i: u32, p: vec2<f32>) -> f32 {
 
 fn acde_glass_piece_look(i: u32) -> AcdeGlassLook {
     let piece = acde_glass_pieces[i];
-    return AcdeGlassLook(piece.refraction, piece.bleed, piece.look, piece.tint, piece.lens, piece.outline);
+    return AcdeGlassLook(piece.refraction, piece.bleed, piece.look, piece.tint, piece.lens, piece.outline, piece.mode);
 }
 
 fn acde_glass_look_mix(a: AcdeGlassLook, b: AcdeGlassLook, t: f32) -> AcdeGlassLook {
-    return AcdeGlassLook(mix(a.refraction, b.refraction, t), mix(a.bleed, b.bleed, t), mix(a.look, b.look, t), mix(a.tint, b.tint, t), mix(a.lens, b.lens, t), mix(a.outline, b.outline, t));
+    return AcdeGlassLook(mix(a.refraction, b.refraction, t), mix(a.bleed, b.bleed, t), mix(a.look, b.look, t), mix(a.tint, b.tint, t), mix(a.lens, b.lens, t), mix(a.outline, b.outline, t), mix(a.mode, b.mode, t));
 }
 
 fn acde_glass_smooth_weight(d: f32, di: f32, k: f32) -> f32 {
@@ -112,7 +114,7 @@ fn acde_glass_group_field(p: vec2<f32>, count: u32, spacing: f32) -> AcdeGlassFi
         line_d = d / max(length(slope), 0.05);
     }
     let line = select(pieces_line, acde_glass_outline_coverage(line_d, outline_width, look.outline.a), merged_outline > 0.5);
-    return AcdeGlassField(d, toward, merging, bevel, index, line, look);
+    return AcdeGlassField(d, toward, merging, bevel, index, line, look, p);
 }
 
 fn acde_glass_group_offset(f: AcdeGlassField) -> vec2<f32> {
@@ -134,7 +136,8 @@ fn acde_glass_group_shade(under: vec4<f32>, f: AcdeGlassField) -> vec4<f32> {
     let straight = select(vec3<f32>(0.0), under.rgb / under.a, under.a > 0.0);
     let n = f.toward / max(length(f.toward), 0.000001);
     let shine = acde_glass_shine(n, f.d, f.look.look.w, f.look.bleed.w, f.look.look.x);
-    let rgb = acde_glass_tone_darkened(straight, f.look.look.y, f.look.tint, shine, f.look.lens.z);
+    let toned = acde_glass_tone_darkened(straight, f.look.look.y, f.look.tint, shine, f.look.lens.z);
+    let rgb = acde_glass_film(toned, f.at, f.d, f.bevel, f.look.mode.yzw);
     let lined = acde_glass_lined(rgb, max(under.a, f.look.tint.a), f.line, f.look.outline.rgb);
     let alpha = lined.a * inside;
     return vec4<f32>(lined.rgb * alpha, alpha);

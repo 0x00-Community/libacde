@@ -2,20 +2,22 @@ use crate::blur::{Pixels, blur, channels, pack};
 use crate::corner::{self, Corners};
 
 mod appear;
+mod film;
 pub mod group;
 pub mod lens;
 mod membership;
 mod preset;
 
 pub use appear::Appearance;
+pub use film::Film;
 pub use lens::{Lens, LensTable};
 pub use membership::{Membership, Name};
 pub use preset::{Level, Role};
 
-pub const WGSL: &str = include_str!("glass.wgsl");
+pub const WGSL: &str = concat!(include_str!("glass.wgsl"), include_str!("film/film.wgsl"));
 
 pub const LAYERS: usize = 5;
-const WIRE_FLOATS: usize = 37;
+const WIRE_FLOATS: usize = 39;
 const MOST_LENGTH: f32 = 256.0;
 const FAR_EDGE: f64 = 0.33;
 
@@ -79,6 +81,7 @@ pub struct Glass {
     pub lens: Lens,
     pub darken: f32,
     pub outline: Outline,
+    pub film: Film,
 }
 
 impl Glass {
@@ -162,6 +165,10 @@ impl Glass {
             g.darken = number(t)?;
             Some(())
         });
+        read("acde-glass-film", &mut |g, t| {
+            g.film = Film::parse(t, preference().dark)?;
+            Some(())
+        });
         read("acde-glass-outline", &mut |g, t| {
             if t == "none" {
                 g.outline = Outline::default();
@@ -209,6 +216,7 @@ impl Glass {
             },
             darken: unit(self.darken),
             outline: Outline { width: length(self.outline.width), color: self.outline.color.map(unit), merged: self.outline.merged },
+            film: Film { amount: unit(self.film.amount), cell: length(self.film.cell) },
         }
     }
 
@@ -223,6 +231,7 @@ impl Glass {
         g.lens.thickness *= f;
         g.highlight.width *= f;
         g.outline.width *= f;
+        g.film.cell *= f;
         g
     }
 
@@ -299,6 +308,8 @@ impl Glass {
             self.outline.color[2],
             self.outline.color[3],
             if self.outline.merged { 1.0 } else { 0.0 },
+            self.film.amount,
+            self.film.cell,
         ]
     }
 
@@ -315,6 +326,7 @@ impl Glass {
             lens: Lens { bezel: f[28], thickness: f[25], index: f[30], dispersion: f[26] },
             darken: f[27],
             outline: Outline { width: f[31], color: [f[32], f[33], f[34], f[35]], merged: f[36] > 0.5 },
+            film: Film { amount: f[37], cell: f[38] },
         }
     }
 
@@ -401,11 +413,13 @@ pub mod cpu {
             for x in 0..width {
                 let p = (x as f64 + 0.5 - center.0, y as f64 + 0.5 - center.1);
                 let d = corner::distance(p, half, corners.radius, corners.exponent);
-                data.push(packed(look.pixel(under.at(y * width + x), toward(p, half), d, glass)));
+                data.push(packed(look.pixel(under.at(y * width + x), toward(p, half), d, (p, half.0.min(half.1)), glass)));
             }
         }
         Pixels { width, height, data }
     }
+
+    pub(super) type Place = ((f64, f64), f64);
 
     pub(super) struct Under {
         small: Pixels,
@@ -455,11 +469,11 @@ pub mod cpu {
             }
         }
 
-        pub(super) fn pixel(&self, under: [f32; 4], toward: (f64, f64), d: f64, glass: &Glass) -> [f32; 4] {
-            self.pixel_lined(under, toward, d, glass.outline.coverage(d), glass)
+        pub(super) fn pixel(&self, under: [f32; 4], toward: (f64, f64), d: f64, at: Place, glass: &Glass) -> [f32; 4] {
+            self.pixel_lined(under, toward, d, glass.outline.coverage(d), at, glass)
         }
 
-        pub(super) fn pixel_lined(&self, under: [f32; 4], toward: (f64, f64), d: f64, line: f32, glass: &Glass) -> [f32; 4] {
+        pub(super) fn pixel_lined(&self, under: [f32; 4], toward: (f64, f64), d: f64, line: f32, (p, half_short): Place, glass: &Glass) -> [f32; 4] {
             let inside = (0.5 - d / self.soft).clamp(0.0, 1.0) as f32;
             if inside <= 0.0 {
                 let glow = (1.0 - d / self.reach).clamp(0.0, 1.0) as f32 * glass.bleed.amount * glass.bleed.opacity;
@@ -468,7 +482,7 @@ pub mod cpu {
             let shine = self.highlight(toward, d) * glass.highlight.amount;
             let a = under[3];
             let straight = |v: f32| if a > 0.0 { (v / a).min(1.0) } else { 0.0 };
-            let toned = tone([straight(under[0]), straight(under[1]), straight(under[2])], glass, shine);
+            let toned = glass.film.shaded(tone([straight(under[0]), straight(under[1]), straight(under[2])], glass, shine), p, d, half_short, Film::clock());
             let mut k = 0;
             let [r, g, b] = toned.map(|v| {
                 let c = glass.outline.color[k];

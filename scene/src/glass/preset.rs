@@ -1,4 +1,4 @@
-use super::{Bleed, BlurLayer, Glass, Highlight, LAYERS, Lens, Outline, Refraction};
+use super::{Bleed, BlurLayer, Film, Glass, Highlight, LAYERS, Lens, Outline, Refraction};
 
 const HIGHLIGHT_DEGREES: f32 = 330.0;
 const HIGHLIGHT_AMOUNT: f32 = 0.45;
@@ -112,6 +112,7 @@ impl Glass {
                 lens: Lens { bezel: 34.0, thickness: 22.0, index: 1.5, dispersion: 0.01 },
                 darken: 0.05,
                 outline: OUTLINE,
+                film: Film::default(),
             },
             Level::Medium => Self {
                 refraction: Refraction { inner_amount: 0.8, inner_height: 10.0, outer_amount: 0.15, outer_height: 18.0 },

@@ -71,6 +71,19 @@
   单块两种一样. 线上格式 31→37 个 f32 (末六个是轮廓宽度、颜色和画法), 组每块 9 个 vec4 (2304 字节; 轮廓宽度在 `corner.w`, 颜色在 `outline`,
   画法在 `mode.x`), 页面合成的 `Params` 多一个 vec4 (160 字节; 再加查找表的 `table` 后 176 字节), 轮廓宽度在 `shift.y`. "逐位等于单块" 的几条测试都在轮廓关掉 (`none`) 时比; 组的
   CPU 测试覆盖 merged 脖子连续、旧边界无线, pieces 旧边界都有线、脖子是玻璃无线, none 无线.
+  薄膜干涉 (2026-11-24, 总仓 `.scratch/dopame/boss-capsule-look.md`「怎么恢复」第 4 条; `Glass.film: Film {amount, cell}`, `glass/film/`):
+  写法 `--acde-glass-film: <强度> | auto | none` (强度 0–1, `auto` 是 `Film::AMOUNT` = 0.2, 缺省 none 即不画). 页面是深色时强度乘 `1 − Film::NIGHT` (0.6),
+  解析时按 `preference().dark` 算好 (深浅变了渲染器整页重画, 重新解析). 公式和常量搬自 dopame 原来的液态玻璃 (`engines/film.ts` 的 `FILM`), 只在这里一份:
+  膜厚 `240 + 260·noise(P / 64px + t·(0.05, −0.035)) + 120·h` nm, 颜色 `0.5 − 0.5·cos(2π·2·1.33·膜厚·cosθt / λ)`, λ 取 (650, 532, 450) nm,
+  结果 `mix(c, c·(0.55 + 0.9·颜色), 强度·(0.25 + 0.75·smoothstep(0.2, 0.95, sinθi)))`, 夹到 0–1. h 和 sinθi 取自到边缘的距离 e: `x = e / 半短边`,
+  `h = √(1 − (1 − x)²)`, 斜率 `(1 − x) / h` (至多 7), `sinθi = 斜率 / √(1 + 斜率²)`, `cosθt = √(1 − sin²θi / 1.33²)`; 所以中间偏白, 越靠边颜色越浓.
+  组里 e 和半短边取融合后的合成场 (`AcdeGlassField.d` / `bevel`, CPU 的 `Field.bevel`), 颜色沿融合后的整体边缘走. 噪声是值噪声 (每格四角散列加平滑插值),
+  格子 64 px 随缩放 (`cell` 是长度). 加在着色 (白点、染色、乘暗、高光) 之后、轮廓之前. 漂移: t 是 `Film::clock()` (进程启动起的秒数; 减少动态效果时为 0),
+  只在这块玻璃本来就要画的时候取当前时间, 不为漂移出帧, 所以静止的玻璃不动. WGSL 的 `acde_glass_film(rgb, p, d, 半短边, film)` (`film` 是 (强度, 格子, t)) 拼在
+  `glass::WGSL` 末尾; 常量两边各写一次, 单测逐个比对 `film/film.wgsl` 与 `Film` 的常量. CPU (`cpu::paint`、`GlassGroup::paint_cpu`, 经 `Look::pixel_lined`)
+  用 `Film::shaded` 同一公式 (单块的 P 相对元素中心, GPU 是画布坐标, 噪声图案不同, 形态相同). 线上格式 37→39 个 f32 (第 38、39 个是强度和格子);
+  组每块 `mode.y`、`mode.z`、`mode.w` 是强度、格子和 t (块大小不变); 页面合成的 `Params` 多一个 `film` (192 字节). 合成器自己的单块着色器
+  要把 `Glass.film` 的 `Film::uniform()` 交给 `acde_glass_film`; 组走 `acde_glass_group_shade` 已经带上. 窗口材质的 `overrides` 也认 `film` (第 38、39 个).
   预设表 (通透度档位, 2026-11-22, 总仓 `.scratch/libacde/glass-transparency-plan.md`; `glass/preset.rs`, 参数表只此一份): `Glass::preset(Role, Level)`,
   `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 模糊 0.5 px (背景有文本时页面自己切到 8 px, 不进预设), 内圈折射 0.8 (2026-11-23 用户定), 不染色、不渗出, 乘暗 0.05, 透镜斜面 34 px、厚度 22 px、折射率 1.5、色散 0.01 (用户 2026-11-23 在调参页定), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3, 内圈折射按比例从 0.4 提到 0.8)、`Tinted`
   (着色, 2, regular-2, 内圈折射按比例从 0.35 提到 0.7)、`Opaque` (减少透明度, 3: 重模糊加接近不透明的着色, `Glass::opaque(dark)` 按深浅给色, 预设取浅色). 名字和线上值都在 `Level`
