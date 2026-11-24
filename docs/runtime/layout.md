@@ -107,6 +107,8 @@
     时每个页面各答一份 (键 `<应用 id 或 desktop>:<pid>#<序号>`). 各启动器的 Inspect 经会话看到所有窗口 (`Seat.windows`: 页面的 rpc、记录、关窗、
     统一的 `w<n>` 编号), 所以 `hit`、`act`、`snapshot` 落在别的应用的窗口上也能做. `devreload {app}` 先重扫 `ACDE_PATH`, 再交给那个应用的启动器 (它按新清单重起页面),
     没有 `app` 时先重起服务 (见上) 再给桌面.
+  - DevTools: 进程里只有一个端点 (`DevTools.targets` 每次整张替换), 所以每个启动器拿到的是会话包过的 `NativeDevTools` (`Seat.devtools`): 各自登记自己页面的目标,
+    会话合起来交给端点 (`/json/list` 同时有桌面和各应用; 页面结束时它的目标去掉), 端口同一个.
   - SIGTERM / SIGINT / SIGHUP、`quit`、`session.logout`、`--seconds` 或桌面退出结束会话: 先关所有应用, 再断服务和桌面的连接; `--shot` 截整个宿主窗口.
 - **锁屏页预览** (`lock <桌面 id|目录>`, 只在没有管家时, `acdev dev --lock` 用, 日常桌面工作项 23): 按 `ACDE_PATH` 或目录找桌面包, 打开它清单 `lock`
   写的页面 (桌面窗口, 等级最低, 授予全无, 页面初始化数据带 `lock: true`, 所以只有 `acde:lock` 和 `acde:services`). `lock.user` / `lock.unlock` / `lock.cancel` 由

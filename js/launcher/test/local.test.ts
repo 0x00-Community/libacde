@@ -190,11 +190,14 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 function session() {
   const fake = new FakeShell()
+  const published: string[][] = []
+  const devtools = { open: () => ({ port: 9222 }), targets: (list: { title: string }[]) => void published.push(list.map((t) => t.title)) }
   const launchers: FakeLauncher[] = []
   const services: FakeService[] = []
   const registry = () => LocalRegistry.scan(files(TREE), dev(['/work']), 'desk')
   const local = new LocalSession({
     shell: fake.shell,
+    devtools,
     registry: registry(),
     rescan: registry,
     launcher: (given, link, seat) => {
@@ -209,7 +212,7 @@ function session() {
     },
   })
   const running = local.run()
-  return { fake, launchers, services, local, running }
+  return { fake, launchers, services, local, running, published }
 }
 
 async function started() {
@@ -435,6 +438,19 @@ describe('host window events and dev requests in the local session', () => {
     assert.ok(services[2]!.take().some((e) => e.type === 'call'))
     assert.deepEqual(services[0]!.take().filter((e) => e.type === 'call'), [])
     void answer.catch(() => null)
+    local.end(0)
+  })
+
+  test('the one DevTools endpoint lists every page: each launcher publishes its own targets and the session merges them', async () => {
+    const { desktop, launchers, published, local } = await started()
+    await desktop.link.call('apps', 'open', ['appa'])
+    const target = (title: string) => ({ id: title, kind: 'page' as const, title, url: '' })
+    desktop.seat.devtools!.targets([target('desk')])
+    launchers[1]!.seat.devtools!.targets([target('appa')])
+    assert.deepEqual(published.at(-1), ['desk', 'appa'])
+    launchers[1]!.end(0)
+    await tick()
+    assert.deepEqual(published.at(-1), ['desk'])
     local.end(0)
   })
 

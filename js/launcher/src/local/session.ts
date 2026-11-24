@@ -4,6 +4,7 @@ import type { Found } from '../app/app'
 import { CALLBACK, sessionOf, windowGrant, type ServiceShape, type Session, type Welcome } from '../manager/manager'
 import type { GrantOptions, LauncherShell } from '../shell'
 import type { Rpc } from '../../../page/src/rpc'
+import type { NativeDevTools, NativeDevToolsTarget } from '../dev/devtools'
 import { join } from '../../../page/src/sys/path'
 import { xdgHome } from '../../../page/src/sys/os'
 import { mkdirSync } from '../../../page/src/sys/fs'
@@ -28,6 +29,7 @@ export interface SessionWindows {
 
 export interface Seat {
   readonly shell: LauncherShell
+  readonly devtools: NativeDevTools | undefined
   readonly grant: (() => GrantOptions) | null
   readonly windows: SessionWindows
   fresh(): Found | null
@@ -48,6 +50,7 @@ export interface ServiceRunner {
 
 export interface LocalHost {
   readonly shell: LauncherShell
+  readonly devtools?: NativeDevTools
   readonly registry: LocalRegistry
   launcher(session: Session, link: LocalLink, seat: Seat): SeatedLauncher
   service(link: LocalLink, welcome: Welcome, generation: number): ServiceRunner
@@ -117,6 +120,7 @@ export class LocalSession implements PeerSide {
   #desktop: Running | null = null
   readonly #refs = new Map<number, string>()
   readonly #places = new Map<number, readonly [number, number, number, number]>()
+  readonly #targets = new Map<number, readonly NativeDevToolsTarget[]>()
   #nextRef = 1
   #next = 0
   readonly windows: SessionWindows = {
@@ -206,7 +210,8 @@ export class LocalSession implements PeerSide {
     const welcome = this.#desktopWelcome()
     const link = new LocalLink(welcome, peer, this)
     const view = this.hub.view()
-    const launcher = this.host.launcher(sessionOf(welcome, 'desktop'), link, { shell: view.shell, grant: null, windows: this.windows, fresh: () => null })
+    const seat: Seat = { shell: view.shell, devtools: this.#devtools(peer), grant: null, windows: this.windows, fresh: () => null }
+    const launcher = this.host.launcher(sessionOf(welcome, 'desktop'), link, seat)
     const running: Running = { peer, link, view, launcher, app: null, window: 0, title: desktop.desktop.name, menus: null, web: 'desktop' }
     this.#desktop = running
     launcher.start()
@@ -225,6 +230,20 @@ export class LocalSession implements PeerSide {
     await Promise.allSettled(this.#apps().map((r) => r.launcher.close(true)))
     for (const { link } of this.#services.values()) link.close()
     this.#desktop?.link.close()
+  }
+
+  #devtools(peer: Peer): NativeDevTools | undefined {
+    const native = this.host.devtools
+    if (!native) return undefined
+    return {
+      open: () => native.open(),
+      targets: (targets) => {
+        if (targets.length) this.#targets.set(peer.id, targets)
+        else this.#targets.delete(peer.id)
+        native.targets([...this.#targets.values()].flat())
+      },
+      ...(native.reloading && { reloading: (web: string) => native.reloading!(web) }),
+    }
   }
 
   #apps(): Running[] {
@@ -686,7 +705,7 @@ export class LocalSession implements PeerSide {
       const place = record && record.window !== 0 ? this.#places.get(record.window) : undefined
       return place ? { ...sized, rect: [...place] } : sized
     }
-    const seat: Seat = { shell: view.shell, grant, windows: this.windows, fresh: () => this.host.rescan().app(id) ?? null }
+    const seat: Seat = { shell: view.shell, devtools: this.#devtools(peer), grant, windows: this.windows, fresh: () => this.host.rescan().app(id) ?? null }
     const launcher = this.host.launcher(sessionOf(welcome, 'app'), link, seat)
     const web = `${id}#${instance}`
     record = { peer, link, view, launcher, app, window: 0, title: app.app.label, menus: null, web }
@@ -718,6 +737,7 @@ export class LocalSession implements PeerSide {
     record.view.releaseAll()
     this.#refs.delete(record.window)
     this.#places.delete(record.window)
+    if (this.#targets.delete(record.peer.id)) this.host.devtools?.targets([...this.#targets.values()].flat())
     if (record.window && !this.#ending) this.#toDesktop({ type: 'windowclose', window: record.window })
   }
 

@@ -130,7 +130,7 @@ class Launcher {
       return target && { ...target, url: this.#init?.url ?? null }
     }
     const fixed = fixedScheme(process.env)
-    this.#devtools = new DevToolsEndpoint(natives.native.DevTools, relay ?? this.#shell, page, relay?.announce)
+    this.#devtools = new DevToolsEndpoint(seat ? seat.devtools : natives.native.DevTools, relay ?? this.#shell, page, relay?.announce)
     this.#dev = new DevChannel({
       shell: this.#shell,
       devtools: this.#devtools,
@@ -739,6 +739,7 @@ async function localDesktop(natives: LauncherNatives, args: LaunchArgs): Promise
   const shell = Launcher.shell(natives, registry.desktop.desktop.name)
   const session = new LocalSession({
     shell,
+    ...(natives.native.DevTools && { devtools: natives.native.DevTools }),
     registry,
     rescan: scan,
     launcher: (given: Session, link: LocalLink, seat: Seat) => new Launcher(natives, given, link, args, seat),
