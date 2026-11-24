@@ -9,6 +9,18 @@ interface WindowEvents {
 }
 
 export class WebAppPage {
+  static reloadable(page: WebInternals, rpc: Rpc, name: string, say = (level: Level, line: string) => Log.write(level, 'acde_host', line)): void {
+    let leaving = false
+    page.env.reload = () => {
+      if (leaving) return
+      if (!WindowSelf.unload(page.window as never)) return say(Level.Info, `[${name}] the page stays (beforeunload)`)
+      leaving = true
+      hostTime.setTimeout(() => {
+        void rpc.call('window', 'reload', [page.env.url]).catch((error: Error) => say(Level.Warn, `[${name}] window.reload: ${error.message}`))
+      })
+    }
+  }
+
   readonly #page: WebInternals
   readonly #rpc: Rpc
   readonly #name: string

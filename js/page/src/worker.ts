@@ -383,6 +383,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   }
   bridge.define(host)
   const app = self ? new WebAppPage(page, rpc, init.name) : null
+  if (init.kind === 'desktop') WebAppPage.reloadable(page, rpc, init.name)
   StartupTimeline.mark('page load started')
   const htmlPage = htmlEntry ? PageSource.htmlFor(init.app!.entry, init.url, init.resources) : null
   const served = htmlEntry && PageSource.isServer(init.app!.entry)

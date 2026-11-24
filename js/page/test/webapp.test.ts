@@ -39,3 +39,22 @@ test('reload and close wait for the task to end too', async () => {
   await nextTask()
   assert.deepEqual(other.calls, [['window', 'close', []]])
 })
+
+test('the desktop page reloads through the launcher too, once, and stays when beforeunload says so', async () => {
+  const calls: [string, string, unknown[]][] = []
+  const window = new EventTarget() as EventTarget & { Event: typeof Event }
+  window.Event = Event
+  const env = { url: 'http://acde.local/' } as { url: string; reload(): void }
+  const rpc = { call: async (service: string, method: string, args: unknown[]) => void calls.push([service, method, args]) }
+  WebAppPage.reloadable({ env, window, document: {} } as never, rpc as never, 'desktop', () => {})
+  const stay = (event: Event) => event.preventDefault()
+  window.addEventListener('beforeunload', stay)
+  env.reload()
+  await nextTask()
+  assert.deepEqual(calls, [], 'a page that cancels beforeunload stays')
+  window.removeEventListener('beforeunload', stay)
+  env.reload()
+  env.reload()
+  await nextTask()
+  assert.deepEqual(calls, [['window', 'reload', ['http://acde.local/']]])
+})
