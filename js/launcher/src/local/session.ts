@@ -452,7 +452,7 @@ export class LocalSession implements PeerSide {
       if (path !== null) {
         if (!path.startsWith('/') || !this.host.opener?.files.exists(path)) return { ok: false, text: `open: ${path} is not an absolute path that exists` }
         const target = name === null ? null : name.endsWith(DESKTOP_SUFFIX) ? name : (this.#registry.byName(name)?.app.id ?? name)
-        return this.#openFile(path, target, false, true).then(
+        return this.#openFile(path, target, false, true, null).then(
           (opened) => ({ ok: true, text: `opened ${path} with ${(opened as { id?: string }).id ?? 'the system'}`, app: (opened as { id?: string }).id }),
           (error: Error) => ({ ok: false, text: `open: ${error.message}` }),
         )
@@ -607,7 +607,7 @@ export class LocalSession implements PeerSide {
       case 'apps.openPath': {
         const options = (args[1] ?? {}) as { app?: unknown }
         const natives = desktop || me?.app?.package.system === true
-        return this.#openFile(String(args[0] ?? ''), typeof options.app === 'string' ? options.app : null, false, natives)
+        return this.#openFile(String(args[0] ?? ''), typeof options.app === 'string' ? options.app : null, false, natives, peer)
       }
       case 'apps.setDefault':
         return this.#setDefault(args)
@@ -671,7 +671,7 @@ export class LocalSession implements PeerSide {
       if (kind === 'open-file') {
         const path = request['path'] ?? request['file']
         if (typeof path !== 'string' || !path) throw badRequest('an open-file request needs a path here')
-        return this.#openFile(path, target, newWindow, false)
+        return this.#openFile(path, target, newWindow, false, peer)
       }
       throw badRequest('a system request is open-file or open-link')
     }
@@ -724,8 +724,30 @@ export class LocalSession implements PeerSide {
     return this.#opener().chosen(mime, natives, (id) => this.#registry.app(id) !== undefined, (type) => this.#registry.forType(type)?.app.id ?? null)
   }
 
-  async #openFile(path: string, target: string | null, newWindow: boolean, nativesAllowed: boolean): Promise<unknown> {
+  #reachable(peer: Peer, path: string): boolean {
+    const real = (at: string) => {
+      try {
+        return sys().realpath(at)
+      } catch {
+        return null
+      }
+    }
+    const file = real(path)
+    if (file === null) return false
+    const inside = (dir: string) => {
+      const root = real(dir)
+      return root !== null && (file === root || file.startsWith(root.endsWith('/') ? root : `${root}/`))
+    }
+    const places = process.env['ACDE_DEV_PLACES']
+    if (places && inside(places)) return true
+    return [...(this.#lentFolders.get(peer.id)?.keys() ?? [])].some(inside)
+  }
+
+  async #openFile(path: string, target: string | null, newWindow: boolean, nativesAllowed: boolean, caller: Peer | null): Promise<unknown> {
     if (!path.startsWith('/')) throw badRequest(`${path} is not an absolute path`)
+    if (caller !== null && !this.#reachable(caller, path)) {
+      throw forbidden(`${path} is outside what this session gives pages on the host (acdev dev's places and folders lent to the caller)`)
+    }
     const opener = this.#opener()
     const mime = opener.mimeOf(path)
     let chosen: Chosen | null
@@ -797,6 +819,9 @@ export class LocalSession implements PeerSide {
       if (kind !== 'open-file' && kind !== 'open-link') throw badRequest('apps.open needs an app id or a system request (open-file, open-link)')
       if (caller && LocalSession.#declares(caller, 'openFiles')) return
       throw forbidden(`opening files and links by type needs "openFiles" in the capabilities of ${label}`)
+    }
+    if (kind === 'open-file' && !(caller && LocalSession.#declares(caller, 'openFiles'))) {
+      throw forbidden(`handing a file to ${target} needs "openFiles" in the capabilities of ${label}`)
     }
     const open = (caller?.app.capabilities as Record<string, unknown> | undefined)?.['open']
     if (open === true || (Array.isArray(open) && open.includes(target))) return

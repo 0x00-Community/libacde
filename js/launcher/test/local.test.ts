@@ -11,12 +11,13 @@ import { LocalRegistry, type LocalFiles } from '../src/local/registry.ts'
 import { LocalSession, type Seat, type SeatedLauncher, type ServiceRunner } from '../src/local/session.ts'
 import { LocalOpener } from '../src/local/open.ts'
 
-const env = { HOME: '/home/dev', XDG_STATE_HOME: '/state', ACDE_STORAGE: '/storage' }
+const env = { HOME: '/home/dev', XDG_STATE_HOME: '/state', ACDE_STORAGE: '/storage', ACDE_DEV_PLACES: '/docs' }
 const made: string[] = []
 bindNatives({
   host: { logEnabled: () => false, log: () => {} },
   sys: {
     platform: 'darwin', argv: [], pid: 4242, env: () => env, stderr: () => {}, homedir: () => '/home/dev', mkdir: (path: string) => void made.push(path), chmod: () => {},
+    realpath: (path: string) => path.replace(/\/link$/, '/real'),
     lendPaths: (app: string, paths: readonly string[]) => paths.map((path) => ({ name: `${app}:${path}`, label: path.split('/').at(-1)!, kind: path.startsWith('/dirs/') ? 'directory' : 'file', writable: true })),
   },
 } as never)
@@ -255,7 +256,7 @@ describe('the local session of acdev dev: a desktop and its apps in one host win
     assert.deepEqual([welcome.kind, welcome.level, welcome.tier.shell], ['desktop', 'desktop', [...SHELL_MODULES]])
     assert.deepEqual(Object.keys(welcome.services ?? {}), ['clock'])
     assert.ok(welcome.resources.some((r) => r.prefix === '/acde-packages/dev-0/'))
-    assert.deepEqual((welcome.grants as unknown as { fs: unknown }).fs, { places: [], paths: false })
+    assert.deepEqual((welcome.grants as unknown as { fs: unknown }).fs, { places: ['desktop', 'documents', 'downloads', 'music', 'pictures', 'videos'], paths: false })
     assert.equal(desktop.window, 1)
     local.end(0)
   })
@@ -333,7 +334,7 @@ describe('what an app may do in the local session (as acdes checks it)', () => {
     await desktop.link.call('apps', 'open', ['appb'])
     await desktop.link.call('apps', 'open', ['settings'])
     const grants = (i: number) => launchers[i]!.link.welcome.grants as unknown as Record<string, unknown>
-    assert.deepEqual([grants(1)['terminal'], grants(1)['fs']], [false, { places: [], paths: false }])
+    assert.deepEqual([grants(1)['terminal'], grants(1)['fs']], [false, { places: ['documents'], paths: false }])
     assert.deepEqual([grants(2)['terminal'], grants(2)['network'], grants(2)['fs']], [true, true, null])
     local.end(0)
   })
@@ -387,6 +388,19 @@ describe('opening files in the local session (as acdes defaults.rs)', () => {
     await assert.rejects(launchers[2]!.link.call('apps', 'openPath', ['/docs/a.pdf']), { status: 403 } as never)
     await assert.rejects(desktop.link.call('apps', 'openPath', ['relative.md']), { status: 400 } as never)
     await assert.rejects(desktop.link.call('apps', 'openPath', ['/docs/a.md', { app: 'gedit.desktop' }]), { status: 404 } as never)
+    local.end(0)
+  })
+
+  test('pages hand over only paths they can reach on the host: the dev places and folders lent to them; the dev channel is not limited', async () => {
+    const { desktop, launchers, fake, local } = await started()
+    await assert.rejects(desktop.link.call('apps', 'openPath', ['/etc/passwd.md']), { status: 403, message: /outside what this session gives pages/ } as never)
+    await desktop.link.call('apps', 'open', ['appa', null, { root: '/dirs/usb' }])
+    await assert.rejects(launchers[1]!.link.call('apps', 'openPath', ['/dirs/usb/a.md']), { status: 403, message: /openFiles/ } as never)
+    await desktop.link.call('apps', 'open', ['appb'])
+    await assert.rejects(launchers[2]!.link.call('apps', 'open', ['appa', { kind: 'open-file', path: '/docs/a.md' }]), { status: 403, message: /openFiles/ } as never)
+    fake.emit({ type: 'devrequest', key: JSON.stringify({ id: 9, op: 'open', path: '/elsewhere/n.md' }) })
+    for (let i = 0; i < 20 && !fake.responses.some((r) => r[0] === 9); i++) await tick()
+    assert.match(fake.responses.find((r) => r[0] === 9)![2], /opened \/elsewhere\/n.md with appa/)
     local.end(0)
   })
 

@@ -99,6 +99,8 @@
     启动器坐在本地会话里时请求原样交给页面, 不走 `Lending.entered` (那是收管家的文件描述符用的). `apps.openPath(path, {app?})` (`app` 可以是应用 id 或 `.desktop`)、
     `apps.open({kind: 'open-file', path})`、`apps.handlers(path)` (`{mime, association, handlers: [{kind, id, label, icon, default, system?}]}`)、
     `apps.setDefault(mime, 应用 id 或 .desktop)` (写 `acde-mimeapps.list`)、调试通道 `open {path, name?}` (绝对路径且存在) 都走这里.
+    宿主上比 acdes 紧 (2026-11-24 的安全审查): 页面 (桌面和应用) 交来的路径解析软链后必须在 `ACDE_DEV_PLACES` (acdev dev 的隔离位置) 里, 或在借给这个调用方的文件夹里,
+    否则 403; 只有调试通道 (开发者自己的 `acdev open`) 不受限. 带 `open-file` 请求的 `apps.open` 不论点没点名都要 `openFiles`.
   - 借文件夹 (`apps.open(id, request, {root})`, 只给桌面, 应用要声明 `fs`, 否则 403 / 409): `lendPaths` 借给它, 请求带 `root: <借出名>`, 再给它的启动器推 `lend`,
     启动器给页面发 `fsroots` (加一个根); 在跑的应用同样先借再交请求. `apps.unlend(dir)` 给借过这个文件夹的应用推 `unlend` (启动器 `unlendRoot` 并发 `fsroots` 去掉), 回 `{revoked}`.
   - 应用开在桌面之上的 `free` 窗口里 (`grant({mode: 'free', size?})`, 尺寸同上), 起来后告诉桌面 `windowopen {window, appId, title, web, instance}`,
