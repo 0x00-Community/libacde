@@ -20,6 +20,7 @@ import { rejectingCalls, sessionOf, windowGrant, type ManagerEvent, type Manager
 import { WindowSnapshots, type ShellEvent } from './app/events'
 import { holdTheLoop, ServiceHost } from './manager/service'
 import { DevChannel, type DevOpen, type DevOpened, type DevShell, type DevTarget } from './dev/dev'
+import { DevTrace } from './devtrace'
 import { DevToolsEndpoint, type NativeDevTools } from './dev/devtools'
 import { managerRelay, type DevRelay } from './dev/relay'
 import { Inspect, type InspectHost, type InspectShell, type PlaceChange, type PlayEvent, type ShellWindow } from './dev/inspect'
@@ -65,6 +66,7 @@ class Launcher {
   readonly #replays: boolean
   #wake: (() => void) | null = null
   #ended: number | null = null
+  readonly #trace = DevTrace.of(process.env, (line) => process.stderr.write(line))
   #rpc: Rpc | null = null
   #thread: WebThreadHandle | null = null
   #init: WebInit | null = null
@@ -100,8 +102,8 @@ class Launcher {
     this.#seat = seat
     this.#shell = seat?.shell ?? Launcher.shell(natives, session.label)
     this.#replays = !natives.native.Windows
-    this.#shell.onEvents(() => this.#wake?.())
-    manager?.onEvents(() => this.#wake?.())
+    this.#shell.onEvents(() => this.#notified())
+    manager?.onEvents(() => this.#notified())
     this.#services = session.services
     this.#title = session.label
     const menuKeys = manager ? (keys: readonly string[]) => this.#thread?.post({ type: 'menukeys', keys }) : null
@@ -143,6 +145,7 @@ class Launcher {
       ...(relay && { respond: relay.respond }),
       ...(this.#guest && { place: (windows: unknown) => this.#guest!.place(windows) }),
       production: !process.env['ACDE_DEV'],
+      trace: this.#trace,
     }, fixed === true)
     void followAppearance(natives.native.Appearance, fixed !== null, (change) => this.#appearance(change))
     this.#backend = session.kind === 'app' && session.found?.app.backend ? new AppBackend(session.found) : null
@@ -349,7 +352,7 @@ class Launcher {
       rpc.fail(Inspect.PAGE_GONE)
       if (this.#reloading) return this.#respawn()
       if (reason) process.stderr.write(`acdev: ${init.name} stopped: ${reason}\n`)
-      this.#end(code)
+      this.#end(code, `the page ${init.name} stopped${reason ? `: ${reason}` : ''}`)
     }, this.session.grants ?? {} as WebGrants)
     this.#rpc = rpc
     this.#thread = thread
@@ -606,7 +609,7 @@ class Launcher {
     }
     this.#closing = true
     this.#thread?.terminate()
-    this.#end(0)
+    this.#end(0, force ? 'closed' : 'closed after beforeclose')
     return true
   }
 
@@ -617,14 +620,20 @@ class Launcher {
     )
   }
 
-  #end(code: number): void {
+  #notified(): void {
+    this.#trace?.notified()
+    this.#wake?.()
+  }
+
+  #end(code: number, reason: string): void {
+    if (this.#ended === null) this.#trace?.ended(code, reason)
     this.#ended ??= code
     this.#wake?.()
   }
 
   #shellEvents(): void {
     for (const event of this.#shell.pump()) {
-      if (STOP.has(event.type)) this.#end(0)
+      if (STOP.has(event.type)) this.#end(0, `the shell sent ${event.type}`)
       else if (event.type === 'windowcloserequest') void this.close(false)
       else if (event.type === 'devrequest') void this.#dev.request(String(event['key'] ?? ''))
       else if (event.type === 'devtools') this.#devtools.pressed()
@@ -662,7 +671,7 @@ class Launcher {
 
   #managerEvents(): void {
     for (const event of this.manager?.pump() ?? []) {
-      if (event.type === 'managerclosed') this.#end(0)
+      if (event.type === 'managerclosed') this.#end(0, 'the manager closed the channel')
       else if (event.type === 'services') this.#replaceServices(event['services'] as Readonly<Record<string, ServiceShape>> | undefined)
       else if (event.type === 'devrequest') void this.#dev.request(String(event['key'] ?? ''))
       else if (event.type === 'devreload') void this.#devReload(event['hot'] === true)
@@ -708,7 +717,9 @@ class Launcher {
 
   async run(): Promise<number> {
     if (!this.#seat) this.#own()
+    this.#trace?.start()
     while (this.#ended === null) {
+      this.#trace?.woke()
       this.#shellEvents()
       this.#managerEvents()
       if (this.#ended !== null) break
@@ -716,6 +727,7 @@ class Launcher {
         this.#wake = wake
       })
     }
+    this.#trace?.left(this.#ended)
     await this.#dev.settle(Launcher.DEV_SETTLE_MS)
     this.#port?.close()
     await this.#backend?.close()
@@ -723,9 +735,9 @@ class Launcher {
   }
 
   #own(): void {
-    for (const signal of Launcher.SIGNALS) onceSignal(signal, () => this.#end(0))
+    for (const signal of Launcher.SIGNALS) onceSignal(signal, () => this.#end(0, `signal ${signal}`))
     if (this.args.shot) this.#shoot(this.args.shot).catch((error: Error) => process.stderr.write(`acdev: screenshot: ${error.message}\n`))
-    if (this.args.seconds !== null) setTimeout(() => this.#end(0), this.args.seconds * 1000)
+    if (this.args.seconds !== null) setTimeout(() => this.#end(0, `--seconds ${this.args.seconds} passed`), this.args.seconds * 1000)
   }
 
   async #shoot(file: string): Promise<void> {

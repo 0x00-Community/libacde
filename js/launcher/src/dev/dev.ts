@@ -6,6 +6,7 @@ import type { InspectArg } from '@acde/api'
 import type { Inspect, InspectInput } from './inspect'
 import { renderAnswer, type RenderAnswer } from './render'
 import type { PageRender } from '../../../page/src/dev/render'
+import type { DevTrace } from '../devtrace'
 
 export interface DevTarget {
   readonly name: string
@@ -49,6 +50,7 @@ export interface DevHost {
   respond?(id: number, ok: boolean, payload: string): void
   place?(windows: unknown): void
   readonly production?: boolean
+  readonly trace?: DevTrace | null
 }
 
 export interface DevOpen {
@@ -169,17 +171,24 @@ export class DevChannel {
     let id: number | null = null
     let ok = true
     let payload: string
+    let traced: { op: string; since: number } | null = null
     try {
       const request = JSON.parse(line) as Request
       id = request.id
+      const trace = this.#host.trace
+      if (trace) traced = { op: String(request.op), since: trace.request(String(request.op), id) }
       payload = JSON.stringify(await this.answer(request))
     } catch (error) {
       ok = false
       payload = (error as Error)?.message ?? String(error)
     }
     if (id === null) return
-    if (this.#host.respond) this.#host.respond(id, ok, payload)
-    else this.#host.shell.devRespond?.(id, ok, payload)
+    try {
+      if (this.#host.respond) this.#host.respond(id, ok, payload)
+      else this.#host.shell.devRespond?.(id, ok, payload)
+    } finally {
+      if (traced) this.#host.trace?.answered(traced.op, id, traced.since, ok)
+    }
   }
 
   #guard(op: string, args: Record<string, unknown>): string | null {
