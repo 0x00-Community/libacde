@@ -143,7 +143,7 @@
 - **声音**: `Audio` / `AudioContext` (acde-dom `src/audio/`, src/host `audio/`): 解码 (symphonia) 和混音 (每个 web 一个 48 kHz 立体声 f32
   `Mixer`, 线程 `acde-audio`) 到处一样. 输出: Linux PipeWire (`output.rs`; libacde 的三处 PipeWire 连接, 即这里、`acde:audio` 的 runtime `sound.rs` 和语音输入 `voice/mic.rs`, 都经 `runtime::pw_context` 建, 带 `module.rt = "false"` 不加载 module-rt: 没有 RTKit 时它把整个进程的 RLIMIT_RTTIME 设成 0 且收不回来, 之后任何实时线程一次没睡满就被内核 SIGKILL (daily-run3 桌面被杀); 512 帧的延迟不靠实时调度也够); macOS / Windows cpal 默认设备 (`output_cpal.rs`, 用设备当前的采样率,
   Hermite 重采样, 设备要 f32). 3 秒没声音关流; 没有设备 (或 `ACDE_AUDIO=null`) 按墙上时间渲染丢掉.
-  - **`OfflineAudioContext`** (2026-11-19): 两种构造写法, 采样率 3000–768000 Hz 照给的 (`sampleRate` 是 context 自己的, `decodeAudioData` 也重采样到它),
+  - **`OfflineAudioContext`** : 两种构造写法, 采样率 3000–768000 Hz 照给的 (`sampleRate` 是 context 自己的, `decodeAudioData` 也重采样到它),
     声道 1 或 2 (3–32 以 `NotSupportedError` 拒绝, 还没有), 状态从 `suspended` 开始. 它的图不进混音器: 建节点、连线、参数都落在页面线程上一个只给
     离线 context 的 `Mixer` 里 (src/host `audio/mod.rs` `offline_cmd`), 不开声音设备; `startRendering()` 把整张图交给 `acde-offline-audio` 线程池 (4 条)
     一次算完 `length` 帧 (最后一个 quantum 截断, 不钳到 ±1). 一次最多 2^28 个样本 (帧数乘声道, 1 GB; 构造时超了是 `NotSupportedError`), 一个页面的声音内存 (src/host `audio/budget.rs`:
@@ -164,7 +164,7 @@
     分量, 归一化 (峰值 1) 按第一档算; 播放时表内和相邻两档之间各线性插值. 波表在页面线程建好再交给混音线程: 基本波形按 (形状, 采样率)
     缓存 (弱引用, 没有振荡器用了就释放), 自定义波形在构造 `PeriodicWave` 时建; 都记进页面的声音内存, 放不下时抛 `RangeError`.
     对 Chrome: 四种波形各三个频率和指数扫频、负频率、detune、22.05 / 96 kHz、自定义 (归一化与否) 每样本差 5e-5 内.
-  - **效果节点** (2026-11-19, src/host `audio/` 下各一个文件, 在 `graph.rs` 的 `Effect` 里): 都在混音线程按 quantum 算, 页面只发设置 (`NodeOp`).
+  - **效果节点** (src/host `audio/` 下各一个文件, 在 `graph.rs` 的 `Effect` 里): 都在混音线程按 quantum 算, 页面只发设置 (`NodeOp`).
     - `BiquadFilterNode` (`biquad.rs`): 系数照 Chromium `Biquad` (f64, 含频率 0 / 奈奎斯特和 Q ≤ 0 的边界), 参数在 quantum 里变时逐样本重算;
       `getFrequencyResponse` 在页面线程用当前参数算 (超出 0–奈奎斯特的频率给 NaN).
     - `DelayNode` (`delay.rs`): 每声道一条环形延迟线, 线性插值; `maxDelayTime` 0–180 s (以外 `NotSupportedError`). 延迟线在页面线程
@@ -180,7 +180,7 @@
     - 尾巴 (`Node::tail`): 输入静了以后节点还会出声的帧数 (延迟 = `maxDelayTime`, 压缩器 1.625 s, 卷积 = 冲激响应长度, 滤波器到输出低于 1e-7),
       尾巴没完的节点不回收、算作还活着.
     - 对 Chrome: 同一段脚本 (`OfflineAudioContext`, 每种节点) 在 Chrome 和 acdev 里各跑一遍, 结果对比见 libacde 提交信息.
-- **视频** (src/media `acde-media`): 用系统的框架解码, 不随包带编解码器 (用户定, 2026-11-09; 不链接 ffmpeg).
+- **视频** (src/media `acde-media`): 用系统的框架解码, 不随包带编解码器 (用户定; 不链接 ffmpeg).
   - `Player::open(source)` (`Source::Bytes` 内存里的字节, 或 `Source::File` 打开的文件, 按字节范围读, 不整份读进内存) 探出 `Info {duration, width, height, audio, video}`, 每个轨一条读线程 (`acde-video` / `acde-video-audio`) 各自往
     有界队列里解: 视频 RGBA 帧 (领先 4 帧), 音频 48 kHz 立体声 f32 交错 (领先半秒). 两个轨分开读, 不会一个轨满了卡住解封装器让另一个轨饿死.
     `seek(t)`: 清队列, 两条线程都停下后由最后一条重启解码器. 消费方拉: `take_audio` (混音器线程)、`frame_at(t)` (取到时间的最后一帧,
@@ -207,7 +207,7 @@
     UA 样式 `object-fit: contain`) 加固有尺寸 (`set_video_size`, 变了重排; 没有帧时是 300×150). `videoWidth` / `videoHeight` 在
     `loadedmetadata` 时就有; 之后帧尺寸变了发 `resize` (`readyState` 是 `HAVE_NOTHING` 时不发, 照标准). `canPlayType` 按 `acde_media::TYPES`
     (平台能开的容器). 换源 / 去掉 `src` 清掉画面 (`clearVideo`); 播放器释放 (`Player` 的 drop) 在单独线程里停解码器, 不卡混音器和 JS.
-  - 视频从哪读 (2026-11-22): 同源的本地资源 (包内文件、借出的目录, 如壁纸页的 `/media/`) 按文件开: JS 把地址交给 `openVideo(media, node, url)`,
+  - 视频从哪读 : 同源的本地资源 (包内文件、借出的目录, 如壁纸页的 `/media/`) 按文件开: JS 把地址交给 `openVideo(media, node, url)`,
     src/host `dom.rs` `open_asset` 用和 `fetch` 同一个 `Assets::file` 找文件 (解开符号链接后核对仍在目录里), 打开后交 `Source::File`,
     播放时只按范围读要的部分, 1 GB 的壁纸视频不再整份进内存. 找不到 (别的源、`blob:` / `data:`、后端路径) 时 `openVideo` 同步回 `null`,
     退回原来的路: `fetch` 整份取来再交字节. 开发工具 `route` 拦了这个地址时也走 `fetch`, 让假的回应生效. 按文件开的不经 `fetch`,
@@ -222,11 +222,11 @@
   `dischargingtimechange`; 没有电池、没有 UPower 或别的平台按规范给接着电源的默认值 (charging true, level 1, chargingTime 0, dischargingTime Infinity).
   每个 navigator 只有一个 BatteryManager, `getBattery()` 回同一个 promise.
   `navigator.wakeLock.request('screen')` (Screen Wake Lock, 只在 Linux; 别处没有 `navigator.wakeLock`): runtime `wakelock.rs` 拿 logind 的
-  `idle` inhibitor (acdebin-system 的电源策略认它) 外加会话总线上 `org.freedesktop.ScreenSaver.Inhibit` (GNOME / KDE 宿主桌面认它), 两个都拿不到就
+  `idle` inhibitor (acdes 的电源策略认它) 外加会话总线上 `org.freedesktop.ScreenSaver.Inhibit` (GNOME / KDE 宿主桌面认它), 两个都拿不到就
   NotAllowedError; 页面不可见时请求被拒, 变成不可见时放掉所有锁并发 `release`.
   `IdleDetector` (Idle Detection, 只在 Linux): runtime `idle.rs` 读 logind 会话的 `IdleHint` / `IdleSinceHintMonotonic` / `LockedHint` 并跟着
   PropertiesChanged; `userState` 是 idle 当且仅当会话标了空闲且已空闲到 threshold (不到就定时补算), `screenState` 看 LockedHint. 空闲提示由桌面写给
-  logind (acdebin-system 的合成器、宿主桌面的会话管理器), 所以比 threshold 更早的空闲要等桌面先标. 授权是审批能力 `idleDetection` (清单声明,
+  logind (acdes 的合成器、宿主桌面的会话管理器), 所以比 threshold 更早的空闲要等桌面先标. 授权是审批能力 `idleDetection` (清单声明,
   `IdleDetector.requestPermission()` 弹 acdev 的批准提示, `permissions.query({name: 'idle-detection'})` 看它); threshold 小于 1 分钟 TypeError.
 - **摄像头和麦克风** (`getUserMedia`; src/media `capture/`, src/host `capture.rs` / `audio/live.rs`, acde-dom `src/media/stream.ts`):
   - 权限: 清单 `capabilities` 写了 `camera` / `microphone` 的应用才拿得到 (Broker `#grants` → web 的 grant →
@@ -271,7 +271,7 @@
     "stream-properties=props,media.class=Video/Source,media.role=Camera"` 做一个 PipeWire 摄像头.
   - 还没有: `devicechange` (不监视插拔)、`getDisplayMedia` (录屏)、`MediaRecorder`、`createMediaStreamDestination`、回声消除等处理、
     `resizeMode: crop-and-scale`、轨道的 `mute` / `unmute` (系统暂停时).
-- **Web Worker** (2026-11-19, 专用 worker; src/host `worker.rs`、`envelope.rs`, acde-dom `core/worker.ts` (页面一侧的 `Worker`) 和 `worker/` (worker 的全局),
+- **Web Worker** (专用 worker; src/host `worker.rs`、`envelope.rs`, acde-dom `core/worker.ts` (页面一侧的 `Worker`) 和 `worker/` (worker 的全局),
   页面胶水 `page/src/webworker.ts` 打成 `acde-runtime:/webworker.js`):
   - 每个 worker 一条线程 (`acde-worker`, 8 MiB 栈) 一个 isolate; 名字 `<web>/worker-<n>[:<name>]` 进日志和 `perf::task`. 线程不阻塞页面地
     起: 消息通道先建好 (`rt::Runtime::with_channel`), 脚本还没到时发的消息在 worker 里排着, 脚本跑完 (模块是开始求值后) 再按顺序派发.
@@ -300,9 +300,9 @@
     `requestAnimationFrame` / OffscreenCanvas / IndexedDB / Cache API / cookie、嵌套 worker、`importScripts` 后端的脚本和页面建的 `blob:` URL
     (`NetworkError`)、worker 里的同步 XHR; DevTools 看不到 worker (没有 worker 目标, Network 面板不记它的请求), dev 的 console 记录不含 worker 的输出.
 - **MessageChannel / MessagePort** (acde-dom `core/message.ts`): 同一个页面里两端互发, `postMessage` 当场结构化克隆; 没有 `start()` 也没设
-  `onmessage` 之前消息在收端排队, `start()` 后按顺序派发. 关闭 (2026-11-21, 全局行为变化, 照 HTML 规范和 Chrome 123 起的做法): 一端
+  `onmessage` 之前消息在收端排队, `start()` 后按顺序派发. 关闭 (全局行为变化, 照 HTML 规范和 Chrome 123 起的做法): 一端
   `close()` 后, 另一端在下一个任务里收到一次 `close` 事件 (`onclose` 也有), 之后两端互发都静默丢弃; 关的那一端自己不收 `close`, 再关一次什么也不做.
-- **启动时交给页面的端口** (2026-11-21; 运行时一侧见 `docs/agents/runtime/layout.md` 同名一条): 管家要给页面一条通往别处的连接时 (如 Dopame 的
+- **启动时交给页面的端口** (运行时一侧见 `docs/agents/runtime/layout.md` 同名一条): 管家要给页面一条通往别处的连接时 (如 Dopame 的
   插件窗口), 页面在 `load` 事件之后的下一个任务里收到一次标准的 `message` 事件 (发在 `window` 上, `data` 由管家给, `ports[0]` 是一个
   `MessagePort`, `source` 为 null). 页面的约定:
   - 监听器要在 `load` 之前挂上 (同步脚本或模块顶层都行); 错过了就收不到, 不会补发, 一次页面加载只给一个端口; 重载后的新页面再给一个新的.
@@ -318,7 +318,7 @@
   `crypto.subtle` 是 `Crypto` 原型上的取值器, 每次同一个对象 (`[SameObject]`); 全局有 `SubtleCrypto` 接口, `new SubtleCrypto()` 是
   `TypeError: Illegal constructor` (同浏览器). 页面和 worker 都有 (`installCore`). sha1 用 `sha1` 包 (digest 0.10), 其余用 `sha2` (digest 0.11).
 - **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`)、从文件读的页面 (`PageSource.html`) 只认 `.html` 入口 (`.xhtml` 文件不按 XML 解析)、页面按响应的字符编码解码 (现在总按 UTF-8)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、`SharedWorker` 和 Service Worker、`crypto.subtle` 除 `digest` 以外的方法 (`encrypt` / `sign` / `importKey` / `generateKey` / `deriveBits` … 都不在 `SubtleCrypto.prototype` 上, 也没有 `CryptoKey`)、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
-- **指针事件** (https://w3c.github.io/pointerevents/, acde-dom `dom/input.ts` / `dom/events.ts`, 2026-11-21): 只有鼠标: `pointerId` 1, `pointerType`
+- **指针事件** (https://w3c.github.io/pointerevents/, acde-dom `dom/input.ts` / `dom/events.ts`): 只有鼠标: `pointerId` 1, `pointerType`
   `'mouse'`, `isPrimary` true, `width` / `height` 1, `pressure` 按着按钮时 0.5、否则 0 (规范给鼠标的值), `tiltX` / `tiltY` / `twist` /
   `tangentialPressure` 0. `pointermove` 按帧派发 (`docs/agents/runtime/webs.md`「输入」), 两次派发之间宿主送来的每个位置都留着: 派发的事件是
   最后一个样本, `getCoalescedEvents()` 按先后给出全部样本 (至少一个). 每个样本是单独的可信 `PointerEvent`: `target` 和派发的那个相同,
@@ -330,12 +330,12 @@
   (model `Inbox`) 和页面里等帧的样本都最多留 1024 个连着的移动, 再多时最新的一个并进最后一个 (位置取新的, `deltaX` / `deltaY` 相加),
   只有页面卡住时才会碰到. 和规范的差别 (还没改): `pointermove` 的 `button` 是 0 (规范是 -1), 没有 `pointerrawupdate`; 数位笔
   (`pointerType: 'pen'`、压力、倾斜) 还没有: 宿主窗口见 acdev `docs/agents/hostwin.md`「光标」后的「数位板」, 会话的 crates/window 只接 `wl_pointer`.
-- **光标** (CSS UI `cursor`, `src/render/cursor.rs`, 2026-11-21): render 取指针下的节点 (render 线程的 hover, 每次 `RenderHandle::pointer` 和每次重算样式之后)
+- **光标** (CSS UI `cursor`, `src/render/cursor.rs`): render 取指针下的节点 (render 线程的 hover, 每次 `RenderHandle::pointer` 和每次重算样式之后)
   最近的元素的计算值 `cursor` 的关键字; `auto` 照 CSS UI 4 定: 在链接 (`a[href]` / `area[href]` 和它们里面, 和浏览器一样) 上是 `pointer`, 在可编辑的地方 (有
   文字输入的 input、textarea、`contenteditable` 不是 false 的, disabled 的除外) 或可选的文字 (命中在文字上, `user-select` 用到的值不是 none: 自己是 `auto` 就往上看祖先) 上是 `text`, 别处是
   `default`. `url(…)` 只用后面的关键字 (图片光标还没有). 指针停着、页面改了样式或布局时也跟着变. 交给前端: `docs/agents/graphics/render-gpu.md` 的
   `RenderHandle::on_cursor`; 宿主窗口见 acdev `docs/agents/hostwin.md`「光标」; 会话 (acdes 的 crates/window) 和 C 接口还没接, 一直是默认箭头.
-- **指针锁定** (https://w3c.github.io/pointerlock/, acde-dom `dom/pointerlock.ts`, 2026-11-19): `Element.requestPointerLock(options?)` 返回 promise,
+- **指针锁定** (https://w3c.github.io/pointerlock/, acde-dom `dom/pointerlock.ts`): `Element.requestPointerLock(options?)` 返回 promise,
   `document.pointerLockElement` / `ShadowRoot.pointerLockElement` (和 `activeElement` 一样不往影子宿主换), `document.exitPointerLock()`,
   `pointerlockchange` / `pointerlockerror` 发在 document 上 (同一个任务里先发事件再落定 promise). 拒绝: 元素不在文档里或窗口没有焦点
   `WrongDocumentError`, `unadjustedMovement: true` 和不支持的窗口 `NotSupportedError`, 已有一个请求在等 `InvalidStateError`, 宿主不给
@@ -350,7 +350,7 @@
 - **用户激活** (https://html.spec.whatwg.org/#user-activation, acde-dom `dom/activation.ts`): 真的输入 (acde-dom `Input`) 里按下指针按钮、按下
   Esc 以外的键时记一次激活, 在派发事件之前, 所以这次的处理函数里就有临时激活 (transient activation, 5 秒内有效, 不消耗). `navigator.userActivation`
   是同一个 `UserActivation` (`hasBeenActive` / `isActive`). 页面自己 `dispatchEvent` 的事件不算. 现在只有指针锁定看它.
-- **剪贴板** (libacde 单子 11, 形状与 acdev-lead、system-lead 定): 宿主接口按网页 MIME 类型收发字节 (`render/surface.rs`): `SetClipboard(Vec<ClipboardEntry>)`
+- **剪贴板**: 宿主接口按网页 MIME 类型收发字节 (`render/surface.rs`): `SetClipboard(Vec<ClipboardEntry>)`
   写一项的全部表示并整个替换剪贴板, `ClipboardTypes` 列出有哪些类型, `ReadClipboard {mime, reply}` 取一种 (没有时 `None`). 认的类型: `text/plain`
   (UTF-8)、`image/png` (PNG 字节)、`text/uri-list` (UTF-8, CRLF 分行). Wayland 宿主上 `text/plain` 对应 `text/plain;charset=utf-8`、`text/plain`、
   `UTF8_STRING` 三个 MIME, 写入时都给同一份字节; 列类型时按对方宣告的顺序换成网页名字, 不认识的去掉, 重复的合并 (`ClipboardEntry::wayland_mimes` /
@@ -360,7 +360,7 @@
   (`types`、`getType` (没有时 `NotFoundError`)、`presentationStyle`、`supports()` 认上面三种). `paste` 事件的 `clipboardData` 带上剪贴板的全部类型:
   文字类型照旧 `setData`, 图片是一个 `kind: 'file'`、`type: 'image/png'` 的项 (`files` 里是 `image.png`); 页面自己处理的 `copy` / `cut` 写
   `text/plain` 和 `text/uri-list`. 权限照旧 (`clipboard-read` / `clipboard-write`). 宿主各平台的限制见 acdev `docs/agents/hostwin.md`.
-- **密码框** (`<input type=password>`, 2026-11-18): 照成熟浏览器的做法. 显示: 渲染层给 blitz 的编辑器的是掩码 (`engine_state.rs` 的
+- **密码框** (`<input type=password>`): 照成熟浏览器的做法. 显示: 渲染层给 blitz 的编辑器的是掩码 (`engine_state.rs` 的
   `show_form_state`, 每个 UTF-16 码元一个 `•`, 所以页面的选区偏移不用换算; 没改过值时也按 `value` 属性掩码, `type` 改掉后恢复明文),
   无障碍树里本来就只给 `•••`. 复制和剪切: 在密码框里不发 `copy` / `cut` 事件, 也不写剪贴板 (`js/page/src/text.ts` 的 `clipboard`),
   粘贴照常. 输入法: 告诉输入法这是密码框, 关掉预编辑、周边文字和候选面板 (`ime.ts` 的 `focus`, `text.ts` 的 `preedit` / `panel`),

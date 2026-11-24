@@ -2,10 +2,10 @@
 
 每个 web 有自己的 DOM、CSS、JS 堆、render 文档和 surface.
 
-- **渲染 (会话)**: 每个 web 一个 xdg_toplevel, 自己光栅化 (acdebin-system 的 `crates/paint`, 三块轮转的 GBM 画布, 见它的 `docs/agents/window-paint.md`), 经 linux-dmabuf 交给合成器. 窗口 id:
+- **渲染 (会话)**: 每个 web 一个 xdg_toplevel, 自己光栅化 (acdes 的 `crates/paint`, 三块轮转的 GBM 画布, 见它的 `docs/agents/window-paint.md`), 经 linux-dmabuf 交给合成器. 窗口 id:
   桌面 0, web 窗口从 `1<<20` 起 (Broker 发), 和原生窗口同一空间. 应用窗口先是居中的 `free` 窗口, 页面尺寸是清单的 `size` (默认 800x600),
   Broker `grant` 时加上窗框的高 (`Frame.windowSize`), 整个窗口不超过屏幕.
-- **输入**: 合成器按 z 找到指针下的窗口; acdebin-system 的 `crates/window` 转成 shell 事件; 滚轮的默认滚动、:hover 和光标在 render 线程上. pointermove 对齐到帧
+- **输入**: 合成器按 z 找到指针下的窗口; acdes 的 `crates/window` 转成 shell 事件; 滚轮的默认滚动、:hover 和光标在 render 线程上. pointermove 对齐到帧
   (acde-host `host.ts`: 两次派发之间的样本都留着, 下一个 `frame` 或别的事件前派发一次, 最后一个样本是派发的事件, 全部样本给
   `getCoalescedEvents()`, 见 `docs/agents/web/web-apps.md`「指针事件」; model 的 `Inbox` 也不再合并移动).
 - **记住位置** (`src/places.ts`): 窗口没了时合成器发 `windowgone`, Broker 按应用 id 记最后的 rect (全屏的记进全屏之前的) 到
@@ -14,7 +14,7 @@
   会话里由合成器执行, 发 `windowstate`).
 - **窗框**: 应用窗口 (清单 `frame` 不是 false; 桌面和面板没有) 有一条标题栏, **不在页面的文档里**: `<html>`、`innerHeight`、`100vh`、`resize`
   都只是内容区. 窗口表的 rect、grab hint、backdrop 是含窗框的整个窗口; 页面给的 `setGrabHint` / `setBackdrop` 是页面坐标, 加上窗框高再交出去,
-  窗框的 hint (标题栏移动, 四边 4 px / 四角 10 px 改大小) 优先. 会话里是 acdebin-system 的 `crates/window` `decoration.rs` 在页面 surface 上开的同步 `wl_subsurface`
+  窗框的 hint (标题栏移动, 四边 4 px / 四角 10 px 改大小) 优先. 会话里是 acdes 的 `crates/window` `decoration.rs` 在页面 surface 上开的同步 `wl_subsurface`
   (`set_window_geometry(0, -H, W, 整高)`, 自己的画布 plane `usize::MAX`); 宿主窗口里见 `docs/agents/runtime/window-model.md`「宿主窗口」. 三个按钮 (样式见 render 的「窗框」, `ACDE_FRAME_STYLE`: 红绿灯或 Windows 的最小化 / 最大化 / 关闭) 按下和松开在同一个上时发
   `framebutton {key}` (`close` / `minimize` / `fullscreen` / `restore`), acde-host 调 `acde.window` 的 `close()` / `minimize()` / `requestMode`.
   标题是 `document.title` 或 `acde.window.setTitle` (没有时用 `label`), 经 surface 的 `setTitle`. 高度由桌面经 `setWindowLook({titlebarHeight})` 声明
@@ -23,7 +23,7 @@
   (页面坐标加 `contentOffset`).
 - **钉住的面板** (Dock、菜单栏、弹出层): 桌面页面调 `acde.desktop.pin(element, {margin?})` → `{update(), unpin()}`, 元素成为单独的 `pinned`
   窗口, 状态和 React 树还在同一个文档里. `pinned.ts` 量元素 (并上 render 报的绘制范围 `panelmove`, 页面坐标由 render 用画那一帧的面板矩形算 (`Panel.reach`); 绘制范围记在当时的视口坐标里, 视口宽高或 `devicePixelRatio` 变了就丢掉重量, 并完截到视口以内是裁边不是平移), 要令牌 (`Shell.grant({mode: 'pinned', rect})`),
-  再开一个 toplevel (acdebin-system 的 `crates/window` `panel.rs`; 宿主窗口里是 owner 为桌面的表项), `Dom::set_panel` 让 render 单独画它 (`Frame.panels`). 输入区域只是
+  再开一个 toplevel (acdes 的 `crates/window` `panel.rs`; 宿主窗口里是 owner 为桌面的表项), `Dom::set_panel` 让 render 单独画它 (`Frame.panels`). 输入区域只是
   元素的盒子 (`pointer-events: none` / 不可见时为空), 指针送回同一个文档; 主窗口或任一面板有焦点就算 `activate`. 元素变了 (ResizeObserver +
   MutationObserver, 700 ms 后补量; 元素上的 `animationend` / `transitionend` 也补量, 淡入时量到的不透明度 0 不会让输入区域一直空着) 重新量, 量不到时 `hide`.
   要令牌之前就 `set_panel`, 元素从此不画在主窗口里: 面板生效前它哪儿都不显示, 不会出现“看得见、点击却落到下面窗口”的一段
@@ -36,10 +36,10 @@
   面板隐藏、挪动、改尺寸、取消钉住或输出变了时重算 (`refill`): `filled` 的窗口跟着改 rect, 全屏不管工作区; 工作区变了给 Broker 发
   `workarea {x, y, width, height}`, Broker (`broker/output.ts`) 把它放进发给每个 web 的 `screen` 消息和 `WebInit.screen.workArea`
   (`acde:window.output.workArea`). 不写 reserve 的面板什么都不占. 钉住后用句柄的 `reserve({edge, thickness?} | null)` 就地换占的边或厚度 (不用 unpin 再钉,
-  工作区只变一次, 中间没有整个输出的一步; `null` 不再占, 不认识的边或负的厚度抛 TypeError). 一个宿主窗口就是一个输出. 会话里 acdes 的 `crates/window` 把面板做成 wlr-layer-shell 的面, `reservePanel` 设它的独占区, 工作区由 winman 算 (输出减去各面的独占区),
-  变了经 `winman_desktop_v1.work_area` 报给桌面进程, 铺满的窗口由 winman 跟着改 rect (acdes 的 `docs/agents/workspace.md`). 元素要是 stacking context, 不带祖先的裁剪和透明度.
-  `acde.desktop.requestGrab(kind)` / `releaseGrab(kind)` (`'pointer'` | `'keyboard'`, 别的值抛 TypeError; 只有桌面页面有, 用户 2026-11-20 定) 和应用窗口的
-  `acde.window.requestGrab` / `releaseGrab` 同一条路: 经桌面页面自己的 surface 的 `request_grab`, 由会话 (acdes 转给 winman) 决定给不给; Dopame 的确认卡片用它抢键盘.
+  工作区只变一次, 中间没有整个输出的一步; `null` 不再占, 不认识的边或负的厚度抛 TypeError). 一个宿主窗口就是一个输出. 会话里 acdes 的 `crates/window` 把面板做成 wlr-layer-shell 的面, `reservePanel` 设它的独占区, 工作区由 acompositor 算 (输出减去各面的独占区),
+  变了经 `acompositor_desktop_v1.work_area` 报给桌面进程, 铺满的窗口由 acompositor 跟着改 rect (acdes 的 `docs/agents/acompositor/desktop.md`「面板」). 元素要是 stacking context, 不带祖先的裁剪和透明度.
+  `acde.desktop.requestGrab(kind)` / `releaseGrab(kind)` (`'pointer'` | `'keyboard'`, 别的值抛 TypeError; 只有桌面页面有, 用户定) 和应用窗口的
+  `acde.window.requestGrab` / `releaseGrab` 同一条路: 经桌面页面自己的 surface 的 `request_grab`, 由会话 (acdes 转给 acompositor) 决定给不给; Dopame 的确认卡片用它抢键盘.
   `acde.desktop.setDoubleClick('fill' | 'minimize' | 'none')` (SDK `DoubleClickAction`) 声明双击标题栏做什么, 随时可以再设, 下一次双击就按新的;
   不认识的值抛 TypeError. 桌面页面和声明了 `acde:desktop` 的系统应用窗口都有 (经自己的 surface 的 `setDoubleClick`, 整个宿主一份), 服务没有;
   会话里 (acdes) 桌面页设的经管家传到每个应用进程, 系统应用设的只管它自己的进程 (acdes `docs/agents/manager.md`「窗框设置」).
@@ -50,7 +50,7 @@
   以后加的可选键在旧运行时上不出错, 但这次修改 (#114) 之前的 acdert 仍会抛, 桌面要先探测), 转成 19 个数交给 surface 的 `setFrameTheme` (整个宿主一份,
   `State.theme`). 设了就重画所有开着的有窗框的窗口 (`Msg::Theme`), 焦点变化时窗口换 `active` / `inactive` (`Msg::Active`); `null` 回到
   今天的样子. 谁有它、会话里怎么传同 `setDoubleClick`.
-  `acde.desktop.setWindowLook(look | null)` (用户 2026-11-22 同意的跨仓接口; SDK `WindowLook`, 类型在 `acde-api/src/types/window-look/`):
+  `acde.desktop.setWindowLook(look | null)` (用户同意的跨仓接口; SDK `WindowLook`, 类型在 `acde-api/src/types/window-look/`):
   `{corners: {radius, shape?}, shadows: {focused: ShadowLayer[], unfocused: ShadowLayer[]}}`, `ShadowLayer` 是 `{x, y, blur, spread, color}`,
   含义同 CSS `box-shadow` 的一项外阴影 (逻辑像素; 颜色同 `setFrameTheme`, 一般写 `#rrggbbaa`), 每档按 CSS 列表的顺序 (写在前面的画在上面), 最多 4 层;
   `radius` 0–256; `shape` 用 CSS `corner-shape` 的写法: `round` (默认, 圆弧)、`squircle` 或 `superellipse(k)`, k 取 1–3; 胶水把它解析成 k 交给原生层
@@ -75,7 +75,7 @@
   节点的创建和改样式, 每边多轮中位数); 设 `BASE_ACDERT` / `BASE_APP` 时与基准版本交替跑, 任一项比值超过 `DOM_PERF_LIMIT` (默认 1.1, 即 #206 的验收线: 不超过基准版本的 110%) 退出码非零. 还没判断时当作不支持. 会话侧待实现 (会话的标题栏还没有主题).
   `acde.desktop.on('edge', fn)` (SDK `ScreenEdgeEvent` `{type: 'screenedge', edge: 'top' | 'right' | 'bottom' | 'left', entered, output}`, #113):
   指针进入、离开屏幕的一条边时各发一次 (角上是两条边各一次), 给桌面藏起菜单栏和 Dock 时用; 只发事件, 不动焦点和输入. 边的判断在 acde-model
-  `ScreenEdge::touched` (离边不到 1 个逻辑像素, 且那一侧外面没有别的输出; 边的变化 `ScreenEdge::changes`). 会话里 winman 不报屏幕边 (旧合成器的 `screen_edge` 随 repo-split 删掉, Dopame 没有用它); 宿主窗口 (hostwin `App::moved`) 按宿主内容区算, 指针离开宿主窗口时离开所有边, `output` 是 `host`, 宿主窗口不论是否全屏都发
+  `ScreenEdge::touched` (离边不到 1 个逻辑像素, 且那一侧外面没有别的输出; 边的变化 `ScreenEdge::changes`). 会话里 acompositor 不报屏幕边 (旧合成器的 `screen_edge` 随 repo-split 删掉, Dopame 没有用它); 宿主窗口 (hostwin `App::moved`) 按宿主内容区算, 指针离开宿主窗口时离开所有边, `output` 是 `host`, 宿主窗口不论是否全屏都发
   (运行时不抓窗口外的输入). 宿主窗口给 Broker 推 `edgeenter` / `edgeleave` (`key` 是边, `title` 是输出), Broker 转给桌面和声明了 `acde:desktop` 的系统应用.
   调试端点 `pointer {x, y}` 把指针移到屏幕坐标 (经 `Shell.inject` 的 `move`, 和真的移动走同一段), 用来模拟指针到边.
 - **帧**: `requestFrame` 之后, 上一帧交出去就给下一帧, 两帧之间至少隔最快输出刷新周期的 0.9 倍; 页面没出新帧时退回 wl_surface 的
@@ -99,7 +99,7 @@
     `requestActivate` 可能被拒或变成提醒用户 (attention), `requestGrab` 可能以 `denied` 拒绝, `animate` 可能立刻做完 (照样发 `windowanimated`).
     桌面 / 系统应用经 `acde.windows.requestState(id, state)` 改任何窗口 (不认识的状态 400, 会话里 501), 收 `on('state')`; `list()` 的每一行都带 `state`
     (SDK `NativeWindow.state` 必有; web 侧 `remote.ts` 的 `WindowList.deliver` 按 `window` 快照 (和 `windowclose`、`windowcrash`) 维护行, 先发 `window`, 再按快照的 `first` / `changed` 推出已过时的 `open` / `title` / `state` / `activate` / `parent` / `desk` / `geometry` 照发,
-    没收到过 `windowstate` 的窗口是 `normal`, 换标题不丢状态; `key` 是桌面页重载后也不变的窗口键 (winman window v4 的 identifier, acdes 原样转成 `key`),
+    没收到过 `windowstate` 的窗口是 `normal`, 换标题不丢状态; `key` 是桌面页重载后也不变的窗口键 (acompositor_window_v1 v4 的 identifier, acdes 原样转成 `key`),
     `window` 快照和 `windowopen` 带了就记在行上, 后来的事件不带时保留, 推出的 `open` 也带上; 合成器不给时没有这个字段), `acde:inspect` 的窗口 (driver 用的) 带 `state`.
   - window web: 清单给的服务和能力; `acde.window` (标题、菜单、关闭、最小化、`requestMode` / `setGrabHint` / `setBackdrop` / `setMaterial` (背景材质, 经 surface 的 `set_material` 交给宿主, 见 `docs/agents/acde-api.md`) /
     `requestActivate` / `requestGrab` / `releaseGrab`、app 级 `shortcut(combo)`; `beforeclose` 返回 false 留住窗口; `request` 是别的应用
@@ -136,9 +136,9 @@
     (`acde:timer is not a system module; if a desktop service provides it, list that service's name in the services of <应用>`; 拼错的模块名也落在这里), 不再让人把命名空间当服务名写进去
     (那样应用要求一个不存在的服务, 启动时 `needs "timer" (service not running)`). 别的名字 `unverified` 都是 null. 新的 `acde:packages` (refresh / install / natives / runNative)
     和 `acde:launch` (`start` 要 `launch`, `embed` 要 `slots`, `close` 只关自己起的窗口: 按窗口的 pid 认 `start` 起的, `embed` 走 claim) 桌面也有.
-    系统应用拿到 `acde:windows` 时也收全局窗口事件 (`Tiers.listens`). **窗口列表靠快照补齐**: 启动器不填 `WebInit.windows`, 页面的 `WindowList` 开局是空的. 窗口客户端连上 winman 时把现有窗口逐个报成 `first: true`
+    系统应用拿到 `acde:windows` 时也收全局窗口事件 (`Tiers.listens`). **窗口列表靠快照补齐**: 启动器不填 `WebInit.windows`, 页面的 `WindowList` 开局是空的. 窗口客户端连上 acompositor 时把现有窗口逐个报成 `first: true`
     的 `window` 快照. 启动器 (`js/launcher/src/main.ts` 的 `#toDesktop` / `#catchUp`、`app/events.ts` 的 `WindowSnapshots`) 在桌面页线程没起来或正在重载时不丢事件:
-    - acdes (`native.Windows`): 进程内重载时旧页面的 Surface 放掉、窗口线程结束, 新页面 claim 时重新绑 `winman_desktop_v1`, winman 重报全部窗口, 窗口号是新的 (整个进程往上数, 不复用),
+    - acdes (`native.Windows`): 进程内重载时旧页面的 Surface 放掉、窗口线程结束, 新页面 claim 时重新绑 `acompositor_desktop_v1`, acompositor 重报全部窗口, 窗口号是新的 (整个进程往上数, 不复用),
       `key` 不变, 旧号失效. 所以启动器不重放: 首次起来前的事件按序暂存; 重载期间到的 `window` / `windowclose` / `windowcrash` (旧号) 丢掉, 其余暂存; 线程起来后交暂存的, 再等 acdes 重报.
     - acdev 宿主窗口 (`native.Shell`, 不重报): 启动器记着每个窗口的最新快照, 线程起来后先把开着的窗口按 `first: true` 重放 (`replay()`, 关掉的、崩溃的不算), 再交暂存的其余事件.
     所以页面重载后 `list()` 和事件里的 `key` 都齐. 每个包都按这里注入 (没有 `apiLevel` 的包根本不加载).
@@ -150,7 +150,7 @@
   `optional` (capabilities 里可以缺的几项, 每项也要在 capabilities 里)、`services` (用到的桌面服务名, 不能是 `RESERVED_NAMES`)、
   `mimeTypes`、`schemes` (打开哪些 URL scheme 的链接, 小写不带冒号, 不能是 `file`)、`requests` (接受哪些私有请求, 小写词, 不能是 `open-file` / `open-link`)、`window` (`{material}`: 默认的窗口背景材质, 名字或 `{name, role, group, spacing, overrides, region}`, 清单规则 `Manifest.material` 查形状, 解析后是 `window.material` 或 null)、`heapMb` (默认 256, 最小 32)、`size` (页面尺寸, 默认 800x600, 窗框另算; 单应用模式的主窗口铺满宿主窗口, 设了 `size` 时它是宿主窗口内容区的初始尺寸)、`multiple`、`frame` (默认 true)、`backend`、`lifecycle` (`{suspendable?, endsAnytime?}`, 缺省都为 false, 见「挂起与恢复」)、
   `actions` (声明式操作, 见下).
-- **声明式操作** (J2, 2026-11-24, 总仓 `.scratch/system/arch-decisions-plan.md`): 清单 `acde.apps[].actions` 每项和插件的“工具”同形:
+- **声明式操作** (J2): 清单 `acde.apps[].actions` 每项和插件的“工具”同形:
   `{name, description, inputSchema, outputSchema?, annotations?: {readOnly?, destructive?, toolRisk?}, longRunning?, target?: {type}}`. 校验在 `manifest/actions.ts`:
   `name` 同插件工具名 (plugin-api 的 `TOOL_NAME`, 类型和常量都取自副本, 见 `docs/agents/acde-api.md`「plugin-api 副本」: 小写字母开头, 小写字母、数字、`_`、`-`, 至多 64), 同一个应用里不重名; `description` 非空; 两个 schema 都是 `type: "object"`
   的 JSON schema; `toolRisk` 是 `readOnly` / `risky` / `destructive` (`TOOL_RISKS`); 解析后缺省为 `[]`. 声明是静态的, 管家不运行应用就能列出;
@@ -179,7 +179,7 @@
   时经 rpc 问用户, 已经在问的并进同一个提示, 回答之后的状态; 别的直接回当前状态, 不问). 快照在 web 起来时由 Broker 算好放进 `WebInit.tier.capabilities`, 之后 Broker 发 `permit`
   消息更新 (`{capability, approval, status}`): 提示弹出时 (`Approvals.ask` 调 `changed(…, 'asking')`) 变 `asking`, 回答或撤销后变 `available` / `denied`, `get` 和 `list` 都跟着变.
   应用按状态做事: `not-asked` 调 `request`, `asking` 等, `denied` 告诉用户, `available` 直接用.
-- **批准** (`broker/access/approval/permissions.ts` `Approvals`, SDK `APPROVAL_CAPABILITIES`): **仅 `camera`、`microphone` 需要用户同意** (用户决定 2026-11-11, 同浏览器:
+- **批准** (`broker/access/approval/permissions.ts` `Approvals`, SDK `APPROVAL_CAPABILITIES`): **仅 `camera`、`microphone` 需要用户同意** (用户定, 同浏览器:
   第一次 `getUserMedia` 时问), 可撤销; 其余能力 (`launch`、`slots`、`terminal`、`network`、`fs.roots` 点名的公共位置、自己的窗口、能力查询、列出和打开应用、
   按类型打开、桌面服务、`office`) 声明即有, 不问 (#146).
   系统应用 (和任一已装桌面同包) 不问. 启动时不问, 必需的和可选的一样 (同浏览器): 第一次 `getUserMedia` 或 `acde:capabilities` `request(name)` 时问,
@@ -226,9 +226,9 @@
 - **内存和生命周期**: 堆超了只停这个 web (窗口的发 `windowcrash {reason: 'memory'}`, 桌面的重起). 关闭先问 `beforeclose` (3 秒不答就关),
   再停线程、放掉 surface, 它起的原生窗口一起关. 当前任务超过 5 秒报 `windowhang`, 回到循环报 `windowresponsive`, 桌面可以 `kill`.
   desktop web 停了 Broker 重起它 (一分钟最多 3 次). 隐藏的窗口不出帧、画布放掉; 隐藏久了丢弃还没有.
-- **挂起与恢复** (J3, 2026-11-24, 总仓 `.scratch/system/arch-decisions-plan.md`): 启动器的 `lifecycle('suspend' | 'resume')` 是宿主信号的入口 (会话进程经管家通道发来的帧接到这里, 帧格式定了再接线),
+- **挂起与恢复** (J3): 启动器的 `lifecycle('suspend' | 'resume')` 是宿主信号的入口 (会话进程经管家通道发来的帧接到这里, 帧格式定了再接线),
   给页面发 `{type: 'suspend', freeze}` / `{type: 'resume'}`; `freeze` 取清单 `lifecycle.suspendable`. 页面先发 `acde:window` 的 `suspend` 事件, 再交 acde-dom
   `setLifecycle`: 没声明 `suspendable` 的只节流 (`throttled`: 计时器至少隔 1 秒 (`THROTTLED_MS`), 不跑 `requestAnimationFrame`、不要帧), 声明了的冻结
   (`frozen`: 计时器一个都不跑, 留着到恢复); `resume` 先回到 `running` (到期的计时器马上跑, 有帧要就要帧) 再发 `resume` 事件. 进程层面的 cgroup 冻结和降调度优先级
   由 acdes 做. “要结束了”不另造接口: 沿用关窗的 `beforeclose` / `beforeunload` / `pagehide`. 卡死照旧是 `windowhang`.
-- **调试**: 每个 web 有名字 (`files#1048576`, 也是事件循环和日志里的名字); 运行中的会话用 `ACDE_DEBUG_DIR` 和 acdebin-system 的 `packaging/qemu/drive.sh` (见它的 `docs/agents/qemu.md`).
+- **调试**: 每个 web 有名字 (`files#1048576`, 也是事件循环和日志里的名字); 运行中的会话经 acdev 的会话命令 (`acdev eval`、`acdev inspect` 等, 见 `docs/agents/dev/dev-ipc.md`) 调试.

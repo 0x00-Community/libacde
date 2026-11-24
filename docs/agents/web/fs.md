@@ -21,8 +21,7 @@ root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOW
 宿主窗口里直接去掉, 不是借出的名字回 400 `EINVAL`). libacde 不再记任何按路径的授权 (原 `fs/access/grants.rs` 与 `permissions.json` 里的文件夹已删), 记住选过的文件夹由管家负责. Broker 交给 web 的授权是
 `fs: {places, paths}` (src/host `web.rs` → `Workspace::files`). 下面按路径的根只给桌面页面.
 
-**临时借出的根** (daily-desktop 12, 用户 2026-11-18 定方案 A, 名字 `lent`; 2026-11-22 起改传目录描述符, 路径不出管家, 见总仓
-`.scratch/system/fs-lend-fd.md`): 管家可给应用的某一次拉起借出文件夹.
+**临时借出的根** (daily-desktop 12, 用户定方案 A, 名字 `lent`; 传目录描述符, 路径不出管家): 管家可给应用的某一次拉起借出文件夹.
 - 借出条目: `{name, label, kind: 'directory' | 'file', writable, fd}`, `fd` 是同一帧 `fds` 里的下标.
   描述符由管家打开 (文件夹 `O_PATH | O_DIRECTORY | O_CLOEXEC`), 经管家通道 `SCM_RIGHTS` 附在帧上.
 - JS 见不到描述符号: 应用进程里的管家客户端 (acdes `crates/manager/src/client.rs`) 收到帧上的描述符, 交给 `acde::runtime::hand_fds`
@@ -52,7 +51,7 @@ root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOW
 - 桌面经 `acde:apps` 的 `open(app, request, {root: {name, dir, label?}})` 请管家借出 (SDK `OpenWindowOptions.root`, 只给桌面用), 管家决定给不给;
   `dir` 只到管家为止, 管家打开后按上面的帧交给应用.
 
-**U 盘的根** (用户 2026-11-19 同意按推荐路线做, 来源名 `removable`; runtime `fs/removable.rs`): 已挂载的 U 盘和移动硬盘自动成为根, 卸载或拔掉时自动去掉.
+**U 盘的根** (用户同意按推荐路线做, 来源名 `removable`; runtime `fs/removable.rs`): 已挂载的 U 盘和移动硬盘自动成为根, 卸载或拔掉时自动去掉.
 - 哪些挂载算: `/proc/self/mountinfo` 里挂载点正好在 `/run/media/$USER/` 或 `/media/$USER/` 下一层 (UDisks2 给用户挂可移动盘的位置), 且来源是 `/dev/` 下的块设备;
   `/mnt`、`/home` 这类别处的手动挂载、更深一层的挂载、网络和 FUSE 挂载都不算.
 - 根的样子: `{id: 'removable-<卷 UUID>', label, source: 'removable', mode, reason, exists, drive}`, 系统视图和带 `paths` 的应用另带 `path` (挂载路径).

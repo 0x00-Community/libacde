@@ -28,7 +28,7 @@
 
 同一个包里还要有 `apiLevel` (和运行时的契约级别相同, 否则整个包不加载), 可以有 `apps` (和桌面同包的应用是**系统应用**, 可以声明外壳模块; 不带桌面的包里应用全是 `SYSTEM_APPS` (`manifest/index.ts`, 现在只有社区商店 `community-store`, 同 acdes 的 `registry.rs`) 时也是, acdes 另要求这个包归 root)、
 `assets` (同源 URL 前缀 → 包里的目录)、`services` (服务名 → 模块文件). 桌面自己不需要声明 capabilities: 桌面页拿到全部模块.
-系统应用的条目可以写 `"sensitive": true` (SDK `AppManifest.sensitive`, 2026-11-21, F7): 标成敏感应用, 只对带桌面的系统包有效, 第三方包不能自标
+系统应用的条目可以写 `"sensitive": true` (SDK `AppManifest.sensitive`, F7): 标成敏感应用, 只对带桌面的系统包有效, 第三方包不能自标
 (写了的话 acdes 拒收这个应用); 敏感应用怎么对待由 acdes 认定 (见 acdes `docs/agents/manager.md`「敏感应用」), libacde 不看这个字段.
 
 ## 谁能拿到哪些模块
@@ -71,14 +71,14 @@
   (`WindowEvent`: `appId`、`title`、`state`、`previous`、`hidden`、`rect`、`active`、`parent`、`desk`、`first`、`changed` …), `first` 是新窗口
   (或重载后补报的), `changed` 列出这批变了的字段. 另有 `close` (窗口没了)、`crash` (进程崩了; 和 `close` 一样把窗口从表里删掉, 两者都要当「窗口没了」处理,
   且可能先后都到)、`menus`、`currentdesk`. `open`、`title`、`state`、`activate`、`parent`、`desk`、`geometry` 已过时 (由快照推出, 照旧发), 新桌面只听 `window`.
-- **Agent 的 stage** (acdes, 2026-11-23): 快照与 `list()` 的行可带 `stage: true` (变化时 `changed` 里是 `stage`): Agent 起的原生程序的窗口, 不画到任何屏上、
+- **Agent 的 stage** (acdes): 快照与 `list()` 的行可带 `stage: true` (变化时 `changed` 里是 `stage`): Agent 起的原生程序的窗口, 不画到任何屏上、
   不拿人的键盘, 也不占虚拟桌面的编号. 桌面可以在任务栏里单独显示或不显示它; `focus(window)` 就是人接手: 窗口移到当前桌面、照常显示并拿键盘,
   之后 `stage` 为 false. 见 acdes `docs/agents/acompositor/desktop.md`「Agent 的 stage」.
   `ready`、`show`、`attention`、`hang`、`responsive` 不保证发 (今天 acdes 都不发).
 - **打开应用**: `acde:apps.open(id, request?, {parent, modal, newWindow, root, size})` → `{window, instance?, running?}`. 回答里的 `window` 可能是 0
   (窗口还没出来, acdes 总是这样): 桌面按随后 `first` 快照的 `appId` (有 `instance` 时再对 `instance`) 认领, 认领要能在回答之前或之后发生.
   带请求打开已在运行的单例应用时请求交给它 (`running: true`), 不开新窗口; 要新窗口给 `newWindow: true` (清单 `multiple` 的应用才真开).
-  `size: [宽, 高]` (2026-11-21) 是这次新窗口的页面尺寸, 单位同清单 `size` (内容区的逻辑像素, 窗框另算), 只在真起新进程时用, 已在运行的单例不改;
+  `size: [宽, 高]`  是这次新窗口的页面尺寸, 单位同清单 `size` (内容区的逻辑像素, 窗框另算), 只在真起新进程时用, 已在运行的单例不改;
   管家要两个有限正数 (取整后 1–16384), 否则 400 `bad_request`, 不给或 null 等于没给; 带请求打开 (`open-file`、`open-link`) 同理.
   `acde:openPath(path)` 回 `no_app` (404) 时运行时不弹任何东西, 「打开方式」由桌面自己画 (`acde:handlers` + `acde:setDefault`).
   起原生程序用 `acde:launch.start(argv)` 或 `acde:packages.runNative(id)`, 窗口号同样从快照认领.
@@ -131,11 +131,11 @@
 - `keyboard`: `'on-demand'` (默认, 点到面板才拿键盘, 菜单栏、Dock) 或 `'exclusive'` (面板显示期间独占键盘, 收起后键盘回原窗口; 弹出菜单、确认卡这类
   用键盘打开、要马上接按键的). 面板拿到键盘之后, 按键交给桌面页的焦点元素: 面板打开时要把页面焦点放进面板.
 - 桌面页本身和 `on-demand` 面板一样: 点到才拿键盘.
-- `userOnly: true` (2026-11-23): 这个面板是只有用户本人能答的卡片 (确认、权限询问; 一般同给 `keyboard: 'exclusive'`), 缺省 false, 不是布尔值抛
+- `userOnly: true` : 这个面板是只有用户本人能答的卡片 (确认、权限询问; 一般同给 `keyboard: 'exclusive'`), 缺省 false, 不是布尔值抛
   `TypeError`. 运行时把它一路交给窗口系统; acdes 的会话管家只在这类面板显示期间拒绝 Agent 注入的按键和落在面板上的指针 (acdes `docs/agents/manager.md`).
   弹出菜单、启动台、聊天浮层这类普通的 `exclusive` 面板不要给: Agent 要能在它们开着时照常操作 (包括点掉它们). 面板里个别元素只许用户点的, 照旧由
   管家的 `guard` 逐步核对 (`docs/agents/dev/dev-ipc.md`), 不靠这个标记.
-- **锚定弹出** (`anchor: {window, x, y, width?, height?, edge?, align?, adjust?}`, 2026-11-21, 总仓 `.scratch/system/anchored-popup.md`): 菜单、提示气泡、
+- **锚定弹出** (`anchor: {window, x, y, width?, height?, edge?, align?, adjust?}`): 菜单、提示气泡、
   下拉框这类跟着某扇窗里某个位置的面板, 不给屏幕坐标, 只说锚在窗口 `window` (`windows.list()` 的窗口号) 内容区的矩形 `(x, y, width, height)` 上
   (那扇窗页面的 CSS 像素, 宽高缺省 0 即一个点); 合成器按真实窗框和缩放把面板放在它的 `edge` 边 (缺省 `bottom`), 沿边 `align` 对齐 (`start` /
   `center` / `end`, 缺省 `start`), 放不下时 `adjust` 里的 `flip` 换到对边、`slide` 平移进屏幕 (缺省两个都要, 空数组都不要); 跟着父窗口移动和隐藏,
@@ -143,7 +143,7 @@
   元素仍要在桌面页可见范围里布局. 已钉住的用 `anchor(next)` 换锚点 (下拉框跟着输入框滚动). 不能和 `reserve` 同给, 也不能和
   `keyboard: 'exclusive'` 同给 (`TypeError`; 菜单要键盘走 `requestGrab`). 窗口系统不会放锚定面板 (老 acdes、acdev 宿主窗口) 时 `pin` 当场抛
   `NotSupportedError`, 桌面可以退回自己换算坐标.
-- **弹出窗口** (`popup: true`, `parent?: PinnedPanel`, 2026-11-24): 菜单、下拉框、启动台这类“点外面就收起”的弹层, 交给窗口系统做成标准弹出窗口
+- **弹出窗口** (`popup: true`, `parent?: PinnedPanel`): 菜单、下拉框、启动台这类“点外面就收起”的弹层, 交给窗口系统做成标准弹出窗口
   (xdg_popup 那一类), 由合成器负责点到外面时收起, 页面不再自己判断点击落在哪. `parent` 是挂在哪个已钉住的面板上 (运行时换成它的面板号交给窗口系统),
   不给时挂在桌面主层面上; 不是这里钉住、或已经结束的面板抛 `TypeError`. 可以和 `anchor` 同给; 不能和 `keyboard: 'exclusive'` 或 `reserve` 同给
   (`TypeError`: 弹出窗口打开时自己拿键盘, 不占边). 被收起时 `closed` 以 `'dismissed'` 兑现, 收尾和 `unpin()` 一样; 一个面板结束时, 挂在它下面的
@@ -167,11 +167,11 @@
   各键都可省: 只改给了的键, 没给的保持上一次的 (起初是方角、无阴影、`standard`; `setWindowLook(null)` 回到这个状态), 所以可以单独 `setWindowLook({motion})`.
   `look.motion` 选窗口动画的档 (`'standard'` 缺省、`'reduced'`), 只能选档不能给数值; 档的定义只在 `acde_scene::motion` (见 `docs/agents/graphics/render-gpu.md`「动画曲线」),
   经 `WindowLook.motion` (Rust `acde_scene::motion::Preset`, 页面交出的数列里紧跟阴影层的那个数是它的线上编号) 交给合成器.
-  `look.titlebarHeight` (2026-11-24) 是运行时画的窗框标题栏高度, CSS px, 24 到 64 的整数 (小数四舍五入), 由桌面声明 (Dopame 取 uikit 令牌 `--dp-titlebar-h`, 40);
+  `look.titlebarHeight`  是运行时画的窗框标题栏高度, CSS px, 24 到 64 的整数 (小数四舍五入), 由桌面声明 (Dopame 取 uikit 令牌 `--dp-titlebar-h`, 40);
   没给过时用运行时缺省 `Frame.HEIGHT` (32). 它是数列的最后一个数 (可省; Rust `WindowLook.titlebar`, `None` 是没给), 经合成器交给各应用进程的窗口一侧,
   各应用进程的启动器在建窗时问原生 `titlebarHeight()` (没有这个方法的宿主, 如 acdev, 用缺省), 窗框画多高、内容区往下让多少都按它.
   `look.controls` (`{inset, size, gap, caption}`: 红绿灯离边距离、直径、间距, Windows 样式每个按钮的宽度) 和 `look.title` (`{size, weight}`: 标题字号、字重)
-  同样由桌面声明 (2026-11-24), 各项都可省, 省掉的用运行时缺省 (`FrameMetrics::default()`, `src/render/decoration.rs`: 12、12、8、46, 13、600, 只此一份).
+  同样由桌面声明 , 各项都可省, 省掉的用运行时缺省 (`FrameMetrics::default()`, `src/render/decoration.rs`: 12、12、8、46, 13、600, 只此一份).
   范围: inset 0–48, size 6–32, gap 0–32, caption 24–80, title.size 9–24, title.weight 100–900. 线上是标题栏高度之后再跟 6 个数 (没给的写 -1, 标题栏没给写 0),
   Rust 进 `WindowLook.frame`; 宿主 (各应用进程的窗口一侧) 拿到后调 `FrameMetrics::set(Some(..))`, 它只改进程里给之后新建窗框用的值: 每个 `Decoration` 建立时存一份 `FrameMetrics::current()` (2026-11-24), 之后画窗框、按钮位置 (`Decoration::dots`、`button_at`、`grab_hints`) 都只用这一份, 所以和标题栏高度一样只对新开的窗口生效, 已开的窗口不会变成旧栏高配新按钮尺寸. `FrameTheme::grab_hints` (没有 `Decoration` 的宿主用) 取当前值.
   mac 样式三个按钮的圆心、半径和颜色由 `Decoration::dots(bar)` 给 (`Dot {button, centre, radius, color}`, 2026-11-24; 颜色同 `Decoration` 画的: 主题的按钮色或红黄绿, 失焦按主题, 最小化不可用时是标题色的 16%), 只此一份;
@@ -208,7 +208,7 @@
   `items`. 桌面要把拖来的东西放到哪里, 读内容后自己写 (见 `docs/agents/web/fs.md`「拖放和打开请求的句柄」「拖放不再授权」).
 - 从桌面页拖出去: `draggable="true"` 的元素照标准开始拖动, `dataTransfer` 里的字符串类型交给系统拖放, 别的窗口照常收.
   上一次拖动的 `dragend` (窗口系统的拖放结束) 还没到时又按下鼠标, 页面先把上一次拖动当作没放成结束掉 (源上照发 `dragend`, `dropEffect` 为 `none`),
-  再照常开始新的; 之后才到的那条结束在新拖动开始前到达时不起作用, 开始后才到会提前结束页面里的新拖动, 系统拖放不受影响 (js/page `host.ts`; 第二十一轮 11-work-folder 第二次拖动没开始, 就是旧拖动挡住了新的).
+  再照常开始新的; 之后才到的那条结束在新拖动开始前到达时不起作用, 开始后才到会提前结束页面里的新拖动, 系统拖放不受影响 (js/page `host.ts`).
 
 ## 截图
 

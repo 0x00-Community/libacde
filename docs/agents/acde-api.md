@@ -2,7 +2,7 @@
 
 > 路径相对仓库根。
 
-`@acde/api` 是运行时删掉的 `web/` 的替代品 (群里结论, 2026-11-17): 学 workerd, npm 包是薄壳, **只有类型声明, 没有 JS 逻辑** (plugin-api 副本例外, 见下「plugin-api 副本」).
+`@acde/api` 是运行时删掉的 `web/` 的替代品 (群里结论): 学 workerd, npm 包是薄壳, **只有类型声明, 没有 JS 逻辑** (plugin-api 副本例外, 见下「plugin-api 副本」).
 它描述运行时给应用的东西: `acde:*` 模块 (运行时注入页面, 包里只是 `declare module`)、包清单、`acde.config.jsonc`、服务、能力、页面对象和事件的类型.
 来源是删除前的 `web/packages/acde-api` (acdert `91e7dd1e` 的父提交, 本仓库的历史), 只取纯类型声明. 它和清单规则 `manifest/` 原在 acdev 的
 `npm/` 里, 2026-11-18 随运行时库一起拆进本仓库: 运行时编译时要读它们, acdes 不该为此检出 acdev.
@@ -18,7 +18,7 @@
 - 一个工程只用一个入口: 应用的类型从 `./app` 取, 桌面从 `./shell` 取; 和 `.` 混用时 `acde:*` 模块的声明重复, 类型检查报冲突 (原包就是这样).
 - 还没发到 npm (发版要用户同意); 包现在 `"private": true`.
 
-## plugin-api 副本 (`acde-api/vendor/plugin-api`, 2026-11-24)
+## plugin-api 副本 (`acde-api/vendor/plugin-api`)
 
 - 声明式操作和插件工具同形 (见 `docs/agents/runtime/webs.md`「声明式操作」): `AppAction`、`ActionAnnotations`、`Caller`、`ToolRisk`、`JsonSchema` 只在
   plugin-api (AC/plugin-api, Dopame 与 form 共用的插件接口) 里定义一次, `acde-api/src/types/actions` 从副本 re-export; 清单规则 `manifest/actions.ts` 的
@@ -27,16 +27,16 @@
 - 副本只读, 放在 `acde-api/` 里 (`package.json` 的 `files` 含 `vendor`), acdev 拷 acde-api 时一并带走. 只放类型和校验用得到的源码: 从 `src/tools.ts`
   出发顺着相对 import 取到的文件 (现在 4 个), 不带测试、例子和一致性用例. 这几个是 `.ts` 源码, 本包因此不再是纯 `.d.ts`, 但仍只供 `import type` 和清单规则用.
 - `acde-api/vendor/plugin-api/SYNCED.json` 记源提交. 更新: 在 plugin-api 检出里提交好 (没有未提交改动), 然后 `bun scripts/sdk/plugin-api.ts sync`
-  (源目录取 `PLUGIN_API_DIR`, 默认仓库旁边的 `../plugin-api`, 即总仓里的检出), 跑类型检查和 page、launcher 的单测后连同 `SYNCED.json` 一起提交.
+  (源目录取 `PLUGIN_API_DIR`, 默认仓库旁边的 `../plugin-api`, 即里的检出), 跑类型检查和 page、launcher 的单测后连同 `SYNCED.json` 一起提交.
   `bun scripts/sdk/plugin-api.ts check` 核对副本和记下的提交一致 (源目录不在就跳过); 不一致说明有人直接改了副本: 改 plugin-api, 再 sync. 只复制 git 跟踪的文件,
   跳过 `AGENTS.md` 和 `.gitignore`.
 
-## 版本与兼容 (用户 2026-11-20 定)
+## 版本与兼容 (用户定)
 
 - 版本号跟 `acde-api/package.json` 的 `version`; 小版本 (含补丁) 只增不删: 新增类型、方法、事件、字段可以, 不删、不改名、不收窄已有的.
 - 要替换的接口先标过时并保留可用: 运行时照旧实现, 旧事件照旧发出 (可以由新事件推出来). 标法两处都要:
-  - 声明文件里, 在它上方写一行 `/** @deprecated 改用 <替代者> */`, 让编辑器划线. 这是代码不写注释的唯一例外 (用户 2026-11-20 定), 只限 `acde-api/` 的 `.d.ts`,
-    只写这一行, 总仓质量检查只放行这种单行写法;
+  - 声明文件里, 在它上方写一行 `/** @deprecated 改用 <替代者> */`, 让编辑器划线. 这是代码不写注释的唯一例外 (用户定), 只限 `acde-api/` 的 `.d.ts`,
+    只写这一行质量检查只放行这种单行写法;
   - 登记在下面的「已过时」清单: 替代者、从哪个版本起过时.
 - 升大版本时统一清理已标过时的接口, 清理清单写进发版说明.
 - 从来没有发出过、也没有实现的声明不算接口, 可以在小版本里删, 在这里记一笔.
@@ -45,12 +45,12 @@
 
 | 接口 | 替代者 | 起于 |
 | --- | --- | --- |
-| `ServiceContext.backendToken()`、`onBackendToken()` | `ServiceContext.backend` 的 `connect()`、`up`、`onChange()` (连接由管家代办, 不再交令牌) | 下一个小版本 (系统代办连接 R3, 用户 2026-11-20) |
+| `ServiceContext.backendToken()`、`onBackendToken()` | `ServiceContext.backend` 的 `connect()`、`up`、`onChange()` (连接由管家代办, 不再交令牌) | 下一个小版本 (系统代办连接 R3, 用户定) |
 | `acde:windows` 事件 `open`、`title`、`state`、`activate`、`parent`、`desk`、`geometry` | `window` (每个窗口一批变化后的完整快照, `first` 表示新窗口, `changed` 列出变了的字段, `previous` 是上一个状态) | 0.1.0 之后的下一个小版本 (repo-split 04) |
 
 运行时照旧发这 7 个事件: page 一层收到 `window` 快照后按 `first` / `changed` 推出来再发. `backendToken()` 运行时保留, 但永远回 null, `onBackendToken()` 永不回调.
 
-从没发出过、在小版本里删掉的: `acde:windows` 的 `minsize` (`WindowMinSizeEvent`) 与 `animated` 事件 (只有已删的旧合成器会发, winman 下从来没有).
+从没发出过、在小版本里删掉的: `acde:windows` 的 `minsize` (`WindowMinSizeEvent`) 与 `animated` 事件 (只有已删的旧合成器会发, acompositor 下从来没有).
 
 ## 结构
 
@@ -61,7 +61,7 @@
 
 ## 没有进这个包的 (不是纯类型声明)
 
-命令行要用的那部分搬进了命令行自己的源码 (用户 2026-11-17 定): Vite 插件在 acdev 的 `npm/src/vite-plugin.ts`; 清单校验原在 acdev 的
+命令行要用的那部分搬进了命令行自己的源码 (用户定): Vite 插件在 acdev 的 `npm/src/vite-plugin.ts`; 清单校验原在 acdev 的
 `npm/src/manifest/`, 运行时 (`js/page`) 也用它, 2026-11-18 拆仓时搬到本仓库的 `manifest/`, acdev 的 `npm/src/manifest/` 只剩转出它的薄壳.
 
 | 原文件 | 原来做什么 | 现在 |
@@ -78,13 +78,13 @@
 | `config.schema.json` | `acde.config.jsonc` 的 JSON Schema (编辑器补全) | acdev 的 `npm/templates/config.schema.json`, `acdev new` 拷进工程成 `acde.config.schema.json`, 模板的 `$schema` 指向它 |
 | `test/` | 上面逻辑的测试 | 没有 |
 
-`acde-dom` (DOM, 改用 blitz, 属系统侧) 和 `acde-host` (窗口表与策略归 winman; 应用登记、权限、服务宿主、应用互相打开归 acdebin-system)
+`acde-dom` (DOM, 改用 blitz, 属系统侧) 和 `acde-host` (窗口表与策略归 acompositor; 应用登记、权限、服务宿主、应用互相打开归 acdes)
 是实现, 不搬.
 
 ## 现在因此不通的
 
 - 发版: acdev 的 `npm/scripts/dist.ts` 要求 `--api` 是带 `src/index.js` 的构建产物, 和只有声明的包对不上. 这个包暂不发 npm, 按路径引用
-  (用户 2026-11-17 定).
+  (用户定).
 
 ## 成员说明 (原声明里的注释)
 
@@ -98,29 +98,29 @@
 - `AcdeOpenFiles.handlers`: 能打开这个文件的应用. 系统不知道它的类型时 `mime` 是 `''` (Windows); `association` 是 `setDefault` 记住选择用的键:
   MIME 类型, Windows 上是扩展名 (`.md`).
 - `AcdeOpenFiles.setDefault`: 为一个 MIME 类型 (Windows 上为一个扩展名, 如 `.md`) 记住 `handler`; 不动系统自己的默认.
-- `AcdeWindow.setBackdrop`: 模糊窗口某块区域后面的东西; `effect.shape` 是角形 (`round` / `squircle` / `superellipse(k)`, 2026-11-22, 类型 `BackdropEffect`). 平台画不准时可以近似 (见 `acde:capabilities` 的 `window.backdrop`).
-- `AcdeWindow.setMaterial(material, options?)` / `material()` (2026-11-23, 总仓 `.scratch/libacde/glass-material-api.md` 末节; 类型在 `types/window-look/` 用模块扩充加到 `AcdeWindow`): 整扇窗口 (或 `region: 'titlebar'` 只有标题栏) 的背景材质, 画在窗口内容之下.
+- `AcdeWindow.setBackdrop`: 模糊窗口某块区域后面的东西; `effect.shape` 是角形 (`round` / `squircle` / `superellipse(k)`, 类型 `BackdropEffect`). 平台画不准时可以近似 (见 `acde:capabilities` 的 `window.backdrop`).
+- `AcdeWindow.setMaterial(material, options?)` / `material()` (类型在 `types/window-look/` 用模块扩充加到 `AcdeWindow`): 整扇窗口 (或 `region: 'titlebar'` 只有标题栏) 的背景材质, 画在窗口内容之下.
   `MaterialName` 内置 `glass` (液态玻璃, `role` 是 `regular` / `clear`, 可用 `group` + `spacing` 跨窗口融合)、`blur` (背景模糊加着色, 没有透镜和高光)、`none`; 其余名字留给以后的自定义效果,
   所以类型是 `'glass' | 'blur' | 'none' | (string & {})`. 名字不合规 (`[a-z0-9._-]`, 至多 64 字节)、`role` / `region` / `spacing` / `group` 写错抛 `TypeError`; 合规但没有这个材质时按 `none` 画并记一次警告,
   `material()` 回实际生效的名字 (此时是 `none`) 和给的选项. `overrides` 是"参数名 → CSS 写法"的表, 参数名同 `--acde-glass-*` 去掉前缀 (`blur`、`tint`、`outline` …), 档位、深浅、
   减少透明度仍由系统定 (减少透明度时一律不透明). 清单 `window.material` 写默认值 (名字或 `{name, role, group, spacing, overrides, region}`), 窗口一开就用.
   给开发者的建议: 长时间存在的主窗口背景用 `blur` (开销中等), 浮在内容上的工具栏和小面板窗口用 `glass` (最贵), 临时弹出用 `blur`; 页面背景要透明, 材质才透得出来.
-- `AcdeWindow.accent()` / `on('accent', handler)` (2026-11-23, 类型同在 `types/window-look/`): 系统强调色的原值 `#rrggbb`, 系统没设 (门户的 `accent-color` 是 -1 或越界) 或没有门户 (宿主会话) 时是 `null`;
+- `AcdeWindow.accent()` / `on('accent', handler)` (类型同在 `types/window-look/`): 系统强调色的原值 `#rrggbb`, 系统没设 (门户的 `accent-color` 是 -1 或越界) 或没有门户 (宿主会话) 时是 `null`;
   原值变了发 `accent`, 参数是新值. 用来分清"没设"和"用户正好选了默认色": CSS 的 `AccentColor` 在没设时是默认的 `#0075ff`, 区分不开. 来源只有一条, 同 `AccentColor`
   (门户 → launcher → 页面消息 `{type: 'accent', color}`, 见 `docs/agents/dev/build-run.md` 的强调色); 页面初始化参数 `accent` 和这条消息都原样保留 `null`, 渲染收空串表示没设.
-- `AcdeWindow.wallTone()` / `on('wallTone', handler)` (2026-11-23, 用户选定的公开方法, 类型 `WallTone = 'light' | 'dark' | null` 同在 `types/window-look/`): 窗口所在屏的壁纸整体偏亮还是偏暗,
+- `AcdeWindow.wallTone()` / `on('wallTone', handler)` (用户选定的公开方法, 类型 `WallTone = 'light' | 'dark' | null` 同在 `types/window-look/`): 窗口所在屏的壁纸整体偏亮还是偏暗,
   `light` 表示壁纸偏亮、字该用深色; 还没收到壁纸图、算不出来或没有门户 (宿主会话) 时是 `null`. 壁纸变了或窗口换到别的屏、值变了才发 `wallTone`.
   来源是 acdes 算好经门户 `org.acde.appearance` 推的 `wall-tone` (`a{su}`, 键是屏幕名, 值 0 未知、1 亮、2 暗) 和 `primary-output` (`s`, 主屏名);
   启动器按窗口表行的 `output` (窗口中心所在屏) 取值, 取不到用主屏, 都没有是 `null`, 经页面消息 `{type: 'walltone', tone}` 和初始化参数 `wallTone` 交给页面.
-- `acde:actions` (J2, 2026-11-24, 类型在 `types/actions/`): `handle(name, handler)` 给清单 `acde.apps[].actions` 里声明的操作注册处理函数,
+- `acde:actions` (J2, 类型在 `types/actions/`): `handle(name, handler)` 给清单 `acde.apps[].actions` 里声明的操作注册处理函数,
   `handler(args, {caller, target?, signal, progress})` 回 `{ok: true, output?}` 或 `{error: {code, message}}`. 声明的形状 `AppAction` 和插件的工具同形,
   `Caller`、`ToolRisk`、`JsonSchema` 也在这里 (dopame 的插件接口以后改为从这里导出, 不再各写一份). 见 `docs/agents/runtime/webs.md`「声明式操作」.
-- `AcdeWindow.on('suspend' | 'resume')` (J3, 2026-11-24): 系统挂起、恢复这扇窗口的应用时发; 收到 `suspend` 后页面的计时器和动画帧被节流, 清单
+- `AcdeWindow.on('suspend' | 'resume')` (J3): 系统挂起、恢复这扇窗口的应用时发; 收到 `suspend` 后页面的计时器和动画帧被节流, 清单
   `lifecycle.suspendable: true` 的应用会被冻结 (这之后不再跑任何代码, 所以要存的东西在处理函数里同步存好). 清单的 `lifecycle: {suspendable?, endsAnytime?}`
   (缺省都为 false) 见 `docs/agents/runtime/webs.md`「挂起与恢复」; `endsAnytime` 告诉系统这个应用可以不经询问直接结束.
 - `AcdeWindow.on('beforeclose')`: 原来是一个签名 `() => boolean | void | Promise<boolean | void>`, 拆成返回 `boolean` 和返回 `void` 的两个重载, 能传的函数不变.
 
-## 系统模块的错误与事件 (libacde 单子 12)
+## 系统模块的错误与事件
 
 - **统一错误** (`AcdeError`, `AcdeErrorCode`): `acde:network`、`acde:system`、`acde:bluetooth`、`acde:audio`、`acde:devices`、`acde:power`、`acde:input`、
   `acde:display` 的方法失败时 (同步抛出或 Promise 拒绝) 都是 `name === 'AcdeError'` 的 `Error`, 带 `status`、`code`、`module`, 原错误放在 `cause`;

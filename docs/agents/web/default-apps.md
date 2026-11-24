@@ -8,7 +8,7 @@
   MIME Applications 规范读 mimeapps.list (每个目录先读 `acde-mimeapps.list`), `acde-<app>.desktop` 指 acde 应用; 没设过的用清单 `mimeTypes`
   写了它的第一个应用 (全名先于 `type/*`), 再没有用原生程序.
 - **文件的类型** (`MimeTypes.of`, 按名字的部分在 `mimedb.ts` `FileTypes`): 用各平台自己登记的类型, 运行时不带扩展名表, 也不用 mime-db
-  这类面向浏览器的库 (决定, 2026-11-10). 系统不知道的类型就是未知 (`''`), 不猜, 由用户选应用.
+  这类面向浏览器的库 (决定). 系统不知道的类型就是未知 (`''`), 不猜, 由用户选应用.
   - Windows (有 `sys.contentType`): 按最后一个扩展名 (小写, `a.tar.gz` 是 `.gz`) 取系统登记的 `Content Type` (`HKEY_CLASSES_ROOT\.<ext>`,
     hostwin `system/assoc.rs` 用 `AssocQueryStringW(ASSOCF_INIT_IGNOREUNKNOWN, ASSOCSTR_CONTENTTYPE)`, 原生调用, 不起子进程), 原样用它:
     `.csv` 可能是 `application/vnd.ms-excel`, `.zip` 是 `application/x-zip-compressed`; `.md` `.py` `.rs` `.yaml` 一般没有, 就是未知.
@@ -53,7 +53,7 @@
     Rust 再要求绝对路径、不是设备 / 逐字路径
     (`\\?\`、`\\.\`)、不带 `..`、Windows 上不是命名流 (组件里有 `:`)、`symlink_metadata` 是普通文件 (链接不交), 扩展名在
     `handoff.rs` `EXTENSIONS` 里 (PDF、图片、音视频、纯文本 / Markdown / CSV / JSON、新版 Office (`.docx` `.xlsx` `.pptx`) 和 OpenDocument).
-    可执行文件、脚本、快捷方式 (`.exe` `.bat` `.ps1` `.js` `.lnk` `.url` `.hta` `.docm` …) 一律不交. 也不交 (决定, 2026-11-10): 旧版 Office
+    可执行文件、脚本、快捷方式 (`.exe` `.bat` `.ps1` `.js` `.lnk` `.url` `.hta` `.docm` …) 一律不交. 也不交 (决定): 旧版 Office
     (`.doc` `.xls` `.ppt`, 能带宏)、`.html` `.htm` `.svg` (在浏览器里跑本地脚本)、`.rtf` (能嵌 OLE 对象). 选的是收窄类型, 不是给下载补
     Mark of the Web: acdev 的下载和应用自己写的文件都没有 `Zone.Identifier`, 交给 Office 时不进受保护视图, 收窄对所有来源都成立.
     Windows 不关区域检查 (文件本来带的 Mark of the Web 照旧提示).

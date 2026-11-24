@@ -1,7 +1,7 @@
 # vendor
 
 依赖来自 crates.io, 加上两处 git: `vendor/blitz` 是子模块 (Gitea `AC/blitz`, `.gitmodules` 写相对地址 `../blitz.git`: 跟着本仓库的 origin 走, ssh 克隆就是 ssh, CI 用 http 加令牌克隆就是 http (这台 Gitea 不许匿名读, 带令牌的 `-c http.extraHeader` 也要给 `submodule update`); fork 自 DioxusLabs/blitz, 原来在 GitHub `Jabberwocky238/blitz`, 2026-11-14 整个搬进内网), blitz 的 taffy
-照上游 Blitz 钉 DioxusLabs/taffy 的 git 提交 `4e59968`. 根 `Cargo.toml` 用 `[patch.crates-io]` 把 blitz-* 换成子模块里的. 克隆后 `git submodule update --init`; 打包 (acdebin-system 的 PKGBUILD) 和 CI 也取子模块.
+照上游 Blitz 钉 DioxusLabs/taffy 的 git 提交 `4e59968`. 根 `Cargo.toml` 用 `[patch.crates-io]` 把 blitz-* 换成子模块里的. 克隆后 `git submodule update --init`; 打包 (acdes 的 PKGBUILD) 和 CI 也取子模块.
 小补丁不留: stylo、parley、fontique、vello、taffy、libseat-sys、fslock、async-dnssd 都用 crates.io 原版 (servo 版 stylo 没有的 `@container`、
 `accent-color`、`field-sizing`、`prefers-reduced-motion` 和 SVG 的 `pointer-events` 取值随之没有).
 
@@ -11,7 +11,7 @@
 | `blitz` (子模块) | DioxusLabs/blitz main `fb297a38` 上接我们的提交: 只留 blitz-dom / blitz-paint / blitz-traits / stylo_taffy / debug_timer (`MIT OR Apache-2.0`) |
 
 blitz fork 和上游结构的不同: HTML 解析用 src/render 自己的 html5ever TreeSink; `build_inline_layout_into` 在 `layout/inline/build.rs`; `paint_scene`
-先录进 `acde-scene` 的 `Scene` 再回放 (没有 anyrender, 它的 SVG 画法成了 blitz-paint 的 `svg.rs`); blitz-dom 重新导出 `taffy`, 以及 `style`、`style_dom`、`style_traits`、`parley`、`cssparser` (本仓库不写它们的版本, 经 `blitz_dom::` 用, 2026-11-21). 验证: 在
+先录进 `acde-scene` 的 `Scene` 再回放 (没有 anyrender, 它的 SVG 画法成了 blitz-paint 的 `svg.rs`); blitz-dom 重新导出 `taffy`, 以及 `style`、`style_dom`、`style_traits`、`parley`、`cssparser` (本仓库不写它们的版本, 经 `blitz_dom::` 用). 验证: 在
 `vendor/blitz` 里 `cargo clippy --workspace --all-targets`、`cargo check -p blitz-dom --no-default-features`、
 `cargo test -p blitz-dom -p blitz-paint`、`cargo clippy -p blitz-paint --all-targets --features scrollbars`; 再 `cargo test --release -p libacde --test 'render_*'`
 (加 `ACDE_PAINT_VERIFY=1` 再一遍).
@@ -41,7 +41,7 @@ blitz fork 和上游结构的不同: HTML 解析用 src/render 自己的 html5ev
 | `text.rs` `stroke_text` / `Ellipsis` / `draw_ellipsis_marker`, `render.rs` `ellipsis` | `text-overflow: ellipsis` 和 line-clamp 的 "…" (`Ellipsis.end` 是 frame 的内容盒宽, 已经是设备像素, 不再乘 scale) |
 | `render/gradient.rs` | 色标位置按规范; 超出渐变线的色标: 线性拉长, 径向 / 锥形夹回 |
 | `render.rs` `fieldset_frame` / `element_cx`, `render/border.rs` `draw_border`, `cache.rs` `visit` | fieldset 的框从 legend 中线开始, 边框在 legend 后留空; legend 算进片段依赖 |
-| `kurbo_css/css_box.rs` `corner_shapes` / `with_corner_shapes` / `insert_corner`, `render.rs` `create_css_box` / 效果图层, `render/border.rs`, `render/box_shadow.rs`, `layers.rs` `maybe_with_shaped_layer` | CSS Borders 4 的 `corner-*-shape` (`superellipse(k)`、`squircle`、`bevel`、`scoop`、`notch`、`square`; 2026-11-22): stylo 的 servo 构建本来就算这组属性 (开关是 blitz 打开的 `layout.unimplemented`), 这里按每个角的 `k` 画. 几何只在 `acde-scene` 的 `corner` 一处 (`arc_points`: 椭圆弧上同一角度的点按 `\|cos\|^(2/n)`、`\|sin\|^(2/n)` 换到超椭圆上, `n = 2^k`, 折线, 每个角 8 到 96 段; `k = ±∞` 取极限), blitz-paint 只在 `k ≠ 1` 的角改调它, `round` 照旧画椭圆弧. 背景、边框、溢出裁剪、`background-clip`、不模糊的阴影都走边框盒 / 内边距盒的路径, 自动跟上; 多色边框的分色点按同一角度换到超椭圆上; 内边缘 (padding box) 沿用同一个 `k`、半径照旧减边框宽 (规范对内边缘的定义更细, 这是近似); 描边快路 (`RoundedRect` / 椭圆) 只在四角都是 `round` 时走; outline 按外扩后的同形状; 带模糊的阴影仍是 vello 的模糊圆角矩形, 半径换成角上切掉同样面积的圆角半径 (`corner::equivalent_radius`, `squircle` 约为 0.58 倍), 四角取平均半径和左上角的形状. 带 `backdrop-filter` 的效果图层用 `push_shaped_layer` 带出 `Corners {radius, exponent}` (平均半径、左上角的 `n`), 见 `render-gpu.md` 的磨砂 |
+| `kurbo_css/css_box.rs` `corner_shapes` / `with_corner_shapes` / `insert_corner`, `render.rs` `create_css_box` / 效果图层, `render/border.rs`, `render/box_shadow.rs`, `layers.rs` `maybe_with_shaped_layer` | CSS Borders 4 的 `corner-*-shape` (`superellipse(k)`、`squircle`、`bevel`、`scoop`、`notch`、`square`): stylo 的 servo 构建本来就算这组属性 (开关是 blitz 打开的 `layout.unimplemented`), 这里按每个角的 `k` 画. 几何只在 `acde-scene` 的 `corner` 一处 (`arc_points`: 椭圆弧上同一角度的点按 `\|cos\|^(2/n)`、`\|sin\|^(2/n)` 换到超椭圆上, `n = 2^k`, 折线, 每个角 8 到 96 段; `k = ±∞` 取极限), blitz-paint 只在 `k ≠ 1` 的角改调它, `round` 照旧画椭圆弧. 背景、边框、溢出裁剪、`background-clip`、不模糊的阴影都走边框盒 / 内边距盒的路径, 自动跟上; 多色边框的分色点按同一角度换到超椭圆上; 内边缘 (padding box) 沿用同一个 `k`、半径照旧减边框宽 (规范对内边缘的定义更细, 这是近似); 描边快路 (`RoundedRect` / 椭圆) 只在四角都是 `round` 时走; outline 按外扩后的同形状; 带模糊的阴影仍是 vello 的模糊圆角矩形, 半径换成角上切掉同样面积的圆角半径 (`corner::equivalent_radius`, `squircle` 约为 0.58 倍), 四角取平均半径和左上角的形状. 带 `backdrop-filter` 的效果图层用 `push_shaped_layer` 带出 `Corners {radius, exponent}` (平均半径、左上角的 `n`), 见 `render-gpu.md` 的磨砂 |
 | `render/glass.rs` (新) `layer_shape`, `layers.rs` `maybe_with_shaped_layer`, `Cargo.toml` 加 `log` | 带 `backdrop-filter` 的效果图层带出 `LayerShape {corners, glass, group}`: 系统玻璃来自作者自定义属性 `--acde-glass*` (计算样式的 `custom_properties`), 预设按系统档位 (`Level::preferred()`), 解析交 `acde_scene::glass`, 长度乘 scale; 写错的分项记 `log::warn`; `group` 是融合成员 (`glass_container` 找 `--acde-glass-merge` 的容器, 加 `--acde-glass-union` / `-id`, 见 `render-gpu.md` 的玻璃组) |
 | `render.rs` 开头 | `scrollbars` 下补 `Color` / `Stroke` 的 import |
 
@@ -107,7 +107,7 @@ blitz fork 和上游结构的不同: HTML 解析用 src/render 自己的 html5ev
 | `acss_sync.rs` (新), `acss_sync/shadow.rs` (新), `acss_sync_off.rs` (新), `document.rs`, `mutator.rs`, `resolve.rs`, `layout/construct.rs`; 特性 `acss` (缺省关, 本仓库的同名特性打开它) | 接 acss (我们自己的 CSS 引擎, Gitea `AC/acss`, cargo 源 ac 上的 `acss`; 计划见那个仓库的 `docs/agents/roadmap.md`). 样式仍然由 stylo 算; 开了特性后 acss 的元素表跟着 DOM 的每次改动走. `ACSS_AUDIT=1`: 每次重算后拿元素表和 DOM 对账, 不一致记日志. `ACSS_SHADOW=1`: 每次重算后 acss 也算一遍, 逐元素 (含 `::before` / `::after` / `::selection`) 逐属性和 stylo 的计算值比, 不同的按原因归类记日志 (`blitz_dom::acss_sync` 的 info), 文档销毁时记总数. 特性关着时这些钩子是空函数 (`acss_sync_off.rs`), 不编进 acss. 编: 在 acdev 里 `cargo build --release -p acdev --features libacde/acss` (acdev 的锁文件不用改, 带 `--locked` 也能编) |
 
 **`src/webgl/glsl/preprocessor`**: pp-rs 0.2.1 (Corentin Wallez, BSD-3-Clause, `LICENSE.BSD`), 这个 GLSL 前端的预处理器, 连它的测试一起搬进来
-(2026-11-19; 只有这里用它, naga 没开 `glsl-in`). 改动处加 `acde:` 注释: GLSL ES 没有 16 / 64 位字面量, 数字后面的 `s` / `h` / `l` 是下一个记号
+(只有这里用它, naga 没开 `glsl-in`). 改动处加 `acde:` 注释: GLSL ES 没有 16 / 64 位字面量, 数字后面的 `s` / `h` / `l` 是下一个记号
 (标识符), 不再在词法阶段报错, 没展开的宏里写什么都不出错 (three.js 把材质名写进 `#define SHADER_NAME`, `bridge-stone-2s` 以前编不过), 用在代码里照样
 是语法错误. 原版的 `std::usize::MAX` 和省掉的生命周期写全了.
 上限 (照 ANGLE): 标识符最多 1024 个字符 (WebGL 2 的规定; WebGL 1 是 256, 这里也按 1024, 超了是 `IdentifierTooLong`), `#if` 里一元运算符和
@@ -130,6 +130,6 @@ webgl 枚举 uniform 时 (`shader.rs` `unpadded`) 解开这层; 这样各后端 
   用了桌面 GL 时还会被忽略). virgl (acdev 客户机, 宿主 D3D12) 同时给桌面 OpenGL 4.2 core 和 OpenGL ES 3.1: 选了桌面 4.2 时 naga 出
   `#version 420 core`, vello 的 binning / coarse / fine_area 计算着色器要 `ARB_arrays_of_arrays` 而 virgl 在计算着色器里不支持, 管线建不出,
   并且 vello 多线程建管线时这个错误被 wgpu 当致命错误 panic, 桌面全黑; 走 OpenGL ES 3.1 时 naga 出 `#version 310 es` (ES 3.10 本身有数组的数组),
-  vello 管线 0 报错 (2026-11-20 GL 取证第三轮). 桌面 OpenGL 路径因此删掉, 不留开关.
-- 升 wgpu 时: 拷新版 wgpu-hal 进来, 重做同一处改动, 改这里写的版本号; 上游接受补丁 (草稿在总仓 `.scratch/render/wgpu-upstream-draft.md`,
+  vello 管线 0 报错. 桌面 OpenGL 路径因此删掉, 不留开关.
+- 升 wgpu 时: 拷新版 wgpu-hal 进来, 重做同一处改动, 改这里写的版本号; 上游接受补丁 (草稿,
   发之前给用户看) 后改用上游的选项, 删掉 `vendor/wgpu-hal` 和 patch.

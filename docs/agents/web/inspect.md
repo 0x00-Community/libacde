@@ -5,7 +5,7 @@
 - **网页的树** (render `Dom::semantics(root, limit)`, `dom/semantics.rs`): 节点 `{id, role, name?, value?, states?, level?, rect, children?}`, id 是
   render 的节点 id, 所以 ref 跟着 DOM 节点走: 节点活着 (连在文档上, 或断开了但页面还拿着) 就不变, 移动、改文字、改属性、列表重排都不变,
   不按遍历顺序编号; 重绘时换成了新节点 (`innerHTML`、不带 key 的列表重建) 才是新 ref (节点 id 不复用), 旧 ref 回 `element N is gone`.
-  测试 `src/render/tests/semantics.rs`. 角色按 `role` 属性 / 标签 (HTML-AAM: 有名字的 `<section>` 是 `region`, `<output>` 是 `status`), 都没有但 `cursor: pointer` 的是 `clickable`; 名字按 aria / label (可被 label 的元素: input、select、textarea、button、meter、output、progress, `<label for>` 或外面套的 `<label>`, 先于子元素文字) / alt / 文字, 最多
+  测试 `tests/render_semantics.rs`. 角色按 `role` 属性 / 标签 (HTML-AAM: 有名字的 `<section>` 是 `region`, `<output>` 是 `status`), 都没有但 `cursor: pointer` 的是 `clickable`; 名字按 aria / label (可被 label 的元素: input、select、textarea、button、meter、output、progress, `<label for>` 或外面套的 `<label>`, 先于子元素文字) / alt / 文字, 最多
   120 字 (同一元素里相邻的文字节点按原文接起来, 只在原文边界有空白时隔一个空格: JSX 的 `{n}%` 是 `100%`); 剪掉不可见的子树 (`display: none`、`aria-hidden="true"`、`inert`、`opacity: 0`、`visibility` 不是 `visible`、滚到可见范围外的),
   没有角色名字状态的展开; 每个父节点最多 60 个子节点, 全树最多 limit (默认 600). `semantics(root, limit, offscreen, invisible)`: `invisible`
   时留下透明和 `visibility: hidden` 的元素, 自己或祖先 `opacity: 0` 的标 `transparent`, `visibility` 不可见的标 `invisible` (透明的照样能点,
@@ -31,16 +31,16 @@
   第一行是 `(windows unchanged)` 且只列有树的窗口. act / run / open / query 的文字和错误也是英文. `act(ref, action, arg)` → `{ok, text, windows?, expanded?}` (做完了就带 `windows` (同快照的 `windows`) 与 `expanded` (文字末尾附的那份快照里列了树的窗口引用, 树因 `limit` 截断的也算列过), 让调用方知道这次看到了哪些窗口, 如 acdes 管家据此给 `origin`; 一步都没做成时没有; `run`、`open` 同): 做完等页面安静
   (200 ms 没有 DOM 变化, 最多 3 秒; 原生窗口 0.4 秒), 窗口表或焦点变了先等新焦点窗口安静. `run(steps)` 依次做, 失败就停. 动作: click /
   double / right / hover / scroll 按 `point` 的屏幕坐标做成一整组真实指针事件 (移过去、按住的修饰键、按下松开或滚轮) 交给 `InspectShell.play`, 和 drag、input 同一个入口, 节奏由 `input::pace` 补;
-  合成器像对真人点击一样提窗口、交键盘焦点, 点桌面上的元素也会把键盘给桌面 (2026-11-23) (被盖住时先提前目标窗口; 桌面钉住的面板盖着的地方只算被更上层的钉住窗口挡住, #111); type / settext 走 web 的 `type`;
-  key (`"ctrl+a backspace"`, acde-host `keys.ts` 的 `chordCodes`) 先 focus 再注入 (窗口在合成器里不是焦点时先请求聚焦, 桌面也一样: 宿主窗口里是 `Shell.focus(0)`, 客户机里发 `devwindow {window: 0, focus: true}`, acdes 交给桌面那块按需拿键盘的面板; 2026-11-23, 之前桌面不请求, `fill` 之后的 `press` 会落进别的窗口): 空格分开的每段先全部解析, 有认不出的就整串不发并报出这些段;
+  合成器像对真人点击一样提窗口、交键盘焦点, 点桌面上的元素也会把键盘给桌面  (被盖住时先提前目标窗口; 桌面钉住的面板盖着的地方只算被更上层的钉住窗口挡住, #111); type / settext 走 web 的 `type`;
+  key (`"ctrl+a backspace"`, acde-host `keys.ts` 的 `chordCodes`) 先 focus 再注入 (窗口在合成器里不是焦点时先请求聚焦, 桌面也一样: 宿主窗口里是 `Shell.focus(0)`, 客户机里发 `devwindow {window: 0, focus: true}`, acdes 交给桌面那块按需拿键盘的面板, 之前桌面不请求, `fill` 之后的 `press` 会落进别的窗口): 空格分开的每段先全部解析, 有认不出的就整串不发并报出这些段;
   可打印字符直接写 (`7 . 5 * 2`), 美式键盘上要 Shift 的符号 (`*`、`+`、`(` …) 和大写字母自动加 Shift, 也认 `plus` / `multiply` / `minus` 等名字, `ctrl++` 是 Ctrl 加 `+`; select (arg 是选项的值或文字, 多选给列表) 走 web 的 `select`; drag (arg 是目标 ref, 元素或窗口,
   可以在别的窗口) 先量目标 (`point`, 可能滚动; 目标被别的窗口盖住时回错, 什么都不按), 再把整组 (移到源、按下、分 10 步移过去、松开) 一次交给 `InspectShell.play`
-  (宿主窗口里是 `Shell.injectSequence`, 客户机里是管家的 `dev.input`). 节奏只在 acde-scene 的 `input::pace` 里定一份 (2026-11-23): 按下后到第一次移动停 150 ms
+  (宿主窗口里是 `Shell.injectSequence`, 客户机里是管家的 `dev.input`). 节奏只在 acde-scene 的 `input::pace` 里定一份 : 按下后到第一次移动停 150 ms
   (像真人, 不然合成器在客户端还没发移动请求时就看到按键松开了, 客户机里拖标题栏会被拒), 两次移动隔一帧 16 ms, 松开前停一帧, 脚本自己写了 wait 的地方不叠加;
   启动器只生成事件, 不等待. `input(window, events)` 同样整组交出 (页面坐标先换成屏幕坐标, `text` 照旧经页面, 它把序列分段), 一段里有写错的事件时整段不发. 页面的指针拖动和
   HTML5 拖放 (也跨窗口) 都靠它. 窗口 ref 能 focus / restore / minimize / close / key. `open(name)` 按 id、名字找应用或原生程序起它. `query({selector, window?, ref?, limit?, attributes?})` →
   窗口 ref 还能 fill / fullscreen (`setState` 设成 `filled` / `fullscreen`), restore 把这两种设回 `normal`; 桌面和铺满宿主的窗口不行.
-  窗口 ref 还能 move / resize / raise (2026-11-23, `dev/inspect/place.ts` 的 `Placing`, 填充、最小化也在那里): `move` 的 arg 是屏幕逻辑坐标 `"100,80"`, 大小不变;
+  窗口 ref 还能 move / resize / raise (`dev/inspect/place.ts` 的 `Placing`, 填充、最小化也在那里): `move` 的 arg 是屏幕逻辑坐标 `"100,80"`, 大小不变;
   `resize` 的 arg 是 `"800x600"`, 位置不变 (先读窗口表里当前的 x、y); 经 `InspectShell.place(window, {x, y, width?, height?})` 做, 宿主窗口里是启动器
   `Shell.place` (`Launcher.place` 读回新矩形), 回 `w1 is at X,Y WxH`; 应用迟交新尺寸时最多轮询窗口表 2 秒, 还没到就照实说"还没接受这个尺寸". 拒绝 (回 `ok: false`
   并说原因): 桌面、铺满宿主窗口的单应用窗口、钉住的面板、最小化的窗口、状态不是 `normal` 的窗口 (提示先 `act <窗口> restore`), `resize` 另拒固定大小的窗口.
@@ -61,11 +61,11 @@
   `w1 is minimized; act restore on it first` (drag 的目标是 `cannot drop: w1 is minimized; …`, 在源上按下之前就查), 什么都不注入: 以前按它最小化前的位置点下去, 点到的是
   下面的窗口, 还回 `clicked …`. focus / type / settext / key 先给窗口焦点, 运行时给最小化的窗口焦点就是让它回到之前的状态. `restore` (和窗口的 `focus`)
   先取消隐藏再给焦点, 两条路离开屏幕的窗口都回来.
-- **像素** (`shot`、`input`, 2026-11-23): 没有元素树的窗口 (游戏、OpenGL / Vulkan 程序、不报 AT-SPI 的原生程序) 按像素看和操作. 只在 acdes 会话里有,
+- **像素** (`shot`、`input`): 没有元素树的窗口 (游戏、OpenGL / Vulkan 程序、不报 AT-SPI 的原生程序) 按像素看和操作. 只在 acdes 会话里有,
   由管家自己答 (不经页面, 见 acdes `docs/agents/manager.md` 的 `inspect.shot`): `shot(window, {max?})` 回那扇窗自己画面的 PNG (base64, 长边缩到 `max`, 默认 1280)
   和窗口的逻辑矩形; `input(window, events)` 按窗口逻辑坐标发 move / down / up / wheel、相对移动 `motion {dx, dy}` (游戏锁住指针时转视角)、
   按住与松开键 (`keydown` / `keyup`)、`text`、`wait`. 类型 `InspectPixelInput`、`InspectShot`.
-- **Agent 的 stage** (acdes, 2026-11-23): `open(name)` 开的原生程序 (不是 acde 应用的) 落在 Agent 自己的 stage 上, 回答带 `stage: true`: 它的窗口不画到屏上、
+- **Agent 的 stage** (acdes): `open(name)` 开的原生程序 (不是 acde 应用的) 落在 Agent 自己的 stage 上, 回答带 `stage: true`: 它的窗口不画到屏上、
   不抢人的键盘, 对程序自己照常可见. 快照的窗口 (`InspectWindow`) 带 `stage: true`, 文本行多一个 `[stage]` 标记; `shot`、`input` 的回答带 `stage`.
   stage 上的窗口 `input` 不等人让开、不管它是否最小化; 人在桌面上激活它 (`acde:windows.focus`) 就是人接手, 之后 `stage` 为 false, 照人桌面的规则.
   细节见 acdes `docs/agents/manager.md`「Agent 的 stage」.

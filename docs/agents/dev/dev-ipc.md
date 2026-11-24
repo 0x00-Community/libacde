@@ -31,25 +31,25 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
   - `webs` → `{webs: [{name, app, kind, window, title, stalled?}]}`. `stalled: true` 标出在限时 (客户机里 1.5 秒) 内没回答的页面 (进程被 `kill -STOP`、
     卡在长任务里): 它照样列出, `title` 为 null, 其余页面照常返回; 不回答的页面不在时不带这个字段.
   - `devtools` → `{port}`: 这个会话的 DevTools 端点 (下面 **DevTools 端点**); 没有端点 (不是 dev 模式、端口没开成) 时回错.
-  - `eval {web, code, node?, arg?}` → `{value}`: 和 `ACDE_DEBUG_DIR` 一样求值 (promise 等落定), 结构化克隆回来再 JSON (undefined 是 null, JSON 不了的回错).
+  - `eval {web, code, node?, arg?}` → `{value}`: 在页面里求值 (promise 等落定), 结构化克隆回来再 JSON (undefined 是 null, JSON 不了的回错).
     给了 `node` (render 节点 id, 即 ref 里点后面的数) 时 `code` 是一个函数的源码, 以 `(元素, arg)` 调用 (rpc `debug.evalOn`).
   - `shot {web}` → `{png: <base64>, width, height}` (`Shell.capture`, 设备像素, 桌面的含面板).
   - `snapshot` / `act` / `run` / `query {selector, window?, ref?, limit?, attributes?}` → `Broker.inspect.api` 的同名方法 (`docs/agents/web/inspect.md`「看和操作桌面」).
-  - `open {name?, path?, url?}` (2026-11-23, acdev `acdev open`): 只给 `name` 拉起应用; 带 `path` (绝对路径, 文件或文件夹) 用默认应用或 `name` 打开它, 带 `url` (只认 http / https)
+  - `open {name?, path?, url?}` (acdev `acdev open`): 只给 `name` 拉起应用; 带 `path` (绝对路径, 文件或文件夹) 用默认应用或 `name` 打开它, 带 `url` (只认 http / https)
     交给应用当链接打开; `path` 和 `url` 至多给一个, 应答 `{ok, text, app?}` (`DevChannel.opening` 查形状). 会话里由 acdes 管家做 (复用 `apps.openPath` 和 open-link).
     宿主窗口的单应用会话只有这一个应用: `name` 只能是它; `path` 经启动器 `sys.lendPaths` (src/host `web.rs` `lend_paths`, `Workspace::lend_path`: 能写就可写借出,
     不能写退回只读) 借给它, 照 openPath 的形状 `{kind: 'open-file', file, entry}` 经 `window.request` 交给页面; `url` 交 `{kind: 'open-link', url}`.
   - `console {web?, since?, limit?, level?}` → `{entries, next, dropped}`: 页面的 `console.*` 和没人接的错误 (`devlog.ts`, 见下), `level` 是
     log / info / warn / error / debug, 或 errors (console.error 和错误); `web` 是 web 名、应用 id 或 desktop; `since` 是上次的 `next`, `dropped`
     是 since 之后已经丢掉的条数. 条目 `{seq, time (ms, 和日志同一个零点), web, app, kind: console | error | rejection, level, text}`.
-    console 和 network 的应答另带 `origin`: 本进程时间零点的墙钟毫秒 (Unix epoch, `Date.now() - Log.clock()`), 会话里 acdev 合并多个页面进程时用它把各进程的 `time` 换到同一条时间轴 (2026-11-23).
+    console 和 network 的应答另带 `origin`: 本进程时间零点的墙钟毫秒 (Unix epoch, `Date.now() - Log.clock()`), 会话里 acdev 合并多个页面进程时用它把各进程的 `time` 换到同一条时间轴 .
       管家的 `{pages: true, since: {key: seq}}` 分发给各页面进程, 每项原样带回这份应答.
   - `network {web?, since?, limit?, failed?}` → 同样的形状, 条目 `{seq, time, web, app, id, kind: fetch | xhr | websocket | eventsource, method,
     url, requestBytes, status, statusText, responseBytes, ms, error, done}`; `failed` 只要出错的和 status ≥ 400 的.
   - `screen {path}` → `Shell.screenshot(path)` 加 `path` (绝对路径; 整个屏幕, 所有窗口合在一起).
   - `emulate {colorScheme?: light | dark | null}` → `{colorScheme, emulated}`: 所有页面 (和以后开的) 的 `prefers-color-scheme`
     (CSS 和 `matchMedia`); null 回到系统的 (portal / `ACDE_COLOR_SCHEME`). 模拟配色时系统配色的变化只记下, 回到系统时再生效.
-  - `appearance {scheme?: light | dark | null, glass?: clear | medium | tinted, reducedTransparency?: boolean}` (2026-11-23, acdev `acdev appearance`)
+  - `appearance {scheme?: light | dark | null, glass?: clear | medium | tinted, reducedTransparency?: boolean}` (acdev `acdev appearance`)
     → `{scheme, glass, reducedTransparency, emulated}`: 不给的不变, 什么都不给只读. `scheme` 同 `emulate` 的 colorScheme; `glass` 和 `reducedTransparency` 交启动器
     `#appearance` (和 portal 的外观变化同一条路, 发 `glass` 消息给页面, 页面 `setGlass` 重算样式和 `prefers-reduced-transparency`), 之后 portal 的变化照常覆盖.
     形状由 `DevChannel.appearing` 查. 会话里同名请求由 acdes 管家做, 改的是系统真实设置 (`backend.setAppearance` 那一路), 登录页、锁屏、桌面都跟着变.
@@ -68,16 +68,14 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
     (一起给, 默认页面中心), 按这一点命中 (被别的窗口盖住就落到那个窗口), 和真的系统拖放同一段 (`dndenter` + `dnddrop`); 只排进主线程就回答,
     页面收到 drop 要自己等. 会话没有, 回错.
   - `pointer {x, y}` → `{x, y}`: 把指针移到屏幕坐标 (会话是全局逻辑坐标, 宿主窗口是内容区坐标), 同真的移动 (悬停、屏幕边缘事件都照常发).
-  - `hit {x, y}` → `{x, y, window, surface, local?, element?, gone?, note?}` (2026-11-23, acdev `acdev hit`, AC/acdev#115, 设计见总仓
-    `.scratch/acdev-debug-insight/issues/09-hit-test.md`): 屏幕坐标 (同 `pointer`) 下面是什么. `Inspect.hit` → `dev/inspect/hit.ts` 的 `Hit`: 在窗口表
+  - `hit {x, y}` → `{x, y, window, surface, local?, element?, gone?, note?}` (acdev `acdev hit`): 屏幕坐标 (同 `pointer`) 下面是什么. `Inspect.hit` → `dev/inspect/hit.ts` 的 `Hit`: 在窗口表
     (`windows()`, 不算最小化和藏起来的) 和桌面面板的行里取 z 最大且盖住这一点的; `window` 是 `{ref, app, title}` (面板算 `w0`), `local` 是窗口内坐标;
     `surface` 是 `page`、`decoration` (标题栏一带, 即页面 `contentOffset` 之外)、`panel`、`native` (原生窗口, 或会话里别的进程的窗口) 或 `none` (什么都没盖住).
     页面一侧是 rpc `inspect.hit(x, y)` (`PageInspect.hit`, 窗口内坐标, 先减 `contentOffset`): `dom.hitTest` 命中的元素 (已按 `pointer-events: none` 穿透,
     即事件真正的目标)、它的祖先链, 和盖住这一点但被穿透的 `pointer-events: none` 元素 (只列最外层的, 不含目标的祖先; 顺序按文档倒序, 大致是上层在前).
     `element` 是 `{ref, line, tag, chain: [...], through: [...]}`, 每项的 `line` 与 snapshot 同一写法. 页面在回答前没了 (rpc 失败) 回 `gone: true` 不报错,
     由调用方重试. 会话里还只认本进程的窗口, 合成器那一半 (哪个表面、被谁遮挡) 等 acdev 的代理接上.
-  - `render {web?}` → `{web, window, raster, composedBy, layers}` (2026-11-23, acdev `acdev render`, AC/acdev#115, 设计见总仓
-    `.scratch/acdev-debug-insight/issues/08-render-path.md`): 页面实际走哪条渲染路径. 页面里是 rpc `dev.render` (只在 `ACDE_DEV`;
+  - `render {web?}` → `{web, window, raster, composedBy, layers}` (acdev `acdev render`): 页面实际走哪条渲染路径. 页面里是 rpc `dev.render` (只在 `ACDE_DEV`;
     `page/src/dev/render.ts`), 事实来自 `dom.renderReport()` (src/render `engine/report.rs`): `raster` 是 `{path: gpu, adapter, driver, backend, software}` (已发布的
     `Gpu`; `software` 是 lavapipe / llvmpipe 这类 CPU 类型的适配器)、`{path: cpu, canvases}` (前端登记了 `gpu::set_cpu_raster`, 即页面在 CPU 上画;
     `canvases` 是给画布用的设备名)、`{path: lost, adapter}`、`{path: none}` (什么设备都没有) 或 `{path: pending}` (设备还没发布); 不是 gpu 时带
@@ -146,7 +144,7 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
 3. 整页重载保留状态 (所有 reload): 关窗口前问旧页面要快照 (`dev.state`, 最多 0.5 秒, `devstate.ts`): 表单值、滚动位置、焦点和选区, 元素按 id
    或 `nth-child` 路径认; 新页面加载完在 0 / 50 / 200 / 600 / 1500 ms 各放回一次, 值经原型上的 setter 写再发 `input` / `change`.
 
-**客户机里 (有会话管家时)** (单应用 15, 和 acdes 管家对齐, 2026-11-19): 运行时不听 `ACDE_DEV`, 调试请求由 acdes 管家的调试服务端
+**客户机里 (有会话管家时)** (单应用 15, 和 acdes 管家对齐): 运行时不听 `ACDE_DEV`, 调试请求由 acdes 管家的调试服务端
 (`$XDG_RUNTIME_DIR/acde/dev.sock`, 只在开发客户机里建, 判断依据是 `/sys/firmware/qemu_fw_cfg/by_name/opt/acdev/key/raw` 存在; 启动器自己不判断,
 管家不开就收不到) 按 `web` 分给各进程的启动器, 经管家通道 (`ACDE_MANAGER_FD`) 往来 (`dev/relay.ts` `managerRelay`):
 
@@ -161,14 +159,14 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
   宿主上 `acdev dev --lock` 的预览没有管家, 页面名仍是 `desktop`, 也带 `lock: true`.
 - 开发模式 (`runtime::dev_mode()`, `src/runtime/devtools/mode.rs`, 进程里定一次): 有管家的进程 (环境里有 `ACDE_MANAGER_FD`: 会话里的桌面、应用、
   服务进程) 只看 acdev 客户机的固件配置项 `/sys/firmware/qemu_fw_cfg/by_name/opt/acdev/key/raw` 在不在 (和 acdes 管家的 `Developer` 判断
-  同一个, 用户 2026-11-20 定 C), 不看环境里的 `ACDE_DEV`: 正式会话的环境经 greetd 读用户的 `~/.profile`, Agent 能往里写 `ACDE_DEV=1`, 以前这就让
+  同一个, 用户定 C), 不看环境里的 `ACDE_DEV`: 正式会话的环境经 greetd 读用户的 `~/.profile`, Agent 能往里写 `ACDE_DEV=1`, 以前这就让
   页面和启动器以为是开发会话 (DevTools 端点、`debug.eval`、调试请求的白名单全都打开). 没有管家的进程 (宿主上的 `acdev dev`, 开发者自己起的)
   照旧看 `ACDE_DEV`. JS 看到的环境 (`sys.env()`, 启动器再传给页面线程) 按这个结果改写: 不是开发模式就去掉 `ACDE_DEV`, 是开发模式而环境里没有
   就补 `ACDE_DEV=guest`; 有管家又不是开发模式时也去掉 `ACDE_DEBUG_DIR` (它会打开 `debug.eval`). 由它打开的开发能力: DevTools 端点
   (runtime `devtools`)、V8 inspector 与 live-edit (`host/engine.rs`、`host/inspector`)、`highlight` 和资源加载上报 (`host/dom.rs`)、页面的 DevTools 域、
   `debug.eval` / `evalOn`、`dev.state`、`dev.clock`、devroute (假回应)、devInit、热替换的重读 (`js/page/src/worker.ts`)、启动器调试请求的白名单 (下面).
   `ACDE_PROFILE_DIR` (只写 CPU profile 文件, 不开端点) 和 `ACDE_DEV_PLACES` (只在没有管家的单应用里) 不归它管.
-- 正式会话 (启动器所在进程不是开发模式, 见上, 用户环境里写了 `ACDE_DEV` 也算正式会话; 用户 2026-11-20 定, pending-decisions 第 7、8 项): 总管经 assistant 服务的 `acde:inspect` 也能看别的应用窗口、
+- 正式会话 (启动器所在进程不是开发模式, 见上, 用户环境里写了 `ACDE_DEV` 也算正式会话; 用户定, pending-decisions 第 7、8 项): 总管经 assistant 服务的 `acde:inspect` 也能看别的应用窗口、
   按元素点击, 请求照旧由管家经 `devrequest` 转给各启动器. 启动器只回答 `webs`、`snapshot`、`query`、`act`、`run` (`DevChannel.PRODUCTION`),
   别的 (`input` 按坐标发原始事件没法按元素核对, 以及 `eval`、`route`、`clock`、`console`、`network` 等) 回
   `<op>: not available in a production session (webs, snapshot, query, act, run)`. 谁能调、目标元素能不能点 (独占键盘的面板: 权限询问、确认卡片,
@@ -178,20 +176,20 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
   写错也算成立) 就整步拒绝, 回 `{ok: false, text: "<动作> on <ref>: only the user may act on this element | the element under the pointer | the focused element"}`,
   什么也不注入; 窗口的应用菜单 (`w3.m1`) 和原生窗口不查. 正式会话里没带 `guard` 的 `act` / `run` 直接回错
   `<op>: a production session needs a guard (...)`. 启动器这一层的白名单和这项核对是第二道. 窗口表照旧随请求的 `windows` 来 (正式会话里管家向
-  winman 取只读的那份). 开发会话不变.
-- 窗口表 (和 acdes 对齐, 2026-11-20): 管家转发 snapshot、act、query、run、open 时在请求里附 `windows: [{id, app_id, pid, title, x, y, width, height,
-  activated, hidden, state, desktop}]` (winman 的窗口表, 上层在前; `desk` 是虚拟桌面号; 最后一行是桌面 `{id: 0, desktop: true, pid}`, 没有坐标). 启动器的 Inspect 有它时用它列窗口 (`dev/guest.ts` `GuestWindows`): 窗口号就是 winman 的 id
+  acompositor 取只读的那份). 开发会话不变.
+- 窗口表 (和 acdes 对齐): 管家转发 snapshot、act、query、run、open 时在请求里附 `windows: [{id, app_id, pid, title, x, y, width, height,
+  activated, hidden, state, desktop}]` (acompositor 的窗口表, 上层在前; `desk` 是虚拟桌面号; 最后一行是桌面 `{id: 0, desktop: true, pid}`, 没有坐标). 启动器的 Inspect 有它时用它列窗口 (`dev/guest.ts` `GuestWindows`): 窗口号就是 acompositor 的 id
   (`w<id>`), 桌面是 `w0`; pid 等于本进程的那一行是自己的窗口 (桌面进程认 `desktop: true` 的那行), 有元素, 映射回本地窗口号; 别的进程的窗口列成 native, 没有元素.
   所以管家按 ref 的窗口号 (w0 给桌面进程, 其余按 pid 找进程) 转发 act 和带 ref 的 snapshot / query.
 - 页面名: 管家的 app welcome 带 `instance` (同一应用从 1 起的编号, 和管家 `instances` / `instancegone` 里的一致) 时, 应用的页面名是 `<应用 id>#<instance>`;
   没有时照旧用 `<应用 id>#<本地窗口号>` (宿主上的单应用).
-- 指针和按键 (2026-11-20): 有窗口表时, Inspect 的 act (click、double、right、hover、scroll、drag、key) 不经本进程的 shell, 而是发
-  `{devinject: {type: move | down | up | wheel | keydown | keyup, x?, y?, button?, dx?, dy?, source?, code?}}` 给管家, 由管家交 winman 注入成真实输入;
-  坐标是 winman 的屏幕坐标 (窗口表的 x、y 加元素在页面里的位置), `button` 和 `code` 是 evdev 码 (左键 0x110, 右键 0x111).
-- 锁屏页的窗口 (2026-11-20): 锁着时管家在窗口表里加一行锁屏页 `{id, lock: true, pid: <锁屏进程>, title: "lock"}` (`id` 是 winman 给锁屏面的号, 没有时管家另取一个不和别的窗口撞的号; 只在一次锁定期间不变, 每次锁定可能换号, 用例每次锁定后重新查 `webs`).
-  锁屏进程认 `lock: true` 且 pid 是自己的那一行, 叠在最上面, ref 是 `w<id>`; 有窗口表时 `webs` 报的 `window` 也换成窗口表里的号 (桌面 0, 锁屏页和应用是 winman 的号),
+- 指针和按键 : 有窗口表时, Inspect 的 act (click、double、right、hover、scroll、drag、key) 不经本进程的 shell, 而是发
+  `{devinject: {type: move | down | up | wheel | keydown | keyup, x?, y?, button?, dx?, dy?, source?, code?}}` 给管家, 由管家交 acompositor 注入成真实输入;
+  坐标是 acompositor 的屏幕坐标 (窗口表的 x、y 加元素在页面里的位置), `button` 和 `code` 是 evdev 码 (左键 0x110, 右键 0x111).
+- 锁屏页的窗口 : 锁着时管家在窗口表里加一行锁屏页 `{id, lock: true, pid: <锁屏进程>, title: "lock"}` (`id` 是 acompositor 给锁屏面的号, 没有时管家另取一个不和别的窗口撞的号; 只在一次锁定期间不变, 每次锁定可能换号, 用例每次锁定后重新查 `webs`).
+  锁屏进程认 `lock: true` 且 pid 是自己的那一行, 叠在最上面, ref 是 `w<id>`; 有窗口表时 `webs` 报的 `window` 也换成窗口表里的号 (桌面 0, 锁屏页和应用是 acompositor 的号),
   所以 `acde.window({id: web.window})` 能拿到锁屏页. 管家转发 `webs` 时也附 `windows`.
-- 跨进程拖放 (2026-11-20): 客户机里目标在别的进程的窗口时, 拖放的源进程量不到目标元素; act drag 的 `arg` 也收屏幕坐标 `"x,y"`,
+- 跨进程拖放 : 客户机里目标在别的进程的窗口时, 拖放的源进程量不到目标元素; act drag 的 `arg` 也收屏幕坐标 `"x,y"`,
   acdev driver 在客户机会话里用目标窗口的原点加目标元素的 rect 中心算出坐标再发.
-- 窗口操作 (2026-11-20): 有窗口表时, Inspect 对 winman 窗口 (窗口表里有、不是桌面 0) 的最小化、还原、铺满、全屏、聚焦和关别的进程的窗口, 不经本进程的 shell
-  (应用进程的 shell 不认识 winman 的号), 改发 `{devwindow: {window, state?, focus?: true, close?: true}}` 给管家, 由管家交 winman_window_v1 去做; 桌面和面板仍走本进程.
+- 窗口操作 : 有窗口表时, Inspect 对 acompositor 窗口 (窗口表里有、不是桌面 0) 的最小化、还原、铺满、全屏、聚焦和关别的进程的窗口, 不经本进程的 shell
+  (应用进程的 shell 不认识 acompositor 的号), 改发 `{devwindow: {window, state?, focus?: true, close?: true}}` 给管家, 由管家交 acompositor_window_v1 去做; 桌面和面板仍走本进程.

@@ -5,10 +5,10 @@
 ## render (`src/render`, Rust 接口)
 
 - `Document::new(width, height, scale, &Options {base_url, resources: [Resource {prefix, dirs}], default_lang, verify_paint, svg_text_path,
-  dark, name})`: 尺寸是物理像素. 同源资源按最长前缀在 dirs 里找 (`render/net.rs` `LocalNet::path`): 路径先百分号解码, 只许普通的段 (挡 `..`), 也不给以 `.` 开头的段 (`.env`、`.git` 这类); 页面 fetch / XHR / 模块走的 `Assets::file` 用同一个 `resource_file`, 再把文件和借出的目录都解开符号链接 (`canonicalize`), 解开后的文件不在那个目录里就当没有 (2026-11-22: 借出的文件夹里指向外面的链接, 如 `~/Pictures/x` → `~/.ssh/id`, 原来照读); 系统图标走内置前缀 `/acde-icons/`: 地址是 `/acde-icons` 加图标的绝对路径 (acde:icons 的 `icons.lookup` 返回的就是它), 只认解开符号链接后落在图标目录里的文件 (`$XDG_DATA_HOME` 与 `$XDG_DATA_DIRS` 下的 `icons`、`pixmaps`、`swcatalog/icons` (AppStream 的应用图标, 商店用), 加 `~/.icons`; 路径先按百分号解码再核对; 清单只在 `net.rs` 的 `icon_dirs`, acdes 应用沙箱把这几处只读绑进去); 前缀不叫 `/icons/`, 免得和应用自己的资源前缀撞名. 系统声音同法走 `/acde-sounds/` (2026-11-23, 给 acde:sounds 的 `sounds.lookup` 返回的路径用): 只认 `$XDG_DATA_HOME` 与 `$XDG_DATA_DIRS` 下的 `sounds`; 两个前缀共用 `net.rs` 的 `system_file` 一处核对 (同一套数据目录、同样先解码再解开符号链接), 页面的 `<img>`、CSS 经渲染的取资源走它, fetch、XHR 和媒体 (`<audio>` 等, 经 `Assets::file`) 也走它. `file:` 只在开发模式 (`dev_mode`) 读借出的目录, 平时一律当没有, 和浏览器一样 (用户 2026-11-22: 原来任何页面写 `<img src="file:///…">`、CSS `url(file:…)` 都能读到本机任意文件; 中间一版放行过图标目录); 不联网, 读不到回空. `Document` 发句柄:
+  dark, name})`: 尺寸是物理像素. 同源资源按最长前缀在 dirs 里找 (`render/net.rs` `LocalNet::path`): 路径先百分号解码, 只许普通的段 (挡 `..`), 也不给以 `.` 开头的段 (`.env`、`.git` 这类); 页面 fetch / XHR / 模块走的 `Assets::file` 用同一个 `resource_file`, 再把文件和借出的目录都解开符号链接 (`canonicalize`), 解开后的文件不在那个目录里就当没有 (2026-11-22: 借出的文件夹里指向外面的链接, 如 `~/Pictures/x` → `~/.ssh/id`, 原来照读); 系统图标走内置前缀 `/acde-icons/`: 地址是 `/acde-icons` 加图标的绝对路径 (acde:icons 的 `icons.lookup` 返回的就是它), 只认解开符号链接后落在图标目录里的文件 (`$XDG_DATA_HOME` 与 `$XDG_DATA_DIRS` 下的 `icons`、`pixmaps`、`swcatalog/icons` (AppStream 的应用图标, 商店用), 加 `~/.icons`; 路径先按百分号解码再核对; 清单只在 `net.rs` 的 `icon_dirs`, acdes 应用沙箱把这几处只读绑进去); 前缀不叫 `/icons/`, 免得和应用自己的资源前缀撞名. 系统声音同法走 `/acde-sounds/` (给 acde:sounds 的 `sounds.lookup` 返回的路径用): 只认 `$XDG_DATA_HOME` 与 `$XDG_DATA_DIRS` 下的 `sounds`; 两个前缀共用 `net.rs` 的 `system_file` 一处核对 (同一套数据目录、同样先解码再解开符号链接), 页面的 `<img>`、CSS 经渲染的取资源走它, fetch、XHR 和媒体 (`<audio>` 等, 经 `Assets::file`) 也走它. `file:` 只在开发模式 (`dev_mode`) 读借出的目录, 平时一律当没有, 和浏览器一样 (用户定: 原来任何页面写 `<img src="file:///…">`、CSS `url(file:…)` 都能读到本机任意文件; 中间一版放行过图标目录); 不联网, 读不到回空. `Document` 发句柄:
   `dom()` (JS 线程)、`handle()` (出帧方).
 - 线程: 文档由 JS 线程和 `acde-render` 线程共用 (一把锁).
-- DOM: `Dom` 实现 acde-dom 的 `DomNative` (契约 `web/packages/acde-dom/src/native.ts`, 同名 snake_case). 节点 id 是 u32 不复用, `<html>` 是 0;
+- DOM: `Dom` 实现 acde-dom 的 `DomNative` (契约 `js/dom/src/native.ts`, 同名 snake_case). 节点 id 是 u32 不复用, `<html>` 是 0;
   查询是 CSS 像素; 错误说明以 DOMException 名字开头. 改了文档还没 `Dom::commit` 时 render 不出帧, 期间的指针和滚动在 commit 时按顺序放回.
   连在文档上的节点一直活着, 断开的子树有 JS 包装 (pin) 才活; 包装对象连着时强引用, 断开变 WeakRef, 回收时 unpin (acde-dom `realm.ts`).
   `hit_test` 返回节点 id (坐标是视口的, 整页滚动过也对: blitz 的 `hit` 要页面坐标, `element_from_point` 加上视口的滚动); `metrics` 对根元素照 CSSOM View 给: `clientWidth` / `clientHeight` 是视口的大小 (不是内容的), `scrollWidth` / `scrollHeight` 不小于视口 (acde-dom 的 `scrollIntoView` 靠这个判断整页能不能滚); `caret_rect` / `caret_from_point` / `text_rects` (偏移是 UTF-16). `<select>`: `options` / `option_selected` /
@@ -30,27 +30,27 @@
   先画进临时纹理再合成. 光栅化方 (src/vello) 做 filter 的 drop-shadow、模糊、颜色矩阵, backdrop 的模糊和所有颜色函数 (`Backdrop::effect`:
   按顺序合成一个颜色矩阵, 几个 blur 按平方和开方合并); backdrop-filter 里的 drop-shadow 不做; 只切最外层: 已有 filter 的元素里面再有 filter / backdrop-filter 时不做 (#46);
   这两种同一组滤镜只记一次 warn (最多记 64 组).
-  同一元素既有 `mask-image` 又有 filter (2026-11-24, AC/libacde#5): 规范的顺序是先滤镜、再遮罩、最后 clip-path, 但段模型里滤镜由前端在合成时套用, 没有"滤镜之后
+  同一元素既有 `mask-image` 又有 filter (AC/libacde#5): 规范的顺序是先滤镜、再遮罩、最后 clip-path, 但段模型里滤镜由前端在合成时套用, 没有"滤镜之后
   再套遮罩"这一步; 原来滤镜层弹出就切段, 遮罩的 DestIn 落进下一段新开的空隔离层, 遮罩丢掉, 整块显示 (dopame 菜单栏充电闪电成白方块). 现在 `Split` 在滤镜层之后紧跟着
   DestIn 层时 (`masked_after`) 把这层遮罩并进滤镜那一段 (段到遮罩层弹出为止), 并去掉滤镜里的 drop-shadow (`unshadowed`; 只剩 drop-shadow 时不切段).
   内容在遮罩内不透明时 (按规范投影全被遮罩裁掉) 和规范逐像素相同. 和规范不一致的两处: 模糊在遮罩之后做, 遮罩边缘会被柔化; 内容在遮罩内半透明时看不到本该透出的投影.
   按规范的完整修法见 AC/libacde#5 (跨 libacde、acdes、acdev: Part 加滤镜之后的遮罩, 各合成器先把阴影和内容画到临时图上再套遮罩), 留作后续.
   回归测试在 `tests/render_layers.rs` (遮罩外的像素和没有这个元素时相同; 模糊保留、遮罩在段内).
-  `text-shadow` (2026-11-23, vendor/blitz `blitz-paint/src/text/shadow.rs`): 每个阴影是同一段字形按偏移再画一遍, 颜色用阴影的, 写在后面的画在下面, 都在文字之前;
+  `text-shadow` (vendor/blitz `blitz-paint/src/text/shadow.rs`): 每个阴影是同一段字形按偏移再画一遍, 颜色用阴影的, 写在后面的画在下面, 都在文字之前;
   有模糊时这段字形放进一个 GaussianBlur 滤镜图层 (标准差为模糊半径的一半, 同 box-shadow 和 drop-shadow), 所以带模糊的文字阴影也走上面的 filter 段, 受同样的限制
   (已有 filter 的元素里面不做); 装饰线和 "…" 不带阴影, `background-clip: text` 的蒙版不画阴影.
   窗口之间的毛玻璃 (`setBackdrop`、面板的 `backdrops`) 仍只带 blur / saturate / brightness.
-  磨砂的角形 (2026-11-22): blitz-paint 推带 `backdrop-filter` 的图层时用 `push_shaped_layer` 带上元素的 `Corners {radius, exponent}`
+  磨砂的角形 : blitz-paint 推带 `backdrop-filter` 的图层时用 `push_shaped_layer` 带上元素的 `Corners {radius, exponent}`
   (`acde-scene` 的 `corner`; `exponent` 是超椭圆指数 `n = 2^k`, 2 是圆弧, CSS `squircle` 是 4), `render::Backdrop` 记下它: `radius()` 有声明时
   用声明的半径 (乘图层变换的缩放), 不再从背景路径猜; `exponent()` 没有声明时是 2. GPU 合成的 `gpu::Backdrop` 多一个 `exponent`, 着色器
   用 acde-scene 导出的 `corner::WGSL` (`acde_corner_coverage`, 建着色器时拼在 `compose.wgsl` 前面; acdes 的 compose 同样拼它), 和 `corner::coverage`
   逐行对应, 公式只在 acde-scene 一处; 前端把面板的磨砂交给
-  合成器时带上 `exponent()` (acdes 用 `acompositor_backdrop_v1` 版本 2 的 `add_shaped_area`). 窗口级的 `setBackdrop` 也带角形 (2026-11-22, issue 16):
+  合成器时带上 `exponent()` (acdes 用 `acompositor_backdrop_v1` 版本 2 的 `add_shaped_area`). 窗口级的 `setBackdrop` 也带角形 (issue 16):
   `effect.shape` 收 `round` / `squircle` / `superellipse(k)` (k 取 1 到 3, 和 `setWindowLook` 的 `corners.shape` 同一个解析 `cornerShape`, `js/page/src/frametheme.ts`),
   胶水只传 k, 原生层 (`webnative.rs` `set_backdrop`) 用 `acde_scene::corner::exponent` 换成 n, `SurfaceCommand::Backdrop` 的效果是
   `[半径, 模糊, 饱和, 亮度, 指数]`; C 接口不改结构, 指数放在 `AcdeCommand.thickness` (Backdrop 本来不用它). 没写 shape 时是圆弧 (n = 2).
 - 模糊 (src/vello `Composer`、shell `effects.rs`) 是降采样 / 升采样链, 几层、采样偏移多大由 acde-model `Blur::of(sigma)` 一处决定
-  系统玻璃 (2026-11-22, 总仓 `.scratch/libacde/glass-plan.md`): 元素有 `backdrop-filter` 又声明了作者自定义属性 `--acde-glass` (`regular`、`clear`; `blur` (2026-11-24, `Glass::BLUR`) 是和窗口材质 `blur` 同一份的背景模糊: 取 `Glass::blur(档位, 深浅)`, 没有透镜、高光、轮廓和折射, 跟着系统档位、深浅和"减少透明度" (此时是 `Opaque` 档, 着色不透明) 变, 页面的菜单、提示条、搜索框用它; 其余分项
+  系统玻璃 : 元素有 `backdrop-filter` 又声明了作者自定义属性 `--acde-glass` (`regular`、`clear`; `blur` (`Glass::BLUR`) 是和窗口材质 `blur` 同一份的背景模糊: 取 `Glass::blur(档位, 深浅)`, 没有透镜、高光、轮廓和折射, 跟着系统档位、深浅和"减少透明度" (此时是 `Opaque` 档, 着色不透明) 变, 页面的菜单、提示条、搜索框用它; 其余分项
   `--acde-glass-refraction`、`-blur`、`-bleed`、`-highlight`、`-white-point`、`-smoothing`、`-tint` 盖在预设上; `-highlight: <角度> <强度> [<宽度>]` 的角度按 CSS
   的约定, 0deg 朝上、顺时针, 表示光从哪边来, 打亮朝向光源的边, 对侧的边另有一条约三分之一强度的亮线; 宽度是从边缘往里的一条细带 (长度, 随缩放, 不写沿用预设),
   强度在带内从边缘线性降到 0 (2026-11-22 改: 原来带宽借折射的 inner_height, clear 档 18 px 一整条加白, 面积太大; 苹果的镜面光是 1–2 px 的细边, 上亮下暗,
@@ -58,17 +58,17 @@
   `-tint` 的颜色认 `#rgb`、`#rgba`、`#rrggbb`、`#rrggbbaa` 与 `rgb(r g b / a)`) 时, blitz-paint (`render/glass.rs`) 从计算样式取这几个
   自定义属性的文本, 交 `acde_scene::glass::Glass::from_properties` 解析 (解析只此一处; 写错的分项留空并记 warn), 和角形一起作为 `LayerShape` 随
   `push_shaped_layer` 带出. `render::Backdrop::glass()` 给出它 (长度已乘图层变换的缩放), `gpu::Backdrop` 多一个 `glass` 字段. 玻璃的算法、线上格式
-  (`to_wire` / `from_wire`, 31 个小端 f32; 第 26–31 个是透镜厚度、色散、乘暗、斜面宽度、高光宽度、折射率, 只收到前 25 个的旧对端按 0 处理); `Glass::with_overrides(base, &[f32])` 用同一线上格式的数组覆盖 base, NaN 表示这一项不覆盖 (先认出 NaN, 再整体夹取), 多出的项忽略, 合成器 v4 的 `add_glass_area_role` 用它、`scaled` / `reach`、CPU 简化版 (`glass::cpu::paint`: 最小和最大两层模糊按两层的不透明度归一、在预乘空间混合, 区域外的渗出是预乘底色乘渗出系数, 和 GPU 一致; 高光、白点、着色按直通色算; 不做折射. 画不了折射就退成磨砂 (2026-11-23, 总仓 `.scratch/libacde/glass-cpu-fallback.md`): 玻璃靠透镜或折射成像 (透镜厚度大于 0 且折射率大于 1, 或内外圈折射量大于 0)、而自己的模糊比 `blur` 材质通透档 (6/12 px) 弱时, 两层模糊换成 `Glass::blur(Level::Clear, _)` 的两层, 其余参数 (着色、高光、轮廓、渗出) 照旧; 不然通透档 0.5 px 的玻璃在没有 GPU 的客户机上等于全透明, 能读清下面窗口的字. 只此一处 (`Under::of`), 合成器的 CPU 合成、acdes 页面的 CPU 光栅、组的 `paint_cpu` 都经它; 取样外扩仍按原玻璃的 `reach()`, 外扩之外按边缘像素延伸, 和 CSS `backdrop-filter` 的边缘处理一致. GPU 路径不变) 和
+  (`to_wire` / `from_wire`, 31 个小端 f32; 第 26–31 个是透镜厚度、色散、乘暗、斜面宽度、高光宽度、折射率, 只收到前 25 个的旧对端按 0 处理); `Glass::with_overrides(base, &[f32])` 用同一线上格式的数组覆盖 base, NaN 表示这一项不覆盖 (先认出 NaN, 再整体夹取), 多出的项忽略, 合成器 v4 的 `add_glass_area_role` 用它、`scaled` / `reach`、CPU 简化版 (`glass::cpu::paint`: 最小和最大两层模糊按两层的不透明度归一、在预乘空间混合, 区域外的渗出是预乘底色乘渗出系数, 和 GPU 一致; 高光、白点、着色按直通色算; 不做折射. 画不了折射就退成磨砂 : 玻璃靠透镜或折射成像 (透镜厚度大于 0 且折射率大于 1, 或内外圈折射量大于 0)、而自己的模糊比 `blur` 材质通透档 (6/12 px) 弱时, 两层模糊换成 `Glass::blur(Level::Clear, _)` 的两层, 其余参数 (着色、高光、轮廓、渗出) 照旧; 不然通透档 0.5 px 的玻璃在没有 GPU 的客户机上等于全透明, 能读清下面窗口的字. 只此一处 (`Under::of`), 合成器的 CPU 合成、acdes 页面的 CPU 光栅、组的 `paint_cpu` 都经它; 取样外扩仍按原玻璃的 `reach()`, 外扩之外按边缘像素延伸, 和 CSS `backdrop-filter` 的边缘处理一致. GPU 路径不变) 和
   逐像素的 WGSL (`glass::WGSL`, 要先拼 `corner::WGSL`) 都在 acde-scene; CPU 的盒式模糊也只此一份 (`acde_scene::blur`, 原 acompositor `frost.rs` 原样搬来).
   合成器经 `acompositor_backdrop_v1` 版本 3 的 `add_glass_area` 收玻璃 (acdes). 进程内的 GPU 合成 (`src/vello/compose.rs`, 宿主窗口用) 也画玻璃
-  (2026-11-22): 取样区域是元素外扩 `reach()`; 五层里不透明度大于 0 的每层用现有的模糊管线 (`blur_tagged`) 各模糊一次, 按 `Pipe::Mix` 依次插值成按不透明度归一的
+  : 取样区域是元素外扩 `reach()`; 五层里不透明度大于 0 的每层用现有的模糊管线 (`blur_tagged`) 各模糊一次, 按 `Pipe::Mix` 依次插值成按不透明度归一的
   混合 (第 i 层的权重是它的不透明度除以已混合各层之和), 再过一遍 `backdrop-filter` 的颜色矩阵 (`Pipe::Filter`), 最后 `fs_glass` 逐像素做折射取样、高光、白点、
   着色、平滑边缘和渗出; 着色器拼的是 acde-scene 的 `corner::WGSL` 和 `glass::WGSL`, 和合成器同一份函数. 参数经 `Params`: 矩阵前三列放折射、渗出与高光、
   白点与平滑, `bias` 是取样区域, `color` 是着色.
-  玻璃底下取到透明像素 (底下的真实背景在这一层之外, 如钉住面板自己的透明底) 时不当成黑色 (2026-11-24, 胶囊和总管球发暗): CPU 的 `cpu::over` 和 WGSL 的
+  玻璃底下取到透明像素 (底下的真实背景在这一层之外, 如钉住面板自己的透明底) 时不当成黑色 (胶囊和总管球发暗): CPU 的 `cpu::over` 和 WGSL 的
   `acde_glass_over` 把已知底色和"只有着色"按底下的不透明度 a 加权, 颜色 = (着色后的底色 × a + 着色 × 着色不透明度 × (1 − a)) / 合成不透明度,
   合成不透明度 = a + 着色不透明度 × (1 − a). 底下不透明时和原来一样; 全透明时就是着色本身, 由合成器盖在真实背景上. 页面合成 (`compose.wgsl`)、组 (`group.wgsl`)、CPU 都走这一处.
-  轮廓线 (2026-11-23, `Glass.outline: Outline {width, color, merged}`): 写法 `--acde-glass-outline: <宽度> <颜色> [pieces | merged] | none`
+  轮廓线 (`Glass.outline: Outline {width, color, merged}`): 写法 `--acde-glass-outline: <宽度> <颜色> [pieces | merged] | none`
   (宽度随缩放, 颜色同 `-tint`, 第三项缺省 `pieces`). 预设各档默认开, 1 px pieces, 亮色页面 `rgb(255 255 255 / 0.5)`、暗色页面 `rgb(255 255 255 / 0.25)`:
   `Glass::preset_in(role, level, dark)` 按 `preference().dark` 取 (渲染器在页面深浅变化时写进去并整页重画), `preset(role, level)` 是亮色; 不透明档
   的着色也跟着深浅. 线是两侧都截止的带: 边缘往里 `width`, 外侧在边缘处 0.5 px 抗锯齿收掉 (`clamp(width + 0.5 + d) · clamp(0.5 − d)`; 只截内侧时, pieces 画法会把别块
@@ -80,7 +80,7 @@
   单块两种一样. 线上格式 31→37 个 f32 (末六个是轮廓宽度、颜色和画法), 组每块 9 个 vec4 (2304 字节; 轮廓宽度在 `corner.w`, 颜色在 `outline`,
   画法在 `mode.x`), 页面合成的 `Params` 多一个 vec4 (160 字节; 再加查找表的 `table` 后 176 字节), 轮廓宽度在 `shift.y`. "逐位等于单块" 的几条测试都在轮廓关掉 (`none`) 时比; 组的
   CPU 测试覆盖 merged 脖子连续、旧边界无线, pieces 旧边界都有线、脖子是玻璃无线, none 无线.
-  薄膜干涉 (2026-11-24, 总仓 `.scratch/dopame/boss-capsule-look.md`「怎么恢复」第 4 条; `Glass.film: Film {amount, cell}`, `glass/film/`):
+  薄膜干涉 (`Glass.film: Film {amount, cell}`, `glass/film/`):
   写法 `--acde-glass-film: <强度> | auto | none` (强度 0–1, `auto` 是 `Film::AMOUNT` = 0.2, 缺省 none 即不画). 页面是深色时强度乘 `1 − Film::NIGHT` (0.6),
   解析时按 `preference().dark` 算好 (深浅变了渲染器整页重画, 重新解析). 公式和常量搬自 dopame 原来的液态玻璃 (`engines/film.ts` 的 `FILM`), 只在这里一份:
   膜厚 `240 + 260·noise(P / 64px + t·(0.05, −0.035)) + 120·h` nm, 颜色 `0.5 − 0.5·cos(2π·2·1.33·膜厚·cosθt / λ)`, λ 取 (650, 532, 450) nm,
@@ -93,13 +93,13 @@
   用 `Film::shaded` 同一公式 (单块的 P 相对元素中心, GPU 是画布坐标, 噪声图案不同, 形态相同). 线上格式 37→39 个 f32 (第 38、39 个是强度和格子);
   组每块 `mode.y`、`mode.z`、`mode.w` 是强度、格子和 t (块大小不变); 页面合成的 `Params` 多一个 `film` (192 字节). 合成器自己的单块着色器
   要把 `Glass.film` 的 `Film::uniform()` 交给 `acde_glass_film`; 组走 `acde_glass_group_shade` 已经带上. 窗口材质的 `overrides` 也认 `film` (第 38、39 个).
-  预设表 (通透度档位, 2026-11-22, 总仓 `.scratch/libacde/glass-transparency-plan.md`; `glass/preset.rs`, 参数表只此一份): `Glass::preset(Role, Level)`,
-  `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 模糊 0.5 px (背景有文本时页面自己切到 8 px, 不进预设), 内圈折射 0.8 (2026-11-23 用户定), 不染色、不渗出, 乘暗 0.05, 透镜斜面 34 px、厚度 22 px、折射率 1.5、色散 0.01 (用户 2026-11-23 在调参页定), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3, 内圈折射按比例从 0.4 提到 0.8)、`Tinted`
+  预设表 (通透度档位; `glass/preset.rs`, 参数表只此一份): `Glass::preset(Role, Level)`,
+  `Role` 是 `--acde-glass` 的 `regular` / `clear`; `Level` 是 `Clear` (通透, 默认, 线上值 0: 模糊 0.5 px (背景有文本时页面自己切到 8 px, 不进预设), 内圈折射 0.8 (2026-11-23 用户定), 不染色、不渗出, 乘暗 0.05, 透镜斜面 34 px、厚度 22 px、折射率 1.5、色散 0.01 (用户定在调参页定), 观感照 ShengzhiWu/liquid-glass)、`Medium` (适中, 1, clear-3, 内圈折射按比例从 0.4 提到 0.8)、`Tinted`
   (着色, 2, regular-2, 内圈折射按比例从 0.35 提到 0.7)、`Opaque` (减少透明度, 3: 重模糊加接近不透明的着色, `Glass::opaque(dark)` 按深浅给色, 预设取浅色). 名字和线上值都在 `Level`
   (`parse` / `from_wire` / `to_wire`, 照 `motion::Preset`), 认不得的线上值当通透. regular 取当前档, clear 再通透一档 (`Level::clearer`, 到通透为止,
-  不透明不变). 高光各档一律 `330deg 0.45 4px` (用户 2026-11-23 在调参页定). `Glass::from_properties_at(level, …)` 按档位取预设再盖分项;
+  不透明不变). 高光各档一律 `330deg 0.45 4px` (用户定在调参页定). `Glass::from_properties_at(level, …)` 按档位取预设再盖分项;
   `from_properties` 是默认档 (通透).
-  材质表 (2026-11-23, 总仓 `.scratch/libacde/glass-material-api.md` 末节; `acde_scene::material`): 窗口级材质按名字登记, 不是封闭的枚举. 名字是 `[a-z0-9._-]`、不超过 64 字节
+  材质表 (`acde_scene::material`): 窗口级材质按名字登记, 不是封闭的枚举. 名字是 `[a-z0-9._-]`、不超过 64 字节
   (`Material::valid`, `MOST_NAME`); 内置 `glass` (液态玻璃, 取 `Glass::preset_in(role, 档位, 深浅)`)、`blur` (背景模糊加着色, 没有透镜、高光、轮廓和折射, `Glass::blur(档位, 深浅)`)、
   `none` (不画) 第一次用表时登记. `Material::lookup(name)` 查表, `register(name, look)` 留给以后的自定义效果 (名字不合规或已占用回 None; 画法 `Look` 是
   `#[non_exhaustive]`). `Material::resolve(name, warn)` 给合成器、宿主窗口和页面胶水用: 空名是 `none`, 查不到按 `none` 画, 每个名字只 warn 一次.
@@ -110,7 +110,7 @@
   `WindowMaterial::from_options`): `name` 是 `Material::resolve` 之后实际生效的名字 (`none` 即取消), `role`、`group` (已查格式)、`spacing` (缺省 10, 0–256)、`titlebar`
   (只铺标题栏, 高度由宿主按窗框定), `overrides` 已由 `acde_scene::material::overrides` 从"参数名 → CSS 写法"换成线上格式 (NaN 不覆盖; 两词的 highlight 不盖宽度, lens 只盖给了的几项;
   写错的项 warn 后不盖). 会话里 acdes 把 `glass` 交给 `add_glass_area_role`, 其余交给 `set_window_material(name, height, overrides)`; C 接口暂不转发 (`ffi.rs` 丢掉).
-  玻璃组 (融合, 2026-11-22, 总仓 `.scratch/libacde/glass-merge-plan.md`; `acde_scene::glass::group`): `GlassGroup` 是最多 `MOST_PIECES` (16) 块
+  玻璃组 (融合; `acde_scene::glass::group`): `GlassGroup` 是最多 `MOST_PIECES` (16) 块
   `Piece {center, half, radius, exponent, glass}` 加间距 `spacing`, 满了 `push` 回 false (调用方让多出的块不参加融合, 各画各的, 记一次 warn).
   各块的距离场按 Inigo Quilez 的多项式平滑最小值合成 (https://iquilezles.org/articles/smin/ , `h = clamp(0.5 + 0.5 (d − dᵢ) / k)`,
   `d = mix(d, dᵢ, h) − k h (1 − h)`, k 是间距): 只在两块的距离差小于 k 处起作用, 所以间隙不小于 k 时各块的轮廓原样不动, 小于 k 时开始鼓出,
@@ -128,13 +128,13 @@
   16384 字节 (https://registry.khronos.org/OpenGL-Refpages/es3.1/html/glGet.xhtml), 页面合成和合成器都能用. 块数和间距由使用方的参数传入
   `acde_glass_group_field(p, count, spacing)`; `acde_glass_group_offset` / `acde_glass_group_shade` 按场做折射偏移和着色, 和单块的 `fs_glass` 是同一套函数
   (`acde_glass_offset_along`、`acde_glass_shine`). CPU 版 `GlassGroup::paint_cpu`, 同样不做折射.
-  透镜 (边缘折射, 2026-11-22, `Glass.lens {strength, width, dispersion}`、`Glass.darken`): 观感照用户指定的 ShengzhiWu/liquid-glass (MIT,
+  透镜 (边缘折射, `Glass.lens {strength, width, dispersion}`、`Glass.darken`): 观感照用户指定的 ShengzhiWu/liquid-glass (MIT,
   https://github.com/ShengzhiWu/liquid-glass , 演示 https://shengzhiwu.github.io/liquid-glass ; 只借做法, 没有拷代码): 中间不模糊、不加白, 颜色只乘
   `1 − darken` (它是 0.95); 边缘那圈"发光"不是高光, 是只在很窄一圈边缘的强折射把背后亮的颜色挤成一条细线 (它的放大按场值 `exp(−20·(sum − 0.7))`,
   离阈值一点就几乎为 0); 红绿蓝分三次取样出彩边 (它是 485 / 500 / 515, 即绿色上下各 3%). 我们在距离场上做: e 是到边缘的距离, w 是宽度,
-  早退 (2026-11-23): 透镜厚度为 0、折射率不大于 1、在斜面以外或玻璃外面时 (`acde_glass_bends` 为假) 不求梯度也不进斜面计算. 玻璃底图只有一层模糊时
+  早退 : 透镜厚度为 0、折射率不大于 1、在斜面以外或玻璃外面时 (`acde_glass_bends` 为假) 不求梯度也不进斜面计算. 玻璃底图只有一层模糊时
   (含模糊为 0, 只拷一份底图) 不再画混合那一遍, 直接用这一层; `backdrop-filter` 没有颜色函数时也不画颜色矩阵那一遍.
-  透镜查找表 (2026-11-23, `glass::lens`): 斜面剖面加右侧下包络每像素要算 64 段, 改成按 (厚度/斜面宽 `ratio`、折射率、色散) 预先算好的一维表.
+  透镜查找表 (`glass::lens`): 斜面剖面加右侧下包络每像素要算 64 段, 改成按 (厚度/斜面宽 `ratio`、折射率、色散) 预先算好的一维表.
   一张表三行 (折射率 `n − Δ`、`n`、`n + Δ`, 对应红、绿、蓝), 每行 `TABLE_SIZE` = 2048 个 f32, 第 k 个采样点在 `x = (k/2047)³` (外缘陡,
   采样点集中在那里), 值是归一化源深度 g(x)/w; 查表时 `at = x^(1/3)·2047` 线性插值. 和逐段算法的误差在 1/255 以内、仍严格递增 (单测按六组参数、三个通道
   各取 4001 点比对). CPU 侧 `LensTable` 有 `TABLE_SLOTS` = 8 个槽, 按 `Key` (ratio、折射率、色散) 找槽, 命中就复用, 没命中算一张新表放进最久没用的槽
@@ -149,7 +149,7 @@
   (https://kube.io/blog/liquid-glass-css-svg/ ), x = e/w ∈ [0, 1] (e 到边距离, w 斜面宽度, 不大于半短边), 高度 `y = ⁴√(1 − (1 − x)⁴)` (凸超椭圆),
   x ≥ 1 平坦, 位移严格为 0. 斜率 `y′ = (1 − x)³ (1 − (1 − x)⁴)^(−3/4)` 用解析式 (原文中心差分). 入射光垂直于背景, 表面法线与竖直的夹角
   `θ1 = atan(r·y′)` (r = 厚度/w), 斯涅尔定律 `sin θ1 = n·sin θ2`, 折射光与竖直的夹角 `θ1 − θ2`; 落点按"光从表面高度 h = 厚度·y 落到背景"算,
-  朝内偏移 `h·tan(θ1 − θ2)` (原文没给这一步的公式, 由 acdev-lead 推得, 等价于原文按剖面求出位移再沿边扫一圈). 源深度 `g(e) = e + 偏移`.
+  朝内偏移 `h·tan(θ1 − θ2)` (原文没给这一步的公式, 这里的推法等价于原文按剖面求出位移再沿边扫一圈). 源深度 `g(e) = e + 偏移`.
   保序: 外缘附近曲面陡, 偏移会先升后降, 若 g 下降就会对折出倒像. 所以把 g 在 64 段上取"右侧下包络" `ĝ(x) = min_{u ≥ x} (g(u) − 0.1 (u − x))`
   (节点之间线性插值), ĝ′ ≥ 0.1 处处成立、ĝ ≤ g、在 x = 1 处等于 1, 所以严格单调、不越过斜面、也不越过中心. 强度来自厚度 (越厚越弯),
   折射率 1 或厚度 0 时严格恒等. 色散: 红、绿、蓝各用折射率 `n − Δ`、`n`、`n + Δ` 算一遍 (`acde_glass_lens_rgb`), 三条都单调.
@@ -161,27 +161,27 @@
   (`fs_glass`, 参数放 `Params.matrix` 第四列: 厚度、色散、乘暗、斜面宽度; 折射率放 `Params.shift.x`; 组里每块的折射率放 `corner.z`) 与组的 WGSL (`acde_glass_lens`、`acde_glass_group_lens`、`acde_glass_tone_darkened`)
   同一套函数; 组只在边缘一圈内求梯度.
   CPU 版只做乘暗, 不做透镜.
-  页面怎么成组 (2026-11-22): 容器写 `--acde-glass-merge: <长度>` (对应苹果 `GlassEffectContainer(spacing:)`; 不写就不融合, 属性本身没有内置默认; 推荐 / 系统默认写 `--acde-glass-merge: 10px`, 用户 2026-11-23 定), 元素写 `--acde-glass-union: <名字>`
+  页面怎么成组 : 容器写 `--acde-glass-merge: <长度>` (对应苹果 `GlassEffectContainer(spacing:)`; 不写就不融合, 属性本身没有内置默认; 推荐 / 系统默认写 `--acde-glass-merge: 10px`, 用户定), 元素写 `--acde-glass-union: <名字>`
   (`glassEffectUnion`)、`--acde-glass-id: <名字>` (`glassEffectID`, 出现、消失的动画用); 都是作者自定义属性, 不认它们的浏览器照常显示 backdrop-filter.
   blitz-paint (`render/glass.rs`) 给有系统玻璃的效果图层带出 `LayerShape.group: Option<Membership>` (`acde_scene::glass::Membership`):
   自定义属性会继承, 所以容器是从父元素起往上、值和父元素相同的那一串祖先里最外面的一个 (它的节点号, 间距按 CSS px 乘 scale); 嵌套的两层容器写了同一个
-  值时算作外层一个. 同一个 `--acde-glass-union` 名字不看 DOM 层级、大小与形状, 因此调参页要让大胶囊、小胶囊和圆钮融合时统一写 `--acde-glass-union: tuner`. 单测把三种形状放在三个不同的父节点下, 最终仍是一个三块的 GlassGroup. 玻璃分层 (用户 2026-11-23): 每块页面玻璃属于一层, 层是离它最近的、自己也是玻璃 (有 `backdrop-filter` 且解析出系统玻璃) 的祖先元素的节点号,
+  值时算作外层一个. 同一个 `--acde-glass-union` 名字不看 DOM 层级、大小与形状, 因此调参页要让大胶囊、小胶囊和圆钮融合时统一写 `--acde-glass-union: tuner`. 单测把三种形状放在三个不同的父节点下, 最终仍是一个三块的 GlassGroup. 玻璃分层 (用户定): 每块页面玻璃属于一层, 层是离它最近的、自己也是玻璃 (有 `backdrop-filter` 且解析出系统玻璃) 的祖先元素的节点号,
   没有这样的祖先就是顶层 0 (`Membership.layer`, blitz-paint `glass_layer` 推断); 不是玻璃的包装元素 (`li`、布局用的 `div`) 不产生新层. 只有同一层的玻璃才可能
   融合 (`Membership::joins` 先比层, 再看同容器或同 union 名): 工具条和它里面的按钮即使在同一容器、写同一 union 名也不合, 按钮之间照常合.
   页面层也不和窗口层 (窗口材质) 融合, 不跨窗口; 原定的 `--acde-glass-group` 已取消. 送合成器时 (`acompositor_backdrop_v1` v4 `add_glass_area_grouped`, 页面层, 组名只在本表面内有效) 组名用 `render::Backdrop.group_name`:
-  `merge_glass` 给每个连通组 (同层, 且同容器或同 union 名) 一个在整页内稳定的名字 (`Membership::group_name`, 2026-11-24): 组里有成员写了 union 名时取第一个这样的成员, 名字是 `u<union 名的 FNV-1a 散列, 16 位十六进制>.<层号十六进制>`; 只靠容器成组时是 `c<容器节点号>.<层号>` (都是十六进制). 同一页的各钉住面板里同一个 union 名、同一层的组因此同名, 合成器只要按页面而不是按表面登记页面层的组, 两个面板里的玻璃就能融合 (现在的协议版本 4 仍按 (页面层, 表面, 组名) 登记, 跨面板要等 acdes 改). 名字只用 `[a-z0-9.]`, 最长 34 字节, 合协议的组名规则. 原来按 `g0`、`g1`… 每帧依次编号, 跨面板会撞名.
+  `merge_glass` 给每个连通组 (同层, 且同容器或同 union 名) 一个在整页内稳定的名字 (`Membership::group_name`): 组里有成员写了 union 名时取第一个这样的成员, 名字是 `u<union 名的 FNV-1a 散列, 16 位十六进制>.<层号十六进制>`; 只靠容器成组时是 `c<容器节点号>.<层号>` (都是十六进制). 同一页的各钉住面板里同一个 union 名、同一层的组因此同名, 合成器只要按页面而不是按表面登记页面层的组, 两个面板里的玻璃就能融合 (现在的协议版本 4 仍按 (页面层, 表面, 组名) 登记, 跨面板要等 acdes 改). 名字只用 `[a-z0-9.]`, 最长 34 字节, 合协议的组名规则. 原来按 `g0`、`g1`… 每帧依次编号, 跨面板会撞名.
   libacde 自己还没有发这条请求的路径 (会话里由 acdes 的窗口客户端发), 前端照这个名字发即可. 名字存成 FNV-1a 64 位散列 (`Name`), `none` 和空串当没写. 没有容器也没有 union 名字的玻璃不成组. src/render `Split` 切完图层后
   (`merge_glass`): 同一容器或同一 union 名字 (`Membership::joins`, 可传递) 的玻璃图层, 按绘制顺序把各块 (`Backdrop::piece`: 外框、半径、指数、玻璃) 放进
   第一块那层的 `Backdrop.group`, 外框和裁剪取各块的并集, 其余几块的图层去掉 backdrop (只剩内容). 间距取组内最大 (只靠 union 成组时为 0, 各块不鼓出).
   超过 16 块时多出的块各画各的, 记一次 warn. 只有一块的成员也成一组 (一块的组和单块画出来相同, G4 有对照测试), 好让出现、消失的动画有处可放. 底图在第一块的位置取一次, 所以后面几块之前画的内容 (多半没有) 不会出现在玻璃里.
   前端把 `render::Backdrop` 换成合成用的 `gpu::Backdrop` 只调 `Backdrop::compose()` (宿主窗口再 `.moved((0.0, dy))`), 以后加字段两边不用改;
   自己造 `gpu::Backdrop` 的 (窗口毛玻璃) 写 `..Backdrop::default()` (默认指数 2、没有玻璃).
-  进程内合成画组 (`src/vello/compose.rs`, 2026-11-22): `Composer::backdrop` 见到非空的 `group` 走 `glass_group`: 取样区域是 `Backdrop.rect` (各块并集) 外扩
+  进程内合成画组 (`src/vello/compose.rs`): `Composer::backdrop` 见到非空的 `group` 走 `glass_group`: 取样区域是 `Backdrop.rect` (各块并集) 外扩
   `GlassGroup::reach()`, 模糊层与颜色矩阵和单块同一段 (`glass_under`, 模糊层取 `GlassGroup::frost` 那块的玻璃), 再用 `fs_glass_group` 逐像素按组场着色. 全部管线共用一个
   绑定布局: 绑定 3 是块数组 (`acde_glass_pieces`, 动态偏移的 uniform, 每组 `GlassGroup::to_uniform` 的 1792 字节一段), 不画组的绘制给偏移 0; 参数缓冲和块缓冲
-  是同一个 `Uniforms` (满了翻倍重建, 已录的绑定组仍指向旧缓冲, 旧缓冲先写好), 任一个重建都清掉绑定组缓存. 组的块数组不重复传 (2026-11-23): 同一批里内容相同的组复用已有那一段的偏移; 提交时若这一批的内容和上次写进缓冲的完全相同 (前缀一致), 不再 `write_buffer`, 所以组静止时每帧不重传 2304 字节; 缓冲重建时这份记录一并清掉. 块数和间距放在 `Params.shift` (x 块数, y 间距),
+  是同一个 `Uniforms` (满了翻倍重建, 已录的绑定组仍指向旧缓冲, 旧缓冲先写好), 任一个重建都清掉绑定组缓存. 组的块数组不重复传 : 同一批里内容相同的组复用已有那一段的偏移; 提交时若这一批的内容和上次写进缓冲的完全相同 (前缀一致), 不再 `write_buffer`, 所以组静止时每帧不重传 2304 字节; 缓冲重建时这份记录一并清掉. 块数和间距放在 `Params.shift` (x 块数, y 间距),
   `Params.bias` 是取样区域. 宿主窗口和会话里画页面都经这里, 所以两边跟着生效.
-  出现、消失 (`--acde-glass-id`, 2026-11-22; `acde_scene::glass::Appearance`, 渲染侧 `Engine::animate_glass`): 每张平面 (整页一份, 每个钉住的面板各一份, 面板撤掉时丢掉)
+  出现、消失 (`--acde-glass-id`; `acde_scene::glass::Appearance`, 渲染侧 `Engine::animate_glass`): 每张平面 (整页一份, 每个钉住的面板各一份, 面板撤掉时丢掉)
   记着上一帧各组里带 `--acde-glass-id` 的块 (`Piece.id`). 新出现的名字从同组里离它最近的那块的中心长出来 (半宽高和半径从 0 按曲线到实际大小, 中心从那块的中心
   移到自己的位置); 消失的名字留一个影子块, 加进离它最近的那块所在的组, 按曲线缩回那块的中心后丢掉. 曲线是 `motion::Preset::Standard` (临界阻尼弹簧,
   约 0.51 秒), 和合成器窗口动画同一份. 第一帧已有的块、没写名字的块、同组里没有别的块可依附的新块直接出现, 不做动画. 动画进行时, 平面的损伤加上各组外框
@@ -190,18 +190,18 @@
   (也给出窗口之间毛玻璃的取样外扩 `margin`): 偏移在约 0.5–1.3 之间连续调 (一层时从 0 起, 五层时最多到 2), 强度随 sigma 连续变,
   近似同 sigma 的高斯 (`SPREAD` 是 DX12 上量出的每档方差, `tests/vello_compose.rs` 按相位平均量边缘的展宽对照); sigma 小于约
   0.96 px 时一层不偏移, 再按 `mix` 和原图混合. sigma 为 0 不模糊 (drop-shadow、backdrop 只拷一份). shell 的 GLES 链不做 `mix`.
-- 动画曲线 (`acde_scene::motion`, 2026-11-22, 总仓 `.scratch/system/window-motion.md`): 合成器的窗口动画只用这一份. 两档 `Preset`: `Standard` 是临界阻尼的弹簧
+- 动画曲线 (`acde_scene::motion`): 合成器的窗口动画只用这一份. 两档 `Preset`: `Standard` 是临界阻尼的弹簧
   (响应 0.35 秒, 不过冲, 约 0.51 秒落到 0.1% 内, `Curve::length`), `Reduced` 是 0.15 秒线性淡入淡出且不缩放、不位移 (`moves()` 为假); 桌面只能选档, 不能给数值.
   `Ease` 是 CSS 的五个缓动关键字 (`linear`、`ease`、`ease-in`、`ease-out`、`ease-in-out`, 三次贝塞尔按 x 二分求 y), `acde:windows.animate` 的 `easing` 用它;
   两者的线上编号 (`to_wire` / `from_wire`, 按名字查 `Ease::wire_of`) 供 acdes 的合成器协议用; 弹簧落到 0.1% 内的时刻按常量算, 不在每帧求解.
   `Curve::css(n)` 把曲线按 n 段采样成 CSS 的 `linear(…)` 缓动, 时长取 `length()`:
-  页面要和合成器的动画同步时 (桌面切换时滑动桌面层) 从 `acde:desktop` 拿这两个值, 不在页面里另存一份 (用户 2026-11-22 选 B).
+  页面要和合成器的动画同步时 (桌面切换时滑动桌面层) 从 `acde:desktop` 拿这两个值, 不在页面里另存一份 (用户选 B).
 - `Dom::capture(id, scale)`: 单独录一个元素 (拖动图标), 单边超过 2048 缩小; JS 拿 `picture` 编号 (`dom.rs`, 每个 web 留最后一个).
 - canvas 2D (acde-dom `dom/canvas.ts` 编成命令流, `Dom::canvas`): 要像素的都在 GPU 上 (render `gpu.rs`, 用 `acde::gpu::Gpu::publish` 登记的设备):
   超过 20000 条命令 (`ACDE_CANVAS_MAX_COMMANDS`) 画成纹理再接着记, canvas 当图片源是 `GpuImage`, `shadowBlur` 用 `blur.wgsl`,
   `getImageData` / `toDataURL` (`toBlob` 经它) 同步读回. 没有设备 (`Gpu::publish(None)`, 如 acdes 用 CPU 画页面时) 画布没有纹理, 这两个改由
   `acde::render::gpu::set_cpu_raster` 登记的 CPU 光栅器把画布的场景画成整张 RGBA8 (非预乘、逐行、宽 × 高 × 4 字节, 长度不对当作没画出) 再裁出要的区域;
-  谁也没登记时照旧给全透明 / `data:,` (`toBlob` 得到 0 字节, libacde 单子 13). 提交都拿 `Gpu::submit_lock`. `drawImage` 一张 SVG 的 `<img>` 时按它的自然尺寸画成场景
+  谁也没登记时照旧给全透明 / `data:,` (`toBlob` 得到 0 字节). 提交都拿 `Gpu::submit_lock`. `drawImage` 一张 SVG 的 `<img>` 时按它的自然尺寸画成场景
   (blitz-paint `svg_picture`, 和 `<img>` 同一画法). `ctx.filter`: acde-dom 解析 `<filter-value-list>` (无效的值不改, 长度只认 px),
   命令 14 送效果 (blur、brightness、contrast、grayscale、hue-rotate、invert、opacity、saturate、sepia、drop-shadow; url() 不支持);
   有滤镜时每次绘制先把它的范围 (加上效果外扩, 裁到画布) 画进一张图, src/vello `Offscreen::filtered` 依次做 (`blur.wgsl` 的
@@ -217,7 +217,7 @@
 - 窗框 (`decoration.rs`): `Decoration::scene(&Bar {title, width, height, scale, style, fullscreen})` → 物理像素的场景 (背景 #f4f2f7; `FrameStyle::Mac`:
   左边三个 12 px 圆点 (关闭 / 最小化 / 全屏), 标题居中截断; `FrameStyle::Windows`: 右边三个 46 px 宽的按钮 (最小化 / 最大化 / 关闭, 1 px 线画的图标,
   `fullscreen` 时最大化换成还原), 标题靠左截断; 没有悬停效果). `FrameStyle::current()`: `ACDE_FRAME_STYLE` (`mac` / `windows`), 没设或别的值时
-  Windows 上的单应用是 `Windows`, 别处是 `Mac` (宿主窗口给出完整桌面时 `FrameStyle::follow_session`, 跟 Linux 会话一样). `Bar::button_at(x, y)` 是按钮命中, `FrameStyle::grab_hints` 是标题栏 (按钮区外) 和四边四角的 hint. 测试 `tests/decoration.rs`.
+  Windows 上的单应用是 `Windows`, 别处是 `Mac` (宿主窗口给出完整桌面时 `FrameStyle::follow_session`, 跟 Linux 会话一样). `Bar::button_at(x, y)` 是按钮命中, `FrameStyle::grab_hints` 是标题栏 (按钮区外) 和四边四角的 hint. 测试 `tests/render_decoration.rs`.
   `Bar.theme` (`FrameTheme`: `active` / `inactive` 两组 `FrameColors {background, title, line, buttons}`, RGBA, 没给的用默认; 失焦的组没给的项用
   有焦点的; `style` / `side` (`ButtonSide`) / `align` (`TitleAlign`) 没给时按 `Bar.style`: `Mac` 是左边、居中, `Windows` 是右边、靠左) 和
   `Bar.active` 只改样子; 按钮放在哪一边时命中和 `FrameTheme::grab_hints` 跟着换边. `buttons` 给圆点上色 (不给是红黄绿), 给图标上色 (不给是标题色).
@@ -228,13 +228,13 @@
 
 ## shell (napi 类 `Shell`)
 
-会话里的合成器是 winman (协议、DRM/KMS、HiDPI 见 winman 的 docs), 远程桌面是 acdes 的远程进程;
+会话里的合成器是 acdes 的 acompositor (协议、DRM/KMS、HiDPI 见 acdes 的 `docs/agents/acompositor/`), 远程桌面是 acdes 的远程进程;
 宿主窗口里是 acdev runtime 的 `crates/hostwin`, 见它的 `docs/agents/hostwin.md`. 下面是 Broker 和 web 看到的接口.
 
 - 启动器侧的窗口系统对象: acdes 里是 `native.Windows.connect()`, acdev 宿主窗口里是 `native.Shell.broker()`. 都有 `onEvents(cb)` / `pump()`、
   `grant({desktop?, window?, mode?, rect?, size?, parent?, modal?})` → `{window, token}` (随机 64 位令牌, acdes 的窗口客户端在本进程里按令牌取回)、`place`、`windows()`、
   `shortcut` / `unshortcut` (冲突抛错)、`focus`、`hide`、`close`、`socketName`、`screenshot(path)`; 宿主窗口另有 `release`、`animate`、`stats`、`inject` 等.
-- web 侧: `claimSurface(token, {frame?})` (src/host `webnative.rs` → 前端的 `Platform::claim`, 会话里是 acdes 的 `crates/window` `Surface::claim`: 连上 winman、开 toplevel 或 layer 面;
+- web 侧: `claimSurface(token, {frame?})` (src/host `webnative.rs` → 前端的 `Platform::claim`, 会话里是 acdes 的 `crates/window` `Surface::claim`: 连上 acompositor、开 toplevel 或 layer 面;
   一条 `acde-window` 线程管 Wayland 和光栅化) 给出 surface: `pump`、`wait()` (队列非空时落定)、`waitThen(cb)` (队列非空时在一个新任务里调 cb, 不在微任务里: acde-host `Host.run` 每轮取一批输入就是一个任务, 输入事件经 acde-dom `Input` 用 `fireFromTask` 派发, 每个监听器后跑微任务检查点, React 的离散事件在下一个按键前就提交; 原先循环 `await wait()` 之后都在微任务里, 检查点不生效, 连按三次只算一次)、`requestFrame`、`setClipboard`、
   `readClipboard()`、`startDrag(data, icon?)`、`setTitle`、`setImeArea`、`window`、`hosted`、`contentOffset`.
 - 事件 (`Event`, 坐标逻辑像素, button / code 是 evdev 码). 给 surface 的: `pointermove` / `pointerdown` / `pointerup` / `wheel` /
@@ -251,13 +251,13 @@
 
 - **整条链路不许 CPU 拷像素、不许 GPU 回读**. 例外: RDP 后端 (回读损坏区域)、截屏 / capture、标准接口要同步给像素的 (`getImageData` /
   `toDataURL`).
-- **网页优先在 GPU 上画, 没有 GPU 时回退 CPU** (用户定 2026-11-13): 没有 vello_cpu; `acde::gpu::adapters` 真 GPU 排前, CPU 类型的设备 (lavapipe)
+- **网页优先在 GPU 上画, 没有 GPU 时回退 CPU** (用户定): 没有 vello_cpu; `acde::gpu::adapters` 真 GPU 排前, CPU 类型的设备 (lavapipe)
   排最后, 只有它时用它 (虚拟机 / VNC, 慢). 这时页面的 WebGPU 适配器 `isFallbackAdapter` (`GPUAdapter` 和 `GPUAdapterInfo` 上都有) 为 true, 页面可以据此降级 (src/host/webgpu `adapter_info`: 设备类型是 CPU). 什么设备都没有时网页图层不可用 (日志 `web layer unavailable`), 页面不出帧.
-  合成器自己 (GLES) 不在此列. acdebin-system 的会话不走这条: 没有 GPU 时它在 CPU 上画页面, 不用 lavapipe (见它的 `docs/agents/window-paint.md`).
-- **两种后端, 按 feature 选** (用户定 2026-11-19): wgpu (src/vello) 和 detour (还没有, 以后在 `src/detour`). acdev 只开 wgpu: 三个平台一致, 给开发者用;
+  合成器自己 (GLES) 不在此列. acdes 的会话不走这条: 没有 GPU 时它在 CPU 上画页面, 不用 lavapipe (见它的 `docs/agents/window-paint.md`).
+- **两种后端, 按 feature 选** (用户定): wgpu (src/vello) 和 detour (还没有, 以后在 `src/detour`). acdev 只开 wgpu: 三个平台一致, 给开发者用;
   acdes 开 detour 加 wgpu: Xe3 上走 detour, 别的 GPU 走 wgpu, 没有 GPU 时在 CPU 上画, WebGPU 总是 wgpu. wgpu 每个 OS 只编一个后端: Windows DX12、Linux Vulkan、
   macOS Metal (`acde::gpu::BACKEND`). Linux 另编进 wgpu 的 GL 后端 (`gles` 特性), 不进 `BACKEND`, 只经 `acde::vello::Device` 用
-  (用户定 2026-11-20, GL 取证见总仓 `.scratch/render/wgpu-gl-probe.md`, 接口决定见 `.scratch/render/decisions.md`): 会话由 acdes 开始时探测一次
+  (用户定, GL): 会话由 acdes 开始时探测一次
   (`ACDE_RENDER`: `detour:<节点>`、`wgpu:vulkan:<节点>`、`wgpu:gles:<节点>`、`cpu`, acdes 解析), 页面进程照它调
   `Device::open(Backend::Vulkan | Backend::Gles, 节点)`; 探测用 `Device::probe(backend, 节点)` (只开设备、不建 vello 管线, 成功时回 `describe()` 那一行).
   OpenGL ES 默认关: 开关 `ACDE_GL_ES=1` 由 acdes 的探测读, libacde 不读环境变量, 调了 `open(Backend::Gles, …)` 就开 (取证: 液态玻璃静止时还在出帧,
@@ -266,9 +266,9 @@
   非软件适配器恰好一个就用它; 有几个时 (WSL 的 D3D12 设备没有 PCI 编号, 渲染节点挂在 faux_driver 下) 先挑名字含 `MESA_D3D12_DEFAULT_ADAPTER_NAME`
   的 (Mesa 在 WSL 里按名字选卡的同一个变量), 再挑独显, 记一行 info. EGL 无表面平台由 Mesa 自己挑设备, 不能按节点指定, 所以 GLES 下这个比对只是核对.
   软件适配器 (wgpu `DeviceType::Cpu`, 即 lavapipe 或 llvmpipe) 在 `open_hardware` 和按节点选的 `pick` 里默认排除 (没有 GPU 时页面走 vello_cpu).
-  只为开发和测量 (2026-11-23, 总仓 `.scratch/acdev/windows-3d.md` 的 A1 实验): 环境变量 `ACDE_GPU_ALLOW_CPU=1` (`gpu::ALLOW_CPU`, `gpu::allow_cpu()`) 时
+  只为开发和测量 (2026-11-23 实验): 环境变量 `ACDE_GPU_ALLOW_CPU=1` (`gpu::ALLOW_CPU`, `gpu::allow_cpu()`) 时
   不再排除, 排在所有硬件设备之后, 选中时记一行 warn (设备名、类型、驱动). 这不是正式路线, 默认不开, 哪条路线由用户定.
-- 不合规的 Vulkan 驱动 (2026-11-22, 用户要 WSL 用真显卡): wgpu-hal 把一致性版本为 0 的驱动 (WSL 的 Dozen, 即 dzn) 藏起来, 除非实例带
+- 不合规的 Vulkan 驱动 (用户要 WSL 用真显卡): wgpu-hal 把一致性版本为 0 的驱动 (WSL 的 Dozen, 即 dzn) 藏起来, 除非实例带
   `InstanceFlags::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER`; libacde 建实例的地方 (`gpu::adapters`、`vello::Device` 的枚举) 都带上它. 宿主窗口和
   会话里自开设备的 `Gpu::open` / `Gpu::open_with(label, fits)` 按名字 (`MESA_D3D12_DEFAULT_ADAPTER_NAME`) → 合规独显 → 合规集显 → 不合规独显 →
   不合规集显 → 其他 → 软件 (llvmpipe) 逐个试: 开不了设备就换下一个; 不合规的还要过 `fits` (宿主窗口传 `Vello::probe`, 在当前线程建一遍 vello
@@ -329,6 +329,6 @@
 - canvas 的 `createPattern` 在第一次用时才取来源的位图 (规范是创建那一刻).
 - vello 0.11 没有图片的场景把图集当 1x1 重建、已上传的图片画空; 每个场景垫一块 1x1 渐变绕开 (src/vello `Vello::render`), 升级 vello 时看
   上游修了没有.
-- `ACDE_PAINT_VERIFY=1` 下机器忙时 `tests/damage.rs` 偶发等帧超时, 单独重跑都过.
-- `tests/fixtures/replay/*.ops.gz` 是旧 acde-host 的 DOM 操作流 (`tests/replay.rs` 回放, 格式见它), `svg/*.svg` 是简单 SVG 的对比用例, 元素的特殊渲染
-  在 `tests/elements.rs`. `release_keeps_memory_flat` 只在 Linux 上跑.
+- `ACDE_PAINT_VERIFY=1` 下机器忙时 `tests/render_damage.rs` 偶发等帧超时, 单独重跑都过.
+- `tests/fixtures/replay/*.ops.gz` 是旧 acde-host 的 DOM 操作流 (`tests/render_replay.rs` 回放, 格式见它), `svg/*.svg` 是简单 SVG 的对比用例, 元素的特殊渲染
+  在 `tests/render_elements.rs`. `release_keeps_memory_flat` 只在 Linux 上跑.

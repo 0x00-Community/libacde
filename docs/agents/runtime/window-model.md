@@ -17,9 +17,9 @@
   `windowstate {window, state, previous}` (旧的 `windowfullscreen` / `windowunfullscreen` / `windowminimize` 已随第 0 级去掉). 宿主窗口的窗框按钮
   (最小化、全屏 / 还原) 由运行时直接改状态, 只有关闭交给页面. `requestMode` 只收 `free` / `fixed` / `pinned` (`fullscreen` 抛 TypeError,
   全屏用 `requestState`); 改模式时当前状态在新模式下不允许就回到 `normal`. 独立应用的窗口 (`<运行时> app`) 内部仍是 `fullscreen` 模式, 页面改不了.
-  会话 (acdebin-system 的 `crates/window`) 把请求映射成标准 xdg_toplevel 请求 (`set_fullscreen` / `set_maximized` / `set_minimized` / 取消), 按 configure 里的
-  fullscreen / maximized 给页面发 `state`. winman 执行四种状态; 桌面的 `acde:windows.requestState` 经 acdes 的
-  `native.Windows.setState` 发 `winman_window_v1.set_state`, 变化由 winman 报回, acdes 窗口客户端给桌面页发 `window` 快照 (见 webs.md). `filled` 是 xdg 的 maximized, 铺满工作区 (见 `docs/agents/runtime/webs.md`「钉住的面板」); `fullscreen` 铺满输出. 只有 `normal` 的窗口能拖动、拖边改尺寸;
+  会话 (acdes 的 `crates/window`) 把请求映射成标准 xdg_toplevel 请求 (`set_fullscreen` / `set_maximized` / `set_minimized` / 取消), 按 configure 里的
+  fullscreen / maximized 给页面发 `state`. acompositor 执行四种状态; 桌面的 `acde:windows.requestState` 经 acdes 的
+  `native.Windows.setState` 发 `acompositor_window_v1.set_state`, 变化由 acompositor 报回, acdes 窗口客户端给桌面页发 `window` 快照 (见 webs.md). `filled` 是 xdg 的 maximized, 铺满工作区 (见 `docs/agents/runtime/webs.md`「钉住的面板」); `fullscreen` 铺满输出. 只有 `normal` 的窗口能拖动、拖边改尺寸;
   输出或工作区变了, 铺满的窗口跟着改 rect; `windowgone` 报的是 `normal` 时的 rect. 还没显示就要铺满 / 全屏的客户端 (Firefox 记着上次是最大化)
   在显示时照做, 这样的窗口没有 `normal` 的 rect: 回到 `normal` 时让客户端自己定尺寸, 等它确认离开铺满 / 全屏后的第一次提交再放到中间
   (之前那一帧还是铺满的尺寸). 最小化的窗口藏起, 桌面 `focus` / `show` 它时回到之前的状态. 页面的 `minimize()` 在会话里走自己的
@@ -27,7 +27,7 @@
 - **分层**: 客户端出缓冲 (dmabuf / shm + damage + opaque 区域); 合成只出计划; 呈现 (GPU / DRM / RDP) 执行. 只传句柄、只报脏区,
   框架不读像素; 客户端慢就用上一次的缓冲.
 - **`CompositePlan`** (src/model `plan.rs`): `{damage (最多 8 块), route: Composite | Direct, layers: [{window, dst, clip, look, effect, redraw}]}`,
-  不透明的上层剔除下面. 原来由 acdes 的旧合成器执行 (含 backdrop 的模糊), 旧合成器删掉后只剩宿主窗口用; winman 不画窗下的 backdrop.
+  不透明的上层剔除下面. 宿主窗口里由 hostwin 执行; 会话里窗下的磨砂由 acompositor 的 `acompositor_backdrop_v1` 画 (见 acdes 的 `docs/agents/acompositor/output.md`「磨砂」).
 - **窗口管理** (框架裁决, 客户端只能请求): 新窗口居中、按窗口数错开 32 像素, 有父窗口的居中在父窗口上方 (不错开). 只有 `free` 改尺寸. 会话里 configure 不带 tiled 状态 (带了的话
   GTK / Firefox 认为窗口四边贴着别的窗口, 不给拖边改尺寸), 命中按客户端的 input 区域: 窗口几何外的那圈缩放边 (CSD 画在阴影里的) 也算;
   交互改尺寸期间 configure 带 `resizing`. 点进一个窗口: 拿焦点
@@ -35,7 +35,7 @@
   做完发 `windowanimated`; 有 look 的窗口按画出来的位置命中.
 - **焦点和模态**: 键盘只发给焦点窗口. 要把焦点给有模态子窗口 (xdg-dialog `set_modal` + `set_parent`, 或 Broker 授权时的 `parent` / `modal`) 的窗口时
   改给最上层的模态子窗口, 子窗口关掉焦点回父窗口. 指针也不发给有模态子窗口的窗口: 在它上面没有指针焦点, 按下只把焦点给模态子窗口 (不开始拖动).
-- **grab** (宿主窗口; winman 下要等指针锁定、键盘锁定两组标准协议): `request_grab(kind)` 在被别人拿着或框架在移窗时拒绝; 键盘 grab 同时给焦点. 收回 (发一次 `grab_lost`): 在别的窗口
+- **grab** (宿主窗口; 会话里由 acompositor 的指针锁定、键盘锁定协议实现, 见 acdes 的 `docs/agents/acompositor/input.md`): `request_grab(kind)` 在被别人拿着或框架在移窗时拒绝; 键盘 grab 同时给焦点. 收回 (发一次 `grab_lost`): 在别的窗口
   按下 (`other_window`)、Esc (`esc`, 这次 Esc 不发)、焦点被给别人 (`focus_lost`)、客户端死掉.
 - **全局快捷键** (src/model `shortcut.rs`): 组合写成 `ctrl+alt+t` (键是 xkb keysym 名, 按未修饰的那层匹配, Shift 写进组合; `mod` 在 macOS 上是 `super` (⌘), 别处是 `ctrl`, 同 Dopame 桌面的写法). 作用域 session /
   desktop / app / menu, 先到先得, 冲突拒绝, session 级不可覆盖; 匹配顺序 session → 焦点窗口的 menu 级 → 焦点窗口的 app 级 → desktop. 命中的键 (连同松开) 不发给窗口, 发
@@ -47,9 +47,9 @@
 
 ## 窗口协议
 
-acdes 会话里窗口、桌面、会话与注入的协议全归 winman (`winman_desktop_v1`、`winman_window_v1`、`winman_session_v1`、`winman_inject_v1` 和标准协议),
+acdes 会话里窗口、桌面与注入的协议都归 acdes 的合成器 acompositor (`acompositor_desktop_v1`、`acompositor_window_v1`、`acompositor_inject_v1` 和标准协议; 两份私有协议文件在本仓 `protocol/acompositor/`, 两个仓都用), winman 是正在开发的独立窗口管理器, 还没接管;
 页面窗口就是标准 `xdg_toplevel`, 面板与桌面是 wlr-layer-shell 的面. 原来的 `acde_window` (客户端 ↔ 框架) 与 `acde_shell` (Broker ↔ 旧合成器)
-两份协议连同 acdes 的旧合成器已删 (repo-split 05); 逐项对照与去向在总仓 `.scratch/repo-split/protocol-map.md`.
+两份协议连同 acdes 的旧合成器已删.
 
 ## 宿主窗口
 
