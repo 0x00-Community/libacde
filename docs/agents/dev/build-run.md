@@ -57,7 +57,7 @@ Bun 的本代目录在默认 base 下, DACL 读回只有 SYSTEM 和当前用户,
 
 环境变量: `ACDE_PATH`、`ACDE_DESKTOP`、`ACDE_STORAGE` (网页存储的根目录, 默认 `$XDG_DATA_HOME/acde/storage`, 空: 只在
 内存, 见 `docs/agents/web/storage.md`「网页存储」)、`ACDE_AUTOSTART=1/0`、`ACDE_DEBUG_DIR`、`ACDE_BUS_NAMES=1/0`、`ACDE_COLOR_SCHEME=light/dark`、`ACDE_SIZE`、
-`ACDE_DEV`、`ACDE_HOST_DUMP`、`ACDE_HOST_FAULT`、`ACDE_HUD=1` (宿主窗口开着帧率面板起来, 见 acdev `docs/agents/hostwin.md`「帧率面板」)、`ACDE_GPU_ALLOW_CPU=1` (只为开发和测量: 没有硬件 GPU 时允许用 lavapipe 这类 CPU 设备, 见 `docs/agents/graphics/gpu.md`)、`ACDE_HEADLESS=1`、`ACDE_SCALE` (headless 的缩放)、`ACDE_AUDIO=null`; shell 的见 `docs/agents/graphics/shell.md`「shell」.
+`ACDE_DEV`、`ACDE_HOST_DUMP`、`ACDE_HOST_FAULT`、`ACDE_HUD=1` (宿主窗口开着帧率面板起来, 见 acdev `docs/agents/hostwin.md`「帧率面板」)、`ACDE_GPU_ALLOW_CPU=1` (只为开发和测量: 没有硬件 GPU 时允许用 lavapipe 这类 CPU 设备, 见 `docs/agents/graphics/gpu.md`)、`ACDE_HEADLESS=1`、`ACDE_INSPECT_BACKEND=<端口>` (开发模式下后端带调试器起, 0 是空闲端口, 见 `docs/agents/web/backend.md`「后端的调试器」)、`ACDE_SCALE` (headless 的缩放)、`ACDE_AUDIO=null`; shell 的见 `docs/agents/graphics/shell.md`「shell」.
 
 - **配色** (launcher `js/launcher/src/app/appearance.ts`): `ACDE_COLOR_SCHEME` (light / dark), 否则 portal 的 `org.freedesktop.appearance` `color-scheme` (原生 `Appearance`, 只有 Linux; 读不到时浅色),
   进页面的初始化参数 `dark`, 变了发 `colorscheme` 给页面 (`matchMedia` 发 change). 开发通道的 `emulate` 设了值时它优先, 设回 null 时回到系统的值.

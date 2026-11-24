@@ -113,12 +113,13 @@
     调用回 503. 桌面包重建后的 `devreload` (没有 `app`): 先关掉所有服务 (`managerclosed`, 照常 `close`、结束它起的进程), 重扫 `ACDE_PATH`, 再按新清单起服务,
     模块地址带 `?generation=<n>` 让 `import()` 不用缓存里的旧模块 (acdev 把服务打成单文件; 别的多文件服务里的相对导入仍是旧的), 然后才重载桌面.
   - 宿主窗口的事件 (`local/hub.ts`): 一个 `Shell`, 每个启动器一个视图, 视图授予的窗口记在它名下. 带窗口号的 `windowcloserequest`、`menuselect`、
-    `devtools` 和作用域是 `app` / `menu` 的 `shortcut` 给窗口的主人, `devrequest` / `devreload` / `quit` 由会话处理, 其余给桌面.
+    `devtools` 和作用域是 `app` / `menu` 的 `shortcut` 给窗口的主人, `devrequest` / `devreload` / `devbuild` / `quit` 由会话处理, 其余给桌面.
   - 调试通道: `webs` 问每个页面再合并 (每个限 1.5 秒, 不答的列 `stalled: true`); 带 `web` 的 (页面名、应用 id 取实例号最小的、`desktop`) 交给那个页面的启动器,
     不带的给桌面, 不带 `web` 的 `snapshot` 给拿着焦点的窗口的主人; `open {name|url}` 会话自己答 (`path` 回 501); `console` / `network` 带 `pages: true`
     时每个页面各答一份 (键 `<应用 id 或 desktop>:<pid>#<序号>`). 各启动器的 Inspect 经会话看到所有窗口 (`Seat.windows`: 页面的 rpc、记录、关窗、
     统一的 `w<n>` 编号), 所以 `hit`、`act`、`snapshot` 落在别的应用的窗口上也能做. `devreload {app}` 先重扫 `ACDE_PATH`, 再交给那个应用的启动器 (它按新清单重起页面),
-    没有 `app` 时先重起服务 (见上) 再给桌面.
+    没有 `app` 时先重起服务 (见上) 再给桌面. `devbuild {app}` (acdev dev 的构建结果, 见 `docs/agents/dev/dev-ipc.md`) 给那个应用正在跑的每个启动器,
+    一个都没有或没有 `app` 时给桌面的启动器, 它们记进自己的 console, 不转给页面.
   - DevTools: 进程里只有一个端点 (`DevTools.targets` 每次整张替换), 所以每个启动器拿到的是会话包过的 `NativeDevTools` (`Seat.devtools`): 各自登记自己页面的目标,
     会话合起来交给端点 (`/json/list` 同时有桌面和各应用; 页面结束时它的目标去掉), 端口同一个.
   - SIGTERM / SIGINT / SIGHUP、`quit`、`session.logout`、`--seconds` 或桌面退出结束会话: 先关所有应用, 再断服务和桌面的连接; `--shot` 截整个宿主窗口.
