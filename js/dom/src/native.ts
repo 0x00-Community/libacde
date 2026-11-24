@@ -195,6 +195,7 @@ export interface DomNative {
   measureText(id: number, font: string, text: string, letterSpacing?: number, wordSpacing?: number, spacingUnits?: number): Float64Array
   toDataURL(id: number, type: string): string
   getImageData(id: number, x: number, y: number, width: number, height: number): Uint8Array
+  canvasLimits(): Float64Array
   capture(
     id: number, scale: number,
   ): { x: number; y: number; width: number; height: number; pixelWidth: number; pixelHeight: number; scale: number; picture: number } | null

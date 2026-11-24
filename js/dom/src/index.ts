@@ -405,7 +405,8 @@ function externalPixels(source: unknown): { width: number; height: number; rgba:
     const canvas = createHtml('canvas') as unknown as media.HTMLCanvasElement
     canvas.width = width
     canvas.height = height
-    const context = canvas.getContext('2d') as CanvasContext2d
+    const context = canvas.getContext('2d') as CanvasContext2d | null
+    if (!context) return null
     context.drawImage(source as never, 0, 0)
     const rgba = canvases.pixels(canvas as never, 0, 0, width, height)
     return rgba && { width, height, rgba }

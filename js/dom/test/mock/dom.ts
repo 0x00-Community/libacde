@@ -798,6 +798,9 @@ export class MockDom implements DomNative {
   getImageData(_id: number, _x: number, _y: number, width: number, height: number): Uint8Array {
     return new Uint8Array(Math.abs(width * height * 4))
   }
+  canvasLimits(): Float64Array {
+    return Float64Array.of(16384, 268435456)
+  }
   capture(): null {
     return null
   }

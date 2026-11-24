@@ -20,6 +20,7 @@ pub struct Vello {
     threads: Option<NonZeroUsize>,
     build: u64,
     rendered: bool,
+    fit: super::fit::Fit,
 }
 
 impl Vello {
@@ -69,7 +70,16 @@ impl Vello {
         };
         let renderer = vello::Renderer::new(device, options).map_err(|e| format!("vello: {e}"))?;
         let build = BUILDS.fetch_add(1, Ordering::Relaxed);
-        Ok(Self { device: device.clone(), queue: queue.clone(), renderer, scene: vello::Scene::new(), threads, build, rendered: false })
+        Ok(Self {
+            device: device.clone(),
+            queue: queue.clone(),
+            renderer,
+            scene: vello::Scene::new(),
+            threads,
+            build,
+            rendered: false,
+            fit: Default::default(),
+        })
     }
 
     pub fn trim(&mut self) -> Result<bool, String> {
@@ -107,7 +117,12 @@ impl Vello {
         overrides.follow(self.build);
         overrides.forget(&mut self.renderer);
         self.scene.reset();
+        let images = overrides.images().clone();
+        let bounds = Rect::new(0.0, 0.0, f64::from(width), f64::from(height));
+        let mut crops = None;
         for (scene, place, clip) in scenes {
+            let view = clip.map_or(bounds, |c| c.intersect(bounds));
+            let scene = self.fit.scene(&self.device, scene, place, view, &images, &mut crops);
             overrides.apply(&mut self.renderer, &scene);
             if let Some(clip) = clip {
                 self.scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &clip);
@@ -123,8 +138,12 @@ impl Vello {
         self.rendered = true;
         let rendered = {
             let _lock = lock.map(Shared::submit_lock);
+            if let Some(crops) = crops {
+                self.queue.submit([crops.finish()]);
+            }
             self.renderer.render_to_texture(&self.device, &self.queue, &self.scene, target, &params)
         };
+        self.fit.done();
         self.scene.reset();
         rendered.map_err(|e| format!("vello: {e}"))?;
         overrides.submitted();

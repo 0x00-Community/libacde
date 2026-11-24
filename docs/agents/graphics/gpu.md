@@ -78,6 +78,15 @@
   洞里 `Composer::opaque_from` 不混合地贴图片 (alpha 记 1, 不清区, 不进 vello、不拷进 vello 的图集), 洞外的边条照常画 (去掉这张图片);
   盖在上面的内容 (`Hole::above`, 只许在新开的层里用非 SrcOver 混合) 画一次存进按 (平面, 段, 洞) 的缓存纹理, `Kept` 认出没变时只按它的绘制范围
   (至多 32 块) 混合贴回. `Content::segments` 给出内容的命令段 (`Drawing::segments`, 前端的 `Content` 转给它) 时, 除了图片所在的那段以外各段都没变 (同一份 `Arc` 或 64 条以内逐条相等且没有 GPU 图片)、那段只换了图片, 就不再取整块命令 (`scene_for`) 和逐条比对. 一块覆盖了此前没画过的区域时不清区、不混合地贴 (`Op::Cover`); 一批里只有一块且铺满时 vello 不再套裁剪层.
+- **大画布** (边长超过 4096 的 canvas 位图, 上限见 render.md): vello 0.12 一次画不了这么大的目标 (ptcl 缓冲固定 2^23 个字, 每个 16×16 的块
+  先占 64 个, 按 `vello_encoding` `BufferSizes::new` 和 `coarse.wgsl` 算约 5800² 以上就溢出), 它的图片图集最大 8192² 且每张图片整张拷进去. 所以:
+  `Offscreen::draw` 目标两边都不超过 4096 时照旧一次画; 否则按 4064² 一块 (场景里有大于 4096 的 GPU 图片时 2032², 好让裁出的图片和别的
+  图片一起放进 4096² 的图集) 画进一张临时纹理再拷进整张位图, 每块交上去后等它画完 (不等的话一张 16384² 一次排上百个命令缓冲,
+  Metal 的命令缓冲资源表 (`MTLResourceList`, 每个 48 KiB) 涨到约 80 MiB 并一直留在进程的 malloc 里).
+  `Vello::render_clipped` 里 `Fit` 把场景中大于 4096 的 GPU 图片 (大画布的位图) 换成这次看得见的那块: 目标矩形 ∩ 裁剪 ∩ 填充形状反算到图片里,
+  外扩 2 像素; 缩小着画 (每个目标像素对应 ≥ 2 个图片像素) 或这块边长超过 4096 时先按 2 的幂盒式缩小 (`shrink.wgsl`, 预乘平均, 最多 256 倍).
+  只换 Pad 采样的填充; 平铺的 pattern、描边和字形的图片刷子不换. 换出的图按 (图片, 代, 矩形, 倍数) 留到下一次渲染, 窗口每帧同一块不重拷.
+  不大于 4096 的图片不经它, 画法和以前一样.
 - 帧预算: 120 fps 下每帧 8 ms. 盯 acde-dom `test/cost.test.ts` / `test/caches.test.ts`、shell / DomNative 的 `stats`、`drive.sh perf`; 提交里写测到的数.
 - WebGPU (`navigator.gpu`, Linux 和 macOS; Windows 上还关着 (没编过也没跑过, 见 acdev #56)): src/host `webgpu/`, 跑在光栅化线程的设备上; 页面的 `mapAsync` / `onSubmittedWorkDone` 回调由 `acde-gpu-poll` 线程办: 设备能导出 sync file 时 (会话里 `VK_KHR_external_semaphore_fd`, src/gpu `Gpu::wait_fence`) 它在提交锁里挂一个 `vello::Signals` 信号量、空提交一次、取出 sync file, `poll` 等它可读后非阻塞 `poll` 一次设备, 不用定时器; 没有时 (宿主窗口、没开这个扩展的设备) 才每 2 ms 非阻塞轮询. canvas 的帧数在途不经它 (见 `docs/agents/graphics/webgl.md`) (每帧路径上不用
   `poll(Wait)`, 它拿着 snatch 读锁会卡住别的线程的提交). WebGL 也只经 wgpu, 见 `docs/agents/graphics/webgl.md`.
@@ -85,6 +94,8 @@
 ## src/render 的已知问题和测试数据
 
 - canvas 的 `createPattern` 在第一次用时才取来源的位图 (规范是创建那一刻).
+- 正好 4096×4096 的画布先 `putImageData`、再画几笔后当 `drawImage` 的来源缩小画进别的画布时可能是全透明 (推测: 离屏 vello 的图集里还留着前几次的
+  4096² 位图, 放不下新的一张; 大于 4096 的走 `Fit`, 没有这个问题). 修改前后一样, 还没修.
 - vello 0.11 没有图片的场景把图集当 1x1 重建、已上传的图片画空; 每个场景垫一块 1x1 渐变绕开 (src/vello `Vello::render`), 升级 vello 时看
   上游修了没有.
 - `ACDE_PAINT_VERIFY=1` 下机器忙时 `tests/render_damage.rs` 偶发等帧超时, 单独重跑都过.

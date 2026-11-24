@@ -157,7 +157,7 @@ fn whole(pixels: &[u8], (width, height): (u32, u32)) -> bool {
 }
 
 pub fn rasterize(scene: Scene, size: (u32, u32)) -> Vec<u8> {
-    drawing(|o| Ok(o.rasterize(scene, size))).unwrap_or_else(|| vec![0; (size.0 * size.1 * 4) as usize])
+    drawing(|o| Ok(o.rasterize(scene, size))).unwrap_or_else(|| vec![0; size.0 as usize * size.1 as usize * 4])
 }
 
 #[cfg(test)]

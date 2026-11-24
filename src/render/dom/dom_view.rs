@@ -405,7 +405,7 @@ impl Dom {
 
     pub fn get_image_data(&self, id: u32, x: f64, y: f64, width: f64, height: f64) -> Result<Vec<u8>> {
         self.on(id, |e, node| {
-            if ![x, y, width, height].iter().all(|v| v.is_finite()) || (width * height).abs() > f64::from(crate::render::canvas::MAX_SIDE).powi(2) {
+            if ![x, y, width, height].iter().all(|v| v.is_finite()) || (width * height).abs() > crate::render::canvas::MAX_AREA as f64 {
                 return Err(fail("IndexSizeError", "getImageData: bad rectangle"));
             }
             Ok(e.with_canvas(id, node, |c| c.image_data(kurbo::Rect::new(x, y, x + width, y + height))))

@@ -782,6 +782,10 @@ natives! {
         let (id, x, y, w, h) = (id(scope, &args, 0), f(scope, &args, 1), f(scope, &args, 2), f(scope, &args, 3), f(scope, &args, 4));
         dom.get_image_data(id, x, y, w, h)
     }
+    "canvasLimits" => fn canvas_limits(scope, args, dom) {
+        let (side, area) = crate::render::canvas_limits();
+        Ok(Floats(vec![f64::from(side), area as f64]))
+    }
     "capture" => fn capture(scope, args, dom) {
         let id = id(scope, &args, 0);
         let scale = f(scope, &args, 1);

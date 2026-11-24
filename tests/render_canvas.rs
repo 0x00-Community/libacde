@@ -535,3 +535,65 @@ fn a_new_font_keeps_the_spacing() {
     let spaced = doc.measure_text_spaced(page.canvas, "20px monospace", "MM", 8.0, 0.0, 0).unwrap();
     assert!((f64::from(right) + 1.0 - (5.0 + spaced.actual_bounding_box_right)).abs() <= 1.5, "right {right} vs {spaced:?}");
 }
+
+fn sized_canvas(doc: &Doc, (w, h): (u32, u32)) -> u32 {
+    let canvas = doc.create_element("canvas").unwrap();
+    doc.set_attribute(canvas, "width", &w.to_string()).unwrap();
+    doc.set_attribute(canvas, "height", &h.to_string()).unwrap();
+    canvas
+}
+
+fn draw_canvas(doc: &Doc, canvas: u32, source: u32, to: [f32; 4]) {
+    let mut ops = Ops::default().op(45, &[]).u8(1);
+    ops.0.extend(source.to_le_bytes());
+    ops.op_args(&[0.0, 0.0, f32::NAN, f32::NAN]).op_args(&to).apply(doc, canvas);
+}
+
+#[test]
+fn canvases_wider_or_taller_than_4096_draw_put_and_read_back_at_the_far_corner() {
+    let page = Page::new();
+    let doc = &page.doc;
+    let yellow: Vec<u8> = (0..16 * 16).flat_map(|_| [255, 255, 0, 255]).collect();
+    for (w, h) in [(4097, 100), (9000, 64), (64, 9000), (6000, 6000)] {
+        let c = sized_canvas(doc, (w, h));
+        let (fw, fh) = (f64::from(w), f64::from(h));
+        Ops::default().fill_style(RED).fill_rect(0.0, 0.0, w as f32, h as f32).apply(doc, c);
+        assert_eq!(pixel(doc, c, fw - 1.0, fh - 1.0), [255, 0, 0, 255], "{w}x{h} fill");
+        Ops::default().put(((w - 16) as f32, (h - 16) as f32), (16, 16), &yellow).apply(doc, c);
+        assert_eq!(doc.get_image_data(c, fw - 16.0, fh - 16.0, 16.0, 16.0).unwrap(), yellow, "{w}x{h} put");
+        assert_eq!(pixel(doc, c, fw - 17.0, fh - 17.0), [255, 0, 0, 255], "{w}x{h} beside the put");
+        Ops::default().fill_style(BLUE).fill_rect(0.0, 0.0, 8.0, 8.0).apply(doc, c);
+        assert_eq!(pixel(doc, c, 0.0, 0.0), [0, 0, 255, 255], "{w}x{h} drawn after the put");
+        assert_eq!(pixel(doc, c, fw - 1.0, fh - 1.0), [255, 255, 0, 255], "{w}x{h} the put after a draw");
+        Ops::default().op(43, &[]).u8(2).op_args(&[0.0, 0.0, 100.0, 50.0]).apply(doc, page.canvas);
+        draw_canvas(doc, page.canvas, c, [0.0, 0.0, 100.0, 50.0]);
+        let [r, g, b, a] = pixel(doc, page.canvas, 50.0, 25.0);
+        assert!(r > 240 && g < 16 && b < 16 && a > 240, "{w}x{h} as a source: {r} {g} {b} {a}");
+        doc.set_attribute(c, "width", "0").unwrap();
+    }
+}
+
+#[test]
+fn a_large_canvas_drawn_one_to_one_keeps_every_pixel() {
+    let page = Page::new();
+    let doc = &page.doc;
+    let (w, h) = (9000u32, 300u32);
+    let a = sized_canvas(doc, (w, h));
+    let b = sized_canvas(doc, (w, h));
+    let ramp: Vec<u8> = (0..w).flat_map(|x| [(x % 251) as u8, (x / 251) as u8, 77, 255]).collect();
+    Ops::default().put((0.0, 0.0), (w, 1), &ramp).apply(doc, a);
+    draw_canvas(doc, b, a, [0.0, 0.0, w as f32, h as f32]);
+    assert_eq!(doc.get_image_data(b, 0.0, 0.0, f64::from(w), 1.0).unwrap(), ramp);
+}
+
+#[test]
+fn a_canvas_past_the_limits_has_no_bitmap() {
+    let page = Page::new();
+    let doc = &page.doc;
+    let side = acde::gpu::Gpu::shared().map_or(32_767, |g| g.shared.device.limits().max_texture_dimension_2d.min(32_767));
+    let c = sized_canvas(doc, (side + 1, 10));
+    Ops::default().fill_style(RED).fill_rect(0.0, 0.0, 100.0, 10.0).apply(doc, c);
+    assert_eq!(pixel(doc, c, 5.0, 5.0), [0, 0, 0, 0]);
+    assert_eq!(doc.to_data_url(c, "image/png").unwrap(), "data:,");
+    assert!(doc.get_image_data(c, 0.0, 0.0, 16385.0, 16385.0).is_err());
+}

@@ -725,6 +725,7 @@ export class CanvasContext2d {
     if (![sx, sy, sw, sh].every(Number.isFinite)) throw new TypeError('getImageData: non-finite argument')
     if (!sw || !sh) throw new DOMException('getImageData: zero width or height', 'IndexSizeError')
     const width = Math.abs(Math.trunc(sw)), height = Math.abs(Math.trunc(sh))
+    if (width * height > canvasLimits()[1]) throw new RangeError(`getImageData: ${width}x${height} is more pixels than any canvas has`)
     const bytes = canvases.pixels(this.canvas, sx, sy, sw, sh)
     const data = bytes && bytes.length === width * height * 4 ? new Uint8ClampedArray(bytes.buffer, bytes.byteOffset, bytes.length) : new Uint8ClampedArray(width * height * 4)
     return new ImageData(data, width, height)
@@ -774,6 +775,7 @@ export class CanvasContext2d {
 
   resized(): void {
     this.#size = [this.canvas.width, this.canvas.height]
+    if (!canvasFits(this.canvas)) tooLarge(this.canvas)
     this.#state = CanvasContext2d.#initial()
     this.#stack = []
     this.#sent = { dirty: ALL, fill: -1, stroke: -1 }
@@ -862,9 +864,14 @@ class CanvasContexts {
   readonly #dirty = new Set<CanvasContext2d>()
   #writer: CanvasContext2d | null = null
 
-  context(canvas: CanvasElement): CanvasContext2d {
+  context(canvas: CanvasElement): CanvasContext2d | null {
     let context = this.#contexts.get(canvas)
-    if (!context) this.#contexts.set(canvas, (context = new CanvasContext2d(canvas)))
+    if (context) return context
+    if (!canvasFits(canvas)) {
+      tooLarge(canvas)
+      return null
+    }
+    this.#contexts.set(canvas, (context = new CanvasContext2d(canvas)))
     return context
   }
 
@@ -909,6 +916,21 @@ class CanvasContexts {
 }
 
 export const canvases = new CanvasContexts()
+
+function canvasLimits(): [number, number] {
+  const [side = 0, area = 0] = dom.canvasLimits()
+  return [side, area]
+}
+
+function canvasFits({ width, height }: CanvasElement): boolean {
+  const [side, area] = canvasLimits()
+  return width <= side && height <= side && width * height <= area
+}
+
+function tooLarge({ width, height }: CanvasElement): void {
+  const [side, area] = canvasLimits()
+  console.warn(`Canvas area exceeds the maximum limit (width * height > ${area}, or a side > ${side}): ${width}x${height} has no bitmap`)
+}
 
 type PathCommand = [string, ...unknown[]]
 

@@ -397,6 +397,21 @@ test('canvas: setting width or height resets the 2d state right away, not at the
   assert.deepEqual(web.json('out'), ['#000000', 1, '#ffffff'])
 })
 
+test('canvas: past the size limits getContext("2d") is null with a warning; getImageData larger than any canvas is a RangeError', async () => {
+  using web = await page()
+  web.run(`const warned = []; const warn = console.warn; console.warn = (m) => warned.push(String(m))
+    const big = document.createElement('canvas'); big.width = 16385; big.height = 10
+    const none = big.getContext('2d')
+    const wide = document.createElement('canvas'); wide.width = 16384; wide.height = 16384
+    const ctx = wide.getContext('2d')
+    wide.height = 16385
+    let range = ''
+    try { ctx.getImageData(0, 0, 16385, 16385) } catch (e) { range = e.constructor.name }
+    console.warn = warn
+    globalThis.out = [none, ctx !== null, wide.getContext('2d') === ctx, range, warned.length, warned.every((w) => w.startsWith('Canvas area exceeds the maximum limit'))]`)
+  assert.deepEqual(web.json('out'), [null, true, true, 'RangeError', 2, true])
+})
+
 test('navigator.storage: getDirectory() is a read-write root named "" from the page\'s file channel; persist and estimate', async () => {
   using web = await page()
   const files = new Map<string, Node>([['/opfs', 'dir']])

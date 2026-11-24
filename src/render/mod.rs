@@ -24,6 +24,7 @@ mod xml;
 pub use blitz_dom;
 pub use blitz_paint;
 pub use canvas::encode_png;
+pub(crate) use canvas::limits as canvas_limits;
 pub use capture::Capture;
 pub use commands::Commands;
 pub(crate) use damage::draw_bounds;

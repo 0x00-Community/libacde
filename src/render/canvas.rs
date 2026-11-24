@@ -10,7 +10,19 @@ use crate::render::error::{Error, Result};
 use crate::render::gpu;
 
 const MAX_COMMANDS: usize = 20_000;
-pub(crate) const MAX_SIDE: u32 = 4096;
+pub(crate) const MAX_AREA: u64 = 1 << 28;
+const MAX_SIDE: u32 = 32_767;
+const MAX_EFFECT_AREA: f64 = 4096.0 * 4096.0;
+
+pub(crate) fn limits() -> (u32, u64) {
+    let side = crate::gpu::Gpu::shared().map_or(MAX_SIDE, |gpu| gpu.shared.device.limits().max_texture_dimension_2d.min(MAX_SIDE));
+    (side, MAX_AREA)
+}
+
+pub(crate) fn fits(width: u32, height: u32) -> bool {
+    let (side, area) = limits();
+    width > 0 && height > 0 && width <= side && height <= side && u64::from(width) * u64::from(height) <= area
+}
 
 pub fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Option<Vec<u8>> {
     let mut out = Vec::new();
@@ -336,7 +348,7 @@ impl Canvas {
 
     fn pixel_size(&self) -> Option<(u32, u32)> {
         let (w, h) = (self.size.0 as u32, self.size.1 as u32);
-        (w > 0 && h > 0 && w <= MAX_SIDE && h <= MAX_SIDE).then_some((w, h))
+        fits(w, h).then_some((w, h))
     }
 
     fn pixels(&self, rect: [u32; 4]) -> Option<Vec<u8>> {
@@ -365,6 +377,10 @@ impl Canvas {
     }
 
     pub(crate) fn run(&mut self, doc: &mut BaseDocument, ops: &[u8], source: &dyn Fn(&BaseDocument, u8, u32) -> Option<Source>) -> Result<()> {
+        if self.pixel_size().is_none() {
+            self.drop_commands();
+            return Ok(());
+        }
         if self.closed > 0 {
             let closed = std::mem::take(&mut self.closed);
             let commands = &mut self.scene().commands;
@@ -772,7 +788,7 @@ impl Canvas {
         let canvas = Rect::new(0.0, 0.0, self.size.0, self.size.1);
         let grown = Rect::new(bounds.x0 + reach.x0, bounds.y0 + reach.y0, bounds.x1 + reach.x1, bounds.y1 + reach.y1);
         let area = if bounds.is_finite() { grown.intersect(canvas).expand() } else { canvas };
-        if area.width() < 1.0 || area.height() < 1.0 || area.width() * area.height() > f64::from(MAX_SIDE).powi(2) {
+        if area.width() < 1.0 || area.height() < 1.0 || area.width() * area.height() > MAX_EFFECT_AREA {
             return None;
         }
         let mut shape = Scene::new();
@@ -791,7 +807,7 @@ impl Canvas {
         let pad = (3.0 * sigma).ceil();
         let canvas = Rect::new(-pad, -pad, self.size.0 + pad, self.size.1 + pad);
         let area = (bounds + shadow.offset).inflate(pad, pad).intersect(canvas).expand();
-        if area.width() < 1.0 || area.height() < 1.0 || area.width() * area.height() > f64::from(MAX_SIDE).powi(2) {
+        if area.width() < 1.0 || area.height() < 1.0 || area.width() * area.height() > MAX_EFFECT_AREA {
             return None;
         }
         let k = (sigma / 3.0).floor().clamp(1.0, 8.0);

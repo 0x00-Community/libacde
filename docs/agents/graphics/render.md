@@ -75,6 +75,12 @@
   命令 14 送效果 (blur、brightness、contrast、grayscale、hue-rotate、invert、opacity、saturate、sepia、drop-shadow; url() 不支持);
   有滤镜时每次绘制先把它的范围 (加上效果外扩, 裁到画布) 画进一张图, src/vello `Offscreen::filtered` 依次做 (`blur.wgsl` 的
   `blur_rgba` 全通道模糊、`matrix.wgsl` 颜色矩阵、drop-shadow 是 alpha 模糊再垫在下面), 再画回去; 阴影还按没滤过的形状算.
+  画布位图的上限 (`canvas::limits`, 页面经 `dom.canvasLimits()` 拿): 边长不超过设备的 2D 纹理上限 (`max_texture_dimension_2d`, 再封顶 32767;
+  没有设备时 32767), 面积不超过 2^28 = 268,435,456 像素 (同 Chromium). 规范没写上限, 浏览器各自处理: 超过上限的画布没有位图, 命令丢掉
+  (`Canvas::run`), 读回全透明, `toDataURL` 是 `data:,`, `toBlob` 回 null (规范: 没有像素或序列化失败); 新建 2D 上下文时超限 `getContext('2d')`
+  回 null 并在控制台警告 (同 Safari), 已有的上下文改到超限时只警告 (之后同上); `getImageData` 的区域比面积上限还大时抛 RangeError (同 Chromium
+  分配 ImageData 失败). 边长超过 4096 的位图由 src/vello `Offscreen::draw` 分块画 (见 gpu.md「大画布」), 读回按 64 MiB 一段. `filter` 和
+  `shadowBlur` 的范围仍限 4096² 像素, 更大时这次绘制的滤镜 / 阴影不画.
 - `createImageBitmap` / `ImageBitmap` (acde-dom `dom/bitmap.ts`): 把 `<img>`、`Blob`、`ImageData`、canvas、`ImageBitmap` 画进一个不挂在文档上的
   2D 画布, 支持裁剪矩形、`resizeWidth` / `resizeHeight`、`imageOrientation: 'flipY'`、`premultiplyAlpha` (WebGL 上传时按它, 不看
   `UNPACK_FLIP_Y_WEBGL` / `UNPACK_PREMULTIPLY_ALPHA_WEBGL`); `<video>` 来源报 `NotSupportedError`. 2D `drawImage` 和 WebGPU 外部拷贝收它.

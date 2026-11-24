@@ -11,7 +11,7 @@ interface Canvas {
   width: number
   height: number
   readonly localName: string
-  getContext(kind: '2d'): Context2d
+  getContext(kind: '2d'): Context2d | null
 }
 
 interface Context2d {
@@ -78,7 +78,9 @@ async function drawable(source: unknown): Promise<[unknown, number, number]> {
     const canvas = createHtml('canvas') as unknown as Canvas
     canvas.width = source.width
     canvas.height = source.height
-    canvas.getContext('2d').putImageData(source, 0, 0)
+    const context = canvas.getContext('2d')
+    if (!context) throw new DOMException('createImageBitmap: the image is larger than a canvas can be', 'InvalidStateError')
+    context.putImageData(source, 0, 0)
     return [canvas, source.width, source.height]
   }
   if (source instanceof Blob) {
@@ -128,6 +130,7 @@ export async function createImageBitmap(source: unknown, ...args: unknown[]): Pr
   canvas.width = Math.max(1, outW)
   canvas.height = Math.max(1, outH)
   const context = canvas.getContext('2d')
+  if (!context) throw new DOMException('createImageBitmap: the bitmap is larger than a canvas can be', 'InvalidStateError')
   if (options.imageOrientation === 'flipY') {
     context.translate(0, canvas.height)
     context.scale(1, -1)

@@ -10,6 +10,10 @@ use crate::vello::Exported;
 pub enum Exported {}
 
 const WAIT: Duration = Duration::from_secs(10);
+const READ_BAND: u64 = 64 << 20;
+const WHOLE: u32 = super::fit::LARGE;
+const TILE: u32 = 4064;
+const TILE_WITH_IMAGES: u32 = 2032;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 const MAX_RADIUS: f64 = 256.0;
@@ -78,13 +82,18 @@ impl Shared {
     }
 
     pub fn write(&self, image: &GpuImage, data: &[u8], (width, height): (u32, u32), from: [u32; 2], [x, y, w, h]: [u32; 4]) {
-        if w == 0 || h == 0 || data.len() < (width * height * 4) as usize {
+        let row = u64::from(width) * 4;
+        if w == 0 || h == 0 || (data.len() as u64) < row * u64::from(height) {
             return;
         }
         self.queue.write_texture(
             wgpu::TexelCopyTextureInfo { texture: &image.texture, mip_level: 0, origin: wgpu::Origin3d { x, y, z: 0 }, aspect: wgpu::TextureAspect::All },
             data,
-            wgpu::TexelCopyBufferLayout { offset: u64::from((from[1] * width + from[0]) * 4), bytes_per_row: Some(width * 4), rows_per_image: Some(height) },
+            wgpu::TexelCopyBufferLayout {
+                offset: u64::from(from[1]) * row + u64::from(from[0]) * 4,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
             wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
         );
     }
@@ -94,6 +103,15 @@ impl Shared {
             return Err(format!("{w}x{h} at ({x}, {y}) is outside the {}x{} texture", texture.width(), texture.height()));
         }
         let stride = (w * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let band = (READ_BAND / u64::from(stride)).clamp(1, u64::from(h)) as u32;
+        let mut out = Vec::with_capacity(w as usize * h as usize * 4);
+        for top in (0..h).step_by(band as usize) {
+            self.read_band(texture, [x, y + top, w, band.min(h - top)], stride, &mut out)?;
+        }
+        Ok(out)
+    }
+
+    fn read_band(&self, texture: &wgpu::Texture, [x, y, w, h]: [u32; 4], stride: u32, out: &mut Vec<u8>) -> Result<(), String> {
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("acde read back"),
             size: u64::from(stride) * u64::from(h),
@@ -119,13 +137,12 @@ impl Shared {
         self.device.poll(wgpu::PollType::Wait { submission_index: Some(index), timeout: Some(WAIT) }).map_err(|e| format!("waiting for the read back: {e}"))?;
         rx.recv_timeout(WAIT).map_err(|e| e.to_string())?.map_err(|e| format!("read back: {e}"))?;
         let mapped = slice.get_mapped_range().map_err(|e| format!("read back: {e}"))?;
-        let mut out = Vec::with_capacity((w * h * 4) as usize);
         for row in mapped.chunks_exact(stride as usize) {
             out.extend_from_slice(&row[..(w * 4) as usize]);
         }
         drop(mapped);
         buffer.unmap();
-        Ok(out)
+        Ok(())
     }
 }
 
@@ -383,9 +400,38 @@ impl Offscreen {
             return Err("an empty image".into());
         }
         let (texture, exported) = self.shared.image(size, "acde offscreen");
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        self.vello.render([(scene, place)], &mut self.overrides, &view, size, peniko::Color::TRANSPARENT, Some(&self.shared))?;
+        if size.0 <= WHOLE && size.1 <= WHOLE {
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            self.vello.render([(scene, place)], &mut self.overrides, &view, size, peniko::Color::TRANSPARENT, Some(&self.shared))?;
+        } else {
+            self.tiled(&scene, size, place, &texture)?;
+        }
         Ok(GpuImage::with_export(texture, exported, &self.shared.images))
+    }
+
+    fn tiled(&mut self, scene: &Scene, (width, height): (u32, u32), place: Affine, target: &wgpu::Texture) -> Result<(), String> {
+        let side = if super::fit::Fit::has_large(scene, &self.shared.images) { TILE_WITH_IMAGES } else { TILE };
+        let scratch = self.shared.texture((width.min(side), height.min(side)), "acde offscreen tile");
+        let view = scratch.create_view(&wgpu::TextureViewDescriptor::default());
+        for y in (0..height).step_by(side as usize) {
+            for x in (0..width).step_by(side as usize) {
+                let part = ((width - x).min(side), (height - y).min(side));
+                let at = Affine::translate((-f64::from(x), -f64::from(y))) * place;
+                self.vello.render([(scene.clone(), at)], &mut self.overrides, &view, part, peniko::Color::TRANSPARENT, Some(&self.shared))?;
+                let mut encoder = self.shared.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("acde offscreen tile") });
+                encoder.copy_texture_to_texture(
+                    wgpu::TexelCopyTextureInfo { texture: &scratch, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                    wgpu::TexelCopyTextureInfo { texture: target, mip_level: 0, origin: wgpu::Origin3d { x, y, z: 0 }, aspect: wgpu::TextureAspect::All },
+                    wgpu::Extent3d { width: part.0, height: part.1, depth_or_array_layers: 1 },
+                );
+                let index = self.shared.submit([encoder.finish()]);
+                self.shared
+                    .device
+                    .poll(wgpu::PollType::Wait { submission_index: Some(index), timeout: Some(WAIT) })
+                    .map_err(|e| format!("waiting for a tile: {e}"))?;
+            }
+        }
+        Ok(())
     }
 
     pub fn shadow(&mut self, scene: Scene, size: (u32, u32), place: Affine, sigma: f64, color: [f32; 4]) -> Result<Arc<GpuImage>, String> {
@@ -501,7 +547,7 @@ impl Offscreen {
 
     pub fn rasterize(&mut self, scene: Scene, (width, height): (u32, u32)) -> Vec<u8> {
         let drawn = self.draw(scene, (width, height), Affine::IDENTITY).and_then(|image| self.shared.read(&image.texture, [0, 0, width, height]));
-        let mut rgba = drawn.unwrap_or_else(|_| vec![0; (width * height * 4) as usize]);
+        let mut rgba = drawn.unwrap_or_else(|_| vec![0; width as usize * height as usize * 4]);
         for px in rgba.as_chunks_mut::<4>().0 {
             let a = u32::from(px[3]);
             for c in &mut px[..3] {

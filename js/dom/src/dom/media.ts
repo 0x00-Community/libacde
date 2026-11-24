@@ -189,6 +189,10 @@ export class HTMLCanvasElement extends HTMLElement {
       return
     }
     const url = this.toDataURL(type, quality)
+    if (url === 'data:,') {
+      host.setTimer(0, () => callback(null))
+      return
+    }
     const comma = url.indexOf(',')
     const mime = /^data:([^;,]*)/.exec(url)?.[1] || 'image/png'
     const bytes = comma < 0 ? null : unbase64(url.slice(comma + 1))
