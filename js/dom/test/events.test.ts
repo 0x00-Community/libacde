@@ -142,6 +142,31 @@ test('hover: a removed target hands its boundary to the nearest connected ancest
   assert.deepEqual(web.json('log'), ['mouseout:art2', 'mouseleave:art2', 'mouseleave:ico', 'mouseleave:dock', 'mouseleave:BODY', 'mouseleave:HTML'])
 })
 
+test('hover: with no pointer or mouse listener a move does no hit test; a listener added later starts from where the pointer was', async () => {
+  using web = await page('<!doctype html><html><body><div id="a"></div><div id="b"></div></body></html>')
+  const id = (name: string) => web.internals.idOf(web.run(`document.getElementById("${name}")`))
+  web.dom.boxes.set(id('a'), { x: 0, y: 0, width: 100, height: 100 })
+  web.dom.boxes.set(id('b'), { x: 0, y: 200, width: 100, height: 100 })
+  let hits = 0
+  const hitTest = web.dom.hitTest.bind(web.dom)
+  web.dom.hitTest = (x: number, y: number) => {
+    hits++
+    return hitTest(x, y)
+  }
+  const input = web.internals.input
+  input.pointer('pointermove', 10, 10)
+  input.pointer('pointermove', 20, 20)
+  assert.equal(hits, 0)
+  web.run(`
+    globalThis.log = []
+    for (const type of ['mouseover', 'mouseout']) document.addEventListener(type, (e) => log.push(type + ':' + (e.target.id || e.target.nodeName)), true)
+  `)
+  input.pointer('pointermove', 30, 30)
+  assert.deepEqual(web.json('log'), [], 'still over a: no boundary events')
+  input.pointer('pointermove', 30, 230)
+  assert.deepEqual(web.json('log'), ['mouseout:a', 'mouseover:b'])
+})
+
 test('input routing: hover, compat mouse events, click count, focus on press, keys to the focused element', async () => {
   using web = await page('<!doctype html><html><body><div id="a"><button id="btn">b</button></div><input id="field"></body></html>')
   const a = web.internals.idOf(web.run('document.getElementById("a")'))

@@ -109,9 +109,9 @@ export class ShellInput {
       case 'pointerup':
       case 'wheel': {
         const x = raw.x ?? 0, y = raw.y ?? 0
-        const target = this.#hitTest(x, y)
         const modifiers = { ...this.#mods }
-        if (raw.type === 'wheel') return { type: 'wheel', target, x, y, deltaX: raw.deltaX ?? 0, deltaY: raw.deltaY ?? 0, modifiers }
+        if (raw.type === 'wheel') return { type: 'wheel', target: this.#hitTest(x, y), x, y, deltaX: raw.deltaX ?? 0, deltaY: raw.deltaY ?? 0, modifiers }
+        const target = raw.type === 'pointermove' ? undefined : this.#hitTest(x, y)
         const movement = raw.type === 'pointermove' && raw.deltaX !== undefined ? ([raw.deltaX, raw.deltaY ?? 0] as const) : undefined
         return { type: raw.type, target, x, y, button: BUTTONS[raw.button ?? 272] ?? 0, movement, modifiers, time: raw.stamp }
       }

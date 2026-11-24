@@ -1,5 +1,5 @@
 import { now as clockNow, hostTime, isInstalled as clockInstalled } from '../core/clock'
-import { eventCoalesced, eventTime, fireFromTask, type Event } from '../core/event'
+import { eventCoalesced, eventTime, fireFromTask, listenedTypes, type Event } from '../core/event'
 import { DOMException } from '../core/exception'
 import { G, host } from '../core/host'
 import { NONE, NodeType } from '../native'
@@ -14,6 +14,7 @@ import { PointerSelection } from './textselect'
 import { RangeInput } from './rangeinput'
 import { ScrollbarDrag } from './scrollbar'
 import { CONNECTED, dom, documentId, ID, inner, moved, rootElementId, wrap } from './realm'
+import { flags } from './element'
 
 export interface Modifiers {
   readonly shift?: boolean
@@ -43,6 +44,10 @@ interface KeyOptions {
   readonly repeat?: boolean
 }
 
+const HOVER_TYPES = [
+  'pointermove', 'pointerover', 'pointerout', 'pointerenter', 'pointerleave', 'pointerrawupdate',
+  'mousemove', 'mouseover', 'mouseout', 'mouseenter', 'mouseleave',
+]
 const FOCUSABLE = 'a[href],area[href],button,input,select,textarea,iframe,summary,[tabindex],[contenteditable]'
 const DOUBLE_CLICK_MS = 500
 const CLICK_SLOP = 5
@@ -76,6 +81,7 @@ export class Input {
   #last = { x: 0, y: 0 }
   #time: number | undefined
   #shift = 0
+  #untracked = false
   capture: Element | null = null
   readonly selects = new SelectInput()
   readonly text = new PointerSelection()
@@ -160,6 +166,8 @@ export class Input {
 
   leave(options: PointerOptions = {}): void {
     if (this.capture) return
+    if (this.#untracked && !this.#watched()) return
+    this.#resync()
     this.#hoverTo(null, this.#init(this.#last.x, this.#last.y, options))
   }
 
@@ -183,7 +191,26 @@ export class Input {
     this.#last = { x, y }
   }
 
+  #resync(): void {
+    if (!this.#untracked) return
+    this.#untracked = false
+    const was = this.elementAt(undefined, this.#last.x, this.#last.y, true)
+    this.#hover = was
+    this.#path = this.#chain(was).map((id) => wrap<Element>(id)!)
+  }
+
+  #watched(): boolean {
+    if (this.#buttons || this.capture || pointerLockElement() || flags.inlineHandlers) return true
+    for (const type of HOVER_TYPES) if (listenedTypes.has(type)) return true
+    return false
+  }
+
   #move(x: number, y: number, options: PointerOptions): void {
+    if (!this.#watched()) {
+      this.#untracked = true
+      return
+    }
+    this.#resync()
     const target = this.elementAt(options.target, x, y)
     const init = this.#init(x, y, options)
     this.#hoverTo(this.capture ? this.elementAt(options.target, x, y, true) : target, init)
@@ -198,6 +225,7 @@ export class Input {
     const button = options.button ?? 0
     this.#buttons |= buttonBit(button)
     const init = this.#init(x, y, options, button)
+    this.#resync()
     this.#hoverTo(target, init)
     activate()
     this.#pressed = target

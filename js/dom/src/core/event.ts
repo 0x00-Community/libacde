@@ -309,7 +309,10 @@ function removeListener(target: Targetish, type: string, listener: Listener): vo
   }
 }
 
+export const listenedTypes = new Set<string>()
+
 function addListener(target: Targetish, type: string, listener: Listener): void {
+  listenedTypes.add(type)
   let map = target[LISTENERS]
   if (!map) map = target[LISTENERS] = new Map()
   const list = map.get(type)

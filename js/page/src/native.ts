@@ -29,7 +29,7 @@ export type ShellEvent =
   | { type: 'frame'; time: number }
   | { type: 'panelmove'; id: number; x: number; y: number; width: number; height: number }
   | { type: 'panelended'; id: number; why: PanelEnd }
-  | { type: 'pointermove' | 'pointerdown' | 'pointerup'; target: number | null; x: number; y: number; button?: number; movement?: readonly [number, number]; modifiers?: Modifiers; time?: number; samples?: readonly PointerSample[] }
+  | { type: 'pointermove' | 'pointerdown' | 'pointerup'; target?: number | null; x: number; y: number; button?: number; movement?: readonly [number, number]; modifiers?: Modifiers; time?: number; samples?: readonly PointerSample[] }
   | { type: 'pointerleave'; modifiers?: Modifiers }
   | { type: 'wheel'; target: number | null; x: number; y: number; deltaX: number; deltaY: number; modifiers?: Modifiers }
   | { type: 'keydown' | 'keyup'; key: string; code: string; keycode?: number; repeat?: boolean; modifiers?: Modifiers; fromIme?: boolean }
