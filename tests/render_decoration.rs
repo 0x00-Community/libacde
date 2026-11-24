@@ -301,3 +301,26 @@ fn shortcuts_are_written_the_way_the_frame_style_writes_them() {
     assert_eq!(mac.shortcut_text("shift+mod+Z"), "⇧⌘Z", "mod is command on a Mac");
     assert_eq!(win.shortcut_text("shift+mod+Z"), "Ctrl+Shift+Z", "and control elsewhere");
 }
+
+#[test]
+fn the_dots_say_where_the_mac_buttons_are_and_their_colour() {
+    let b = bar("", 300.0, 1.0);
+    let dots = b.dots();
+    let centres: Vec<(f64, f64)> = dots.iter().map(|d| d.centre).collect();
+    assert_eq!(centres, [(18.0, 16.0), (38.0, 16.0), (58.0, 16.0)], "inset + dot / 2 + i (dot + gap), at half height");
+    assert_eq!(dots.iter().map(|d| d.button).collect::<Vec<_>>(), FrameButton::ALL);
+    assert_eq!((dots[0].radius, dots[0].color), (6.0, [0xff, 0x5f, 0x57, 0xff]));
+    let off = Bar { minimize: false, ..b.clone() }.dots();
+    assert!(off[1].color[3] < 0x40, "a minimize that cannot be used is faint: {:?}", off[1].color);
+    assert!(windows("", 300.0, 1.0).dots().is_empty(), "Windows style buttons are glyphs");
+}
+
+#[test]
+fn glass_dots_leave_the_buttons_to_the_compositor() {
+    let b = bar("", 300.0, 1.0);
+    let mut painter = Decoration::new();
+    painter.glass_dots(true);
+    let (w, h) = b.pixels();
+    let px = (common::rasterize(painter.scene(&b), (w, h)), w);
+    assert_eq!(rgb(&px, 18.0, 16.0), rgb(&px, 150.0, 10.0), "no dot drawn: the bar's own background shows");
+}

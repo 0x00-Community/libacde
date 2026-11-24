@@ -262,13 +262,21 @@ impl FrameButton {
         }
     }
 
-    fn color(self) -> Color {
+    fn rgba(self) -> Rgba {
         match self {
-            FrameButton::Close => Color::from_rgb8(0xff, 0x5f, 0x57),
-            FrameButton::Minimize => Color::from_rgb8(0xfe, 0xbc, 0x2e),
-            FrameButton::Fullscreen => Color::from_rgb8(0x28, 0xc8, 0x40),
+            FrameButton::Close => [0xff, 0x5f, 0x57, 0xff],
+            FrameButton::Minimize => [0xfe, 0xbc, 0x2e, 0xff],
+            FrameButton::Fullscreen => [0x28, 0xc8, 0x40, 0xff],
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Dot {
+    pub button: FrameButton,
+    pub centre: (f64, f64),
+    pub radius: f64,
+    pub color: Rgba,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -379,6 +387,22 @@ impl Bar {
         }
     }
 
+    pub fn dots(&self) -> Vec<Dot> {
+        if self.style() != FrameStyle::Mac {
+            return Vec::new();
+        }
+        let colors = self.theme.colors(self.active, self.dark_page);
+        let off = colors.title.map_or([0; 4], |[r, g, b, a]| [r, g, b, (f32::from(a) * Decoration::OFF_ALPHA).round() as u8]);
+        let radius = FrameMetrics::current().dot / 2.0;
+        let dot = |button: FrameButton| {
+            let (from, to) = button.slot(FrameStyle::Mac, self.side(), self.width);
+            let lit = self.minimize || button != FrameButton::Minimize;
+            let color = if lit { colors.buttons.unwrap_or_else(|| button.rgba()) } else { off };
+            Dot { button, centre: ((from + to) / 2.0, self.height / 2.0), radius, color }
+        };
+        FrameButton::ALL.into_iter().map(dot).collect()
+    }
+
     pub fn button_at(&self, x: f64, y: f64) -> Option<FrameButton> {
         if y < 0.0 || y >= self.height {
             return None;
@@ -394,6 +418,7 @@ pub struct Decoration {
     fonts: FontContext,
     layouts: LayoutContext<()>,
     widths: Option<(Vec<String>, Vec<f64>)>,
+    glass_dots: bool,
 }
 
 impl Default for Decoration {
@@ -424,7 +449,11 @@ impl Decoration {
     pub fn new() -> Self {
         let fonts =
             FontContext { source_cache: SourceCache::new_shared(), collection: Collection::new(CollectionOptions { shared: false, system_fonts: true }) };
-        Self { fonts, layouts: LayoutContext::new(), widths: None }
+        Self { fonts, layouts: LayoutContext::new(), widths: None, glass_dots: false }
+    }
+
+    pub fn glass_dots(&mut self, on: bool) {
+        self.glass_dots = on;
     }
 
     pub fn scene(&mut self, bar: &Bar) -> Scene {
@@ -438,22 +467,15 @@ impl Decoration {
         scene.fill(Fill::NonZero, scale, colors.background.map_or(Color::TRANSPARENT, paint), None, &Rect::new(0.0, 0.0, w, h));
         scene.fill(Fill::NonZero, scale, colors.line.map_or(Color::TRANSPARENT, paint), None, &Rect::new(0.0, h - 1.0, w, h));
         let (style, side) = (bar.style(), bar.side());
-        for button in FrameButton::ALL {
+        for dot in bar.dots().into_iter().filter(|_| !self.glass_dots) {
+            scene.fill(Fill::NonZero, scale, paint(dot.color), None, &Circle::new(dot.centre, dot.radius));
+            scene.stroke(&Stroke::new(0.5), scale, Self::RING, None, &Circle::new(dot.centre, dot.radius - 0.25));
+        }
+        for button in FrameButton::ALL.into_iter().filter(|_| style == FrameStyle::Windows) {
             let (from, to) = button.slot(style, side, w);
-            match style {
-                FrameStyle::Mac => {
-                    let centre = ((from + to) / 2.0, h / 2.0);
-                    let fill = if bar.minimize || button != FrameButton::Minimize { colors.buttons.map_or_else(|| button.color(), paint) } else { off };
-                    let dot = FrameMetrics::current().dot;
-                    scene.fill(Fill::NonZero, scale, fill, None, &Circle::new(centre, dot / 2.0));
-                    scene.stroke(&Stroke::new(0.5), scale, Self::RING, None, &Circle::new(centre, dot / 2.0 - 0.25));
-                }
-                FrameStyle::Windows => {
-                    let glyph = Self::glyph(button, bar.fullscreen, ((from + to) / 2.0 - Self::GLYPH / 2.0).round(), ((h - Self::GLYPH) / 2.0).round());
-                    let ink = if bar.minimize || button != FrameButton::Minimize { colors.buttons.map_or(text, paint) } else { off };
-                    scene.stroke(&Stroke::new(1.0), scale, ink, None, &glyph);
-                }
-            }
+            let glyph = Self::glyph(button, bar.fullscreen, ((from + to) / 2.0 - Self::GLYPH / 2.0).round(), ((h - Self::GLYPH) / 2.0).round());
+            let ink = if bar.minimize || button != FrameButton::Minimize { colors.buttons.map_or(text, paint) } else { off };
+            scene.stroke(&Stroke::new(1.0), scale, ink, None, &glyph);
         }
         let labels = self.menu_labels(bar);
         for (i, (label, [x, y, w, h])) in bar.menus.iter().zip(&labels).enumerate() {
