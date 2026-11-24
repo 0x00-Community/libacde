@@ -10,6 +10,11 @@
   同一个应用不再互相删 socket; 应用的后端停了删它的目录, 启动器退出时删整个 pid 目录, 第一次起后端时扫掉进程已不在的 pid 目录;
   `<端口>.sock` 的路径超过 `sun_path` (macOS 104 字节, Linux 108) 时不起, 打一行 warn. Linux 上没有 `XDG_RUNTIME_DIR` 时用
   `/run/user/<uid>`; `sys.pid` 给出运行时的 pid; 只扫纯数字的目录, 同一处的 `acde/` (旧布局、`exec`) 不动), 指定端口的 UDP bind 拒绝; 原生扩展开的端口管不到.
+- **后端的调试器** (只在开发模式, `BackendPlace.inspector` / `inspected`): 环境里有 `ACDE_DEV` 和 `ACDE_INSPECT_BACKEND=<0–65535>` (acdev dev 的
+  `--inspect-backend[=PORT]` 设, 见 acdev `docs/agents/acde-dev.md`「后端的调试器」) 时, 后端的命令行在 bun / node 后面加 `--inspect=127.0.0.1:<端口>`
+  (0 是系统挑的空闲端口; bun 和 node 认同一个写法, Bun 是 WebKit inspector 协议, Node 是 Chrome DevTools 协议), `started (…)` 那行注明调试端口;
+  值不是端口时打 warn `ACDE_INSPECT_BACKEND=… is not a port (0 to 65535); no debugger`, 照常起. 调试器在 preload 之前起, preload 换的 `listen` / `Bun.serve`
+  管不到它, 所以这是后端唯一的 TCP 监听, 只在环回地址、只在开发者显式要的时候; 正式会话 (没有 `ACDE_DEV`) 不认这个变量.
 - **后端的代理变量** (runtime `proxy::backend_variables`, Broker 经 `sys.proxyEnv()` 并进后端环境, 各平台都有): 会话设了
   `http_proxy` / `https_proxy` / `all_proxy` 中任何一个, 就原样传 `http_proxy` / `https_proxy` / `all_proxy` / `no_proxy` 这几个变量 (unix 上大小写
   两种名字各自照传, Windows 环境变量名不分大小写, 用大写名). 一个都没设时给平台的手动代理, 和页面用的同一份系统设置: Windows 是用户

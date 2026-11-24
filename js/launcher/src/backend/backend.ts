@@ -74,6 +74,17 @@ export const BackendPlace = {
     return null
   },
 
+  inspector(env: Readonly<Record<string, string | undefined>> = process.env): number | string | null {
+    const given = env['ACDE_INSPECT_BACKEND']
+    if (!env['ACDE_DEV'] || given === undefined) return null
+    return /^\d{1,5}$/.test(given) && Number(given) <= 65535 ? Number(given) : `ACDE_INSPECT_BACKEND=${given} is not a port (0 to 65535); no debugger`
+  },
+
+  inspected(argv: readonly string[], port: number | null): string[] {
+    const [exe, ...rest] = argv
+    return port === null || exe === undefined ? [...argv] : [exe, `--inspect=127.0.0.1:${port}`, ...rest]
+  },
+
   init(app: AppManifest): BackendInit {
     if (!app.backend) return {}
     if (!BackendPlace.windows()) return { sockets: BackendPlace.socketDir(app.id) }
@@ -189,7 +200,10 @@ export class AppBackend {
     const { spawn, spawnBackend } = sys()
     if (!spawn && !spawnBackend) return 'this runtime cannot start processes'
     const argv = BackendPlace.argv(BackendPlace.env('PATH'), preload, server, process.env['ACDE_RUNTIME'])
-    return argv ? { argv, preload } : 'neither bun nor node is on PATH'
+    if (!argv) return 'neither bun nor node is on PATH'
+    const inspector = BackendPlace.inspector()
+    if (typeof inspector === 'string') this.#report(inspector, Level.Warn)
+    return { argv: BackendPlace.inspected(argv, typeof inspector === 'number' ? inspector : null), preload }
   }
 
   #env(): Record<string, string> {
@@ -216,7 +230,9 @@ export class AppBackend {
       this.#end()
       return void this.#refuse((error as Error).message)
     }
-    this.#report(`started (pid ${this.#pid}, port ${this.#app.backend!.port})`)
+    const inspector = command.argv.find((arg) => arg.startsWith('--inspect='))?.slice('--inspect='.length)
+    const debug = inspector === undefined ? '' : `, its debugger on ${inspector.endsWith(':0') ? 'a free port of 127.0.0.1' : inspector}`
+    this.#report(`started (pid ${this.#pid}, port ${this.#app.backend!.port}${debug})`)
   }
 
   #launch(argv: string[], preload: string, onExit: Exit): number {
