@@ -62,7 +62,7 @@ Every panel has a `closed` promise that resolves with the reason: `'unpinned'` (
 
 ## Full-screen windows
 
-The runtime's contract says a panel stays above a full-screen window that covers its edge; a desktop that wants panels to step aside for full screen makes them transparent and click-through itself, based on the front window's `state`. How acdes stacks the shell against full-screen windows is described in acdes's own documentation.
+On a screen whose front window is full screen, `dock`, `floating` and `notice` panels drop below that window and are covered by it; the desktop does not need to hide them or make them transparent. `confirm` cards, the input method's candidate panel and the lock screen stay on top. Panels on other screens are not affected.
 
 ## Screen edges
 
