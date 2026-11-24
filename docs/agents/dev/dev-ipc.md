@@ -156,7 +156,7 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
   `<app>#<pid>`, 桌面 `desktop`) 列一行 `{name, app, kind, window, title: null, stalled: true}`, 之后迟到的回答丢掉 (acdes 管家 `server/dev.rs` 的 `Waiting::Webs`).
   其余请求只发给一个页面, 那个页面不回答就由工具一侧的超时报错.
   诊断 (2026-11-24, 只加日志不改行为; 查"应用页反复重载后 webs 里 not answering、窗口照常"): 设了 `ACDE_DEV` 的启动器往 stderr 写以 `acde_dev:` 开头的行
-  (`js/launcher/src/devtrace.ts` 的 `DevTrace`, 会话里进 journal, `journalctl _PID=<pid> | grep acde_dev:`): 每个 devrequest 收到和答复各一行 (时间、op、id、耗时、ok / error);
+  (`js/launcher/src/devtrace.ts` 的 `DevTrace`, 会话里进 journal, `journalctl _PID=<pid> | grep acde_dev:`): 每个 devrequest 收到一行、答复算好开始发送一行 (`answer ready in … ms, sending … bytes`; 与最后一行之差就是发送本身阻塞的时间)、发完一行 (时间、op、id、耗时、ok / error);
   `run()` 循环每 5 秒汇总一行 (这 5 秒里醒了几次、外壳与管家的事件通知来了几次; 通知来了却没醒, 就是循环停了; 定时器不拦进程退出); `#end` 一行写原因 (页面停了、外壳发 close/exit/quit、管家断开、信号、关窗、`--seconds`), 循环退出再一行.
   页面重载和 respawn 走事件循环上的回调, 管家的 devrequest 只在 `run()` 循环里取, 所以"窗口照常而 devrequest 不回"时, 看汇总行是否还在、醒了几次, 能分清循环是停了还是退了.
 - 锁屏页 (welcome 顶层 `lock: true`): 页面名固定为 `lock`, `webs` 里带 `lock: true` (kind 仍是 desktop), `web: "lock"` 找到它, `desktop` 不再指它.

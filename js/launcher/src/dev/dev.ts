@@ -184,6 +184,7 @@ export class DevChannel {
       payload = (error as Error)?.message ?? String(error)
     }
     if (id === null) return
+    if (traced) this.#host.trace?.sending(traced.op, id, traced.since, payload.length)
     try {
       if (this.#host.respond) this.#host.respond(id, ok, payload)
       else this.#host.shell.devRespond?.(id, ok, payload)

@@ -39,6 +39,10 @@ export class DevTrace {
     return this.#clock.now()
   }
 
+  sending(op: string, id: number | null, since: number, bytes: number): void {
+    this.#line(`devrequest ${op} id=${id ?? '-'} answer ready in ${this.#clock.now() - since} ms, sending ${bytes} bytes`)
+  }
+
   answered(op: string, id: number | null, since: number, ok: boolean): void {
     this.#line(`devrequest ${op} id=${id ?? '-'} answered ${ok ? 'ok' : 'error'} in ${this.#clock.now() - since} ms`)
   }

@@ -80,8 +80,10 @@ describe('the dev diagnostics on stderr', () => {
     assert.deepEqual(answers, [[3, true], [4, false]])
     assert.deepEqual(lines.map((l) => l.replace(/^acde_dev: \S+ /, '')), [
       'devrequest webs id=3 received\n',
+      'devrequest webs id=3 answer ready in 0 ms, sending 11 bytes\n',
       'devrequest webs id=3 answered ok in 0 ms\n',
       'devrequest fly id=4 received\n',
+      'devrequest fly id=4 answer ready in 0 ms, sending 33 bytes\n',
       'devrequest fly id=4 answered error in 0 ms\n',
     ])
   })
