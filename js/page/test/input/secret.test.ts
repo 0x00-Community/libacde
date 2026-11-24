@@ -46,3 +46,25 @@ test('password inputs and secret autocomplete tokens count as secret fields', as
   const secret = (id: string) => TextEntry.secret(web.run(`document.getElementById('${id}')`))
   assert.deepEqual(['plain', 'pw', 'otp', 'login', 'key', 'user', 'div'].map(secret), [false, true, true, true, true, false, false])
 })
+
+test('a field focused by script or by the window coming back takes the input method without a frame or a key', async () => {
+  using web = await page('<!doctype html><html><body><input id="search"><button id="other">x</button></body></html>')
+  const { calls, ime } = recorded()
+  const text = new TextEntry(web.internals, web.dom as never)
+  text.attachIme(ime)
+  web.run(`document.getElementById('search').focus()`)
+  await Promise.resolve()
+  assert.ok(calls.includes('focusIn'), `focus() alone hands the field to the input method: ${calls}`)
+  calls.length = 0
+  web.run(`document.getElementById('other').focus()`)
+  await Promise.resolve()
+  assert.deepEqual(calls, ['focusOut'])
+  calls.length = 0
+  text.surfaceActive = false
+  web.run(`document.getElementById('search').focus()`)
+  await Promise.resolve()
+  assert.deepEqual(calls, [], 'not while the window is inactive')
+  text.surfaceActive = true
+  await Promise.resolve()
+  assert.ok(calls.includes('focusIn'), `the window coming back hands it over again: ${calls}`)
+})

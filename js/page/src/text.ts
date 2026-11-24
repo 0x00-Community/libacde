@@ -27,6 +27,7 @@ export class TextEntry {
   static readonly RECHECK_MS = 100
   static readonly SECRET_AUTOCOMPLETE = new Set(['current-password', 'new-password', 'one-time-code'])
   #inactive = false
+  #reportQueued = false
   #composing: Element | null = null
   #preedit: HTMLElement | null = null
   #placeholder: { field: Element; value: string } | null = null
@@ -42,6 +43,16 @@ export class TextEntry {
     this.#editing = page.editing
     this.#layer = new ImeLayer(this.#document, dom, (node) => page.idOf(node))
     this.#panel = new ImePanel(this.#document, this.#layer, { select: (index) => this.#ime?.select(index), page: (next) => this.#ime?.page(next) })
+    for (const type of ['focusin', 'focusout']) this.#document.addEventListener(type, () => this.#reportSoon(), true)
+  }
+
+  #reportSoon(): void {
+    if (this.#reportQueued) return
+    this.#reportQueued = true
+    void Promise.resolve().then(() => {
+      this.#reportQueued = false
+      this.report()
+    })
   }
 
   attachIme(ime: InputMethod): void {
@@ -124,6 +135,7 @@ export class TextEntry {
     if (!active) this.#hideFloat()
     this.#reported = null
     this.#last = null
+    if (active) this.#reportSoon()
   }
 
   report(): void {
