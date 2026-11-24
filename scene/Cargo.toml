@@ -4,6 +4,7 @@ description = "The 2D scene that blitz paints into and the GPU backends draw: co
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+license.workspace = true
 publish = ["ac"]
 
 [dependencies]
