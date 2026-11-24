@@ -3,9 +3,7 @@ import type { WebInit } from '../../page/src/contract'
 import type { FileFilter, Lent, WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
 import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
 import { Log } from '../../page/src/log'
-import { screenshotFile, xdgHome } from '../../page/src/sys/os'
-import { mkdirSync, readDirOr, readTextOr, renameSync, stat, writeFileSync } from '../../page/src/sys/fs'
-import { dirname, join } from '../../page/src/sys/path'
+import { screenshotFile } from '../../page/src/sys/os'
 import { onceSignal, process } from '../../page/src/sys/process'
 import { Rpc } from '../../page/src/rpc'
 import { SessionLanguage } from '../../page/src/language'
@@ -18,7 +16,7 @@ import { Lending } from './app/lending'
 import type { WireMenu } from '../../page/src/contract'
 import { LaunchArgs } from './args'
 import { refused, route, unsupported, wallpaperOf } from './app/calls'
-import { rejectingCalls, sessionOf, windowGrant, type ManagerEvent, type ManagerLink, type ServiceShape, type Session, type Welcome } from './manager/manager'
+import { rejectingCalls, sessionOf, windowGrant, type ManagerEvent, type ManagerLink, type ServiceShape, type Session } from './manager/manager'
 import { WindowSnapshots, type ShellEvent } from './app/events'
 import { holdTheLoop, ServiceHost } from './manager/service'
 import { DevChannel, type DevOpen, type DevOpened, type DevShell, type DevTarget } from './dev/dev'
@@ -27,10 +25,8 @@ import { managerRelay, type DevRelay } from './dev/relay'
 import { Inspect, type InspectHost, type InspectShell, type PlaceChange, type PlayEvent, type ShellWindow } from './dev/inspect'
 import { GuestWindows } from './dev/guest'
 import { standalone } from './standalone'
-import { LocalRegistry } from './local/registry'
-import { LocalOpener } from './local/open'
-import { LocalSession, type Seat } from './local/session'
-import type { LocalLink } from './local/link'
+import type { Seat } from './local/session'
+import { localDesktop, type LocalDesktopParts } from './local/desktop'
 import { Frame } from '../../page/src/frame'
 import { AppBackend } from './backend/backend'
 import { fixedScheme, followAppearance, type AppearanceChange, type AppearancePortal, type Glass, WallToneOf } from './app/appearance'
@@ -152,6 +148,16 @@ class Launcher {
     this.#backend = session.kind === 'app' && session.found?.app.backend ? new AppBackend(session.found) : null
     const port = manager?.welcome.port
     this.#port = port ? new PagePort(port.data ?? null, manager.connectBackend?.bind(manager), (line) => process.stderr.write(`acdev: ${line}\n`)) : null
+  }
+
+  static localParts(natives: LauncherNatives, args: LaunchArgs): LocalDesktopParts {
+    return {
+      shell: (title) => Launcher.shell(natives, title),
+      ...(natives.native.DevTools && { devtools: natives.native.DevTools }),
+      launcher: (given, link, seat) => new Launcher(natives, given, link, args, seat),
+      service: (link, welcome, generation) => new ServiceHost(link, welcome, natives.native as unknown as Record<string, unknown>, holdTheLoop, generation),
+      signals: Launcher.SIGNALS,
+    }
   }
 
   static shell(natives: LauncherNatives, title: string): LauncherShell {
@@ -729,59 +735,6 @@ class Launcher {
   }
 }
 
-async function localDesktop(natives: LauncherNatives, args: LaunchArgs): Promise<number> {
-  const files = { readText: (file: string) => readTextOr(file, null), readDir: readDirOr, isFile: (file: string) => stat(file)?.isFile === true }
-  const roots = {
-    dev: (process.env['ACDE_PATH'] ?? '').split(':').filter(Boolean),
-    system: (process.env['XDG_DATA_DIRS'] || '/usr/local/share:/usr/share').split(':').filter(Boolean),
-    user: xdgHome('data'),
-  }
-  const scan = () => LocalRegistry.scan(files, roots, args.app || null)
-  const registry = scan()
-  const shell = Launcher.shell(natives, registry.desktop.desktop.name)
-  const data = [xdgHome('data'), ...(process.env['XDG_DATA_DIRS'] || '/usr/local/share:/usr/share').split(':').filter(Boolean)]
-  if (process.platform === 'darwin') data.push('/opt/homebrew/share', '/opt/local/share')
-  const opener = new LocalOpener({
-    readText: (file) => readTextOr(file, null),
-    readDir: readDirOr,
-    isDirectory: (path) => stat(path)?.isDirectory === true,
-    exists: (path) => stat(path) !== null,
-    writeText: (file, text) => {
-      mkdirSync(dirname(file), { recursive: true })
-      writeFileSync(`${file}.new`, text)
-      renameSync(`${file}.new`, file)
-    },
-  }, {
-    data,
-    config: xdgHome('config'),
-    configDirs: (process.env['XDG_CONFIG_DIRS'] || '/etc/xdg').split(':').filter(Boolean),
-    applications: data.map((dir) => join(dir, 'applications')),
-  })
-  const session = new LocalSession({
-    shell,
-    opener,
-    ...(shell.openDefault && { openDefault: (path: string) => shell.openDefault!(path) }),
-    ...(natives.native.DevTools && { devtools: natives.native.DevTools }),
-    registry,
-    rescan: scan,
-    launcher: (given: Session, link: LocalLink, seat: Seat) => new Launcher(natives, given, link, args, seat),
-    service: (link: LocalLink, welcome: Welcome, generation: number) =>
-      new ServiceHost(link, welcome, natives.native as unknown as Record<string, unknown>, holdTheLoop, generation),
-  })
-  for (const signal of Launcher.SIGNALS) onceSignal(signal, () => session.end(0))
-  if (args.seconds !== null) setTimeout(() => session.end(0), args.seconds * 1000)
-  if (args.shot) {
-    const file = args.shot
-    setTimeout(() => {
-      shell.screenshot(file).then(
-        ({ width, height }) => process.stderr.write(`acdev: screenshot ${width}x${height} -> ${file}\n`),
-        (error: Error) => process.stderr.write(`acdev: screenshot: ${error.message}\n`),
-      )
-    }, args.shotAfterMs)
-  }
-  return session.run()
-}
-
 export default async function launch(natives: LauncherNatives): Promise<void> {
   installCore(globalThis, natives.host, { nodeTimers: true })
   bindNatives(natives)
@@ -796,7 +749,7 @@ export default async function launch(natives: LauncherNatives): Promise<void> {
       process.exit(await host.run())
     }
     if (manager && args.kind === 'lock') throw new Error('lock is the lock page preview of acdev dev; in a session the manager opens the lock page')
-    if (!manager && args.kind === 'desktop') process.exit(await localDesktop(natives, args))
+    if (!manager && args.kind === 'desktop') process.exit(await localDesktop(args, Launcher.localParts(natives, args)))
     const session = manager ? sessionOf(manager.welcome, args.kind as 'app' | 'desktop') : standalone(args)
     const launcher = new Launcher(natives, session, manager, args)
     launcher.start()
