@@ -755,6 +755,10 @@ export class MockDom implements DomNative {
     return { animating: false, events: this.animationEvents.splice(0) }
   }
 
+  takeFrame(animationEvents: boolean): { scrolled: Uint32Array; loaded: Uint32Array; animation: AnimationEvents | null } {
+    return { scrolled: this.takeScrolled(), loaded: this.takeLoaded(), animation: animationEvents ? this.takeAnimationEvents() : null }
+  }
+
   takeLoaded(): Uint32Array {
     const out = Uint32Array.from(this.#loaded)
     this.#loaded = []

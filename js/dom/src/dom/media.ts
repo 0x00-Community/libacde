@@ -109,8 +109,7 @@ long(HTMLImageElement.prototype, 'vspace', 0)
 metricGetters(HTMLImageElement.prototype, { x: 'offsetLeft', y: 'offsetTop' })
 register(HTMLImageElement, 'img')
 
-export function deliverLoads(): boolean {
-  const done = dom.takeLoaded()
+export function deliverLoads(done: Uint32Array = dom.takeLoaded()): boolean {
   for (let i = 0; i < done.length; i++) {
     const id = done[i]!
     if (!loading.has(id) && dom.localName(id) === 'link') {

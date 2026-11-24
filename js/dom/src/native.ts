@@ -184,6 +184,7 @@ export interface DomNative {
   takeLoaded(): Uint32Array
   wantAnimationEvents(): void
   takeAnimationEvents(): AnimationEvents
+  takeFrame(animationEvents: boolean): FrameTake
   sheetState(id: number): number
   sheetUrl(id: number): string | null
   sheetOpaque(id: number): boolean
@@ -218,6 +219,12 @@ export interface AnimationEventRecord {
   readonly name: string
   readonly elapsedTime: number
   readonly pseudoElement: string
+}
+
+export interface FrameTake {
+  readonly scrolled: Uint32Array
+  readonly loaded: Uint32Array
+  readonly animation: AnimationEvents | null
 }
 
 export interface AnimationEvents {

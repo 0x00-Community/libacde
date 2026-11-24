@@ -270,8 +270,7 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
     if (event.key === 'Escape' && !event.defaultPrevented) escape()
   })
 
-  const deliverScrolls = () => {
-    const scrolled = dom.takeScrolled()
+  const deliverScrolls = (scrolled: Uint32Array) => {
     if (scrolled.length === 0) return
     moved()
     const root = rootElementId()
@@ -303,15 +302,16 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
       frames.wanted = false
       let animating = false
       moved()
+      const taken = dom.takeFrame(cssEventsWanted())
       try {
-        deliverScrolls()
+        deliverScrolls(taken.scrolled)
+        animating = deliverCssEvents(taken.animation)
         if (framesPending() && !documentState.hidden && !documentState.suspended && !gpuFrames.behind()) runAnimationFrames(clockNow(), report)
         deliverObservations()
-        animating = deliverCssEvents()
       } catch (error) {
         report(error)
       }
-      const loading = deliverLoads()
+      const loading = deliverLoads(taken.loaded)
       const playing = presentVideos()
       webglContexts.present()
       webglContexts.endTask()

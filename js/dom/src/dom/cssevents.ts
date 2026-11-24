@@ -1,5 +1,6 @@
 import { fire, hooks } from '../core/event'
 import { AnimationEvent, TransitionEvent } from './events'
+import type { AnimationEvents } from '../native'
 import { dom, existing, wrap } from './realm'
 
 const TYPES = new Set([
@@ -27,9 +28,9 @@ export function onCssEventsWanted(callback: () => void): void {
   wake = callback
 }
 
-export function deliverCssEvents(): boolean {
-  if (!listened) return false
-  const { animating, events } = dom.takeAnimationEvents()
+export function deliverCssEvents(taken: AnimationEvents | null): boolean {
+  if (!taken) return false
+  const { animating, events } = taken
   for (const record of events) {
     if (!record.transition && record.name.startsWith(OWN)) continue
     const target = existing(record.target) ?? wrap(record.target)
