@@ -1,5 +1,4 @@
 use crate::gpu::{Glyph, PaintScene, Scene};
-use blitz_dom::parley::fontique::{Collection, CollectionOptions, SourceCache};
 use blitz_dom::parley::{FontContext, FontFamily, FontWeight, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use kurbo::{Affine, BezPath, Circle, Line, Rect, RoundedRect, Shape, Stroke, Vec2};
 use peniko::{Color, Fill};
@@ -450,8 +449,7 @@ impl Decoration {
     const OFF_ALPHA: f32 = 0.16;
 
     pub fn new() -> Self {
-        let fonts =
-            FontContext { source_cache: SourceCache::new_shared(), collection: Collection::new(CollectionOptions { shared: false, system_fonts: true }) };
+        let fonts = blitz_dom::system_font_ctx();
         Self { fonts, layouts: LayoutContext::new(), widths: None, glass_dots: false, metrics: FrameMetrics::current() }
     }
 

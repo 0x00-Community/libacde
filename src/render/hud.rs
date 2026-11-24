@@ -1,5 +1,4 @@
 use crate::gpu::{PaintScene, Scene};
-use blitz_dom::parley::fontique::{Collection, CollectionOptions, SourceCache};
 use blitz_dom::parley::{FontContext, FontFamily, FontWeight, Layout, LayoutContext, LineHeight, StyleProperty};
 use kurbo::{Affine, Line, Rect, RoundedRect, Stroke};
 use peniko::{Color, Fill};
@@ -42,8 +41,7 @@ impl Hud {
     const BAD: Color = Color::from_rgb8(0xf8, 0x71, 0x71);
 
     pub fn new() -> Self {
-        let fonts =
-            FontContext { source_cache: SourceCache::new_shared(), collection: Collection::new(CollectionOptions { shared: false, system_fonts: true }) };
+        let fonts = blitz_dom::system_font_ctx();
         Self { fonts, layouts: LayoutContext::new() }
     }
 
