@@ -149,3 +149,11 @@ test('wallTone() is the tone of the wall under the window, null until there is o
   assert.equal(self.api.wallTone(), null)
   assert.deepEqual(seen, ['light', 'dark', null], 'an unchanged tone fires nothing')
 })
+
+test('a window kept on top says so in its row until it is let go', () => {
+  const windows = list()
+  windows.deliver(event('window', 5, { appId: 'notes', title: 'Notes', state: 'normal', topmost: true, first: true }))
+  assert.deepEqual(windows.api.list(), [{ id: 5, appId: 'notes', title: 'Notes', state: 'normal', topmost: true }])
+  windows.deliver(event('window', 5, { appId: 'notes', title: 'Notes', state: 'normal', topmost: false, changed: ['topmost'] }))
+  assert.deepEqual(windows.api.list(), [{ id: 5, appId: 'notes', title: 'Notes', state: 'normal' }])
+})

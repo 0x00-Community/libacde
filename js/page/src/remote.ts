@@ -47,9 +47,10 @@ export class WindowList {
     const key = text(event['key']) ?? was?.key ?? null
     const stage = event['stage'] === true
     const unresponsive = event['unresponsive'] === true
+    const topmost = event['topmost'] === true
     const placed = {
       ...(rect ? { rect } : {}), ...(instance !== undefined ? { instance } : {}), ...(desk !== undefined ? { desk } : {}), ...(key ? { key } : {}),
-      ...(stage ? { stage } : {}), ...(unresponsive ? { unresponsive } : {}),
+      ...(stage ? { stage } : {}), ...(unresponsive ? { unresponsive } : {}), ...(topmost ? { topmost } : {}),
     }
     this.#windows.set(event.window, { id: event.window, appId: text(event['appId']), title: text(event['title']), ...(web ? { web } : {}), state, ...placed })
     this.notices.emit('windows:window', event)
@@ -434,7 +435,7 @@ export class RemoteBridge {
       this.value['apps'] = { ...apps, ...files, ...unlend, on: windows.notices.for('apps', ['changed']) }
       const events = ['download', 'notification', 'screenshot', 'shortcut', 'edge']
       this.value['desktop'] = { apps: async () => ({ apps: await apps.list() }), on: windows.notices.for('desktop', events) }
-      this.value['windows'] = { ...globalWindows(), ...Rpc.calls(() => rpc, 'windows', 'setAside') }
+      this.value['windows'] = { ...globalWindows(), ...Rpc.calls(() => rpc, 'windows', 'setAside', 'setTopmost') }
       Object.assign(this.value, { packages: tier.packages(), launch: tier.launch(), session: tier.session(), desktops: tier.desktops(), software: tier.software() })
       Object.assign(this.value, { open: apps.open, permissions: permissions(), ...files })
     } else {

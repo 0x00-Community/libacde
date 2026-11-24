@@ -188,6 +188,7 @@ export interface NativeWindow {
   readonly key?: string
   readonly stage?: boolean
   readonly unresponsive?: boolean
+  readonly topmost?: boolean
 }
 
 export interface AcdeWindows extends WindowsEvents {
@@ -199,6 +200,7 @@ export interface AcdeWindows extends WindowsEvents {
   close(id: number): void
   requestState?(id: number, state: WindowState): Promise<void>
   setAside?(id: number, on: boolean): Promise<void>
+  setTopmost?(id: number, on: boolean): Promise<void>
   kill?(id: number): Promise<boolean>
   focus?(id: number): Promise<void>
   hide?(id: number): Promise<void>

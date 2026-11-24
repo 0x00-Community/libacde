@@ -37,6 +37,7 @@ export interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 's
   kill?(window: number): void
   setState?(window: number, state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
   setAside?(window: number, on: boolean): boolean
+  setTopmost?(window: number, on: boolean): boolean
   titlebarHeight?(): number
   windows(): ReturnType<InspectShell['windows']>
   inject?(event: Parameters<InspectShell['inject']>[0]): void

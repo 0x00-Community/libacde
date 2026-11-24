@@ -513,12 +513,9 @@ class Launcher {
     throw unsupported('panel', method)
   }
 
-  #setAside(window: number, on: boolean): undefined {
-    if (!this.#shell.setAside?.(window, on)) {
-      const why = 'windows.setAside: the window system has no set_aside (acompositor_window_v1 before version 9, or no acompositor)'
-      throw Object.assign(new Error(why), { status: 501, code: 'unsupported' })
-    }
-    return undefined
+  static #asked(method: string, done: boolean | undefined, missing: string): undefined {
+    if (done) return undefined
+    throw Object.assign(new Error(`windows.${method}: the window system has no ${missing}, or no acompositor)`), { status: 501, code: 'unsupported' })
   }
 
   #windowsCall(method: string, args: unknown[]): unknown {
@@ -538,7 +535,9 @@ class Launcher {
       case 'show':
         return shell.hide(id, method === 'hide')
       case 'setAside':
-        return this.#setAside(id, args[1] === true)
+        return Launcher.#asked('setAside', this.#shell.setAside?.(id, args[1] === true), 'set_aside (acompositor_window_v1 before version 9')
+      case 'setTopmost':
+        return Launcher.#asked('setTopmost', this.#shell.setTopmost?.(id, args[1] === true), 'set_topmost (acompositor_window_v1 before version 10')
       case 'requestState':
         if (!STATES.includes(String(args[1]))) throw refused(`no window state ${String(args[1])} (${STATES.join(', ')})`)
         if (!shell.setState) throw unsupported('windows', method)

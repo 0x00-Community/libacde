@@ -11,7 +11,7 @@
     background use wlr-layer-shell.
   </description>
 
-  <interface name="acompositor_desktop_v1" version="17">
+  <interface name="acompositor_desktop_v1" version="18">
     <description summary="the desktop's handle on acompositor">
       On bind acompositor sends a window event for every toplevel already shown, then
       work_area, then done. Later windows come as they are shown. From version 2 the
@@ -38,7 +38,8 @@
       sets windows aside (acompositor_window_v1 version 9). From version 15 the desktop sets the
       height of the titlebar the runtime draws on app windows. From version 16 it also sets the
       measures of that titlebar's controls and title. From version 17 it tells which shell
-      sub-layer each of its panels belongs to (set_panel_kind).
+      sub-layer each of its panels belongs to (set_panel_kind). From version 18 windows
+      (acompositor_window_v1 version 10) can be kept on top (set_topmost, topmost).
     </description>
 
     <enum name="error">
@@ -471,7 +472,7 @@
     </request>
   </interface>
 
-  <interface name="acompositor_window_v1" version="9">
+  <interface name="acompositor_window_v1" version="10">
     <description summary="one toplevel of any client"/>
 
     <request name="destroy" type="destructor"/>
@@ -606,6 +607,15 @@
       <arg name="on" type="uint"/>
     </request>
 
+    <request name="set_topmost" since="10">
+      <description summary="keep the window above ordinary windows">
+        1 keeps the window, with its dialogs and popups, in the topmost layer above every
+        ordinary window; 0 puts it back among them. Only a desktop-level connection may call
+        it; acompositor ignores the request from any other connection.
+      </description>
+      <arg name="on" type="uint"/>
+    </request>
+
     <request name="set_state">
       <arg name="state" type="uint" enum="state"/>
     </request>
@@ -667,6 +677,13 @@
         gone 5 seconds without a pong: every window of that client is then unresponsive.
         0 as soon as the client answers. Sent before done, with the first burst only when
         it is 1.
+      </description>
+      <arg name="on" type="uint"/>
+    </event>
+
+    <event name="topmost" since="10">
+      <description summary="whether the window is kept on top">
+        Sent before done, in the first burst only when 1, and whenever it changes.
       </description>
       <arg name="on" type="uint"/>
     </event>

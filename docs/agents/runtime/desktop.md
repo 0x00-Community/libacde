@@ -92,6 +92,9 @@
   桌面用 `requestState(id, state)` 改; 窗框按钮、应用自己的 `minimize()` / `requestState()` 也会改. 桌面只照快照的 `state` / `previous` 更新自己,
   不能只记自己请求过什么. 隐藏 (`hide` / `show`, 快照的 `hidden`) 是另一回事: 不画、不命中、不拿焦点, 位置和状态保留, 只有桌面能做,
   用于桌面的全屏视图 (总览、启动台) 临时让开窗口.
+- **置顶** (`setTopmost(id, on)`, 只有桌面页有, 2026-11-24, 总仓 z 轴分段规范): 窗口连同它的对话框、弹出窗口进置顶段, 盖过所有普通窗口;
+  `list()` 的行带 `topmost: true`, 变化时是 `changed: ['topmost']` 的快照. 宿主经原生 `setTopmost(window, on)` 发 `acompositor_window_v1.set_topmost` (v10,
+  desktop v18), 返回 false (合成器太旧) 或没有这个方法 (acdev 宿主) 时以 `unsupported` (501) 拒绝. Agent 代用户置顶走系统总管的 `window.operate`, 不在这里.
 - **放在一边** (`setAside(id, on)`, 只有桌面页有): 被放在一边的窗口不进 Super+Tab, 键盘要换窗口时合成器也不挑它, 点它照样拿键盘;
   用于桌面当窗口开的面板. 桌面页进程经原生 `Windows.setAside` 发 `acompositor_window_v1.set_aside` (版本 9 起); 合成器不够新、或没有
   acompositor (acdev 宿主) 时回 `unsupported` (501).
