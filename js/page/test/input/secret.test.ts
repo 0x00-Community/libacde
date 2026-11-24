@@ -63,7 +63,7 @@ test('a field focused by script or by the window coming back takes the input met
   text.surfaceActive = false
   web.run(`document.getElementById('search').focus()`)
   await Promise.resolve()
-  assert.deepEqual(calls, [], 'not while the window is inactive')
+  assert.equal(calls.length, 0, 'not while the window is inactive')
   text.surfaceActive = true
   await Promise.resolve()
   assert.ok(calls.includes('focusIn'), `the window coming back hands it over again: ${calls}`)
