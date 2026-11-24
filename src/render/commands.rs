@@ -61,6 +61,10 @@ impl Commands {
         self.len
     }
 
+    pub fn segments(&self) -> Vec<crate::gpu::Segment> {
+        self.segs.iter().map(|s| crate::gpu::Segment { commands: s.commands.clone(), range: s.start..s.end, transform: s.transform }).collect()
+    }
+
     pub(crate) fn same(&self, other: &Commands) -> bool {
         self.len == other.len
             && self.segs.len() == other.segs.len()

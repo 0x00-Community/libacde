@@ -324,7 +324,7 @@
   会话的 `Raster` 也走这条路 (2026-11-24): 平的段里每块用 `Hole::largest` (可缩放、取最大的一张, 采样同 vello 的 Low / Medium) 找出洞,
   洞里 `Composer::opaque_from` 不混合地贴图片 (alpha 记 1, 不清区, 不进 vello、不拷进 vello 的图集), 洞外的边条照常画 (去掉这张图片);
   盖在上面的内容 (`Hole::above`, 只许在新开的层里用非 SrcOver 混合) 画一次存进按 (平面, 段, 洞) 的缓存纹理, `Kept` 认出没变时只按它的绘制范围
-  (至多 32 块) 混合贴回. 一块覆盖了此前没画过的区域时不清区、不混合地贴 (`Op::Cover`); 一批里只有一块且铺满时 vello 不再套裁剪层.
+  (至多 32 块) 混合贴回. `Content::segments` 给出内容的命令段 (`Drawing::segments`, 前端的 `Content` 转给它) 时, 除了图片所在的那段以外各段都没变 (同一份 `Arc` 或 64 条以内逐条相等且没有 GPU 图片)、那段只换了图片, 就不再取整块命令 (`scene_for`) 和逐条比对. 一块覆盖了此前没画过的区域时不清区、不混合地贴 (`Op::Cover`); 一批里只有一块且铺满时 vello 不再套裁剪层.
 - 帧预算: 120 fps 下每帧 8 ms. 盯 acde-dom `test/cost.test.ts` / `test/caches.test.ts`、shell / DomNative 的 `stats`、`drive.sh perf`; 提交里写测到的数.
 - WebGPU (`navigator.gpu`, Linux 和 macOS; Windows 上还关着 (没编过也没跑过, 见 acdev #56)): src/host `webgpu/`, 跑在光栅化线程的设备上; 页面的 `mapAsync` / `onSubmittedWorkDone` 回调由 `acde-gpu-poll` 线程办: 设备能导出 sync file 时 (会话里 `VK_KHR_external_semaphore_fd`, src/gpu `Gpu::wait_fence`) 它在提交锁里挂一个 `vello::Signals` 信号量、空提交一次、取出 sync file, `poll` 等它可读后非阻塞 `poll` 一次设备, 不用定时器; 没有时 (宿主窗口、没开这个扩展的设备) 才每 2 ms 非阻塞轮询. canvas 的帧数在途不经它 (见 `docs/agents/graphics/webgl.md`) (每帧路径上不用
   `poll(Wait)`, 它拿着 snatch 读锁会卡住别的线程的提交). WebGL 也只经 wgpu, 见 `docs/agents/graphics/webgl.md`.

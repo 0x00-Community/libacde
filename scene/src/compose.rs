@@ -1,8 +1,9 @@
 #[cfg(unix)]
 use std::os::fd::{BorrowedFd, OwnedFd};
+use std::sync::Arc;
 use std::time::Duration;
 
-use crate::Scene;
+use crate::{RenderCommand, Scene};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Px {
@@ -146,6 +147,40 @@ impl Effect {
 
 pub trait Content {
     fn scene_for(&self, region: Px) -> Scene;
+
+    fn segments(&self) -> Option<Vec<Segment>> {
+        None
+    }
+}
+
+#[derive(Clone)]
+pub struct Segment {
+    pub commands: Arc<[RenderCommand]>,
+    pub range: std::ops::Range<usize>,
+    pub transform: kurbo::Affine,
+}
+
+fn gpu_image(command: &RenderCommand) -> bool {
+    let brush = match command {
+        RenderCommand::Fill(c) => &c.brush,
+        RenderCommand::Stroke(c) => &c.brush,
+        RenderCommand::GlyphRun(c) => &c.brush,
+        _ => return false,
+    };
+    matches!(brush, crate::Paint::Image(i) if i.image.data.data().is_empty())
+}
+
+impl Segment {
+    const COMPARED: usize = 64;
+
+    pub fn same(&self, other: &Segment) -> bool {
+        let (a, b) = (&self.commands[self.range.clone()], &other.commands[other.range.clone()]);
+        self.transform == other.transform && a.len() == b.len() && (std::ptr::eq(a, b) || (a.len() <= Self::COMPARED && a == b && !a.iter().any(gpu_image)))
+    }
+
+    pub fn placed(&self) -> impl Iterator<Item = RenderCommand> + '_ {
+        self.commands[self.range.clone()].iter().map(|c| c.clone().transformed(self.transform))
+    }
 }
 
 pub struct Part<C> {

@@ -4,7 +4,7 @@ use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use super::{Composer, Device, GpuImage, Hole, Kept, Op, Overrides, Shared, Vello};
-use crate::gpu::{Backdrop, Content, Dmabuf, Paint, Part, Pass, Px, RenderCommand, Scene, Submitted};
+use crate::gpu::{Backdrop, Content, Dmabuf, Paint, Part, Pass, Px, RenderCommand, Scene, Segment, Submitted};
 use kurbo::{Affine, Rect, Shape};
 use peniko::Color;
 
@@ -37,7 +37,7 @@ enum Step<'p, C> {
     },
     Blit {
         canvas: wgpu::TextureView,
-        hole: Hole,
+        blit: Blit,
         clip: Px,
     },
     Kept {
@@ -52,6 +52,24 @@ struct Cache {
     bounds: Px,
     areas: Vec<Px>,
     used: u64,
+    quick: Option<Quick>,
+}
+
+#[derive(Clone)]
+struct Blit {
+    image: Arc<GpuImage>,
+    map: [f64; 4],
+    smooth: bool,
+}
+
+struct Quick {
+    drawn: Px,
+    clip: Px,
+    segments: Vec<Segment>,
+    at: usize,
+    fill: usize,
+    commands: Vec<RenderCommand>,
+    blit: Blit,
 }
 
 #[derive(Default)]
@@ -73,6 +91,7 @@ struct Spent {
     bound: (u32, u32),
     blits: usize,
     kept: usize,
+    quick: usize,
     covers: usize,
     scenes: Duration,
     vello: Duration,
@@ -219,11 +238,12 @@ impl Raster {
         let spent = &self.spent;
         log::debug!(
             target: "perf::raster",
-            "pieces={} merged={} blits={} kept={} covers={} area={} extent={} bound={:?} batches={} scenes={:.3} vello={:.3} compose={:.3}",
+            "pieces={} merged={} blits={} kept={} quick={} covers={} area={} extent={} bound={:?} batches={} scenes={:.3} vello={:.3} compose={:.3}",
             spent.pieces,
             spent.merged,
             spent.blits,
             spent.kept,
+            spent.quick,
             spent.covers,
             spent.area,
             spent.extent,
@@ -279,6 +299,14 @@ impl Raster {
                     steps.push(Step::Backdrop { canvas: canvas.clone(), backdrop });
                 }
                 for (drawn, clip) in part.pieces(targets, full) {
+                    if plain
+                        && self.kept.keys().any(|(p, i, _)| (*p, *i) == (pass.plane, k))
+                        && let Some(segments) = part.content.segments()
+                        && let Some((key, blit)) = self.quick(pass.plane, k, (drawn, clip), segments, images)
+                    {
+                        self.hole_steps(&mut steps, &mut plan, &canvas, part, (drawn, clip, key), blit, None);
+                        continue;
+                    }
                     let built = Instant::now();
                     let scene = part.content.scene_for(drawn);
                     self.spent.scenes += built.elapsed();
@@ -382,27 +410,49 @@ impl Raster {
             .filter(|c| (c.image.is_some() || c.areas.is_empty()) && c.kept.matches(&scene, &hole, set))
             .map(|c| c.used = frame)
             .is_some();
+        let blit = Blit { image: hole.image.clone(), map: hole.map, smooth: hole.smooth };
+        let quick = part.content.segments().and_then(|segments| Quick::of(segments, &blit, (drawn, clip)));
         let above = match hit {
-            true => None,
+            true => {
+                if let Some(cache) = self.kept.get_mut(&key) {
+                    cache.quick = quick;
+                }
+                None
+            }
             false => {
                 let above = hole.above(&scene);
                 let areas = above.as_ref().map_or_else(Vec::new, |a| reach(a, inner));
                 let bounds = areas.iter().copied().reduce(Px::union).unwrap_or_default();
                 let kept = hole.keep(&scene, set);
                 let image = self.kept.remove(&key).and_then(|c| c.image).filter(|(t, _)| (t.width(), t.height()) == Step::<C>::size(bounds));
-                self.kept.insert(key, Cache { kept, image, bounds, areas, used: frame });
+                self.kept.insert(key, Cache { kept, image, bounds, areas, used: frame, quick });
                 above.filter(|_| bounds.area() > 0).map(|a| (a, bounds))
             }
         };
-        let image = hole.image.clone();
+        self.hole_steps(steps, plan, canvas, part, (drawn, clip, key), blit, above);
+    }
+
+    #[allow(clippy::too_many_arguments, reason = "the piece, the hole cut into it and where it goes")]
+    fn hole_steps<'p, C: Content>(
+        &mut self,
+        steps: &mut Vec<Step<'p, C>>,
+        plan: &mut Plan,
+        canvas: &wgpu::TextureView,
+        part: &'p Part<C>,
+        (drawn, clip, key): (Px, Px, Key),
+        blit: Blit,
+        above: Option<(Scene, Px)>,
+    ) {
+        let inner = key.2;
+        let id = blit.image.id();
         if !plan.reads.iter().any(|r| r.overlaps(inner)) {
             plan.covered.push(inner);
         }
         plan.between.push(inner);
         plan.written.push(inner);
         self.spent.blits += 1;
-        steps.push(Step::Blit { canvas: canvas.clone(), hole, clip: inner });
-        if hit && self.kept.get(&key).is_some_and(|c| !c.areas.is_empty()) {
+        steps.push(Step::Blit { canvas: canvas.clone(), blit, clip: inner });
+        if above.is_none() && self.kept.get(&key).is_some_and(|c| !c.areas.is_empty()) {
             self.spent.kept += 1;
             steps.push(Step::Kept { canvas: canvas.clone(), key });
         }
@@ -412,11 +462,26 @@ impl Raster {
         for ring in subtract(drawn, inner) {
             let Some(ring_clip) = ring.intersection(clip) else { continue };
             let mut rest = part.content.scene_for(ring);
-            rest.commands.retain(|c| !matches!(c, RenderCommand::Fill(f) if matches!(&f.brush, Paint::Image(b) if b.image.data.id() == image.id())));
+            rest.commands.retain(|c| !matches!(c, RenderCommand::Fill(f) if matches!(&f.brush, Paint::Image(b) if b.image.data.id() == id)));
             if !rest.commands.is_empty() {
                 self.piece(steps, plan, canvas, part, (ring, ring_clip), rest, None);
             }
         }
+    }
+
+    fn quick(&mut self, plane: usize, part: usize, (drawn, clip): (Px, Px), segments: Vec<Segment>, images: &Overrides) -> Option<(Key, Blit)> {
+        let frame = self.frame;
+        let (key, cache) =
+            self.kept.iter_mut().find(|((p, k, _), c)| (*p, *k) == (plane, part) && c.quick.as_ref().is_some_and(|q| (q.drawn, q.clip) == (drawn, clip)))?;
+        if cache.image.is_none() && !cache.areas.is_empty() {
+            return None;
+        }
+        let quick = cache.quick.as_mut()?;
+        let image = quick.matches(&segments, images.images())?;
+        quick.segments = segments;
+        cache.used = frame;
+        self.spent.quick += 1;
+        Some((*key, Blit { image, ..quick.blit.clone() }))
     }
 
     fn view(&mut self, image: &Arc<GpuImage>) -> wgpu::TextureView {
@@ -498,12 +563,12 @@ impl Raster {
                 Step::Clear { canvas, regions: Some(regions) } => self.composer.clear_rects(encoder, &canvas, regions.iter().map(|r| r.xywh())),
                 Step::Clear { canvas, regions: None } => self.composer.clear(encoder, &canvas),
                 Step::Backdrop { canvas, backdrop } => self.composer.backdrop(encoder, &canvas, backdrop),
-                Step::Blit { canvas, hole, clip } => {
-                    let view = self.view(&hole.image);
-                    let extent = [hole.image.texture.width() as f32, hole.image.texture.height() as f32];
-                    let map = hole.map.map(|v| v as f32);
-                    self.composer.opaque_from(encoder, &canvas, &view, map, extent, hole.smooth, clip.xywh());
-                    self.blitted.push((hole.image.clone(), hole.image.generation()));
+                Step::Blit { canvas, blit, clip } => {
+                    let view = self.view(&blit.image);
+                    let extent = [blit.image.texture.width() as f32, blit.image.texture.height() as f32];
+                    let map = blit.map.map(|v| v as f32);
+                    self.composer.opaque_from(encoder, &canvas, &view, map, extent, blit.smooth, clip.xywh());
+                    self.blitted.push((blit.image.clone(), blit.image.generation()));
                 }
                 Step::Kept { canvas, key } => {
                     if let Some(Cache { image: Some((_, view)), bounds, areas, .. }) = self.kept.get(&key) {
@@ -568,6 +633,46 @@ impl Raster {
             .poll(wgpu::PollType::Wait { submission_index: Some(index), timeout: Some(Duration::from_secs(2)) })
             .map(|_| ())
             .map_err(|e| format!("waiting for the GPU: {e}"))
+    }
+}
+
+impl Quick {
+    fn of(segments: Vec<Segment>, blit: &Blit, (drawn, clip): (Px, Px)) -> Option<Self> {
+        let id = blit.image.id();
+        let shows = |c: &RenderCommand| matches!(c, RenderCommand::Fill(f) if matches!(&f.brush, Paint::Image(b) if b.image.data.id() == id));
+        let mut found = segments
+            .iter()
+            .enumerate()
+            .flat_map(|(at, s)| s.commands[s.range.clone()].iter().enumerate().filter(|(_, c)| shows(c)).map(move |(fill, _)| (at, fill)));
+        let (at, fill) = found.next()?;
+        if found.next().is_some() {
+            return None;
+        }
+        let commands = segments[at].placed().collect();
+        Some(Self { drawn, clip, segments, at, fill, commands, blit: blit.clone() })
+    }
+
+    fn matches(&self, segments: &[Segment], images: &super::ImageSet) -> Option<Arc<GpuImage>> {
+        if segments.len() != self.segments.len() || !self.segments.iter().zip(segments).enumerate().all(|(i, (a, b))| i == self.at || a.same(b)) {
+            return None;
+        }
+        let seg = &segments[self.at];
+        if seg.range.len() != self.commands.len() || seg.transform != self.segments[self.at].transform {
+            return None;
+        }
+        let mut image = None;
+        for (i, (was, now)) in self.commands.iter().zip(&seg.commands[seg.range.clone()]).enumerate() {
+            let now = now.clone().transformed(seg.transform);
+            match (i == self.fill, was, &now) {
+                (true, RenderCommand::Fill(a), RenderCommand::Fill(b)) if super::hole::same_place(a, b) => {
+                    let Paint::Image(brush) = &b.brush else { return None };
+                    image = Some(images.find(brush.image.data.id()).filter(|i| i.opaque())?);
+                }
+                (false, a, b) if a == b => {}
+                _ => return None,
+            }
+        }
+        image
     }
 }
 

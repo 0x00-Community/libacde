@@ -144,7 +144,7 @@ impl Kept {
     }
 }
 
-fn same_place(a: &FillCommand, b: &FillCommand) -> bool {
+pub(super) fn same_place(a: &FillCommand, b: &FillCommand) -> bool {
     let (Paint::Image(x), Paint::Image(y)) = (&a.brush, &b.brush) else { return false };
     let (p, q) = (&x.image, &y.image);
     a.fill == b.fill

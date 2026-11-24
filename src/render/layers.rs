@@ -30,6 +30,10 @@ impl Drawing {
     pub fn scene(&self) -> Scene {
         self.commands.to_scene(self.tolerance)
     }
+
+    pub fn segments(&self) -> Vec<crate::gpu::Segment> {
+        self.commands.segments()
+    }
 }
 
 pub struct Layer {
