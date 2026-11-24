@@ -11,7 +11,7 @@
     background use wlr-layer-shell.
   </description>
 
-  <interface name="acompositor_desktop_v1" version="14">
+  <interface name="acompositor_desktop_v1" version="15">
     <description summary="the desktop's handle on acompositor">
       On bind acompositor sends a window event for every toplevel already shown, then
       work_area, then done. Later windows come as they are shown. From version 2 the
@@ -35,7 +35,8 @@
       From version 12 such a client also asks how the screen is drawn (render_state) and
       where a point lands (hit). From version 13 windows (acompositor_window_v1 version 8)
       say whether their client answers acompositor's pings. From version 14 the desktop
-      sets windows aside (acompositor_window_v1 version 9).
+      sets windows aside (acompositor_window_v1 version 9). From version 15 the desktop sets the
+      height of the titlebar the runtime draws on app windows.
     </description>
 
     <enum name="error">
@@ -292,6 +293,16 @@
         its fade.
       </description>
       <arg name="motion" type="uint" enum="motion"/>
+    </request>
+
+    <request name="set_titlebar_height" since="15">
+      <description summary="how tall app windows' titlebars are">
+        height is in logical pixels; values outside 24 to 64 are taken as the nearest bound.
+        acompositor starts with 32 and hands the height on to every client (in acdes over
+        acompositor_backdrop_manager_v1.titlebar_height), whose runtime draws the frame of the
+        windows it opens from then on that tall. Windows already open keep their titlebar.
+      </description>
+      <arg name="height" type="uint"/>
     </request>
 
     <request name="create_embed_slot">
