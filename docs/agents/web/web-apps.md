@@ -55,7 +55,7 @@
   桌面页也接 `location.reload()` (2026-11-24 起, 之前桌面页没接, 重载什么也不做), F5、Ctrl+R 在桌面页上也重载 (页面自己 `preventDefault` 了就不管; 只在桌面页, 应用窗口不抢这两个键, 终端要用 Ctrl+R): `WebAppPage.reloadable` 先派 `beforeunload`, 没被拦下就发 `window.reload`, 启动器按桌面重新拿面再起页面;
   `localStorage` / `sessionStorage` 见 `docs/agents/web/storage.md`「网页存储」; `alert` 画在窗口里 (`confirm` / `prompt` 返回 false / null; acdev dev 里能事先答复, 见
   `docs/agents/dev/dev-ipc.md`「acdev dev」的 `dialog`. 页面可以等用户回答的模态对话框还没有);
-  外部链接交给浏览器应用 (宿主窗口里要 slots 的浏览器应用跑不了, 不打开, 见 `docs/agents/web/default-apps.md`「默认应用」), 下载存进下载目录 (桌面收 `on('download')`); 打开 / 保存文件的选择器见 `docs/agents/web/fs.md`「打开和保存文件」; 隐藏 / 显示是 `visibilitychange`;
+  外部链接交给浏览器应用 (宿主窗口里要 slots 的浏览器应用跑不了, 不打开, 见 `docs/agents/web/default-apps.md`「默认应用」), 下载 (`<a download>` 等, `pagecalls.ts` `#download`) 由页面胶水取到内容后经 rpc 发 `page.download`, 但会话和单应用宿主窗口的启动器都没接这个方法 (回 501 unsupported), 所以现在不存文件, 页面只记一行 `download of …` 日志; 桌面的 `on('download')` 事件也就收不到; 打开 / 保存文件的选择器见 `docs/agents/web/fs.md`「打开和保存文件」; 隐藏 / 显示是 `visibilitychange`;
   `screen.*` 是主输出的逻辑尺寸; `navigator.userAgent` / `platform` 在所有宿主上都报 Linux (`X11; Linux x86_64` / `Linux x86_64`, Broker 的 `UserAgent`,
   经 `WebInit.navigator`), 产品段是 `acde/<真实版本>`. 运行时对应用呈现统一的 Linux 环境: 交互语义一律照 Linux (编辑快捷键是 Ctrl;
   页面若看到 `MacIntel`, 编辑器库会把快捷键改绑到 Command, 同一窗口里就有两套规矩), 跨宿主一致.

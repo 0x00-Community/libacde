@@ -91,7 +91,7 @@ C 接口见 `docs/agents/runtime/ffi.md`; 发布到 cargo 源 ac 见 `docs/agent
   network 第一次调用时连 NetworkManager; office 由启动器在会话授予 office 时 (`grants.office`, 起页面前) 调
   `sys.openOffice()` 开 (桥的套接字 `$XDG_RUNTIME_DIR/acde/office/office.sock` 一个会话只有一个, 同时有两个声明 office 的进程时后起的那个桥起不来; 文档服务另需 ONLYOFFICE Document Server; `office.state` 的 `server.problem`: `unreachable` 连不上, `missing` 是本机地址连不上而且没有 docker / podman 能起它, `unhealthy` 还没就绪, `secret` 没有共用的 JWT 密钥, `rejected` 密钥不对, `bridge` 桥没监听上, `runtime` 是运行时自己查状态失败 (例如执行器停了), 和 Document Server 无关; 起停脚本是 acdes 包里的 `/usr/lib/acdes/office-ds.sh`) (network / office / system 只在 Linux). `acde:system` (清单能力 `system`, src/host `system.rs` → runtime `system.rs`):
   这台电脑的信息 (主机名、系统、CPU、GPU、NPU、内存、开机时长、序列号)、各卷容量、时区和 NTP (经 timedated)、改时区 /
-  NTP / 主机名 (经 hostnamed, 要 polkit 授权)、当前用户; 每次调用在 offload 线程上现读, 没有变化事件.
+  NTP / 主机名 (经 hostnamed, 要 polkit 授权)、当前用户; 每次调用在 offload 线程上现读; 运行时一侧没有推送, `on('changed')` 由页面胶水 `SystemWatch` (`js/page/src/sysmodules.ts`) 在有订阅者时每 30 秒查一次, 有变化才发 (见 [acde-api.md](../acde-api.md)).
   `acde:bluetooth` (能力 `bluetooth`, src/host `bluetooth.rs` → runtime `bluetooth.rs`): BlueZ 的适配器和设备 (开关、可见、改名、
   扫描、配对 / 应答、连接、信任、屏蔽、忘记), 自己注册配对代理; `on('changed' | 'pairing')` 由 acde-host `bluetooth.ts` 包在原生 `watch` / `pairing` 上.
   登录时的开关 (`setOnLogin`: remember / on / off, 存在 `$XDG_CONFIG_HOME`) 只在自己的会话里由 Broker 调 `sys.restoreBluetooth()` 应用, 宿主窗口和登录页不碰.

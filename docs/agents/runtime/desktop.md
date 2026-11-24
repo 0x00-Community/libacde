@@ -24,7 +24,7 @@
 | `lock` | 否 | 锁屏页, 写法同 `entry`; 不写时运行时用自带的锁屏页 (见「锁屏页」) |
 | `services` | 否 | 随桌面起停的后台服务名; 写成 `{name, modules, backend}` 时另给这个服务列出它能 `ctx.import` 的外壳模块, `backend` 是它连桌面后台时的角色名 (有了才有 `ctx.backend`) |
 | `backend` | 否 | 桌面后台: `{unit}`, 后台进程的 systemd 系统单元模板名, 以 `@` 结尾、不含 `/` (如 `"acdes-session-agent@"`); 管家按 `<unit><UID>.service` 的主进程认它, 只认系统包 |
-| `heapMb` | 否 | 桌面页的 JS 堆, 默认 1024, 最小 32 |
+| `heapMb` | 否 | 桌面页的 JS 堆 (MB). acdes 会话里不写或低于 32 时取 1024 (acdes 管家 `registry.rs` `DESKTOP_HEAP_MB`); acdev 的宿主窗口 (`acdev dev`、单应用) 不写时取启动器的 256 (`js/launcher/src/main.ts` `HEAP_MB`), 写多少用多少 |
 
 同一个包里还要有 `apiLevel` (和运行时的契约级别相同, 否则整个包不加载), 可以有 `apps` (和桌面同包的应用是**系统应用**, 可以声明外壳模块; 不带桌面的包里应用全是 `SYSTEM_APPS` (`manifest/index.ts`, 现在只有社区商店 `community-store`, 同 acdes 的 `registry.rs`) 时也是, acdes 另要求这个包归 root)、
 `assets` (同源 URL 前缀 → 包里的目录)、`services` (服务名 → 模块文件). 桌面自己不需要声明 capabilities: 桌面页拿到全部模块.
@@ -159,7 +159,7 @@
 - **`closed`**: 每个面板都带的 Promise, 面板结束时兑现: `'unpinned'` (页面 `unpin()`)、`'parent-closed'` (锚定的父窗口关了, 运行时已收起面板,
   页面只清自己的状态)、`'refused'` (窗口系统这次不让锚: 窗口不存在、会话锁着等, 或面板根本没开出来), `'dismissed'` (弹出窗口被合成器收起: 点到了外面)
 - 面板里的 `backdrop-filter` 交给合成器模糊下面的窗口 (acdes: 每个面板只取最大的一块).
-- 全屏窗口盖住面板所在的边时, 面板仍在最上面: 要给全屏让路, 桌面自己把面板变透明、不接指针 (按前台窗口的 `state`).
+- 全屏窗口在某块屏幕上处于最前时, acdes 合成器把这块屏幕上顶层自由面板里的停靠 (`dock`)、浮动 (`floating`)、提示 (`notice`) 三类降到这个全屏窗口下面, 确认卡 (`confirm`) 仍在上面 (acdes `crates/acompositor/src/server/windows/order.rs` `under_fullscreen`, 总仓 z 轴分段规范); 桌面不用自己把面板变透明.
 
 ## 窗框
 

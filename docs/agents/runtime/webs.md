@@ -171,17 +171,18 @@
   声明了但不可用的 fs / terminal / network / office 在 import 时报原因.
 - **平台支持表** (SDK `src/runtime/platforms.js` 的 `PLATFORM_SUPPORT` / `platformSupport(platform, mode)`, 从包根和 `/manifest` 导出, 运行时、acdev 的
   平台检查和本仓文档都以它为准): 按 `process.platform` × 运行方式 (`session` Linux 会话、`desktop` 完整桌面的宿主窗口、`standalone` 单应用宿主窗口) 给
-  `unsupported` (不支持的能力) 和窗口特性 `window.backdrop` (`full` / `approximated` / `unsupported`). 现在: Linux 宿主窗口缺 `slots`; Windows 缺
-  network、office、camera、microphone、slots; macOS 缺 network、office、slots; 窗口背景滤镜都是 `full`. Linux 会话和 macOS 的行没有实测.
+  `unsupported` (不支持的能力) 和窗口特性 `window.backdrop` (`full` / `approximated` / `unsupported`). 现在 (`manifest/platforms.ts`): Linux 宿主窗口缺 `slots`; Windows 缺
+  network、system、bluetooth、audio、devices、power、input、display、idleDetection、office、camera、microphone、slots, 单应用再缺 notifications; macOS 缺
+  network、system、bluetooth、audio、devices、power、input、display、idleDetection、office、slots; 窗口背景滤镜都是 `full`. Linux 会话和 macOS 的行没有实测.
 - **`acde:capabilities`** (总是注入所有 web, 桌面和应用窗口都有, 服务没有; 类型 `AcdeCapabilities`): `level` (SDK 的 `API_LEVEL`)、`platform`、`mode`、`window`
   (窗口特性)、`get(name)` / `list()` (所有系统能力、`WEB_CAPABILITIES` 加声明的服务, `{name, kind, state, reason, optional}`)、`request(name)` (状态是 `not-asked` / `asking`
   时经 rpc 问用户, 已经在问的并进同一个提示, 回答之后的状态; 别的直接回当前状态, 不问). 快照在 web 起来时由 Broker 算好放进 `WebInit.tier.capabilities`, 之后 Broker 发 `permit`
   消息更新 (`{capability, approval, status}`): 提示弹出时 (`Approvals.ask` 调 `changed(…, 'asking')`) 变 `asking`, 回答或撤销后变 `available` / `denied`, `get` 和 `list` 都跟着变.
   应用按状态做事: `not-asked` 调 `request`, `asking` 等, `denied` 告诉用户, `available` 直接用.
-- **批准** (`broker/access/approval/permissions.ts` `Approvals`, SDK `APPROVAL_CAPABILITIES`): **仅 `camera`、`microphone` 需要用户同意** (用户定, 同浏览器:
-  第一次 `getUserMedia` 时问), 可撤销; 其余能力 (`launch`、`slots`、`terminal`、`network`、`fs.roots` 点名的公共位置、自己的窗口、能力查询、列出和打开应用、
+- **批准** (`broker/access/approval/permissions.ts` `Approvals`, SDK `APPROVAL_CAPABILITIES`): **仅 `camera`、`microphone`、`idleDetection` 需要用户同意** (`manifest/index.ts`; 用户定, 同浏览器:
+  摄像头和麦克风第一次 `getUserMedia` 时问, 空闲检测 `IdleDetector.requestPermission()` 时问, `broker/access/approval/permits.ts`), 可撤销; 其余能力 (`launch`、`slots`、`terminal`、`network`、`fs.roots` 点名的公共位置、自己的窗口、能力查询、列出和打开应用、
   按类型打开、桌面服务、`office`) 声明即有, 不问 (#146).
-  系统应用 (和任一已装桌面同包) 不问. 启动时不问, 必需的和可选的一样 (同浏览器): 第一次 `getUserMedia` 或 `acde:capabilities` `request(name)` 时问,
+  系统应用 (和任一已装桌面同包) 不问. 启动时不问, 必需的和可选的一样 (同浏览器): 第一次 `getUserMedia`、`IdleDetector.requestPermission()` 或 `acde:capabilities` `request(name)` 时问,
   是同一个提示 (`reason: 'request'`); 回答「否」、还没答或撤销都只让这些调用失败 (`NotAllowedError` / 403), 应用照常启动、照常在列表里
   (`CapabilityCheck.missing` 不把 `not-asked` / `asking` / `denied` 算缺); 平台不支持的不问, 照旧按 unsupported 拒绝. 没批准的模块不定义, 批准后 web 收 `permit` 再定义, `load()` 拿得到.
   **没批准时的话按当时的状态说** (`Approvals.approval` 四态 `granted` / `not-asked` / `asking` / `denied`, 文字只在 `Approvals.reason`; Broker 自己的 `permit` 仍是
