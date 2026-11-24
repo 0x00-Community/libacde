@@ -344,7 +344,7 @@ impl Outgoing {
             SurfaceCommand::Backdrop(rect, [r, b, s, l, exponent]) => AcdeCommand { rect, values: [r, b, s, l], thickness: exponent, ..Kind::Backdrop.into() },
             SurfaceCommand::Activate => Kind::Activate.into(),
             SurfaceCommand::Grab(number, flag) => AcdeCommand { number, flag, ..Kind::Grab.into() },
-            SurfaceCommand::PointerLock(_) | SurfaceCommand::WindowLook(_) | SurfaceCommand::Material(_) => return None,
+            SurfaceCommand::PointerLock(_) | SurfaceCommand::WindowLook(_) | SurfaceCommand::Material(_) | SurfaceCommand::Ime(_) => return None,
             SurfaceCommand::OpenPanel { id, token, rect, exclusive, user_only, .. } => {
                 AcdeCommand { id, token, rect, flag: exclusive, number: u32::from(user_only), ..Kind::OpenPanel.into() }
             }

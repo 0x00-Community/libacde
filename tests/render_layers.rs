@@ -355,3 +355,15 @@ fn a_masked_filter_keeps_its_other_effects_and_masks_inside_its_segment() {
     assert_eq!(pixel(&alone, frame.size.0, (160, 80))[3], 0, "the mask is applied before the blur, inside the segment");
     assert_eq!(pixel(&alone, frame.size.0, (120, 80)), [255, 255, 255, 255]);
 }
+
+#[test]
+fn the_ime_float_is_drawn_as_its_own_panel_until_it_is_dropped() {
+    let page = Page::new(2.0);
+    let float = page.div("ds");
+    page.doc.dom.set_ime_float(float, Some([20.0, 20.0, 40.0, 40.0])).unwrap();
+    let frame = page.frame();
+    let panel = frame.panels.iter().find(|p| p.id == acde::render::IME_FLOAT_PANEL).expect("the float panel");
+    assert_eq!(panel.size, (80, 80), "the float rect in device pixels");
+    page.doc.dom.set_ime_float(float, None).unwrap();
+    assert!(page.frame().panels.iter().all(|p| p.id != acde::render::IME_FLOAT_PANEL), "a dropped float leaves no panel");
+}

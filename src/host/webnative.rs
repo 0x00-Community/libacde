@@ -88,11 +88,15 @@ fn claim_surface(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, 
     let controls = surface.host_controls();
     let minimizable = surface.minimizable();
     let pointer_lock = surface.pointer_lock();
+    let ime_float = surface.ime_float();
     let (offset_x, offset_y) = surface.content_offset();
     STATE.with(|s| s.borrow_mut().surface = Some(surface));
     let offset = [offset_x, offset_y].map(|v| v8::Number::new(scope, v).into());
     let offset = v8::Array::new_with_elements(scope, &offset);
-    let obj = crate::js_object!(scope, {"window" => window, "hosted" => hosted, "hostControls" => controls, "minimizable" => minimizable, "pointerLock" => pointer_lock, "contentOffset" => offset});
+    let obj = crate::js_object!(scope, {
+        "window" => window, "hosted" => hosted, "hostControls" => controls, "minimizable" => minimizable,
+        "pointerLock" => pointer_lock, "imeFloat" => ime_float, "contentOffset" => offset
+    });
     crate::methods!(scope, obj,
         "pump" => pump,
         "wait" => wait,
@@ -122,6 +126,7 @@ fn claim_surface(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, 
         "startDrag" => start_drag,
         "setTitle" => set_title,
         "setImeArea" => set_ime_area,
+        "setImeFloat" => set_ime_float,
     );
     rv.set(obj.into());
 }
@@ -468,6 +473,11 @@ fn set_title(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v
 fn set_ime_area(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
     let rect = [0, 1, 2, 3].map(|i| bind::arg_f64(scope, &args, i));
     with_surface(scope, |surface| surface.set_ime_area(rect));
+}
+
+fn set_ime_float(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
+    let rect = [0, 1, 2, 3].map(|i| bind::arg_f64(scope, &args, i));
+    with_surface(scope, |surface| surface.set_ime_float(crate::render::ImeFloat::of(rect)));
 }
 
 fn set_clipboard(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {

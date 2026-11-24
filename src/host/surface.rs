@@ -62,6 +62,10 @@ impl Surface {
         self.0.open_panel(C::OpenPanel { id, token, rect, exclusive, user_only, popup, parent })
     }
 
+    pub fn ime_float(&self) -> bool {
+        self.0.ime_float()
+    }
+
     pub fn pump(&self) -> Vec<Event> {
         self.0.pump()
     }
@@ -95,6 +99,7 @@ impl Surface {
         set_page_dark(dark: bool) => C::PageDark(dark);
         set_title(title: &str) => C::Title(title.to_owned());
         set_ime_area(rect: [f64; 4]) => C::ImeArea(rect);
+        set_ime_float(float: Option<crate::render::ImeFloat>) => C::Ime(float);
         set_window_look(look: Option<crate::render::WindowLook>) => C::WindowLook(look);
         set_material(material: crate::render::WindowMaterial) => C::Material(material);
     }

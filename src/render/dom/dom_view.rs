@@ -414,6 +414,10 @@ impl Dom {
         self.write(|e| e.n(id).map(|n| e.set_panel(n, id, rect)))
     }
 
+    pub fn set_ime_float(&self, id: u32, rect: Option<[f64; 4]>) -> Result<()> {
+        self.write(|e| e.n(id).map(|n| e.set_panel(n, crate::render::IME_FLOAT_PANEL, rect)))
+    }
+
     pub fn pin(&self, id: u32) -> Result<()> {
         self.on(id, |e, n| e.ids.pin(n, true))
     }

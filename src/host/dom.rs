@@ -790,6 +790,10 @@ natives! {
         let (id, x, y, w, h) = (id(scope, &args, 0), f(scope, &args, 1), f(scope, &args, 2), f(scope, &args, 3), f(scope, &args, 4));
         dom.set_panel(id, (w > 0.0 && h > 0.0).then_some([x, y, w, h]))
     }
+    "setImeFloat" => fn set_ime_float(scope, args, dom) {
+        let (id, x, y, w, h) = (id(scope, &args, 0), f(scope, &args, 1), f(scope, &args, 2), f(scope, &args, 3), f(scope, &args, 4));
+        dom.set_ime_float(id, (w > 0.0 && h > 0.0).then_some([x, y, w, h]))
+    }
     "highlight" => fn highlight(scope, args, dom) {
         let id = id(scope, &args, 0);
         if crate::runtime::dev_mode() { dom.highlight(id) } else { Ok(()) }

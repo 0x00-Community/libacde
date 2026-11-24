@@ -36,6 +36,10 @@ pub trait Window {
     fn pointer_lock(&self) -> bool {
         false
     }
+
+    fn ime_float(&self) -> bool {
+        false
+    }
 }
 
 pub type InputSink = Box<dyn Fn(serde_json::Value) -> bool + Send>;

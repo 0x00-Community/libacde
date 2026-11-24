@@ -47,6 +47,14 @@
   `effect.shape` 收 `round` / `squircle` / `superellipse(k)` (k 取 1 到 3, 和 `setWindowLook` 的 `corners.shape` 同一个解析 `cornerShape`, `js/page/src/frametheme.ts`),
   胶水只传 k, 原生层 (`webnative.rs` `set_backdrop`) 用 `acde_scene::corner::exponent` 换成 n, `SurfaceCommand::Backdrop` 的效果是
   `[半径, 模糊, 饱和, 亮度, 指数]`; C 接口不改结构, 指数放在 `AcdeCommand.thickness` (Backdrop 本来不用它). 没写 shape 时是圆弧 (n = 2).
+- 输入法浮层 (2026-11-24, 总仓 `.scratch/system/zorder.md` 5.1): 页面自画的候选框 (`ImePanel`) 和预编辑文字原来挂在 `document.body` 上, 只能画进页面所在的表面,
+  会被钉住的面板和更靠前的窗口盖住. 宿主的 `platform::Window::ime_float()` 返回 true 时 (surface 的 `imeFloat`, 默认 false; acdes 的窗口 crate 返回 true), 两者改挂到一个
+  `position:fixed; inset:0` 的容器 (`data-acde-ime-float`, `js/page/src/panel.ts` 的 `ImeLayer`) 里, 自身改 `position:absolute`, 不再在窗口下沿翻到光标上方 (越出屏幕由合成器平移).
+  每次变动后量出各子元素外框的并集 (CSS 像素, 页面坐标), 变了才发: dom `setImeFloat(容器, x, y, w, h)` 把容器的子树当作一块面板画, 面板号固定为
+  `render::IME_FLOAT_PANEL` (`u32::MAX`, 在 `Frame.panels` 里, 只在浮层显示的帧里有); surface `setImeFloat(x, y, w, h)` 发 `SurfaceCommand::Ime(Some(ImeFloat {x, y, width, height}))`
+  (整数, 逻辑像素, 原点是页面内容区左上角). 宽或高为 0 即 `Ime(None)`: 输入结束 (预编辑清空且候选框收起)、输入框失焦或窗口失去激活、候选框收起后都立刻发 None, 合成器看不到
+  输入框是否激活 (页面经 D-Bus 直连 fcitx5), 靠这条防止浮层残留. 宿主把这块面板画进 `acde_ime_surface_v1` 的表面 (acdes, 放在输入法段, 不收输入).
+  返回 false 的宿主 (acdev 的宿主窗口) 照旧画在文档里. C 接口不转发 `Ime`.
 - 动画曲线 (`acde_scene::motion`): 合成器的窗口动画只用这一份. 两档 `Preset`: `Standard` 是临界阻尼的弹簧
   (响应 0.35 秒, 不过冲, 约 0.51 秒落到 0.1% 内, `Curve::length`), `Reduced` 是 0.15 秒线性淡入淡出且不缩放、不位移 (`moves()` 为假); 桌面只能选档, 不能给数值.
   `Ease` 是 CSS 的五个缓动关键字 (`linear`、`ease`、`ease-in`、`ease-out`、`ease-in-out`, 三次贝塞尔按 x 二分求 y), `acde:windows.animate` 的 `easing` 用它;

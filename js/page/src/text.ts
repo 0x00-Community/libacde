@@ -1,7 +1,7 @@
 import { hostTime } from '@acde/dom'
 import type { DomNative, WebInternals } from '@acde/dom'
 import { InputMethod, type ImePanelEvent } from './ime'
-import { ImePanel } from './panel'
+import { ImeLayer, ImePanel } from './panel'
 import type { ClipboardBytes, Shell } from './native'
 
 type Field = HTMLInputElement | HTMLTextAreaElement
@@ -31,6 +31,7 @@ export class TextEntry {
   #preedit: HTMLElement | null = null
   #placeholder: { field: Element; value: string } | null = null
   readonly #panel: ImePanel
+  readonly #layer: ImeLayer
   readonly #editing: WebInternals['editing']
 
   constructor(page: WebInternals, dom: DomNative) {
@@ -39,7 +40,8 @@ export class TextEntry {
     this.#page = page
     this.#dom = dom
     this.#editing = page.editing
-    this.#panel = new ImePanel(this.#document, { select: (index) => this.#ime?.select(index), page: (next) => this.#ime?.page(next) })
+    this.#layer = new ImeLayer(this.#document, dom, (node) => page.idOf(node))
+    this.#panel = new ImePanel(this.#document, this.#layer, { select: (index) => this.#ime?.select(index), page: (next) => this.#ime?.page(next) })
   }
 
   attachIme(ime: InputMethod): void {
@@ -48,6 +50,7 @@ export class TextEntry {
 
   attach(shell: Shell): void {
     this.#shell = shell
+    this.#layer.attach(shell)
     if (!this.#ime && shell.setImeArea) this.#ime = InputMethod.area((rect) => shell.setImeArea?.(rect.x, rect.y, rect.width, rect.height))
     this.#page.env.clipboard = {
       writeText: async (text: string) => this.#write([TextEntry.#text(String(text))]),
@@ -117,7 +120,7 @@ export class TextEntry {
     if (this.#inactive === !active) return
     this.#inactive = !active
     if (!active && this.#reported) this.#ime?.blur()
-    if (!active) this.#panel.hide()
+    if (!active) this.#hideFloat()
     this.#reported = null
     this.#last = null
   }
@@ -129,7 +132,7 @@ export class TextEntry {
     if (!editable) {
       if (this.#reported) this.#ime.blur()
       this.#reported = null
-      this.#panel.hide()
+      this.#hideFloat()
       this.#last = null
       return
     }
@@ -209,8 +212,10 @@ export class TextEntry {
       this.#placeholder = null
     }
     if (!target || !text) {
+      const shown = !!this.#preedit?.isConnected
       this.#preedit?.remove()
       this.#preedit = null
+      if (shown) this.#layer.changed()
       return
     }
     const placeholder = this.#field(target) ? target.getAttribute('placeholder') : null
@@ -221,8 +226,16 @@ export class TextEntry {
     const rect = this.#caretRect(target)
     this.#preedit ??= this.#document.createElement('span')
     this.#preedit.textContent = text
-    this.#preedit.setAttribute('style', `position:fixed;left:${rect.x}px;top:${rect.y}px;height:${rect.height}px;line-height:${rect.height}px;z-index:2147483647;text-decoration:underline;background:Canvas;color:CanvasText;pointer-events:none;white-space:pre`)
-    if (!this.#preedit.isConnected) this.#document.body.append(this.#preedit)
+    const place = `position:${this.#layer.position};left:${rect.x}px;top:${rect.y}px;height:${rect.height}px;line-height:${rect.height}px`
+    const look = 'z-index:2147483647;text-decoration:underline;background:Canvas;color:CanvasText;pointer-events:none;white-space:pre'
+    this.#preedit.setAttribute('style', `${place};${look}`)
+    this.#layer.mount(this.#preedit)
+    this.#layer.changed()
+  }
+
+  #hideFloat(): void {
+    this.#panel.hide()
+    this.#showPreedit(null, '')
   }
 
   #caretRect(target: Element): { x: number; y: number; width: number; height: number } {

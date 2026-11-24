@@ -162,6 +162,28 @@ impl WindowMaterial {
     }
 }
 
+pub const IME_FLOAT_PANEL: u32 = u32::MAX;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ImeFloat {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+impl ImeFloat {
+    pub fn of([x, y, width, height]: [f64; 4]) -> Option<Self> {
+        let whole = |v: f64| if v.is_finite() { v.round().clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32 } else { 0 };
+        let float = Self { x: whole(x), y: whole(y), width: whole(width), height: whole(height) };
+        (float.width > 0 && float.height > 0).then_some(float)
+    }
+
+    pub fn rect(self) -> [f64; 4] {
+        [self.x, self.y, self.width, self.height].map(f64::from)
+    }
+}
+
 pub type ClipboardTypesReply = Box<dyn FnOnce(Vec<String>) + Send>;
 pub type ClipboardReadReply = Box<dyn FnOnce(Option<Vec<u8>>) + Send>;
 
@@ -187,13 +209,23 @@ pub enum SurfaceCommand {
     PageDark(bool),
     Title(String),
     ImeArea([f64; 4]),
+    Ime(Option<ImeFloat>),
     WindowLook(Option<WindowLook>),
     Material(WindowMaterial),
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ClipboardEntry, WindowLook, WindowShadow};
+    use super::{ClipboardEntry, ImeFloat, WindowLook, WindowShadow};
+
+    #[test]
+    fn an_ime_float_is_a_whole_pixel_rect_and_an_empty_one_is_none() {
+        assert_eq!(ImeFloat::of([10.4, 20.6, 120.0, 48.2]), Some(ImeFloat { x: 10, y: 21, width: 120, height: 48 }));
+        assert_eq!(ImeFloat::of([1.0, 2.0, 0.0, 30.0]), None);
+        assert_eq!(ImeFloat::of([1.0, 2.0, 30.0, -4.0]), None);
+        assert_eq!(ImeFloat::of([f64::NAN, 2.0, 30.0, 4.0]).map(|f| f.x), Some(0));
+        assert_eq!(ImeFloat { x: 1, y: 2, width: 3, height: 4 }.rect(), [1.0, 2.0, 3.0, 4.0]);
+    }
 
     #[test]
     fn wayland_types_become_web_types_in_order_without_unknown_or_repeated_ones() {

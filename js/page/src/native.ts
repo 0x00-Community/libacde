@@ -79,6 +79,8 @@ export interface NativeSurface {
   readonly contentOffset: readonly [number, number]
   setTitle(title: string): void
   setImeArea?(x: number, y: number, width: number, height: number): void
+  readonly imeFloat?: boolean
+  setImeFloat?(x: number, y: number, width: number, height: number): void
   pump(): RawShellEvent[]
   wait(): Promise<void>
   waitThen?(callback: () => void): void
@@ -123,7 +125,7 @@ export interface ClipboardBytes {
   readonly data: Uint8Array
 }
 
-export type Shell = Pick<NativeSurface, 'setClipboard' | 'clipboardTypes' | 'readClipboard' | 'setImeArea'>
+export type Shell = Pick<NativeSurface, 'setClipboard' | 'clipboardTypes' | 'readClipboard' | 'setImeArea' | 'imeFloat' | 'setImeFloat'>
 
 export interface NativeDevToolsTarget {
   readonly id: string

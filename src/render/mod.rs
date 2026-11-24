@@ -37,7 +37,9 @@ pub use hud::{Hud, HudStats};
 pub use layers::{Backdrop, Drawing, Layer, LayerFilter};
 pub use net::{Load, Loader};
 pub(crate) use net::{resource_file, system_file};
-pub use surface::{ClipboardEntry, ClipboardReadReply, ClipboardTypesReply, DragImage, SurfaceCommand, WindowLook, WindowMaterial, WindowShadow};
+pub use surface::{
+    ClipboardEntry, ClipboardReadReply, ClipboardTypesReply, DragImage, IME_FLOAT_PANEL, ImeFloat, SurfaceCommand, WindowLook, WindowMaterial, WindowShadow,
+};
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
