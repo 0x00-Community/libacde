@@ -70,6 +70,15 @@ struct Layer {
 
 impl Damage {
     pub(crate) fn update(&mut self, b: &Commands, tolerance: f64, viewport: Rect, cache: Option<&PaintCache>, verify: bool) -> (Vec<Rect>, bool, bool) {
+        if cache.is_none()
+            && let Some(old) = &self.previous
+            && old.viewport == viewport
+            && old.tolerance == tolerance
+            && old.held.as_ref().is_some_and(|held| held.same(b))
+        {
+            self.sequence = None;
+            return (Vec::new(), false, false);
+        }
         let given = cache;
         let sequence = std::mem::replace(&mut self.sequence, cache.map(PaintCache::sequence));
         let cache = cache.filter(|c| self.previous.is_some() && c.previous().is_some() && c.previous() == sequence);
@@ -533,5 +542,17 @@ mod tests {
         assert!(damage.update(&frame(Color::BLACK), 0.1, viewport, None, true).0.is_empty(), "an equal frame has no damage");
         let rects = damage.update(&frame(Color::WHITE), 0.1, viewport, None, true).0;
         assert!(!rects.is_empty() && rects.iter().all(|r| r.x0 >= 90.0), "only the second square: {rects:?}");
+    }
+
+    #[test]
+    fn an_unchanged_panel_keeps_its_bounds_and_has_no_damage() {
+        let viewport = Rect::new(0.0, 0.0, 200.0, 50.0);
+        let commands = Commands::owned(vec![square(10.0, Color::BLACK)]);
+        let mut damage = Damage::default();
+        damage.update(&commands, 0.1, viewport, None, true);
+        let draw = damage.draw().to_vec();
+        assert!(damage.update(&commands.clone(), 0.1, viewport, None, true).0.is_empty());
+        assert_eq!(damage.draw(), draw);
+        assert!(!damage.update(&Commands::owned(vec![square(10.0, Color::WHITE)]), 0.1, viewport, None, true).0.is_empty());
     }
 }

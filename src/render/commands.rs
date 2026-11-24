@@ -61,6 +61,16 @@ impl Commands {
         self.len
     }
 
+    pub(crate) fn same(&self, other: &Commands) -> bool {
+        self.len == other.len
+            && self.segs.len() == other.segs.len()
+            && self
+                .segs
+                .iter()
+                .zip(&other.segs)
+                .all(|(a, b)| Arc::ptr_eq(&a.commands, &b.commands) && (a.start, a.end, a.transform) == (b.start, b.end, b.transform))
+    }
+
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
