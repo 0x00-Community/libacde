@@ -307,7 +307,7 @@
   池只增不减, vello 没有放掉它的接口. 场景里有图片时 renderer 还留着图片图集 (从 1024² 起翻倍, 页面上有铺满窗口的 WebGPU canvas 时 4096², 64 MiB).
   统一内存的机器上这些都是进程的物理内存 (macOS `footprint` 的 `Owned physical footprint (unmapped) (graphics)`). 进程里每个画过的 renderer 各留一份:
   出帧的 (宿主窗口每个 web 一个 `Presenter`; 会话每个 web 进程一个 `Raster`, `Raster::new` 预热时就画一次) 和进程级 `Offscreen` (canvas 当图片源、
-  `getImageData`、`putImageData`、`shadowBlur`、`ctx.filter`、`capture` 用到它). `Vello::trim` 重建 renderer (同一设备、同样的建管线线程数; 着色器走驱动缓存,
+  `getImageData`、`putImageData`、`shadowBlur`、`ctx.filter`、`capture` 用到它). `Vello::trim` 重建 renderer (同一设备、同样的建管线线程数; 着色器走驱动缓存; 会话的 Vulkan 设备有 `PIPELINE_CACHE` 时管线还走 `vello::pipelines` 的 wgpu 管线缓存, 存在 `$XDG_CACHE_HOME/acde/wgpu/` 下, 两次预热之后大小变了才写回; 这个设备的队列在有 `VK_KHR/EXT_global_priority` 时要低优先级, 好让合成器先走,
   M4 上 5–16 ms) 再 `poll` 一次, 旧的缓冲池和图集随旧 renderer 放掉; 上次建好以来没画过就不重建 (回 `false`), 建不出来时留着旧的 (回错误).
   每个 `Vello` 建出来有个进程内唯一的编号, `Overrides` 记着给哪个编号登记过 GPU 图片 (`follow`), 换了就清掉重登 (不然新 renderer 把 GPU 图片当成
   没有字节的普通图片). 闲时调它的: 宿主窗口的出帧线程, 最后一次画出新内容 2 秒后 (acdev `docs/agents/hostwin.md`); 会话的 `Raster::idle` (acdes 光栅化线程
