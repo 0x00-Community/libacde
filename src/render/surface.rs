@@ -200,7 +200,7 @@ pub enum SurfaceCommand {
     Activate,
     Grab(u32, bool),
     PointerLock(bool),
-    OpenPanel { id: u32, token: u64, rect: [i32; 4], exclusive: bool, user_only: bool, popup: bool, parent: Option<u32> },
+    OpenPanel { id: u32, token: u64, rect: [i32; 4], exclusive: bool, user_only: bool, popup: bool, parent: Option<u32>, kind: u32 },
     PlacePanel { id: u32, rect: [i32; 4], input: [i32; 4] },
     ClosePanel(u32),
     ReservePanel { id: u32, edge: u32, thickness: f64 },

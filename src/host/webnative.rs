@@ -333,7 +333,8 @@ fn open_panel(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut
     let user_only = args.get(7).is_true();
     let popup = args.get(8).is_true();
     let parent = Some(bind::arg_f64(scope, &args, 9)).filter(|p| p.is_finite() && *p > 0.0).map(|p| p as u32);
-    let opening = PanelOpening { id, token, rect, exclusive, user_only, popup, parent };
+    let kind = Some(bind::arg_f64(scope, &args, 10)).filter(|k| k.is_finite() && *k >= 0.0).map_or(PanelOpening::FLOATING, |k| k as u32);
+    let opening = PanelOpening { id, token, rect, exclusive, user_only, popup, parent, kind };
     let popped = with_surface(scope, |surface| surface.open_panel(opening));
     rv.set_bool(popped.unwrap_or(false));
 }

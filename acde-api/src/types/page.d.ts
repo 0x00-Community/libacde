@@ -555,7 +555,10 @@ export interface PinOptions {
   readonly userOnly?: boolean
   readonly popup?: boolean
   readonly parent?: PinnedPanel
+  readonly kind?: PanelKind
 }
+
+export type PanelKind = 'dock' | 'floating' | 'notice' | 'confirm'
 
 export interface PinnedPanel {
   update(): void

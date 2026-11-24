@@ -100,7 +100,7 @@ export interface NativeSurface {
   releaseGrab(kind: 'pointer' | 'keyboard'): void
   openPanel(
     id: number, token: bigint, x: number, y: number, width: number, height: number,
-    exclusive?: boolean, userOnly?: boolean, popup?: boolean, parent?: number,
+    exclusive?: boolean, userOnly?: boolean, popup?: boolean, parent?: number, kind?: number,
   ): boolean | undefined
   placePanel(id: number, x: number, y: number, width: number, height: number, ix: number, iy: number, iw: number, ih: number): void
   closePanel(id: number): void

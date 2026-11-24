@@ -14,6 +14,14 @@ pub struct PanelOpening {
     pub user_only: bool,
     pub popup: bool,
     pub parent: Option<u32>,
+    pub kind: u32,
+}
+
+impl PanelOpening {
+    pub const DOCK: u32 = 0;
+    pub const FLOATING: u32 = 1;
+    pub const NOTICE: u32 = 2;
+    pub const CONFIRM: u32 = 3;
 }
 
 macro_rules! commands {
@@ -58,8 +66,8 @@ impl Surface {
     }
 
     pub fn open_panel(&self, panel: PanelOpening) -> bool {
-        let PanelOpening { id, token, rect, exclusive, user_only, popup, parent } = panel;
-        self.0.open_panel(C::OpenPanel { id, token, rect, exclusive, user_only, popup, parent })
+        let PanelOpening { id, token, rect, exclusive, user_only, popup, parent, kind } = panel;
+        self.0.open_panel(C::OpenPanel { id, token, rect, exclusive, user_only, popup, parent, kind })
     }
 
     pub fn ime_float(&self) -> bool {

@@ -69,7 +69,7 @@ test('once the panel opens it is placed with the input box of the element', asyn
   pinned.pin(element as unknown as Element)
   answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false, false, false, 0])
+  assert.deepEqual(calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false, false, false, 0, 1])
   assert.deepEqual(calls.filter((c) => c[0] === 'placePanel').at(-1), ['placePanel', 7, 10, 20, 100, 50, 0, 0, 100, 50])
 })
 
@@ -100,12 +100,12 @@ test('keyboard: exclusive opens the panel with the keyboard all to itself; on-de
   exclusive.pinned.pin(exclusive.element as unknown as Element, { keyboard: 'exclusive' })
   exclusive.answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(exclusive.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, false, false, 0])
+  assert.deepEqual(exclusive.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, false, false, 0, 1])
   const onDemand = harness()
   onDemand.pinned.pin(onDemand.element as unknown as Element, { keyboard: 'on-demand' })
   onDemand.answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(onDemand.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false, false, false, 0])
+  assert.deepEqual(onDemand.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, false, false, false, 0, 1])
 })
 
 test('userOnly: the panel opens marked as a card only the user may answer; ordinary panels are not', async () => {
@@ -113,12 +113,12 @@ test('userOnly: the panel opens marked as a card only the user may answer; ordin
   card.pinned.pin(card.element as unknown as Element, { keyboard: 'exclusive', userOnly: true })
   card.answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(card.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, true, false, 0])
+  assert.deepEqual(card.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, true, false, 0, 1])
   const overlay = harness()
   overlay.pinned.pin(overlay.element as unknown as Element, { keyboard: 'exclusive', userOnly: false })
   overlay.answer().resolve({ window: 1048577, token: 5n })
   await Promise.resolve()
-  assert.deepEqual(overlay.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, false, false, 0])
+  assert.deepEqual(overlay.calls.find((c) => c[0] === 'openPanel'), ['openPanel', 7, 5n, 10, 20, 100, 50, true, false, false, 0, 1])
 })
 
 test('userOnly: anything but a boolean is a TypeError and pins nothing', () => {
@@ -212,7 +212,7 @@ test('a popup opens with its parent panel\'s id, and handle.popup says whether i
   assert.equal(child.popup, false, 'false until it opens')
   answer().resolve({ window: 1048578, token: 6n })
   await Promise.resolve()
-  assert.deepEqual(calls.filter((c) => c[0] === 'openPanel').at(-1), ['openPanel', 9, 6n, 10, 20, 100, 50, false, false, true, 7])
+  assert.deepEqual(calls.filter((c) => c[0] === 'openPanel').at(-1), ['openPanel', 9, 6n, 10, 20, 100, 50, false, false, true, 7, 1])
   assert.equal(child.popup, true)
   assert.throws(() => pinned.pin(another(element, 11), { parent: {} as never }), TypeError)
 })
@@ -250,4 +250,14 @@ test('placing a panel that has not moved sends nothing to the window system', as
   handle.update()
   pinned.update()
   assert.deepEqual(calls.slice(sent), [])
+})
+
+test('pin hands the panel kind to the runtime, floating by default, and refuses an unknown kind', async () => {
+  const { calls, element, pinned, answer } = harness()
+  pinned.pin(element as unknown as Element, { kind: 'notice' })
+  answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  assert.deepEqual(calls.find((c) => c[0] === 'openPanel')?.at(-1), 2)
+  const other = harness()
+  assert.throws(() => other.pinned.pin(other.element as unknown as Element, { kind: 'banner' as never }), /kind is one of dock, floating, notice, confirm/)
 })

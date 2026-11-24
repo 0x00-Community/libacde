@@ -1,5 +1,5 @@
 import { hostTime } from '@acde/dom'
-import type { PanelReserve, PinAnchor, PinClosed, PinnedPanel, PinOptions, WindowEdge } from '@acde/api'
+import type { PanelKind, PanelReserve, PinAnchor, PinClosed, PinnedPanel, PinOptions, WindowEdge } from '@acde/api'
 import type { NativeSurface, PanelEnd } from './native'
 import { anchorOf, type Anchor, type AnchorWire } from './pinanchor'
 import type { Rpc } from './rpc'
@@ -35,6 +35,7 @@ interface Panel {
   readonly userOnly: boolean
   readonly popup: boolean
   readonly parent: number
+  readonly kind: number
   popped: boolean
   reserve: PanelReserve | null
   reserved: string
@@ -90,6 +91,7 @@ export class Pinned {
     if (anchor && exclusive) throw new TypeError("pin: anchor and keyboard 'exclusive' do not go together (a menu takes the keyboard with requestGrab)")
     const popup = Pinned.#popup(options.popup, exclusive, reserve)
     const parent = this.#parent(options.parent)
+    const kind = Pinned.#kind(options.kind)
     const margin = Math.max(0, options.margin ?? 0)
     const id = this.#page.idOf(element)
     let end: (why: PinClosed) => void = () => {}
@@ -97,7 +99,7 @@ export class Pinned {
       end = resolve
     })
     const panel: Panel = {
-      element, id, margin, exclusive, userOnly, popup, parent, popped: false, reserve, reserved: '', anchor, sent: '', closed, end,
+      element, id, margin, exclusive, userOnly, popup, parent, kind, popped: false, reserve, reserved: '', anchor, sent: '', closed, end,
       window: null, opening: false, rect: null, input: null, extent: null, view: '', stops: [],
     }
     this.#panels.set(element, panel)
@@ -152,6 +154,15 @@ export class Pinned {
     if (keyboard === undefined || keyboard === 'on-demand') return false
     if (keyboard === 'exclusive') return true
     throw new TypeError(`pin: keyboard is 'exclusive' or 'on-demand', not ${String(keyboard)}`)
+  }
+
+  static readonly #KINDS: readonly PanelKind[] = ['dock', 'floating', 'notice', 'confirm']
+
+  static #kind(kind: unknown): number {
+    if (kind === undefined) return Pinned.#KINDS.indexOf('floating')
+    const at = Pinned.#KINDS.indexOf(kind as PanelKind)
+    if (at < 0) throw new TypeError(`pin: kind is one of ${Pinned.#KINDS.join(', ')}, not ${String(kind)}`)
+    return at
   }
 
   static #popup(popup: unknown, exclusive: boolean, reserve: PanelReserve | null): boolean {
@@ -345,7 +356,7 @@ export class Pinned {
         const { window, token } = granted as { window: number; token: bigint }
         if (this.#panels.get(panel.element) !== panel) return void this.#rpc.call('panel', 'close', [window]).catch(() => undefined)
         panel.window = window
-        const popped = this.#surface.openPanel(panel.id, token, ...rect, panel.exclusive, panel.userOnly, panel.popup, panel.parent)
+        const popped = this.#surface.openPanel(panel.id, token, ...rect, panel.exclusive, panel.userOnly, panel.popup, panel.parent, panel.kind)
         panel.popped = panel.popup && popped === true
         this.#dom.setPanel(panel.id, ...rect)
         this.#surface.placePanel(panel.id, ...rect, ...input)

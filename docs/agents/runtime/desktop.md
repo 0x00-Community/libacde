@@ -143,6 +143,9 @@
   元素仍要在桌面页可见范围里布局. 已钉住的用 `anchor(next)` 换锚点 (下拉框跟着输入框滚动). 不能和 `reserve` 同给, 也不能和
   `keyboard: 'exclusive'` 同给 (`TypeError`; 菜单要键盘走 `requestGrab`). 窗口系统不会放锚定面板 (老 acdes、acdev 宿主窗口) 时 `pin` 当场抛
   `NotSupportedError`, 桌面可以退回自己换算坐标.
+- **面板种类** (`kind`, 2026-11-24, 总仓 z 轴分段规范): `'dock'` (菜单栏、Dock)、`'floating'` (缺省)、`'notice'` (提示)、`'confirm'` (要人回答的卡片),
+  决定面板在外壳段里的子段, 后者盖前者. 原生 `openPanel` 最后一个参数是它的编号 (0–3, Rust `PanelOpening::DOCK` … `CONFIRM`), 窗口一侧建好 layer 面后发
+  `acompositor_desktop_v1.set_panel_kind` (v17). 弹出窗口不看 `kind`, 一律在弹出段. 不认识的取值抛 `TypeError`.
 - **弹出窗口** (`popup: true`, `parent?: PinnedPanel`): 菜单、下拉框、启动台这类“点外面就收起”的弹层, 交给窗口系统做成标准弹出窗口
   (xdg_popup 那一类), 由合成器负责点到外面时收起, 页面不再自己判断点击落在哪. `parent` 是挂在哪个已钉住的面板上 (运行时换成它的面板号交给窗口系统),
   不给时挂在桌面主层面上; 不是这里钉住、或已经结束的面板抛 `TypeError`. 可以和 `anchor` 同给; 不能和 `keyboard: 'exclusive'` 或 `reserve` 同给

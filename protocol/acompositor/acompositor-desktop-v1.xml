@@ -11,7 +11,7 @@
     background use wlr-layer-shell.
   </description>
 
-  <interface name="acompositor_desktop_v1" version="16">
+  <interface name="acompositor_desktop_v1" version="17">
     <description summary="the desktop's handle on acompositor">
       On bind acompositor sends a window event for every toplevel already shown, then
       work_area, then done. Later windows come as they are shown. From version 2 the
@@ -37,7 +37,8 @@
       say whether their client answers acompositor's pings. From version 14 the desktop
       sets windows aside (acompositor_window_v1 version 9). From version 15 the desktop sets the
       height of the titlebar the runtime draws on app windows. From version 16 it also sets the
-      measures of that titlebar's controls and title.
+      measures of that titlebar's controls and title. From version 17 it tells which shell
+      sub-layer each of its panels belongs to (set_panel_kind).
     </description>
 
     <enum name="error">
@@ -45,6 +46,14 @@
       <entry name="last_desktop" value="1" summary="the only desktop cannot be removed"/>
       <entry name="same_desktop" value="2" summary="windows cannot move into the desktop being removed"/>
       <entry name="dev_only" value="3" summary="render_state and hit are for a client at the dev level only"/>
+      <entry name="invalid_panel" value="4" summary="set_panel_kind names no layer-shell top surface of this client"/>
+    </enum>
+
+    <enum name="panel_kind" since="17">
+      <entry name="dock" value="0" summary="docked shell furniture: menu bar, dock"/>
+      <entry name="floating" value="1" summary="a floating shell panel (the default)"/>
+      <entry name="notice" value="2" summary="a notice above the floating panels"/>
+      <entry name="confirm" value="3" summary="a card that asks the person, above notices"/>
     </enum>
 
     <event name="current_desktop" since="3">
@@ -323,6 +332,16 @@
       <arg name="caption" type="fixed"/>
       <arg name="title_size" type="fixed"/>
       <arg name="title_weight" type="fixed"/>
+    </request>
+
+    <request name="set_panel_kind" since="17">
+      <description summary="which shell sub-layer a panel of the desktop belongs to">
+        surface is a layer-shell surface of this client on the top layer; anything else is the
+        invalid_panel error. A panel that was never given a kind is floating. Popups (grabbing
+        panels, anchored grabbing panels) ignore it and stay in the popup layer.
+      </description>
+      <arg name="surface" type="object" interface="wl_surface"/>
+      <arg name="kind" type="uint" enum="panel_kind"/>
     </request>
 
     <request name="create_embed_slot">
