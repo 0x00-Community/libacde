@@ -534,6 +534,14 @@ impl Signals {
         }
     }
 
+    pub fn exports(&self) -> bool {
+        !self.semaphores.is_empty()
+    }
+
+    pub fn imports(&self) -> bool {
+        !self.waits.is_empty()
+    }
+
     pub fn wait_for(&mut self, sync_file: OwnedFd) -> Result<(), OwnedFd> {
         let Some(&semaphore) = self.waits.get(self.next_wait) else { return Err(sync_file) };
         let imported = unsafe {
