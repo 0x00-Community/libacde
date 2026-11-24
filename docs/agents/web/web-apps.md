@@ -318,18 +318,25 @@
   `crypto.subtle` 是 `Crypto` 原型上的取值器, 每次同一个对象 (`[SameObject]`); 全局有 `SubtleCrypto` 接口, `new SubtleCrypto()` 是
   `TypeError: Illegal constructor` (同浏览器). 页面和 worker 都有 (`installCore`). sha1 用 `sha1` 包 (digest 0.10), 其余用 `sha2` (digest 0.11).
 - **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`)、从文件读的页面 (`PageSource.html`) 只认 `.html` 入口 (`.xhtml` 文件不按 XML 解析)、页面按响应的字符编码解码 (现在总按 UTF-8)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、`SharedWorker` 和 Service Worker、`crypto.subtle` 除 `digest` 以外的方法 (`encrypt` / `sign` / `importKey` / `generateKey` / `deriveBits` … 都不在 `SubtleCrypto.prototype` 上, 也没有 `CryptoKey`)、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
-- **指针事件** (https://w3c.github.io/pointerevents/, acde-dom `dom/input.ts` / `dom/events.ts`): 只有鼠标: `pointerId` 1, `pointerType`
+- **指针事件** (https://w3c.github.io/pointerevents/, acde-dom `dom/input.ts` / `dom/events.ts`): 一个指针, 鼠标或数位笔. 鼠标: `pointerId` 1, `pointerType`
   `'mouse'`, `isPrimary` true, `width` / `height` 1, `pressure` 按着按钮时 0.5、否则 0 (规范给鼠标的值), `tiltX` / `tiltY` / `twist` /
-  `tangentialPressure` 0. `pointermove` 按帧派发 (`docs/agents/runtime/webs.md`「输入」), 两次派发之间宿主送来的每个位置都留着: 派发的事件是
+  `tangentialPressure` 0. 宿主给的事件带 `pen` (model `Event.pen`, 见下) 时是数位笔: `pointerId` 2, `pointerType` `'pen'`, `pressure` /
+  `tangentialPressure` / `tiltX` / `tiltY` / `twist` 照宿主的值 (悬停时压力 0); 笔的橡皮端 (`pen.eraser`) 按下是 `button` 5、`buttons` 32
+  (Pointer Events 3 的 eraser 按钮; page `keys.ts` 的 `ShellInput.normalize` 把左键换成 5), 所以不产生 click. 没有笔的 `pointerover` / `pointerout`
+  切换 (换设备时 hover 不重来), `altitudeAngle` / `azimuthAngle` 还没有. `pointermove` 按帧派发 (`docs/agents/runtime/webs.md`「输入」), 两次派发之间宿主送来的每个位置都留着: 派发的事件是
   最后一个样本, `getCoalescedEvents()` 按先后给出全部样本 (至少一个). 每个样本是单独的可信 `PointerEvent`: `target` 和派发的那个相同,
-  不冒泡、不可取消, 有自己的 `clientX` / `offsetX` / `movementX` / `buttons` / `pressure` / `timeStamp`, 它自己的 `getCoalescedEvents()` 为空.
+  不冒泡、不可取消, 有自己的 `clientX` / `offsetX` / `movementX` / `buttons` / `pressure` / `timeStamp` (笔还有自己的 `pointerType` / 倾斜 / `twist`),
+  它自己的 `getCoalescedEvents()` 为空.
   `timeStamp` 是宿主把输入排进队列的时刻 (`Event.stamp`, src/host `webnative.rs` 的 `pump` 换成页面循环的时钟; 装了 `clock` 假时钟时按样本
   早了多久从假时钟倒推), 派发的事件和它引起的 over / enter / click 等用最后一个样本的时刻, `pointerdown` / `pointerup` 用自己的.
   别的指针事件 (含 down / up) 的 `getCoalescedEvents()` 为空; 页面自己 `new PointerEvent(type, {coalescedEvents, predictedEvents})` 给的就是这两个列表
   (不是 `PointerEvent` 的序列时照 WebIDL 抛 TypeError), 没给是空的; `getPredictedEvents()` 总是空的 (不做预测, 规范允许). 宿主的队列
   (model `Inbox`) 和页面里等帧的样本都最多留 1024 个连着的移动, 再多时最新的一个并进最后一个 (位置取新的, `deltaX` / `deltaY` 相加),
-  只有页面卡住时才会碰到. 和规范的差别 (还没改): `pointermove` 的 `button` 是 0 (规范是 -1), 没有 `pointerrawupdate`; 数位笔
-  (`pointerType: 'pen'`、压力、倾斜) 还没有: 宿主窗口见 acdev `docs/agents/hostwin.md`「光标」后的「数位板」, 会话的 crates/window 只接 `wl_pointer`.
+  只有页面卡住时才会碰到. 和规范的差别 (还没改): `pointermove` 的 `button` 是 0 (规范是 -1), 没有 `pointerrawupdate`. 笔的来源: model `Event`
+  的 `pen: Option<Pen>` (`pressure` 0–1、`tangential_pressure` -1–1、`tilt_x` / `tilt_y` -90–90 度、`twist` 0–359 度、`eraser`), 宿主在
+  pointermove / pointerdown / pointerup 上填, `webnative.rs` 的 `event_object` 交给页面作 `pen: {pressure, tangentialPressure, tiltX, tiltY,
+  twist, eraser}`; 注入用 model `Injected::Pen(Option<Pen>)` 设当前的笔 (之后的移动和按键都带它). acdev 宿主窗口在 macOS 上填 (acdev
+  `docs/agents/hostwin.md`「数位板」); 会话的 crates/window 只接 `wl_pointer`, 不填; C 接口 (`AcdeEvent`) 没有笔的字段.
 - **光标** (CSS UI `cursor`, `src/render/cursor.rs`): render 取指针下的节点 (render 线程的 hover, 每次 `RenderHandle::pointer` 和每次重算样式之后)
   最近的元素的计算值 `cursor` 的关键字; `auto` 照 CSS UI 4 定: 在链接 (`a[href]` / `area[href]` 和它们里面, 和浏览器一样) 上是 `pointer`, 在可编辑的地方 (有
   文字输入的 input、textarea、`contenteditable` 不是 false 的, disabled 的除外) 或可选的文字 (命中在文字上, `user-select` 用到的值不是 none: 自己是 `auto` 就往上看祖先) 上是 `text`, 别处是

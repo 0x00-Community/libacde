@@ -29,7 +29,7 @@ export type ShellEvent =
   | { type: 'frame'; time: number }
   | { type: 'panelmove'; id: number; x: number; y: number; width: number; height: number }
   | { type: 'panelended'; id: number; why: PanelEnd }
-  | { type: 'pointermove' | 'pointerdown' | 'pointerup'; target?: number | null; x: number; y: number; button?: number; movement?: readonly [number, number]; modifiers?: Modifiers; time?: number; samples?: readonly PointerSample[] }
+  | { type: 'pointermove' | 'pointerdown' | 'pointerup'; target?: number | null; x: number; y: number; button?: number; movement?: readonly [number, number]; modifiers?: Modifiers; time?: number; samples?: readonly PointerSample[]; pen?: PenState }
   | { type: 'pointerleave'; modifiers?: Modifiers }
   | { type: 'wheel'; target: number | null; x: number; y: number; deltaX: number; deltaY: number; modifiers?: Modifiers }
   | { type: 'keydown' | 'keyup'; key: string; code: string; keycode?: number; repeat?: boolean; modifiers?: Modifiers; fromIme?: boolean }
@@ -39,11 +39,21 @@ export type ShellEvent =
   | { type: 'close' }
   | { type: 'exit' }
 
+export interface PenState {
+  readonly pressure: number
+  readonly tangentialPressure: number
+  readonly tiltX: number
+  readonly tiltY: number
+  readonly twist: number
+  readonly eraser: boolean
+}
+
 export interface PointerSample {
   readonly x: number
   readonly y: number
   readonly movement?: readonly [number, number]
   readonly time?: number
+  readonly pen?: PenState
 }
 
 export interface RawShellEvent {
@@ -69,6 +79,7 @@ export interface RawShellEvent {
   readonly mime?: readonly string[]
   readonly data?: Readonly<Record<string, string>>
   readonly files?: readonly string[]
+  readonly pen?: PenState
 }
 
 export interface NativeSurface {

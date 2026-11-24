@@ -23,11 +23,21 @@ export interface Modifiers {
   readonly meta?: boolean
 }
 
+export interface PenState {
+  readonly pressure: number
+  readonly tangentialPressure: number
+  readonly tiltX: number
+  readonly tiltY: number
+  readonly twist: number
+  readonly eraser: boolean
+}
+
 export interface PointerSample {
   readonly x: number
   readonly y: number
   readonly movement?: readonly [number, number]
   readonly time?: number
+  readonly pen?: PenState
 }
 
 interface PointerOptions {
@@ -37,6 +47,7 @@ interface PointerOptions {
   readonly movement?: readonly [number, number]
   readonly time?: number
   readonly samples?: readonly PointerSample[]
+  readonly pen?: PenState
 }
 
 interface KeyOptions {
@@ -81,6 +92,7 @@ export class Input {
   #last = { x: 0, y: 0 }
   #time: number | undefined
   #shift = 0
+  #pen: PenState | undefined
   #untracked = false
   capture: Element | null = null
   readonly selects = new SelectInput()
@@ -106,13 +118,13 @@ export class Input {
   }
 
   #coalesced(target: Element, x: number, y: number, options: PointerOptions): PointerEvent[] {
-    const samples = options.samples?.length ? options.samples : [{ x, y, movement: options.movement, time: options.time }]
+    const samples = options.samples?.length ? options.samples : [{ x, y, movement: options.movement, time: options.time, pen: options.pen }]
     let { x: px, y: py } = this.#last
     return samples.map((sample) => {
       const movement = sample.movement ?? [sample.x - px, sample.y - py]
       px = sample.x
       py = sample.y
-      const event = new PointerEvent('pointermove', { view: G, ...this.#init(sample.x, sample.y, { ...options, movement }) })
+      const event = new PointerEvent('pointermove', { view: G, ...this.#init(sample.x, sample.y, { ...options, movement, pen: sample.pen }) })
       eventCoalesced(event, target)
       const time = sample.time === undefined ? this.#time : sample.time + this.#shift
       if (time !== undefined) eventTime(event, time)
@@ -123,7 +135,11 @@ export class Input {
 
   #init(x: number, y: number, options: PointerOptions, button = 0) {
     const [movementX, movementY] = options.movement ?? [x - this.#last.x, y - this.#last.y]
-    return { clientX: x, clientY: y, screenX: x, screenY: y, movementX, movementY, button, buttons: this.#buttons, pointerId: 1, pointerType: 'mouse', isPrimary: true, width: 1, height: 1, pressure: this.#buttons ? 0.5 : 0, ...mods(options.modifiers) }
+    const init = { clientX: x, clientY: y, screenX: x, screenY: y, movementX, movementY, button, buttons: this.#buttons, isPrimary: true, width: 1, height: 1, ...mods(options.modifiers) }
+    const pen = options.pen
+    if (!pen) return { ...init, pointerId: 1, pointerType: 'mouse', pressure: this.#buttons ? 0.5 : 0 }
+    const { pressure, tangentialPressure, tiltX, tiltY, twist } = pen
+    return { ...init, pointerId: 2, pointerType: 'pen', pressure, tangentialPressure, tiltX, tiltY, twist }
   }
 
   #pointer(target: Element, type: string, init: Record<string, unknown>, detail = 0, pointerOnly: Record<string, unknown> = {}): boolean {
@@ -168,11 +184,12 @@ export class Input {
     if (this.capture) return
     if (this.#untracked && !this.#watched()) return
     this.#resync()
-    this.#hoverTo(null, this.#init(this.#last.x, this.#last.y, options))
+    this.#hoverTo(null, this.#init(this.#last.x, this.#last.y, { pen: this.#pen, ...options }))
   }
 
   pointer(type: 'pointermove' | 'pointerdown' | 'pointerup', x: number, y: number, options: PointerOptions = {}): void {
     focus.modality = 'pointer'
+    this.#pen = options.pen
     moved()
     if (this.scrollbars.pointer(type, x, y, options.button ?? 0) || this.selects.pointer(type, x, y)) {
       if (type === 'pointerup') this.#release(options.button ?? 0)

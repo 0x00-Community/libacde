@@ -31,6 +31,18 @@ pub struct Event {
     pub previous: Option<String>,
     pub instance: Option<u32>,
     pub desk: Option<u32>,
+    pub pen: Option<Pen>,
+}
+
+#[cfg_attr(feature = "napi", napi(object))]
+#[derive(Default, Clone, Copy, Debug, PartialEq)]
+pub struct Pen {
+    pub pressure: f64,
+    pub tangential_pressure: f64,
+    pub tilt_x: f64,
+    pub tilt_y: f64,
+    pub twist: f64,
+    pub eraser: bool,
 }
 
 #[cfg(feature = "napi")]

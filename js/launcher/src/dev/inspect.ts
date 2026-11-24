@@ -16,6 +16,7 @@ import {
   type MenuGeometry,
   type NativeNode,
   type PlayEvent,
+  type PlayPen,
   type Point,
   type ShellWindow,
   type Tree,
@@ -569,10 +570,10 @@ export class Inspect {
   static #playEvent(event: InspectInput, at: (e: { x: number; y: number }) => { x: number; y: number }): PlayEvent {
     switch (event?.type) {
       case 'move':
-        return { type: 'move', ...at(event) }
+        return { type: 'move', ...at(event), ...Inspect.#pen(event.pen) }
       case 'down':
       case 'up':
-        return { type: event.type, ...at(event), button: Inspect.#button(event.button) }
+        return { type: event.type, ...at(event), button: Inspect.#button(event.button), ...Inspect.#pen(event.pen) }
       case 'wheel':
         return { type: 'wheel', ...at(event), dx: Number(event.dx) || 0, dy: Number(event.dy) || 0 }
       case 'keydown':
@@ -587,6 +588,25 @@ export class Inspect {
     }
     const type = JSON.stringify((event as { type?: unknown })?.type)
     throw new Error(`input: an event's type is move, down, up, wheel, keydown, keyup, text or wait, not ${type}`)
+  }
+
+  static #pen(given: Partial<PlayPen> | undefined): { pen?: PlayPen } {
+    if (given === undefined) return {}
+    if (given === null || typeof given !== 'object') throw new Error('input: pen is an object ({pressure, tiltX, tiltY, twist, tangentialPressure, eraser})')
+    const number = (name: keyof PlayPen, low: number, high: number) => {
+      const value = given[name] ?? 0
+      if (typeof value !== 'number' || !(value >= low && value <= high)) throw new Error(`input: pen ${name} is a number from ${low} to ${high}, not ${JSON.stringify(value)}`)
+      return value
+    }
+    const pen = {
+      pressure: number('pressure', 0, 1),
+      tangentialPressure: number('tangentialPressure', -1, 1),
+      tiltX: number('tiltX', -90, 90),
+      tiltY: number('tiltY', -90, 90),
+      twist: number('twist', 0, 359),
+      eraser: given.eraser === true,
+    }
+    return { pen }
   }
 
   static #button(name: string | undefined): 'left' | 'right' | 'middle' {

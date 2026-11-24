@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { chordCodes, chordMatches, keyCode } from '../src/keys.ts'
+import { ShellInput, chordCodes, chordMatches, keyCode } from '../src/keys.ts'
 
 const shift = keyCode('shift')!
 
@@ -38,4 +38,18 @@ test('a key with the held modifiers matches a menu chord only when both agree', 
   assert.equal(chordMatches('Ctrl+Shift+S', keyCode('s')!, { ctrl: true, shift: true }), true)
   assert.equal(chordMatches('mod+1', keyCode('1')!, { ctrl: true }), true)
   assert.equal(chordMatches('mod+1', keyCode('1')!, { meta: true }, true), true)
+})
+
+test('a pen keeps its state on pointer events and the eraser tip presses button 5', () => {
+  const input = new ShellInput(() => 7, 1)
+  const pen = { pressure: 0.4, tangentialPressure: 0, tiltX: 12, tiltY: -3, twist: 0, eraser: false }
+  const eraser = { ...pen, eraser: true }
+  const pressed = (raw: Parameters<ShellInput['normalize']>[0]) => {
+    const event = input.normalize(raw)
+    return event && 'button' in event ? [event.button, 'pen' in event ? event.pen : undefined] : null
+  }
+  assert.deepEqual(pressed({ type: 'pointerdown', x: 1, y: 2, button: 272, pen }), [0, pen])
+  assert.deepEqual(pressed({ type: 'pointerdown', x: 1, y: 2, button: 272, pen: eraser }), [5, eraser])
+  assert.deepEqual(pressed({ type: 'pointerup', x: 1, y: 2, button: 273, pen: eraser }), [2, eraser])
+  assert.deepEqual(pressed({ type: 'pointerdown', x: 1, y: 2, button: 272 }), [0, undefined])
 })

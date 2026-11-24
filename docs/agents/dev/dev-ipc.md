@@ -89,6 +89,8 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
     有窗口是系统剪贴板); 会话没有, 回错.
   - `input {web, events}` → act 的回答: 按页面的 CSS 坐标注入一串原始输入 (`Inspect.input`, 加窗口原点和 `contentOffset` 后 `Shell.inject`):
     `{type: move | down | up | wheel, x, y, button?: left | right | middle, dx?, dy?}`、`{type: keydown | keyup, key}` (键名同 act 的 key)、
+    move / down / up 可带 `pen: {pressure?, tiltX?, tiltY?, twist?, tangentialPressure?, eraser?}` 当数位笔 (没给的是 0 / false, 出范围的整组不发;
+    `Inspect.#pen`), 宿主经 `Injected::Pen` 设当前的笔, 笔变了才再发, 一组发完时把笔放回鼠标 (acdev `src/hostinput.rs`)、
     `{type: text, text}` (走输入法提交那条路, 给焦点元素)、`{type: wait, ms}` (停 0–10000 ms, 中间按住的键和按钮不放: 游戏里按住方向键). down / up / wheel 发在它们的 x、y 上: 指针不在那里时先补一个 move (注入的按钮和滚轮只认指针所在). 先给窗口焦点; 连着的 move 之间隔 16 ms (页面的 pointermove 按帧合并), 最后等页面安静.
     act 的 click / double / right / hover 的 arg 是要按住的修饰键 (`shift`、`ctrl+shift`, 还认 `option` / `cmd`).
   - `clock {web, action, time?, ms?}` → `{installed, paused, now, performanceNow, fixed, timers}`: 接管这个页面的时间 (rpc `dev.clock`, acde-dom

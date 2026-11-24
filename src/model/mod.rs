@@ -176,6 +176,7 @@ pub enum Injected {
     Button { button: u32, pressed: bool },
     Wheel { dx: f64, dy: f64, source: WheelSource },
     Key { code: u32, pressed: bool },
+    Pen(Option<Pen>),
 }
 
 #[cfg_attr(feature = "napi", napi_derive::napi(object))]

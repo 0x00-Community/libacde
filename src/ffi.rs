@@ -230,6 +230,7 @@ impl From<&AcdeEvent> for Event {
             data: keys.zip(values).map(|(keys, values)| keys.into_iter().zip(values).collect()),
             instance: None,
             desk: None,
+            pen: None,
         }
     }
 }

@@ -405,6 +405,44 @@ test('pointermove: getCoalescedEvents has every sample since the last dispatch, 
   })()`), [0, [1, 2], 0, ['TypeError', 'TypeError', 'TypeError']])
 })
 
+test('a pen stroke carries pointerType pen, its pressure, tilt and twist on every sample, and the eraser is button 5', async () => {
+  using web = await page('<!doctype html><html><body><div id="pad"></div></body></html>')
+  web.dom.boxes.set(web.internals.idOf(web.run('document.getElementById("pad")')), { x: 0, y: 0, width: 300, height: 200 })
+  web.run(`
+    globalThis.seen = []
+    const pad = document.getElementById('pad')
+    const fields = (e) => [e.type, e.pointerType, e.pointerId, e.button, e.buttons, e.pressure, e.tangentialPressure, e.tiltX, e.tiltY, e.twist]
+    for (const type of ['pointerdown', 'pointerup']) pad.addEventListener(type, (e) => seen.push(fields(e)))
+    pad.addEventListener('mousedown', (e) => seen.push([e.type, e.button, e.buttons]))
+    pad.addEventListener('pointermove', (e) => seen.push([...fields(e), e.getCoalescedEvents().map((s) => [s.clientX, s.pointerType, s.pressure, s.tiltX, s.tiltY, s.twist])]))
+  `)
+  const input = web.internals.input
+  const pen = (pressure: number, tiltX = 0, eraser = false) => ({ pressure, tangentialPressure: 0, tiltX, tiltY: -10, twist: 90, eraser })
+  input.pointer('pointermove', 10, 10, { pen: pen(0) })
+  input.pointer('pointerdown', 10, 10, { pen: pen(0.2) })
+  input.pointer('pointermove', 30, 10, { pen: pen(0.6, 30), samples: [{ x: 20, y: 10, pen: pen(0.4, 20) }, { x: 30, y: 10, pen: pen(0.6, 30) }] })
+  input.pointer('pointerup', 30, 10, { pen: pen(0) })
+  input.pointer('pointerdown', 40, 10, { button: 5, pen: pen(0.5, 0, true) })
+  input.pointer('pointerup', 40, 10, { button: 5, pen: pen(0, 0, true) })
+  input.pointer('pointermove', 50, 10)
+  input.pointer('pointerdown', 50, 10)
+  input.pointer('pointerup', 50, 10)
+  assert.deepEqual(web.json('seen'), [
+    ['pointermove', 'pen', 2, 0, 0, 0, 0, 0, -10, 90, [[10, 'pen', 0, 0, -10, 90]]],
+    ['pointerdown', 'pen', 2, 0, 1, 0.2, 0, 0, -10, 90],
+    ['mousedown', 0, 1],
+    ['pointermove', 'pen', 2, 0, 1, 0.6, 0, 30, -10, 90, [[20, 'pen', 0.4, 20, -10, 90], [30, 'pen', 0.6, 30, -10, 90]]],
+    ['pointerup', 'pen', 2, 0, 0, 0, 0, 0, -10, 90],
+    ['pointerdown', 'pen', 2, 5, 32, 0.5, 0, 0, -10, 90],
+    ['mousedown', 5, 32],
+    ['pointerup', 'pen', 2, 5, 0, 0, 0, 0, -10, 90],
+    ['pointermove', 'mouse', 1, 0, 0, 0, 0, 0, 0, 0, [[50, 'mouse', 0, 0, 0, 0]]],
+    ['pointerdown', 'mouse', 1, 0, 1, 0.5, 0, 0, 0, 0],
+    ['mousedown', 0, 1],
+    ['pointerup', 'mouse', 1, 0, 0, 0, 0, 0, 0, 0],
+  ])
+})
+
 test('dragging an overlay scrollbar thumb scrolls its box and fires no pointer events at the page', async () => {
   using web = await page('<!doctype html><html><body><div id="box" data-scroll-height="1000"></div></body></html>')
   const box = web.internals.idOf(web.run('document.getElementById("box")'))

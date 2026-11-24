@@ -175,6 +175,21 @@ describe('input to a page', () => {
     assert.deepEqual(played[1]![1], { type: 'wait', ms: 40 })
   })
 
+  test('a pen on move, down and up goes along with its defaults filled in, and a pen out of range is refused', async () => {
+    const played: (readonly PlayEvent[])[] = []
+    const plain = base(7, [])
+    const shell = { ...plain.shell, windows: () => [row7], play: async (events: readonly PlayEvent[]) => void played.push(events) }
+    const host: InspectHost = { ...plain, web: () => ({ call: async () => [0, 0] }) as never, shell }
+    const events = [{ type: 'down', x: 5, y: 5, pen: { pressure: 0.3, tiltX: -20 } }, { type: 'move', x: 6, y: 5, pen: { eraser: true, twist: 90 } }] as const
+    assert.equal((await new Inspect(host).input(7, events)).ok, true)
+    assert.deepEqual(played[0], [
+      { type: 'down', x: 35, y: 45, button: 'left', pen: { pressure: 0.3, tangentialPressure: 0, tiltX: -20, tiltY: 0, twist: 0, eraser: false } },
+      { type: 'move', x: 36, y: 45, pen: { pressure: 0, tangentialPressure: 0, tiltX: 0, tiltY: 0, twist: 90, eraser: true } },
+    ])
+    await assert.rejects(new Inspect(host).input(7, [{ type: 'move', x: 1, y: 1, pen: { pressure: 2 } }]), /pen pressure is a number from 0 to 1/)
+    assert.equal(played.length, 1)
+  })
+
   test('a bad event sends nothing of its sequence', async () => {
     const played: unknown[] = []
     const plain = base(7, [])

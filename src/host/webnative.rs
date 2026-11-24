@@ -221,6 +221,15 @@ pub fn event_object<'s>(scope: &mut v8::PinScope<'s, '_>, event: Event) -> v8::L
         let paths: Vec<v8::Local<v8::Value>> = files.iter().map(|path| bind::string(scope, path).into()).collect();
         fields.push(("files", v8::Array::new_with_elements(scope, &paths).into()));
     }
+    if let Some(pen) = event.pen {
+        let mut values: Vec<(&str, v8::Local<v8::Value>)> =
+            [("pressure", pen.pressure), ("tangentialPressure", pen.tangential_pressure), ("tiltX", pen.tilt_x), ("tiltY", pen.tilt_y), ("twist", pen.twist)]
+                .into_iter()
+                .map(|(name, value)| (name, v8::Number::new(scope, value).into()))
+                .collect();
+        values.push(("eraser", v8::Boolean::new(scope, pen.eraser).into()));
+        fields.push(("pen", bind::object(scope, &values).into()));
+    }
     bind::object(scope, &fields)
 }
 
