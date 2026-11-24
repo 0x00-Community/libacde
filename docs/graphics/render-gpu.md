@@ -65,6 +65,9 @@
   混合 (第 i 层的权重是它的不透明度除以已混合各层之和), 再过一遍 `backdrop-filter` 的颜色矩阵 (`Pipe::Filter`), 最后 `fs_glass` 逐像素做折射取样、高光、白点、
   着色、平滑边缘和渗出; 着色器拼的是 acde-scene 的 `corner::WGSL` 和 `glass::WGSL`, 和合成器同一份函数. 参数经 `Params`: 矩阵前三列放折射、渗出与高光、
   白点与平滑, `bias` 是取样区域, `color` 是着色.
+  玻璃底下取到透明像素 (底下的真实背景在这一层之外, 如钉住面板自己的透明底) 时不当成黑色 (2026-11-24, 胶囊和总管球发暗): CPU 的 `cpu::over` 和 WGSL 的
+  `acde_glass_over` 把已知底色和"只有着色"按底下的不透明度 a 加权, 颜色 = (着色后的底色 × a + 着色 × 着色不透明度 × (1 − a)) / 合成不透明度,
+  合成不透明度 = a + 着色不透明度 × (1 − a). 底下不透明时和原来一样; 全透明时就是着色本身, 由合成器盖在真实背景上. 页面合成 (`compose.wgsl`)、组 (`group.wgsl`)、CPU 都走这一处.
   轮廓线 (2026-11-23, `Glass.outline: Outline {width, color, merged}`): 写法 `--acde-glass-outline: <宽度> <颜色> [pieces | merged] | none`
   (宽度随缩放, 颜色同 `-tint`, 第三项缺省 `pieces`). 预设各档默认开, 1 px pieces, 亮色页面 `rgb(255 255 255 / 0.5)`、暗色页面 `rgb(255 255 255 / 0.25)`:
   `Glass::preset_in(role, level, dark)` 按 `preference().dark` 取 (渲染器在页面深浅变化时写进去并整页重画), `preset(role, level)` 是亮色; 不透明档

@@ -493,16 +493,15 @@ pub mod cpu {
                 return under.map(|v| v * glow);
             }
             let shine = self.highlight(toward, d) * glass.highlight.amount;
-            let a = under[3];
-            let straight = |v: f32| if a > 0.0 { (v / a).min(1.0) } else { 0.0 };
-            let toned = glass.film.shaded(tone([straight(under[0]), straight(under[1]), straight(under[2])], glass, shine), p, d, half_short, Film::clock());
+            let (seen, base) = over(under, glass, shine);
+            let toned = glass.film.shaded(seen, p, d, half_short, Film::clock());
             let mut k = 0;
             let [r, g, b] = toned.map(|v| {
                 let c = glass.outline.color[k];
                 k += 1;
                 v + (c - v) * line
             });
-            let alpha = a.max(glass.tint[3]).max(line) * inside;
+            let alpha = base.max(line) * inside;
             [r * alpha, g * alpha, b * alpha, alpha]
         }
 
@@ -521,6 +520,27 @@ pub mod cpu {
         let rgba = |[a, r, g, b]: [u32; 4]| [r, g, b, a].map(|v| v as f32 / 255.0);
         let (a, b) = (rgba(a), rgba(b));
         [0, 1, 2, 3].map(|k| a[k] * (1.0 - t) + b[k] * t)
+    }
+
+    pub(super) fn over(under: [f32; 4], glass: &Glass, shine: f32) -> ([f32; 3], f32) {
+        let a = under[3];
+        let straight = |v: f32| if a > 0.0 { (v / a).min(1.0) } else { 0.0 };
+        let seen = tone([straight(under[0]), straight(under[1]), straight(under[2])], glass, shine);
+        let mut k = 0;
+        let bare = glass.tint.map(|v| {
+            let c = if k < 3 { (v * (1.0 - glass.darken) + shine).clamp(0.0, 1.0) } else { 0.0 };
+            k += 1;
+            c
+        });
+        let bare_alpha = glass.tint[3] * (1.0 - a);
+        let alpha = a + bare_alpha;
+        let mut i = 0;
+        let rgb = seen.map(|v| {
+            let mixed = if alpha > 0.0 { (v * a + bare[i] * bare_alpha) / alpha } else { bare[i] };
+            i += 1;
+            mixed
+        });
+        (rgb, alpha)
     }
 
     fn tone(rgb: [f32; 3], glass: &Glass, shine: f32) -> [f32; 3] {
@@ -559,6 +579,20 @@ mod tests {
         assert!((glass.highlight.angle - core::f32::consts::FRAC_PI_2).abs() < 1e-6);
         assert_eq!(glass.tint[3], 0.5);
         assert_eq!(glass.bleed, Glass::preset(Role::Regular, Level::Clear).bleed);
+    }
+
+    #[test]
+    fn glass_over_a_transparent_backdrop_is_its_tint_not_grey() {
+        let mut glass = Glass::preset(Role::Clear, Level::Clear);
+        glass.tint = [1.0, 1.0, 1.0, 0.4];
+        let (rgb, alpha) = cpu::over([0.0; 4], &glass, 0.0);
+        assert!(rgb.iter().all(|v| (*v - (1.0 - glass.darken)).abs() < 1e-6), "{rgb:?}");
+        assert!((alpha - 0.4).abs() < 1e-6);
+        let (opaque, alpha) = cpu::over([0.2, 0.4, 0.6, 1.0], &glass, 0.0);
+        assert_eq!(alpha, 1.0);
+        let (half, half_alpha) = cpu::over([0.1, 0.2, 0.3, 0.5], &glass, 0.0);
+        assert!((half_alpha - 0.7).abs() < 1e-6);
+        assert!(half[0] > opaque[0] * 0.5, "half covered glass leans to the tint: {half:?}");
     }
 
     #[test]

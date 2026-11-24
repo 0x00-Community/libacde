@@ -113,6 +113,16 @@ fn acde_glass_tone_darkened(rgb: vec3<f32>, white_point: f32, tint: vec4<f32>, s
     return clamp(tinted * (1.0 - darken) + vec3<f32>(shine), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
+fn acde_glass_over(under: vec4<f32>, white_point: f32, tint: vec4<f32>, shine: f32, darken: f32) -> vec4<f32> {
+    let a = under.a;
+    let straight = select(vec3<f32>(0.0), under.rgb / a, a > 0.0);
+    let seen = acde_glass_tone_darkened(straight, white_point, tint, shine, darken);
+    let bare = clamp(tint.rgb * (1.0 - darken) + vec3<f32>(shine), vec3<f32>(0.0), vec3<f32>(1.0));
+    let bare_alpha = tint.a * (1.0 - a);
+    let alpha = a + bare_alpha;
+    return vec4<f32>(select(bare, (seen * a + bare * bare_alpha) / alpha, alpha > 0.0), alpha);
+}
+
 fn acde_glass_outline_coverage(d: f32, width: f32, alpha: f32) -> f32 {
     if width <= 0.0 {
         return 0.0;

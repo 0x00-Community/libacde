@@ -133,12 +133,11 @@ fn acde_glass_group_shade(under: vec4<f32>, f: AcdeGlassField) -> vec4<f32> {
     if inside <= 0.0 {
         return under * acde_glass_bleed(f.d, f.look.bleed.xyz);
     }
-    let straight = select(vec3<f32>(0.0), under.rgb / under.a, under.a > 0.0);
     let n = f.toward / max(length(f.toward), 0.000001);
     let shine = acde_glass_shine(n, f.d, f.look.look.w, f.look.bleed.w, f.look.look.x);
-    let toned = acde_glass_tone_darkened(straight, f.look.look.y, f.look.tint, shine, f.look.lens.z);
-    let rgb = acde_glass_film(toned, f.at, f.d, f.bevel, f.look.mode.yzw);
-    let lined = acde_glass_lined(rgb, max(under.a, f.look.tint.a), f.line, f.look.outline.rgb);
+    let toned = acde_glass_over(under, f.look.look.y, f.look.tint, shine, f.look.lens.z);
+    let rgb = acde_glass_film(toned.rgb, f.at, f.d, f.bevel, f.look.mode.yzw);
+    let lined = acde_glass_lined(rgb, toned.a, f.line, f.look.outline.rgb);
     let alpha = lined.a * inside;
     return vec4<f32>(lined.rgb * alpha, alpha);
 }

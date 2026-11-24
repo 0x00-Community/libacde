@@ -116,11 +116,10 @@ fn fs_glass(in: VsOut) -> @location(0) vec4<f32> {
     if inside <= 0.0 {
         return under * acde_glass_bleed(d, g1.xyz);
     }
-    let straight = select(vec3<f32>(0.0), under.rgb / under.a, under.a > 0.0);
     let shine = acde_glass_highlight(p, half, d, g2.w, g1.w, g2.x);
-    let toned = acde_glass_tone_darkened(straight, g2.y, params.color, shine, lens.z);
-    let rgb = acde_glass_film(toned, px, d, min(half.x, half.y), params.film.xyz);
-    let lined = acde_glass_outlined(rgb, max(under.a, params.color.a), d, params.shift.y, params.outline);
+    let toned = acde_glass_over(under, g2.y, params.color, shine, lens.z);
+    let rgb = acde_glass_film(toned.rgb, px, d, min(half.x, half.y), params.film.xyz);
+    let lined = acde_glass_outlined(rgb, toned.a, d, params.shift.y, params.outline);
     let alpha = lined.a * inside;
     return vec4<f32>(lined.rgb * alpha, alpha);
 }
