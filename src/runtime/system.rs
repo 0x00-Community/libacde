@@ -82,38 +82,24 @@ fn serial() -> Option<String> {
 }
 
 struct PciIds {
-    vendors: HashMap<u16, (String, HashMap<u16, String>)>,
+    text: String,
 }
 
 impl PciIds {
     fn load() -> Self {
         let text =
             ["/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids", "/usr/share/pci.ids"].iter().find_map(|p| fs::read_to_string(p).ok()).unwrap_or_default();
-        let mut vendors: HashMap<u16, (String, HashMap<u16, String>)> = HashMap::new();
-        let mut current: Option<u16> = None;
-        for line in text.lines() {
-            if line.starts_with('#') || line.is_empty() {
-                continue;
-            }
-            if line.starts_with("C ") {
-                break;
-            }
-            if let Some(rest) = line.strip_prefix('\t') {
-                if rest.starts_with('\t') {
-                    continue;
-                }
-                let (Some(vendor), Some((id, name))) = (current, rest.split_once("  ")) else { continue };
-                if let (Ok(id), Some((_, devices))) = (u16::from_str_radix(id.trim(), 16), vendors.get_mut(&vendor)) {
-                    devices.insert(id, name.trim().to_owned());
-                }
-            } else if let Some((id, name)) = line.split_once("  ") {
-                current = u16::from_str_radix(id.trim(), 16).ok();
-                if let Some(id) = current {
-                    vendors.insert(id, (name.trim().to_owned(), HashMap::new()));
-                }
-            }
-        }
-        PciIds { vendors }
+        PciIds { text }
+    }
+
+    fn lookup(&self, vendor: u16, device: u16) -> (Option<&str>, Option<&str>) {
+        let mut lines = self.text.lines().skip_while(|line| line.starts_with('\t') || pci_entry(line).is_none_or(|(id, _)| id != vendor));
+        let Some(vendor_name) = lines.next().and_then(pci_entry).map(|(_, name)| name) else { return (None, None) };
+        let device_name = lines
+            .take_while(|line| line.is_empty() || line.starts_with('#') || line.starts_with('\t'))
+            .filter_map(|line| line.strip_prefix('\t').filter(|rest| !rest.starts_with('\t')))
+            .find_map(|rest| pci_entry(rest).filter(|(id, _)| *id == device).map(|(_, name)| name));
+        (Some(vendor_name), device_name)
     }
 
     fn name(&self, vendor: u16, device: u16) -> String {
@@ -123,13 +109,18 @@ impl PciIds {
             0x10de => Some("NVIDIA"),
             _ => None,
         };
-        let known = self.vendors.get(&vendor);
-        let vendor_name = short.map(str::to_owned).or_else(|| known.map(|(name, _)| name.clone())).unwrap_or_else(|| format!("{vendor:04x}"));
-        match known.and_then(|(_, devices)| devices.get(&device)) {
+        let (known, device_name) = self.lookup(vendor, device);
+        let vendor_name = short.or(known).map_or_else(|| format!("{vendor:04x}"), str::to_owned);
+        match device_name {
             Some(device) => format!("{vendor_name} {device}"),
             None => format!("{vendor_name} {device:04x}"),
         }
     }
+}
+
+fn pci_entry(line: &str) -> Option<(u16, &str)> {
+    let (id, name) = line.split_once("  ")?;
+    Some((u16::from_str_radix(id.trim(), 16).ok()?, name.trim()))
 }
 
 fn pci_id(dir: &Path, file: &str) -> Option<u16> {
@@ -379,6 +370,18 @@ mod tests {
         assert!(info["memory"].as_u64().unwrap_or(0) > 0);
         println!("{}", time());
         println!("{}", user());
+    }
+
+    #[test]
+    fn pci_names_come_from_the_vendor_and_its_own_devices() {
+        let ids = PciIds {
+            text: "# comment\n1234  Acme\n\t0001  Widget\n\t\t1234 0001  Widget Pro\n\n8086  Intel Corporation\n\t0001  Other\n\t7d67  Arc Graphics\nC 03  Display controller\n\t00  VGA\n".into(),
+        };
+        assert_eq!(ids.name(0x1234, 0x0001), "Acme Widget");
+        assert_eq!(ids.name(0x8086, 0x7d67), "Intel Arc Graphics");
+        assert_eq!(ids.name(0x8086, 0x0002), "Intel 0002");
+        assert_eq!(ids.name(0x1234, 0x7d67), "Acme 7d67");
+        assert_eq!(ids.name(0x4321, 0x0001), "4321 0001");
     }
 
     #[test]
