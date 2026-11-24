@@ -17,7 +17,7 @@ pub use preset::{Level, Role};
 pub const WGSL: &str = concat!(include_str!("glass.wgsl"), include_str!("film/film.wgsl"));
 
 pub const LAYERS: usize = 5;
-const WIRE_FLOATS: usize = 39;
+pub(crate) const WIRE_FLOATS: usize = 39;
 const MOST_LENGTH: f32 = 256.0;
 const FAR_EDGE: f64 = 0.33;
 

@@ -121,7 +121,7 @@
   (2026-11-23 改: e0eb46f 在整个组都用数值梯度, 远处那块的高光和单块的解析法线差一个末位, 远离的块不再逐位不变). `fs_glass_group` 的透明度、平滑边、高光与透镜全部只读
   `acde_glass_group_field` 的合成场 d 和组梯度, 不再读单块的距离或角形; 两块相交后, 重叠内部原边界处保持不透明且没有亮线, 新外边界才有高光 (CPU 回归测试).
   一块的组回归测试继续对照 `cpu::paint`, 远离的另一块不改变这一块任何像素的回归测试也要过.
-  模糊层全组一份, 取第一块的. WGSL (`group::WGSL`, 要先拼 `corner::WGSL` 和 `glass::WGSL`) 只引用一个模块级数组 `acde_glass_pieces`,
+  模糊层全组一份, 取组里最实的一块 (`GlassGroup::frost`, 2026-11-24: 先比显示的各层里最大的模糊半径, 再比各层半径乘不透明度之和, 再按整份线上格式逐项比, 所以和块的排序无关; 原来取第一块, 组里角色不同时观感随排序变). 不按块逐像素混合模糊: 模糊是取样之后、逐像素着色之前对底图的多遍处理, 每块一套模糊就要给着色器绑定多张模糊结果, WebGL2 级别没有纹理数组绑定, 合成器也同样受限. 着色、透镜等其余参数仍按块逐像素混合. WGSL (`group::WGSL`, 要先拼 `corner::WGSL` 和 `glass::WGSL`) 只引用一个模块级数组 `acde_glass_pieces`,
   由使用方自己声明绑定: `var<uniform> acde_glass_pieces: array<AcdeGlassPiece, 16>`; 每块 9 个 vec4 (144 字节, `to_uniform` 给出整块 2304 字节):
   `shape` (中心、半宽高)、`corner` (半径、指数、折射率)、`refraction`、`bleed` (渗出三项加高光角度)、`look` (高光强度、白点、平滑、高光宽度)、`tint`、`lens` (透镜厚度、色散、乘暗、斜面宽度). 用 uniform 定长数组
   不用存储缓冲: WebGL2 级别的 wgpu 限额里存储缓冲为 0 (https://wgpu.rs/doc/wgpu/struct.Limits.html `downlevel_webgl2_defaults`), uniform 块至少
@@ -177,7 +177,7 @@
   前端把 `render::Backdrop` 换成合成用的 `gpu::Backdrop` 只调 `Backdrop::compose()` (宿主窗口再 `.moved((0.0, dy))`), 以后加字段两边不用改;
   自己造 `gpu::Backdrop` 的 (窗口毛玻璃) 写 `..Backdrop::default()` (默认指数 2、没有玻璃).
   进程内合成画组 (`src/vello/compose.rs`, 2026-11-22): `Composer::backdrop` 见到非空的 `group` 走 `glass_group`: 取样区域是 `Backdrop.rect` (各块并集) 外扩
-  `GlassGroup::reach()`, 模糊层与颜色矩阵和单块同一段 (`glass_under`, 模糊层取第一块的玻璃), 再用 `fs_glass_group` 逐像素按组场着色. 全部管线共用一个
+  `GlassGroup::reach()`, 模糊层与颜色矩阵和单块同一段 (`glass_under`, 模糊层取 `GlassGroup::frost` 那块的玻璃), 再用 `fs_glass_group` 逐像素按组场着色. 全部管线共用一个
   绑定布局: 绑定 3 是块数组 (`acde_glass_pieces`, 动态偏移的 uniform, 每组 `GlassGroup::to_uniform` 的 1792 字节一段), 不画组的绘制给偏移 0; 参数缓冲和块缓冲
   是同一个 `Uniforms` (满了翻倍重建, 已录的绑定组仍指向旧缓冲, 旧缓冲先写好), 任一个重建都清掉绑定组缓存. 组的块数组不重复传 (2026-11-23): 同一批里内容相同的组复用已有那一段的偏移; 提交时若这一批的内容和上次写进缓冲的完全相同 (前缀一致), 不再 `write_buffer`, 所以组静止时每帧不重传 2304 字节; 缓冲重建时这份记录一并清掉. 块数和间距放在 `Params.shift` (x 块数, y 间距),
   `Params.bias` 是取样区域. 宿主窗口和会话里画页面都经这里, 所以两边跟着生效.

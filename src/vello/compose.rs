@@ -639,8 +639,8 @@ impl Composer {
     }
 
     fn glass_group(&mut self, encoder: &mut wgpu::CommandEncoder, canvas: &wgpu::TextureView, b: &Backdrop, group: &GlassGroup) {
-        let Some(glass) = group.glass() else { return };
-        let Some((region, filtered)) = self.glass_under(encoder, canvas, b, glass, group.reach() as f32) else { return };
+        let (Some(glass), Some(frost)) = (group.glass(), group.frost()) else { return };
+        let Some((region, filtered)) = self.glass_under(encoder, canvas, b, frost, group.reach() as f32) else { return };
         let half_short = group.pieces().first().map_or(0.0, |p| p.half[0].min(p.half[1]));
         let table = self.lens_slot(glass.lens, half_short);
         let params = Params { shift: [group.len() as f32, group.spacing], bias: region.map(|v| v as f32), table, ..Default::default() };

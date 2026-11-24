@@ -215,9 +215,13 @@ impl GlassGroup {
         Some(field)
     }
 
+    pub fn frost(&self) -> Option<&Glass> {
+        self.pieces().iter().map(|p| &p.glass).max_by(|a, b| solidity(a).cmp(&solidity(b)))
+    }
+
     pub fn paint_cpu(&self, source: &Pixels) -> Pixels {
         let (width, height) = (source.width, source.height);
-        let Some(glass) = self.glass() else { return Pixels { width, height, data: vec![0; width * height] } };
+        let Some(glass) = self.frost() else { return Pixels { width, height, data: vec![0; width * height] } };
         let under = Under::of(source, glass);
         let mut data = Vec::with_capacity(width * height);
         for y in 0..height {
@@ -240,6 +244,30 @@ impl GlassGroup {
         let dx = self.distance((x + e, y)) - self.distance((x - e, y));
         let dy = self.distance((x, y + e)) - self.distance((x, y - e));
         (dx / (2.0 * e), dy / (2.0 * e))
+    }
+}
+
+fn solidity(glass: &Glass) -> (Total, Total, [Total; super::WIRE_FLOATS]) {
+    let shown = || glass.blur.iter().filter(|l| l.opacity > 0.0);
+    let widest = shown().map(|l| l.radius).fold(0.0, f32::max);
+    let weighted = shown().map(|l| l.radius * l.opacity).sum::<f32>();
+    (Total(widest), Total(weighted), glass.floats().map(Total))
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct Total(f32);
+
+impl Eq for Total {}
+
+impl PartialOrd for Total {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Total {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.total_cmp(&other.0)
     }
 }
 
@@ -281,6 +309,21 @@ mod tests {
         let mut group = GlassGroup::new(spacing);
         pieces.iter().for_each(|p| assert!(group.push(*p)));
         group
+    }
+
+    #[test]
+    fn the_most_solid_piece_frosts_the_group_whatever_the_order() {
+        let (width, height) = (160, 60);
+        let source = ground(width, height);
+        let clear = Glass { outline: super::super::Outline::default(), ..Glass::preset(Role::Clear, Level::Clear) };
+        let left = Piece::of_rect([16.0, 12.0, 60.0, 36.0], 12.0, 2.0, clear);
+        let right = Piece::of_rect([70.0, 12.0, 60.0, 36.0], 12.0, 2.0, regular());
+        let (forward, backward) = (group(10.0, &[left, right]), group(10.0, &[right, left]));
+        assert_eq!(forward.frost(), Some(&right.glass));
+        assert_eq!(backward.frost(), Some(&right.glass));
+        assert_eq!(forward.paint_cpu(&source).data, backward.paint_cpu(&source).data);
+        let twin = Piece { glass: Glass { tint: [1.0, 0.0, 0.0, 0.3], ..right.glass }, ..left };
+        assert_eq!(group(10.0, &[twin, right]).frost(), group(10.0, &[right, twin]).frost(), "equally solid pieces still pick one the same way");
     }
 
     #[test]
