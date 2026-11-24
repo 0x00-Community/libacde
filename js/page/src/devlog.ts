@@ -55,6 +55,8 @@ export interface DevPage<T> {
   readonly entries: readonly T[]
   readonly next: number
   readonly dropped: number
+  readonly skipped: number
+  readonly more: boolean
 }
 
 interface Source {
@@ -174,7 +176,11 @@ export class DevLog {
     const web = query.web
     const matching = all.filter((e) => e.seq >= since && (web === undefined || e.web === web || e.app === web || (web === 'desktop' && e.app === null)) && keep(e))
     const first = all[0]?.seq ?? next
-    return { entries: matching.slice(-limit), next, dropped: since > 0 && since < first ? first - since : 0 }
+    const dropped = since > 0 && since < first ? first - since : 0
+    if (since === 0) return { entries: matching.slice(-limit), next, dropped, skipped: Math.max(0, matching.length - limit), more: false }
+    const entries = matching.slice(0, limit)
+    const more = matching.length > limit
+    return { entries, next: more ? entries.at(-1)!.seq + 1 : next, dropped, skipped: 0, more }
   }
 }
 

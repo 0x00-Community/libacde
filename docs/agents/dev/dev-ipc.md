@@ -41,7 +41,8 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
     不能写退回只读) 借给它, 照 openPath 的形状 `{kind: 'open-file', file, entry}` 经 `window.request` 交给页面; `url` 交 `{kind: 'open-link', url}`.
   - `console {web?, since?, limit?, level?}` → `{entries, next, dropped}`: 页面的 `console.*` 和没人接的错误 (`devlog.ts`, 见下), `level` 是
     log / info / warn / error / debug, 或 errors (console.error 和错误); `web` 是 web 名、应用 id 或 desktop; `since` 是上次的 `next`, `dropped`
-    是 since 之后已经丢掉的条数. 条目 `{seq, time (ms, 和日志同一个零点), web, app, kind: console | error | rejection, level, text}`.
+    是 since 之后已经丢掉的条数. 不给 since 时回最新的 `limit` 条 (默认 500), `skipped` 是更早而没回的条数; 给了 since 时从 since 起按先后回最多 `limit` 条,
+    还有没回的就 `more: true`, `next` 指向下一条没回的, 跟随的一方接着用 next 问就不漏 (2026-11-24). 条目 `{seq, time (ms, 和日志同一个零点), web, app, kind: console | error | rejection, level, text}`.
     console 和 network 的应答另带 `origin`: 本进程时间零点的墙钟毫秒 (Unix epoch, `Date.now() - Log.clock()`), 会话里 acdev 合并多个页面进程时用它把各进程的 `time` 换到同一条时间轴 .
       管家的 `{pages: true, since: {key: seq}}` 分发给各页面进程, 每项原样带回这份应答.
   - `network {web?, since?, limit?, failed?}` → 同样的形状, 条目 `{seq, time, web, app, id, kind: fetch | xhr | websocket | eventsource, method,
