@@ -99,7 +99,7 @@ Rust 一律 `log` 的宏, `src/log` (`acde-log`) 装 env_logger: `RUST_LOG` 追�
 页面错误 (`host.rs` `reportError`, 兜底 `rt.rs`) 每行以 isolate 名开头 (`[files#1048576] page error: …`); 不是 Error 的值写「类型 + 值」, 补上
 `thrown at` / `rejected at:` 的位置.
 
-计时是 debug 级、target `perf::<段>`, `RUST_LOG=perf=debug` 打开. acdes 的 `packaging/qemu/perf-log.sh [日志]` (见它的 `docs/agents/qemu.md`) 按种类汇总 (次数、ms 的 p50 / p95 / max).
+计时是 debug 级、target `perf::<段>`, `RUST_LOG=perf=debug` 打开.
 
 | target | 哪里 | 一行是 |
 | --- | --- | --- |
@@ -116,7 +116,7 @@ Rust 一律 `log` 的宏, `src/log` (`acde-log`) 装 env_logger: `RUST_LOG` 追�
 `perf::latency` 来自 `acde_log::Trace`: 进队列 → JS 取走 → commit → 出帧 → 光栅化完 → vblank.
 
 JS 热点: `ACDE_PROFILE_DIR=<目录>` 让每个 isolate 开 V8 采样 profiler (`profile.rs`, 250 µs), 每 `ACDE_PROFILE_SECONDS` (默认 30) 秒和结束时写
-`<名字>-<n>.cpuprofile`; acdes 的 `bun packaging/qemu/profile-top.mjs [--top N] [--callers 函数名] 文件...` 汇总. 原生调用的时间多半记在调用它的 JS 函数上.
+`<名字>-<n>.cpuprofile`. 原生调用的时间多半记在调用它的 JS 函数上.
 
 ## 构建不从外网取东西
 
