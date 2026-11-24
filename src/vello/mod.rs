@@ -17,7 +17,7 @@ use kurbo::Affine;
 pub use blur_plan::Blur;
 pub use compose::{Composer, Op};
 #[cfg(target_os = "linux")]
-pub use device::{Backend, Device, Exported, Fence};
+pub use device::{Backend, Device, Exported, Fence, Signals};
 pub use hole::{Hole, Kept};
 #[cfg(not(target_os = "linux"))]
 pub use offscreen::Exported;

@@ -45,6 +45,12 @@ pub struct Device {
     pub tier: &'static str,
     downlevel: wgpu::DownlevelCapabilities,
     vello: Result<(), String>,
+    signals: Signals,
+}
+
+pub struct Signals {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
     semaphores: Vec<vk::Semaphore>,
     next: usize,
     waits: Vec<vk::Semaphore>,
@@ -119,13 +125,8 @@ impl Device {
 
     fn assemble(adapter: &wgpu::Adapter, (device, queue, tier): Opened, backend: Backend, vello: Result<(), String>) -> Self {
         let downlevel = adapter.get_downlevel_capabilities();
-        let mut opened =
-            Self { device, queue, info: adapter.get_info(), backend, tier, downlevel, vello, semaphores: Vec::new(), next: 0, waits: Vec::new(), next_wait: 0 };
-        if backend == Backend::Vulkan {
-            opened.semaphores = opened.create_semaphores();
-            opened.waits = opened.create_waits();
-        }
-        opened
+        let signals = Signals::new(&device, &queue);
+        Self { device, queue, info: adapter.get_info(), backend, tier, downlevel, vello, signals }
     }
 
     fn adapters(backend: Backend) -> Vec<wgpu::Adapter> {
@@ -227,66 +228,16 @@ impl Device {
         unsafe { adapter.create_device_from_hal::<Vk>(hal, &request.descriptor("acde")) }.map_err(|e| format!("wgpu device: {e}"))
     }
 
-    fn create_semaphores(&self) -> Vec<vk::Semaphore> {
-        unsafe {
-            let Some(hal_device) = self.device.as_hal::<Vk>() else { return Vec::new() };
-            let raw = hal_device.raw_device();
-            (0..SEMAPHORES)
-                .map_while(|_| {
-                    let mut export = vk::ExportSemaphoreCreateInfo::default().handle_types(vk::ExternalSemaphoreHandleTypeFlags::SYNC_FD);
-                    raw.create_semaphore(&vk::SemaphoreCreateInfo::default().push_next(&mut export), None).ok()
-                })
-                .collect()
-        }
-    }
-
-    fn create_waits(&self) -> Vec<vk::Semaphore> {
-        unsafe {
-            let Some(hal_device) = self.device.as_hal::<Vk>() else { return Vec::new() };
-            let raw = hal_device.raw_device();
-            (0..WAITS).map_while(|_| raw.create_semaphore(&vk::SemaphoreCreateInfo::default(), None).ok()).collect()
-        }
-    }
-
     pub fn wait_for(&mut self, sync_file: OwnedFd) -> Result<(), OwnedFd> {
-        let Some(&semaphore) = self.waits.get(self.next_wait) else { return Err(sync_file) };
-        let imported = unsafe {
-            let Some(hal_device) = self.device.as_hal::<Vk>() else { return Err(sync_file) };
-            let ext = ash::khr::external_semaphore_fd::Device::new(hal_device.shared_instance().raw_instance(), hal_device.raw_device());
-            let info = vk::ImportSemaphoreFdInfoKHR::default()
-                .semaphore(semaphore)
-                .flags(vk::SemaphoreImportFlags::TEMPORARY)
-                .handle_type(vk::ExternalSemaphoreHandleTypeFlags::SYNC_FD)
-                .fd(sync_file.as_raw_fd());
-            ext.import_semaphore_fd(&info).is_ok()
-        };
-        if !imported {
-            return Err(sync_file);
-        }
-        let _ = sync_file.into_raw_fd();
-        if let Some(queue) = unsafe { self.queue.as_hal::<Vk>() } {
-            queue.add_wait_semaphore(semaphore, None, vk::PipelineStageFlags::ALL_COMMANDS);
-        }
-        self.next_wait = (self.next_wait + 1) % self.waits.len();
-        Ok(())
+        self.signals.wait_for(sync_file)
     }
 
     pub fn arm(&mut self) -> Option<Fence> {
-        let semaphore = *self.semaphores.get(self.next)?;
-        let queue = unsafe { self.queue.as_hal::<Vk>() }?;
-        queue.add_signal_semaphore(semaphore, None);
-        self.next = (self.next + 1) % self.semaphores.len();
-        Some(Fence(semaphore))
+        self.signals.arm()
     }
 
-    pub fn sync_file(&self, Fence(semaphore): Fence) -> Option<OwnedFd> {
-        let fd = unsafe {
-            let hal_device = self.device.as_hal::<Vk>()?;
-            let ext = ash::khr::external_semaphore_fd::Device::new(hal_device.shared_instance().raw_instance(), hal_device.raw_device());
-            let info = vk::SemaphoreGetFdInfoKHR::default().semaphore(semaphore).handle_type(vk::ExternalSemaphoreHandleTypeFlags::SYNC_FD);
-            ext.get_semaphore_fd(&info).ok()?
-        };
-        (fd >= 0).then(|| unsafe { OwnedFd::from_raw_fd(fd) })
+    pub fn sync_file(&self, fence: Fence) -> Option<OwnedFd> {
+        self.signals.sync_file(fence)
     }
 
     pub fn import(&self, dmabuf: Dmabuf<'_>, (width, height): (u32, u32)) -> Result<wgpu::Texture, String> {
@@ -512,5 +463,75 @@ impl Exported {
             );
             Ok((texture, Exported { fd, offset, stride }))
         }
+    }
+}
+
+impl Signals {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        let exports = unsafe { device.as_hal::<Vk>() }.is_some_and(|d| d.enabled_device_extensions().contains(&ash::khr::external_semaphore_fd::NAME));
+        let (semaphores, waits) = if exports { (Self::create_semaphores(device), Self::create_waits(device)) } else { (Vec::new(), Vec::new()) };
+        Self { device: device.clone(), queue: queue.clone(), semaphores, next: 0, waits, next_wait: 0 }
+    }
+
+    fn create_semaphores(device: &wgpu::Device) -> Vec<vk::Semaphore> {
+        unsafe {
+            let Some(hal_device) = device.as_hal::<Vk>() else { return Vec::new() };
+            let raw = hal_device.raw_device();
+            (0..SEMAPHORES)
+                .map_while(|_| {
+                    let mut export = vk::ExportSemaphoreCreateInfo::default().handle_types(vk::ExternalSemaphoreHandleTypeFlags::SYNC_FD);
+                    raw.create_semaphore(&vk::SemaphoreCreateInfo::default().push_next(&mut export), None).ok()
+                })
+                .collect()
+        }
+    }
+
+    fn create_waits(device: &wgpu::Device) -> Vec<vk::Semaphore> {
+        unsafe {
+            let Some(hal_device) = device.as_hal::<Vk>() else { return Vec::new() };
+            let raw = hal_device.raw_device();
+            (0..WAITS).map_while(|_| raw.create_semaphore(&vk::SemaphoreCreateInfo::default(), None).ok()).collect()
+        }
+    }
+
+    pub fn wait_for(&mut self, sync_file: OwnedFd) -> Result<(), OwnedFd> {
+        let Some(&semaphore) = self.waits.get(self.next_wait) else { return Err(sync_file) };
+        let imported = unsafe {
+            let Some(hal_device) = self.device.as_hal::<Vk>() else { return Err(sync_file) };
+            let ext = ash::khr::external_semaphore_fd::Device::new(hal_device.shared_instance().raw_instance(), hal_device.raw_device());
+            let info = vk::ImportSemaphoreFdInfoKHR::default()
+                .semaphore(semaphore)
+                .flags(vk::SemaphoreImportFlags::TEMPORARY)
+                .handle_type(vk::ExternalSemaphoreHandleTypeFlags::SYNC_FD)
+                .fd(sync_file.as_raw_fd());
+            ext.import_semaphore_fd(&info).is_ok()
+        };
+        if !imported {
+            return Err(sync_file);
+        }
+        let _ = sync_file.into_raw_fd();
+        if let Some(queue) = unsafe { self.queue.as_hal::<Vk>() } {
+            queue.add_wait_semaphore(semaphore, None, vk::PipelineStageFlags::ALL_COMMANDS);
+        }
+        self.next_wait = (self.next_wait + 1) % self.waits.len();
+        Ok(())
+    }
+
+    pub fn arm(&mut self) -> Option<Fence> {
+        let semaphore = *self.semaphores.get(self.next)?;
+        let queue = unsafe { self.queue.as_hal::<Vk>() }?;
+        queue.add_signal_semaphore(semaphore, None);
+        self.next = (self.next + 1) % self.semaphores.len();
+        Some(Fence(semaphore))
+    }
+
+    pub fn sync_file(&self, Fence(semaphore): Fence) -> Option<OwnedFd> {
+        let fd = unsafe {
+            let hal_device = self.device.as_hal::<Vk>()?;
+            let ext = ash::khr::external_semaphore_fd::Device::new(hal_device.shared_instance().raw_instance(), hal_device.raw_device());
+            let info = vk::SemaphoreGetFdInfoKHR::default().semaphore(semaphore).handle_type(vk::ExternalSemaphoreHandleTypeFlags::SYNC_FD);
+            ext.get_semaphore_fd(&info).ok()?
+        };
+        (fd >= 0).then(|| unsafe { OwnedFd::from_raw_fd(fd) })
     }
 }
