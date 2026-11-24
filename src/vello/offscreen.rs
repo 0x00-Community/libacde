@@ -359,6 +359,7 @@ pub struct Offscreen {
 impl Offscreen {
     pub fn new(shared: Arc<Shared>) -> Result<Self, String> {
         let vello = Vello::new(&shared.device, &shared.queue)?;
+        super::pipelines::save(&shared.device);
         let overrides = shared.images.clone().into();
         Ok(Self { shared, vello, overrides, blur: None, filters: HashMap::new() })
     }
@@ -400,6 +401,7 @@ impl Offscreen {
     fn filter_pipeline(&mut self, source: &'static str, entry: &'static str) -> (wgpu::ComputePipeline, wgpu::BindGroupLayout) {
         let device = &self.shared.device;
         let made = self.filters.entry(entry).or_insert_with(|| {
+            let cache = super::pipelines::of(device);
             let module = device
                 .create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("acde canvas filter"), source: wgpu::ShaderSource::Wgsl(source.into()) });
             let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -408,7 +410,7 @@ impl Offscreen {
                 module: &module,
                 entry_point: Some(entry),
                 compilation_options: Default::default(),
-                cache: None,
+                cache: cache.as_ref(),
             });
             let layout = pipeline.get_bind_group_layout(0);
             Blur { pipeline, layout }
@@ -498,6 +500,7 @@ impl Offscreen {
     fn blur_pipeline(&mut self) -> &Blur {
         let device = &self.shared.device;
         self.blur.get_or_insert_with(|| {
+            let cache = super::pipelines::of(device);
             let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("acde shadow blur"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("blur.wgsl").into()),
@@ -508,7 +511,7 @@ impl Offscreen {
                 module: &module,
                 entry_point: Some("blur"),
                 compilation_options: Default::default(),
-                cache: None,
+                cache: cache.as_ref(),
             });
             let layout = pipeline.get_bind_group_layout(0);
             Blur { pipeline, layout }

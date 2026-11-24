@@ -61,8 +61,12 @@ impl Vello {
     }
 
     fn with_threads(device: &wgpu::Device, queue: &wgpu::Queue, threads: Option<NonZeroUsize>) -> Result<Self, String> {
-        let options =
-            vello::RendererOptions { use_cpu: false, antialiasing_support: vello::AaSupport::area_only(), num_init_threads: threads, pipeline_cache: None };
+        let options = vello::RendererOptions {
+            use_cpu: false,
+            antialiasing_support: vello::AaSupport::area_only(),
+            num_init_threads: threads,
+            pipeline_cache: super::pipelines::of(device),
+        };
         let renderer = vello::Renderer::new(device, options).map_err(|e| format!("vello: {e}"))?;
         let build = BUILDS.fetch_add(1, Ordering::Relaxed);
         Ok(Self { device: device.clone(), queue: queue.clone(), renderer, scene: vello::Scene::new(), threads, build, rendered: false })

@@ -173,6 +173,7 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 impl Composer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        let cache = super::pipelines::of(device);
         let module =
             device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("acde compose"), source: wgpu::ShaderSource::Wgsl(shader_source().into()) });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -264,7 +265,7 @@ impl Composer {
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
                 multiview_mask: None,
-                cache: None,
+                cache: cache.as_ref(),
             })
         };
         let pipelines = vec![

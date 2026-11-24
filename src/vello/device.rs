@@ -126,6 +126,7 @@ impl Device {
     fn assemble(adapter: &wgpu::Adapter, (device, queue, tier): Opened, backend: Backend, vello: Result<(), String>) -> Self {
         let downlevel = adapter.get_downlevel_capabilities();
         let signals = Signals::new(&device, &queue);
+        super::pipelines::open(&device, &adapter.get_info());
         Self { device, queue, info: adapter.get_info(), backend, tier, downlevel, vello, signals }
     }
 
@@ -205,7 +206,10 @@ impl Device {
                 return Err(format!("missing Vulkan extensions {}", missing.join(", ")));
             }
         }
-        let tiers = DeviceRequest::tiers(adapter.features() & wgpu::Features::all_webgpu_mask(), adapter.limits());
+        let mut tiers = DeviceRequest::tiers(adapter.features() & wgpu::Features::all_webgpu_mask(), adapter.limits());
+        for tier in &mut tiers {
+            tier.features |= adapter.features() & wgpu::Features::PIPELINE_CACHE;
+        }
         let ((device, queue), tier) = DeviceRequest::open("acde", &tiers, |request| match backend {
             Backend::Vulkan => Self::open_tier(adapter, request),
             Backend::Gles => pollster::block_on(adapter.request_device(&request.descriptor("acde"))).map_err(|e| e.to_string()),

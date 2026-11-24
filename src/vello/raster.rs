@@ -154,6 +154,7 @@ impl Raster {
         let view = super::texture(&device.device, (64, 64), wgpu::TextureUsages::STORAGE_BINDING, "acde warm-up").create_view(&Default::default());
         let _ = vello.render([], &mut Overrides::from(Arc::default()), &view, (64, 64), Color::TRANSPARENT, None);
         let _ = device.device.poll(wgpu::PollType::wait_indefinitely());
+        super::pipelines::save(&device.device);
         Ok(Self {
             device,
             vello,

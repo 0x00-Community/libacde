@@ -5,6 +5,7 @@ mod device;
 mod fonts;
 mod hole;
 mod offscreen;
+mod pipelines;
 #[cfg(target_os = "linux")]
 mod raster;
 mod vello_scene;
