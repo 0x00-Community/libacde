@@ -80,7 +80,11 @@ const fn api_level(source: &str) -> u32 {
 }
 
 pub fn version(program: &str) -> String {
-    format!("{program} {} (contract level {API_LEVEL})", env!("CARGO_PKG_VERSION"))
+    program_version(program, env!("CARGO_PKG_VERSION"))
+}
+
+pub fn program_version(program: &str, version: &str) -> String {
+    format!("{program} {version} (contract level {API_LEVEL})")
 }
 
 pub fn start(entry: Entry, args: &[String], platform: Shared) -> i32 {

@@ -41,7 +41,7 @@ Bun 的本代目录在默认 base 下, DACL 读回只有 SYSTEM 和当前用户,
 <运行时> desktop <id|目录>                  # 调试桌面 (acdev dev)
 <运行时> app <id|目录>                      # 调试窗口: 只跑一个应用
 <运行时> desktops                           # 装了的桌面和外部会话 (不要显示器)
-<运行时> --version                          # 发行版本和契约级别: <程序名> <版本> (contract level 1)
+<运行时> --version                          # 发行版本和契约级别: <程序名> <版本> (contract level 1); 版本是程序自己的 (`acde::program_version`), `acde::version` 和 C 接口 `acde_version` 给的是 libacde 的
 <运行时> --help                             # 用法 (main.rs 直接回, 不起 V8); 不认的选项: 一行原因加一行用法到 stderr, 退出 2
 <运行时> doctor [--json]                    # 自检: 宿主文件、GPU (真画一帧)、Linux 的显示; 有错误退出 1 (见下)
 <运行时> sessions DIR --package PKG         # 给包的每个桌面写 acdert-<id>.desktop
