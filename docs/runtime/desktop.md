@@ -252,7 +252,8 @@
 
 ## 各运行时的现状
 
-acdes 一列按 acdes 的代码核对过; 宿主窗口一列取自 `docs/runtime/webs.md`、`docs/runtime/window-model.md` 的记载, 没有逐项实测.
+acdes 一列按 acdes 的代码核对过; 宿主窗口一列取自 `docs/runtime/webs.md`、`docs/runtime/window-model.md` 的记载, 没有逐项实测, 只有标了
+「(实测)」的几行在 2026-11-24 用 `acdev dev` 的本地会话 (`docs/runtime/layout.md`「本地会话」) 在 macOS 上试过.
 
 | 能力 | acdes 会话 | acdev 宿主窗口 |
 | --- | --- | --- |
@@ -268,7 +269,10 @@ acdes 一列按 acdes 的代码核对过; 宿主窗口一列取自 `docs/runtime
 | 应用自己的 `acde:window.shortcut` | 回 501 | 有 |
 | `windows.stats()` | `{}` | 有 |
 | `windows.screenshot()` | 整屏、某块屏、单个窗口, 可带指针 | 只有整个宿主窗口 |
-| `acde:permissions`、`capabilities.request` | 回 501 (还没有询问可答) | — |
+| `acde:permissions`、`capabilities.request` | 回 501 (还没有询问可答) | `permissions.list` / `pending` 回空; `capabilities.request` 声明了的是 `available` |
+| 快照的 `rect`、`list()` 的位置 | 有 | 有 (宿主窗口每帧比较后发 `windowgeometry`, 实测) |
+| `apps.open`、`windowopen` / `windowclose`、`windowmenus` | 有 | 有 (本地会话, 实测) |
+| `apps.openPath`、`open-file`、`handlers` | 有 | 回 501 (还没有) |
 
 acdes 里系统应用声明的外壳模块现在只有 `session`、`desktops`、`setDefault`、`packages.refresh`、`software` 能用, `windows`、`permissions`、`inspect` 回 501;
 要这些能力的界面先放在桌面页里.

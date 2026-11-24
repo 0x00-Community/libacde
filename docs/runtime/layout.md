@@ -20,7 +20,7 @@
 | `src/napi` | rusty_v8 实现的 Node-API (napi8), 让 `#[napi]` 导出在 Broker 里可用. 改自 Deno `ext/napi` 0.191.0 (MIT, LICENSE-MIT), 去掉了用不到的入口 |
 | `js/dom` | 网页接口层: web 里的浏览器全局对象和 DOM (原 acde-dom) |
 | `js/page` | 页面一侧的胶水: 在 web 里起页面、`acde:` 模块、和启动方的 rpc、输入与窗框 (原 acde-host 的 `worker.ts` 及其依赖) |
-| `js/launcher` | 单应用启动器: 一个进程开一个应用一个窗口 (临时代替原管理中枢, 见下). `src/` 下按职责分: 根上是入口 `main.ts` 和 `args.ts`; `app/` 找应用、拼页面初始化数据、本进程回答的调用 (`calls.ts`) 和事件 (`events.ts`); `manager/` 与管家的连接和服务模式; `dev/` 调试通道、DevTools、语义树与操作; `backend/` 应用后端 |
+| `js/launcher` | 启动器: 一个进程开一个应用一个窗口, 或 (没有管家时) 一个桌面连同它的应用和服务 (临时代替原管理中枢, 见下). `src/` 下按职责分: 根上是入口 `main.ts`、`args.ts` 和窗口系统的类型 `shell.ts`; `local/` 宿主上的本地会话; `app/` 找应用、拼页面初始化数据、本进程回答的调用 (`calls.ts`) 和事件 (`events.ts`); `manager/` 与管家的连接和服务模式; `dev/` 调试通道、DevTools、语义树与操作; `backend/` 应用后端 |
 
 ## js: 运行时自带的 JS
 
@@ -49,7 +49,8 @@
 单应用启动器 (`js/launcher`, 用户 2026-11-17 定的临时做法, 总仓 `.scratch/acdev/issues/09-temporary-launcher-and-old-js.md`) 和页面包一样由
 `build.rs` 打成 `$OUT_DIR/launcher.js` 嵌进二进制 (`src/host/bundle.rs` 管这两个地址), 原来进管理中枢的入口 (`Entry::Broker`) 现在都从
 `acde-runtime:/launcher.js` 起. 它认 `app <id|目录>` 和 `desktop [id]`, 都可带 `[--size WxH] [--scale N] [--seconds N] [--shot 文件]
-[--shot-after 毫秒]`, 以及只在有管家时可用的 `service <名字>`. 一个进程一个页面 (一个应用一个窗口, 或一个桌面), 或一个后台服务.
+[--shot-after 毫秒]`, 以及只在有管家时可用的 `service <名字>`. 有管家时一个进程一个页面 (一个应用一个窗口, 或一个桌面), 或一个后台服务;
+没有管家时 `desktop` 是本地会话 (见下), 一个进程里跑桌面、它打开的应用和桌面服务.
 
 - **有管家时** (会话里, 环境里有 `ACDE_MANAGER_FD` 且 `native.Manager` 在, acdebin-system 的管家, 总仓 `.scratch/system/issues/09-manager.md`,
   协议见 acdebin-system `docs/manager.md`): `native.Manager.connect()` 拿 welcome, 应用的清单、包目录、资源、等级 (`tier`)、授予 (`grants`)、
@@ -63,10 +64,44 @@
   也一样 (`service.ts`): 应答里省不掉的 undefined 让调用方收到 500 `internal` (`desk.list: the answer.desks[0] is undefined; …`), 回调参数的在服务代码里抛 `TypeError`;
   页面与启动器之间的 rpc 照旧原样传; `window.ready`、`page.shown`
   也转过去 (管家据此记冷启动). 管家推来的 `request` 交给页面 `window.request`, 桌面进程收到的其余推送原样交给桌面页, `managerclosed` 时以 0 退出.
-- **没有管家时** (宿主窗口跑法): 只认 `app`; 目录取其 package.json 里第一个应用, id 在 `ACDE_PATH` 的各目录及其下一层找; 资源前缀按
+- **没有管家时** (宿主窗口跑法): `app` 是单个应用 (这一条), `desktop` 是本地会话 (下一条); 目录取其 package.json 里第一个应用, id 在 `ACDE_PATH` 的各目录及其下一层找; 资源前缀按
   `acde.assets`, 没有 `/` 时 `/` 指包目录; 没有服务、最低权限等级、存储在 `$ACDE_STORAGE` 或 `~/.local/share/acde/storage` 的 `app-<id>`.
   文件 (用户 2026-11-18): 清单声明了 `fs` 就授予 `{places, paths: false}` (形状同客户机管家的 `grants.fs`): 只在设了 `ACDE_DEV_PLACES` (`acdev dev` 设,
   它同时用 `XDG_<名>_DIR` 把公共位置换成会话自己的隔离目录) 时给清单 `fs.roots` 列的位置, 否则只有应用私有目录; 不给任意路径.
+- **本地会话** (`desktop [id]` 没有管家时, `js/launcher/src/local/`, AC/acdev#110, 用户 2026-11-24 选「本地开发会话管家」): `acdev dev` 带桌面、
+  几个工程一起跑或桌面模板都走这里. 桌面、它打开的每个应用和桌面的服务都在这一个进程里, 共用一个宿主窗口; 每一方拿一条和 acdes 管家同形的
+  `ManagerLink` (`local/link.ts`), 所以启动器走的是设备上的那几条路, 只是管家在本进程:
+  - 登记 (`local/registry.ts`): `ACDE_PATH` 的各目录及其下一层的包; 桌面 (给了 id 按 id, 没给取第一个) 所在的包是系统包, 它的应用等级 `system`,
+    别的包的应用 `third-party`; 同一个应用 id 只认第一个 (别的打一行 `acdev: …`); 桌面清单 `services` 列的、包里 `services` 有模块的服务才起.
+    `ACDE_PATH` 的每个根是 `dev-<序号>`, 桌面的资源多一条 `/acde-packages/dev-<序号>/`; `apps.list` 里包内的图标文件 (`/…`) 换成这个前缀下的地址, 同 acdes.
+  - 欢迎消息照 acdes `base/welcome.rs` 拼: 桌面 `tier.shell` 是全部外壳模块、`session: {own: true}`; 应用的 `tier.shell` 是系统应用声明了的外壳模块;
+    服务的 `module`、`modules`、`stateDir` (`$XDG_STATE_HOME/acde/<包名>/<服务名>`, 建好、700). 授予按宿主窗口的规矩, 比会话里紧: 文件只给
+    `acdev dev` 的隔离位置 (`ACDE_DEV_PLACES` 时; 桌面给全部公共位置), `paths` 一律 false; 第三方应用不给 terminal、system、bluetooth、devices、power、
+    input、display、office (同单应用), 桌面和系统应用照声明给.
+  - 调用的准入照 acdes `access.rs`: 外壳模块只给桌面和声明了它的系统应用 (`session`、`desktops` 先过这一关); `openPath` / `handlers` 要 `openFiles`;
+    `capabilities.request` 只问声明过的; `apps.open` 点名要 `open` 列着它 (带 `open-link` 请求也一样), 按类型开要 `openFiles`; `inspect` / `debug` / `dev`
+    只给桌面; 别的名字是桌面服务 (应用要在清单 `services` 列出那个服务, 否则 403, 没起回 503). 被拒的形状同 acdes (`status`、`code`).
+  - 本地会话自己回答: `apps.list`、`apps.open` (在跑的单例应用提到前面并收到请求 `{type: 'request', request, lent: []}`, 回 `running: true`;
+    `newWindow` 只对 `multiple` 的应用开新的; 新起的回 `{kind: 'acde', id, app, window, pid, instance}`, 实例号逐应用递增; 请求要有清单 `requests` 里的
+    `kind`, 否则 400 `untyped_request` / 409 `not_accepted`; `open-link` 按 scheme 找应用), `window.setTitle` / `setMenus` (告诉桌面
+    `windowtitle` / `windowmenus`), `window.openUrl`、`page.notify` (桌面收 `notification`)、`windows.screenshot` (整个宿主窗口)、
+    `windows.invokeMenu` (按窗口号给应用 `menuinvoke`)、`capabilities.request`、`permissions.list` / `pending` (空)、`desktops.list`、`session.others` (空)、
+    `session.logout` (结束会话); 别的回 501 `unsupported`. 还没有: `open-file`、`openPath`、`handlers` (按类型选应用, 宿主上回 501)、借文件夹 (`options.root`).
+  - 应用开在桌面之上的 `free` 窗口里 (`grant({mode: 'free', size?})`, 尺寸同上), 起来后告诉桌面 `windowopen {window, appId, title, web, instance}`,
+    退出时放掉它的窗口并告诉 `windowclose`; 页面名 `<应用 id>#<实例号>`. 位置、状态、焦点的变化由宿主窗口自己发 (`windowgeometry`、`windowstate`、
+    `windowactivate`), 启动器折成 `window` 快照交给桌面 (下面「窗口」).
+  - 服务: 先起服务 (`ServiceHost`, 本进程 `import()` 它的模块), 至多等 5 秒它们 `ready`, 再起桌面; 服务提供的命名空间 (保留名和系统能力名丢掉, 同 acdes)
+    进桌面和列了它的应用的 `services`, 变了推 `services`. 调用转成 `{type: 'call', id, service, method, args, caller}` 给服务, 30 秒没回答回 504;
+    回调参数 (`__acdeFn`) 换成会话里的全局号, 服务的 `invoke` 换回调用方自己的号, `release` 两头转, 同 acdes `desktop/services.rs`. 服务结束时等它回答的
+    调用回 503.
+  - 宿主窗口的事件 (`local/hub.ts`): 一个 `Shell`, 每个启动器一个视图, 视图授予的窗口记在它名下. 带窗口号的 `windowcloserequest`、`menuselect`、
+    `devtools` 和作用域是 `app` / `menu` 的 `shortcut` 给窗口的主人, `devrequest` / `devreload` / `quit` 由会话处理, 其余给桌面.
+  - 调试通道: `webs` 问每个页面再合并 (每个限 1.5 秒, 不答的列 `stalled: true`); 带 `web` 的 (页面名、应用 id 取实例号最小的、`desktop`) 交给那个页面的启动器,
+    不带的给桌面, 不带 `web` 的 `snapshot` 给拿着焦点的窗口的主人; `open {name|url}` 会话自己答 (`path` 回 501); `console` / `network` 带 `pages: true`
+    时每个页面各答一份 (键 `<应用 id 或 desktop>:<pid>#<序号>`). 各启动器的 Inspect 经会话看到所有窗口 (`Seat.windows`: 页面的 rpc、记录、关窗、
+    统一的 `w<n>` 编号), 所以 `hit`、`act`、`snapshot` 落在别的应用的窗口上也能做. `devreload {app}` 先重扫 `ACDE_PATH`, 再交给那个应用的启动器 (它按新清单重起页面),
+    没有 `app` 给桌面.
+  - SIGTERM / SIGINT / SIGHUP、`quit`、`session.logout`、`--seconds` 或桌面退出结束会话: 先关所有应用, 再断服务和桌面的连接; `--shot` 截整个宿主窗口.
 - **锁屏页预览** (`lock <桌面 id|目录>`, 只在没有管家时, `acdev dev --lock` 用, 日常桌面工作项 23): 按 `ACDE_PATH` 或目录找桌面包, 打开它清单 `lock`
   写的页面 (桌面窗口, 等级最低, 授予全无, 页面初始化数据带 `lock: true`, 所以只有 `acde:lock` 和 `acde:services`). `lock.user` / `lock.unlock` / `lock.cancel` 由
   `js/launcher/src/app/lock.ts` 的 `FakeLock` 回答: 固定用户 (头像 null); `cancel` 直接成功; `right-password` 解锁 (第二个参数不看), `wrong-password` auth (403)、`busy-password` busy (409)、
