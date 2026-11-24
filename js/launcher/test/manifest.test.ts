@@ -9,6 +9,18 @@ function errors(desktop: Record<string, unknown>, isFile: ((path: string) => boo
   return Manifest.check(manifest, () => true, () => true, isFile).errors
 }
 
+describe('the manager\'s own modules', () => {
+  const app = { id: 'notes', label: 'Notes', capabilities: {}, services: [] } as unknown as Parameters<typeof Manifest.importRule>[1]
+
+  test('icons and sounds are given to every app page, with no capability or service listed', () => {
+    for (const name of ['icons', 'sounds']) {
+      assert.equal(Manifest.importRule(name, app, { system: false }).allowed, true, name)
+      assert.notEqual(Manifest.reserved(name), null, name)
+    }
+    assert.equal(Manifest.importRule('clock', app, { system: false }).allowed, false)
+  })
+})
+
 describe('the lock entry of a desktop', () => {
   test('is optional, and checked as the entry is: a path inside the package that is there', () => {
     assert.deepEqual(errors({ entry: 'desktop/index.html' }), [])

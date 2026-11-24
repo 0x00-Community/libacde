@@ -16,7 +16,7 @@ export const LEGACY_ICONS: Readonly<Record<string, string>> = legacyIcons
 
 export const SHELL_MODULES = ['windows', 'packages', 'session', 'desktops', 'inspect', 'desktop', 'setDefault', 'permissions', 'voice', 'software'] as const
 
-export const APP_MODULES = ['launch', 'apps', 'open', 'openPath', 'handlers', 'window', 'services', 'actions'] as const
+export const APP_MODULES = ['launch', 'apps', 'open', 'openPath', 'handlers', 'window', 'services', 'actions', 'icons', 'sounds'] as const
 
 export type ShellModule = (typeof SHELL_MODULES)[number]
 
