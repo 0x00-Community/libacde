@@ -432,7 +432,6 @@ impl Default for Decoration {
 impl Decoration {
     const GLYPH: f64 = 10.0;
     const FAMILY: &'static str = "system-ui, sans-serif";
-    const ELLIPSIS: &'static str = "…";
     const RING: Color = Color::from_rgba8(0, 0, 0, 46);
     const MENU_LEAD: f64 = 2.0;
     const MENU_PAD: f64 = 8.0;
@@ -634,22 +633,7 @@ impl Decoration {
         if bar.title.is_empty() || room <= 0.0 {
             return;
         }
-        let mut layout = self.layout(&bar.title, bar.scale);
-        if f64::from(layout.width()) > room {
-            let cuts: Vec<usize> = bar.title.char_indices().map(|(i, _)| i).collect();
-            let (mut fits, mut over) = (0, cuts.len());
-            while over - fits > 1 {
-                let mid = (fits + over) / 2;
-                match f64::from(self.layout(&Self::cut(&bar.title, cuts[mid]), bar.scale).width()) <= room {
-                    true => fits = mid,
-                    false => over = mid,
-                }
-            }
-            layout = self.layout(&Self::cut(&bar.title, cuts[fits]), bar.scale);
-            if f64::from(layout.width()) > room {
-                return;
-            }
-        }
+        let Some(layout) = fitted(&bar.title, room, |text| self.layout(text, bar.scale)) else { return };
         let Some(line) = layout.lines().next() else { return };
         let x = match (bar.align(), lead) {
             (TitleAlign::Center, None) => (bar.width * bar.scale - f64::from(layout.width())) / 2.0,
@@ -658,10 +642,6 @@ impl Decoration {
         };
         let y = (bar.height * bar.scale - f64::from(line.metrics().line_height)) / 2.0;
         draw_line(scene, &line, Affine::translate((x, y)), color);
-    }
-
-    fn cut(title: &str, at: usize) -> String {
-        format!("{}{}", title[..at].trim_end(), Self::ELLIPSIS)
     }
 
     fn layout(&mut self, text: &str, scale: f64) -> Layout<()> {
@@ -679,6 +659,26 @@ impl Decoration {
         layout.break_all_lines(None);
         layout
     }
+}
+
+pub(crate) fn fitted(text: &str, room: f64, mut layout: impl FnMut(&str) -> Layout<()>) -> Option<Layout<()>> {
+    const ELLIPSIS: &str = "…";
+    let cut = |at: usize| format!("{}{ELLIPSIS}", text[..at].trim_end());
+    let whole = layout(text);
+    if f64::from(whole.width()) <= room {
+        return Some(whole);
+    }
+    let cuts: Vec<usize> = text.char_indices().map(|(i, _)| i).collect();
+    let (mut fits, mut over) = (0, cuts.len());
+    while over - fits > 1 {
+        let mid = (fits + over) / 2;
+        match f64::from(layout(&cut(cuts[mid])).width()) <= room {
+            true => fits = mid,
+            false => over = mid,
+        }
+    }
+    let fitted = layout(&cut(cuts.get(fits).copied().unwrap_or(0)));
+    (f64::from(fitted.width()) <= room).then_some(fitted)
 }
 
 pub(crate) fn draw_line(scene: &mut Scene, line: &blitz_dom::parley::Line<'_, ()>, transform: Affine, color: Color) {

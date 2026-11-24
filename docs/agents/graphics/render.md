@@ -94,3 +94,6 @@
   (236 × 112 逻辑像素, `Hud::pixels(scale)` 是物理像素) 的场景: 圆角深色底, 大字 FPS (按平均帧间隔着色: 不超过预算的 1.25 倍绿、2 倍以内黄、
   更长红), 平均 / 最长帧间隔和每帧光栅化时间, 下面是最近 `Hud::BARS` (120) 帧的帧间隔柱 (同样着色, 高度到 3 倍预算封顶) 和 1 倍、2 倍预算两条线.
   `None` 是「idle」(一秒内没有新帧). 字和窗框共用 `draw_line`, 等宽字体 `ui-monospace, SF Mono, Menlo, monospace`.
+- 构建失败的横幅 (也在 `hud.rs`, 宿主窗口在 acdev dev 的构建失败时画, 见 acdev `docs/agents/hostwin.md`「构建失败的横幅」): `Hud::banner(标题, 行, 宽, scale)` →
+  宽 × `Hud::banner_height(行数)` 逻辑像素的场景: 圆角深红底、左边一条红, 13 px 粗体白色标题, 下面每行 12 px 浅红, 同一种等宽字体.
+  放不下的行截断加省略号, 和窗框标题共用 `decoration.rs` 的 `fitted` (按字二分找最长的前缀).

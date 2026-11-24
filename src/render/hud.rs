@@ -3,7 +3,7 @@ use blitz_dom::parley::{FontContext, FontFamily, FontWeight, Layout, LayoutConte
 use kurbo::{Affine, Line, Rect, RoundedRect, Stroke};
 use peniko::{Color, Fill};
 
-use super::decoration::draw_line;
+use super::decoration::{draw_line, fitted};
 
 pub struct HudStats<'a> {
     pub fps: f64,
@@ -39,6 +39,13 @@ impl Hud {
     const GOOD: Color = Color::from_rgb8(0x4a, 0xde, 0x80);
     const SLOW: Color = Color::from_rgb8(0xfb, 0xbf, 0x24);
     const BAD: Color = Color::from_rgb8(0xf8, 0x71, 0x71);
+    const BANNER_BACKGROUND: Color = Color::from_rgba8(110, 22, 28, 238);
+    const BANNER_DETAIL: Color = Color::from_rgb8(0xfe, 0xca, 0xca);
+    const BANNER_STRIPE: f64 = 4.0;
+    const BANNER_PAD: f64 = 9.0;
+    const BANNER_GAP: f64 = 3.0;
+    const BANNER_TITLE: f32 = 13.0;
+    const BANNER_TEXT: f32 = 12.0;
 
     pub fn new() -> Self {
         let fonts = blitz_dom::system_font_ctx();
@@ -82,6 +89,41 @@ impl Hud {
             self.text(&mut scene, &label, 9.0, 400.0, scale, (graph.x0 + 2.0, y - 11.0), Self::DIM);
         }
         scene
+    }
+
+    pub fn banner_height(lines: usize) -> f64 {
+        Self::BANNER_PAD * 2.0 + f64::from(Self::BANNER_TITLE) * 1.2 + lines as f64 * (Self::BANNER_GAP + f64::from(Self::BANNER_TEXT) * 1.2)
+    }
+
+    pub fn banner(&mut self, title: &str, lines: &[&str], width: f64, scale: f64) -> Scene {
+        let mut scene = Scene::new();
+        let at = Affine::scale(scale);
+        let height = Self::banner_height(lines.len());
+        let shape = RoundedRect::new(0.0, 0.0, width, height, Self::RADIUS);
+        scene.fill(Fill::NonZero, at, Self::BANNER_BACKGROUND, None, &shape);
+        scene.fill(Fill::NonZero, at, Self::BAD, None, &RoundedRect::new(0.0, 0.0, Self::BANNER_STRIPE, height, (Self::RADIUS, 0.0, 0.0, Self::RADIUS)));
+        let left = Self::BANNER_STRIPE + Self::BANNER_PAD;
+        let room = (width - left - Self::BANNER_PAD) * scale;
+        let mut y = Self::BANNER_PAD;
+        self.fitted(&mut scene, title, Self::BANNER_TITLE, 700.0, scale, (left, y), room, Self::TEXT);
+        y += f64::from(Self::BANNER_TITLE) * 1.2;
+        for line in lines {
+            y += Self::BANNER_GAP;
+            self.fitted(&mut scene, line, Self::BANNER_TEXT, 400.0, scale, (left, y), room, Self::BANNER_DETAIL);
+            y += f64::from(Self::BANNER_TEXT) * 1.2;
+        }
+        scene
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn fitted(&mut self, scene: &mut Scene, text: &str, size: f32, weight: f32, scale: f64, (x, y): (f64, f64), room: f64, color: Color) {
+        if text.is_empty() || room <= 0.0 {
+            return;
+        }
+        let Some(layout) = fitted(text, room, |text| self.layout(text, size, weight, scale)) else { return };
+        if let Some(line) = layout.lines().next() {
+            draw_line(scene, &line, Affine::translate((x * scale, y * scale)), color);
+        }
     }
 
     fn grade(ms: f64, budget: f64) -> Color {
