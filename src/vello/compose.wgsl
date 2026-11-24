@@ -46,6 +46,26 @@ fn fs_place(in: VsOut) -> @location(0) vec4<f32> {
 }
 
 @fragment
+fn fs_opaque(in: VsOut) -> @location(0) vec4<f32> {
+    let extent = params.texel;
+    let last = extent - vec2<f32>(1.0);
+    let uv = clamp(in.pos.xy * params.rect.zw + params.rect.xy, vec2<f32>(0.0), extent);
+    if params.offset == 0.0 {
+        return vec4<f32>(textureLoad(src, vec2<i32>(clamp(uv, vec2<f32>(0.0), last)), 0).rgb, 1.0);
+    }
+    let at = uv - vec2<f32>(0.5);
+    let c = clamp(at, vec2<f32>(0.0), last);
+    let lo = vec2<i32>(floor(c));
+    let hi = vec2<i32>(ceil(c));
+    let f = fract(at);
+    let a = textureLoad(src, lo, 0).rgb;
+    let b = textureLoad(src, vec2<i32>(lo.x, hi.y), 0).rgb;
+    let d = textureLoad(src, vec2<i32>(hi.x, lo.y), 0).rgb;
+    let e = textureLoad(src, hi, 0).rgb;
+    return vec4<f32>(mix(mix(a, b, f.y), mix(d, e, f.y), f.x), 1.0);
+}
+
+@fragment
 fn fs_down(in: VsOut) -> @location(0) vec4<f32> {
     let h = params.texel * params.offset;
     var sum = textureSample(src, samp, in.uv) * 4.0;

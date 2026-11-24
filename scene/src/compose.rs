@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crate::Scene;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Px {
     pub x: i32,
     pub y: i32,

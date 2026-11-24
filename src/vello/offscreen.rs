@@ -263,6 +263,10 @@ impl From<Arc<ImageSet>> for Overrides {
 }
 
 impl Overrides {
+    pub fn images(&self) -> &Arc<ImageSet> {
+        &self.set
+    }
+
     pub(super) fn follow(&mut self, build: u64) {
         if self.build != build {
             self.seen.clear();

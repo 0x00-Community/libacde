@@ -69,6 +69,7 @@ enum Pipe {
     Mix,
     Glass,
     GlassGroup,
+    Opaque,
 }
 
 struct Draw<'a> {
@@ -148,6 +149,7 @@ impl Uniforms {
 
 pub enum Op {
     Place { origin: [u32; 2], at: [u32; 2], clip: [u32; 4] },
+    Cover { origin: [u32; 2], at: [u32; 2], clip: [u32; 4] },
     Shadow { shadow: Shadow, rect: [u32; 4], at: [u32; 2], clip: [u32; 4], blurred: wgpu::TextureView },
 }
 
@@ -277,6 +279,7 @@ impl Composer {
             pipeline("fs_up", Some(mix)),
             pipeline("fs_glass", Some(over)),
             pipeline("fs_glass_group", Some(over)),
+            pipeline("fs_opaque", None),
         ];
         Self {
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
@@ -310,6 +313,10 @@ impl Composer {
             self.layer = Some((size, texture, view));
         }
         self.layer.as_ref().map(|(_, _, v)| v.clone()).expect("made just above")
+    }
+
+    pub fn layer_texture(&self) -> Option<wgpu::Texture> {
+        self.layer.as_ref().map(|(_, t, _)| t.clone())
     }
 
     fn push(&mut self, params: &Params) -> u32 {
@@ -502,15 +509,44 @@ impl Composer {
         self.pass(encoder, canvas, false, &[Draw { pipe: Pipe::Place, src, params, scissor: Some(clip), mix: None, group: None }]);
     }
 
+    pub fn place_areas_from(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        canvas: &wgpu::TextureView,
+        src: &wgpu::TextureView,
+        origin: [u32; 2],
+        clips: &[[u32; 4]],
+    ) {
+        let params = Params { rect: [origin[0] as f32, origin[1] as f32, 0.0, 0.0], ..Default::default() };
+        let draws: Vec<Draw> = clips.iter().map(|&clip| Draw { pipe: Pipe::Place, src, params, scissor: Some(clip), mix: None, group: None }).collect();
+        self.pass(encoder, canvas, false, &draws);
+    }
+
+    #[allow(clippy::too_many_arguments, reason = "the source, its mapping and sampling, and where it lands")]
+    pub fn opaque_from(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        canvas: &wgpu::TextureView,
+        src: &wgpu::TextureView,
+        map: [f32; 4],
+        extent: [f32; 2],
+        smooth: bool,
+        clip: [u32; 4],
+    ) {
+        let params = Params { texel: extent, offset: if smooth { 1.0 } else { 0.0 }, rect: map, ..Default::default() };
+        self.pass(encoder, canvas, false, &[Draw { pipe: Pipe::Opaque, src, params, scissor: Some(clip), mix: None, group: None }]);
+    }
+
     pub fn draw(&mut self, encoder: &mut wgpu::CommandEncoder, canvas: &wgpu::TextureView, ops: &[Op]) {
         let Some((_, _, layer)) = self.layer.clone() else { return };
         let size = canvas.texture().size();
         let draws: Vec<Draw> = ops
             .iter()
             .filter_map(|op| match *op {
-                Op::Place { origin, at, clip } => {
+                Op::Place { origin, at, clip } | Op::Cover { origin, at, clip } => {
                     let params = Params { rect: [origin[0] as f32 - at[0] as f32, origin[1] as f32 - at[1] as f32, 0.0, 0.0], ..Default::default() };
-                    Some(Draw { pipe: Pipe::Place, src: &layer, params, scissor: Some(clip), mix: None, group: None })
+                    let pipe = if matches!(op, Op::Cover { .. }) { Pipe::Flatten } else { Pipe::Place };
+                    Some(Draw { pipe, src: &layer, params, scissor: Some(clip), mix: None, group: None })
                 }
                 Op::Shadow { shadow: s, rect: [x, y, w, h], at, clip, ref blurred } => {
                     if w < 2 || h < 2 {

@@ -26,6 +26,7 @@ pub use blitz_paint;
 pub use canvas::encode_png;
 pub use capture::Capture;
 pub use commands::Commands;
+pub(crate) use damage::draw_bounds;
 pub use decoration::{
     Bar, ButtonSide, Decoration, Dot, FrameButton, FrameColors, FrameMetrics, FrameStyle, FrameTheme, MenuList, MenuPlace, MenuRow, Rgba, TitleAlign,
 };

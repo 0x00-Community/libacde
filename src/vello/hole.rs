@@ -12,6 +12,8 @@ pub struct Hole {
     pub rect: [u32; 4],
     pub texel: [u32; 2],
     pub image: Arc<GpuImage>,
+    pub map: [f64; 4],
+    pub smooth: bool,
     open: Vec<usize>,
 }
 
@@ -24,28 +26,39 @@ pub struct Kept {
 
 impl Hole {
     pub fn find(scene: &Scene, images: &ImageSet) -> Option<Self> {
-        let mut open: Vec<(usize, Option<Rect>)> = Vec::new();
         let mut found = None;
-        for (i, command) in scene.commands.iter().enumerate() {
+        for candidate in Self::candidates(scene, images, false) {
+            if found.is_some() {
+                return None;
+            }
+            found = Some(candidate?);
+        }
+        found
+    }
+
+    pub fn largest(scene: &Scene, images: &ImageSet) -> Option<Self> {
+        Self::candidates(scene, images, true).flatten().max_by_key(|h| u64::from(h.rect[2]) * u64::from(h.rect[3]))
+    }
+
+    fn candidates<'s>(scene: &'s Scene, images: &'s ImageSet, scaled: bool) -> impl Iterator<Item = Option<Self>> + 's {
+        let mut open: Vec<(usize, Option<Rect>)> = Vec::new();
+        scene.commands.iter().enumerate().filter_map(move |(i, command)| {
             match command {
                 RenderCommand::PushLayer(l) => open.push((i, plain(l))),
                 RenderCommand::PushClipLayer(c) => open.push((i, rect_of(&c.clip, c.transform))),
                 RenderCommand::PopLayer => _ = open.pop(),
                 RenderCommand::Fill(f) => {
-                    let Paint::Image(brush) = &f.brush else { continue };
-                    let Some(image) = images.find(brush.image.data.id()).filter(|i| i.opaque()) else { continue };
-                    if found.is_some() {
-                        return None;
-                    }
-                    found = Some(Self::of(i, f, image, &open)?);
+                    let Paint::Image(brush) = &f.brush else { return None };
+                    let image = images.find(brush.image.data.id()).filter(|i| i.opaque())?;
+                    return Some(Self::of(i, f, image, &open, scaled));
                 }
                 _ => {}
             }
-        }
-        found
+            None
+        })
     }
 
-    fn of(index: usize, fill: &FillCommand, image: Arc<GpuImage>, open: &[(usize, Option<Rect>)]) -> Option<Self> {
+    fn of(index: usize, fill: &FillCommand, image: Arc<GpuImage>, open: &[(usize, Option<Rect>)], scaled: bool) -> Option<Self> {
         let Paint::Image(brush) = &fill.brush else { return None };
         let sampler = &brush.sampler;
         if sampler.alpha != 1.0 || sampler.quality == ImageQuality::High {
@@ -54,11 +67,17 @@ impl Hole {
         let drawn = rect_of(&fill.shape, fill.transform)?;
         let [a, b, c, d, e, f] = (fill.transform * fill.brush_transform.unwrap_or(Affine::IDENTITY)).as_coeffs();
         let (width, height) = (f64::from(image.texture.width()), f64::from(image.texture.height()));
-        if (a - 1.0).abs() * width.max(height) > EXACT || (d - 1.0).abs() * width.max(height) > EXACT || b.abs() > 0.0 || c.abs() > 0.0 {
+        if b != 0.0 || c != 0.0 || a <= 0.0 || d <= 0.0 {
             return None;
         }
-        let (e, f) = (whole(e)?, whole(f)?);
-        let mut rect = drawn.intersect(Rect::new(e, f, e + width, f + height));
+        let one = (a - 1.0).abs() * width.max(height) <= EXACT && (d - 1.0).abs() * width.max(height) <= EXACT;
+        let pad = sampler.x_extend == peniko::Extend::Pad && sampler.y_extend == peniko::Extend::Pad;
+        let (a, d, e, f, smooth) = match (one, whole(e).zip(whole(f))) {
+            (true, Some((e, f))) => (1.0, 1.0, e, f, false),
+            _ if scaled && pad => (a, d, e, f, sampler.quality != ImageQuality::Low),
+            _ => return None,
+        };
+        let mut rect = drawn.intersect(Rect::new(e, f, e + width * a, f + height * d));
         if rect != drawn {
             return None;
         }
@@ -70,8 +89,29 @@ impl Hole {
             return None;
         }
         let rect = [x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32];
-        let texel = [(x0 - e) as u32, (y0 - f) as u32];
-        Some(Self { index, rect, texel, image, open: open.iter().map(|(i, _)| *i).collect() })
+        let texel = [((x0 - e) / a).floor().max(0.0) as u32, ((y0 - f) / d).floor().max(0.0) as u32];
+        let map = [-e / a, -f / d, 1.0 / a, 1.0 / d];
+        Some(Self { index, rect, texel, image, map, smooth, open: open.iter().map(|(i, _)| *i).collect() })
+    }
+
+    pub fn blends_alone(&self, scene: &Scene) -> bool {
+        let mut depth = 0usize;
+        scene.commands.get(self.index + 1..).unwrap_or_default().iter().all(|c| match c {
+            RenderCommand::PushLayer(l) => {
+                let alone = depth > 0 || l.blend == BlendMode::default();
+                depth += 1;
+                alone
+            }
+            RenderCommand::PushClipLayer(_) => {
+                depth += 1;
+                true
+            }
+            RenderCommand::PopLayer => {
+                depth = depth.saturating_sub(1);
+                true
+            }
+            _ => true,
+        })
     }
 
     pub fn above(&self, scene: &Scene) -> Option<Scene> {
