@@ -80,6 +80,7 @@ blitz fork 和上游结构的不同: HTML 解析用 src/render 自己的 html5ev
 | `stylo.rs`, `layout/construct.rs`, `node/text.rs` | placeholder 排版, `::placeholder` 按需计算 |
 | `config.rs` `default_lang`, `tree.rs`, `document.rs`, `iframe.rs`, `stylo.rs` | 根没有 lang 时用默认语言 (-x-lang 继承, 传给 parley) |
 | `fonts.rs` (新) `system_font_ctx` / `seed_fallbacks`, `document.rs` 建文档, `layout/inline/build.rs` | 文档的字体上下文是进程里建一次的那份的克隆 (上游每个文档 `Collection::new` 一次, 系统字体扫一遍, macOS 上 ~25 ms、几 MB; 克隆共用扫描结果和 `SourceCache`, `@font-face` 注册在各自的克隆里); 各书写系统的默认回退 (不带 locale) 先求好: 拉丁文在模板里, 别的排完一段文字后补 (系统没有字体的也记成空). 原因: 文档语言是 zh-Hans 时 (script, locale) 对拉丁文不在 fontique 跟踪的组合里, fontique 按默认键查却从不把系统的回答存进默认键, 每个文字节点都问一次系统 (CoreText `CTFontCreateForString`、fontconfig `FcFontMatch`). 2026-11-14 以前 vendored 的 fontique (`System::shared`) 和 parley (`begin_segment` 没跟踪的按没有 locale 查) 管这两处, 去掉 vendored 后回退了 (AC/acdev #108: 1 万个节点的排版 74 → 50 ms, Mac) |
+| `document.rs` `flush_pending_device_changes` | 设备变了只在 acss `set_device` 说生效的规则可能变了 (视口以外的项变了, 或有媒体查询翻转) 时才把各表的 `@font-face` 重读一遍; 以前每次都读, 拖窗口边改大小时每帧都重新解析每个字体的 `src` (内嵌 `data:` 字体的页面一帧几毫秒). 要 acss 0.0.17 |
 | `node/node.rs` `hit_inner` | transform 不可逆的元素命中不到 |
 | `document.rs` `hover_is_text`, `refresh_hover` | 不给 shell 发光标 (上游 `get_cursor` / `set_cursor` 去掉了); 公开 hover 是不是命中在文字上, render (`src/render/cursor.rs`) 据此定 `cursor: auto` |
 | `config.rs` `skip_iframe_content`, `mutator.rs` `load_iframe` | `<iframe>` 不加载 |
