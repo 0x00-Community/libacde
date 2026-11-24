@@ -18,6 +18,7 @@ bindNatives({
 } as never)
 
 const app = (id: string, extra: object = {}) => ({ id, label: id.toUpperCase(), icon: 'apps', entry: '/index.html', ...extra })
+const dev = (path: string[]) => ({ dev: path, system: [], user: null })
 const pkg = (name: string, acde: object) => JSON.stringify({ name, acde: { apiLevel: 1, ...acde } })
 
 function files(given: Record<string, string>, extra: readonly string[] = []): LocalFiles {
@@ -42,7 +43,7 @@ const TREE = {
 
 describe('the local registry of acdev dev', () => {
   test('the desktop\'s package is the system one; apps from every package in ACDE_PATH; a second app with the same id is refused', () => {
-    const registry = LocalRegistry.scan(files(TREE, ['/work/appa/art/a.svg']), ['/work'], 'desk')
+    const registry = LocalRegistry.scan(files(TREE, ['/work/appa/art/a.svg']), dev(['/work']), 'desk')
     assert.equal(registry.desktop.desktop.id, 'desk')
     assert.deepEqual(new Map(registry.apps.map((a) => [a.app.id, a.package.system])), new Map([['appa', false], ['appb', false], ['settings', true]]))
     assert.ok(registry.refused.some((line) => line.includes('app appa is already in /work/appa')))
@@ -54,15 +55,29 @@ describe('the local registry of acdev dev', () => {
   })
 
   test('an icon file of a package is listed under /acde-packages/<root>/, which the desktop gets as a resource', () => {
-    const registry = LocalRegistry.scan(files(TREE, ['/work/appa/art/a.svg']), ['/work'], 'desk')
+    const registry = LocalRegistry.scan(files(TREE, ['/work/appa/art/a.svg']), dev(['/work']), 'desk')
     const listed = registry.listed().find((a) => a.id === 'appa')!
     assert.equal(listed.icon, '/acde-packages/dev-0/appa/art/a.svg')
     assert.deepEqual(registry.packageResources(), [{ prefix: '/acde-packages/dev-0/', dirs: ['/work/'] }])
   })
 
+  test('roots as acdes names them: ACDE_PATH, then XDG_DATA_DIRS/acde/packages, then the user\'s; only the desktop\'s package is a system one', () => {
+    const tree = {
+      '/usr/share/acde/packages/dopame/package.json': pkg('dopame', { desktops: [{ id: 'dopame', name: 'Dopame', entry: 'i.html' }], apps: [app('files')] }),
+      '/home/dev/.local/share/acde/packages/notes/package.json': pkg('notes', { apps: [app('notes')] }),
+      '/usr/share/acde/packages/store/package.json': pkg('store', { apps: [app('store')] }),
+      '/work/appa/package.json': TREE['/work/appa/package.json'],
+    }
+    const registry = LocalRegistry.scan(files(tree), { dev: ['/work/appa'], system: ['/usr/local/share', '/usr/share'], user: '/home/dev/.local/share' }, 'dopame')
+    assert.deepEqual(registry.roots.map((r) => [r.name, r.dir]), [
+      ['dev-0', '/work/appa'], ['system-0', '/usr/local/share/acde/packages'], ['system-1', '/usr/share/acde/packages'], ['user', '/home/dev/.local/share/acde/packages'],
+    ])
+    assert.deepEqual(registry.apps.map((a) => [a.app.id, a.package.system]), [['appa', false], ['files', true], ['store', false], ['notes', false]])
+  })
+
   test('no desktop id takes the first desktop; an unknown one is a 404', () => {
-    assert.equal(LocalRegistry.scan(files(TREE), ['/work'], null).desktop.desktop.id, 'desk')
-    assert.throws(() => LocalRegistry.scan(files(TREE), ['/work'], 'other'), { message: 'no desktop other in ACDE_PATH (/work)', status: 404 } as never)
+    assert.equal(LocalRegistry.scan(files(TREE), dev(['/work']), null).desktop.desktop.id, 'desk')
+    assert.throws(() => LocalRegistry.scan(files(TREE), dev(['/work']), 'other'), { message: 'no desktop other in ACDE_PATH or the package folders (/work)', status: 404 } as never)
   })
 })
 
@@ -177,7 +192,7 @@ function session() {
   const fake = new FakeShell()
   const launchers: FakeLauncher[] = []
   const services: FakeService[] = []
-  const registry = () => LocalRegistry.scan(files(TREE), ['/work'], 'desk')
+  const registry = () => LocalRegistry.scan(files(TREE), dev(['/work']), 'desk')
   const local = new LocalSession({
     shell: fake.shell,
     registry: registry(),

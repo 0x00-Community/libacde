@@ -71,9 +71,12 @@
 - **本地会话** (`desktop [id]` 没有管家时, `js/launcher/src/local/`, AC/acdev#110, 用户 2026-11-24 选「本地开发会话管家」): `acdev dev` 带桌面、
   几个工程一起跑或桌面模板都走这里. 桌面、它打开的每个应用和桌面的服务都在这一个进程里, 共用一个宿主窗口; 每一方拿一条和 acdes 管家同形的
   `ManagerLink` (`local/link.ts`), 所以启动器走的是设备上的那几条路, 只是管家在本进程:
-  - 登记 (`local/registry.ts`): `ACDE_PATH` 的各目录及其下一层的包; 桌面 (给了 id 按 id, 没给取第一个) 所在的包是系统包, 它的应用等级 `system`,
-    别的包的应用 `third-party`; 同一个应用 id 只认第一个 (别的打一行 `acdev: …`); 桌面清单 `services` 列的、包里 `services` 有模块的服务才起.
-    `ACDE_PATH` 的每个根是 `dev-<序号>`, 桌面的资源多一条 `/acde-packages/dev-<序号>/`; `apps.list` 里包内的图标文件 (`/…`) 换成这个前缀下的地址, 同 acdes.
+  - 登记 (`local/registry.ts`): 包的根照 acdes `Registry::roots`: `ACDE_PATH` 的各目录 (`dev-<序号>`), `XDG_DATA_DIRS` (默认 `/usr/local/share:/usr/share`)
+    各目录下的 `acde/packages` (`system-<序号>`), `$XDG_DATA_HOME/acde/packages` (`user`; `acdev install` 和文档里装 dopame 桌面包都放这里); 根本身或它下一层
+    有 package.json 的是包 (下一层按名字排序). 只有桌面 (给了 id 按 id, 没给取第一个) 所在的包是系统包, 应用等级 `system`, 别的 `third-party`: acdes 把
+    系统根里归 root、只有 root 能写的包也算系统包, 启动器的文件接口看不到属主, 宿主上就不认 (一个谁都能写的 `/usr/local/share/acde/packages` 不该给出 terminal 等授予);
+    同一个应用 id 只认第一个 (别的打一行 `acdev: …`); 桌面清单 `services` 列的、包里 `services` 有模块的服务才起.
+    桌面的资源每个根多一条 `/acde-packages/<根名>/`; `apps.list` 里包内的图标文件 (`/…`) 换成这个前缀下的地址, 同 acdes.
   - 欢迎消息照 acdes `base/welcome.rs` 拼: 桌面 `tier.shell` 是全部外壳模块、`session: {own: true}`; 应用的 `tier.shell` 是系统应用声明了的外壳模块;
     服务的 `module`、`modules`、`stateDir` (`$XDG_STATE_HOME/acde/<包名>/<服务名>`, 建好、700). 授予按宿主窗口的规矩, 比会话里紧: 文件只给
     `acdev dev` 的隔离位置 (`ACDE_DEV_PLACES` 时; 桌面给全部公共位置), `paths` 一律 false; 第三方应用不给 terminal、system、bluetooth、devices、power、

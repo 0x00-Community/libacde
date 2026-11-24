@@ -37,6 +37,13 @@ export interface LocalDesktop {
 export interface PackageRoot {
   readonly name: string
   readonly dir: string
+  readonly system: boolean
+}
+
+export interface RootDirs {
+  readonly dev: readonly string[]
+  readonly system: readonly string[]
+  readonly user: string | null
 }
 
 export interface ListedApp {
@@ -67,17 +74,38 @@ export class LocalRegistry {
     this.refused = refused
   }
 
-  static scan(files: LocalFiles, path: readonly string[], desktopId: string | null): LocalRegistry {
+  static roots(given: RootDirs): PackageRoot[] {
     const roots: PackageRoot[] = []
-    for (const dir of path) if (!roots.some((r) => r.dir === normalize(dir))) roots.push({ name: `dev-${roots.length}`, dir: normalize(dir) })
-    const dirs: string[] = []
-    for (const root of roots) {
-      const candidates = files.readText(join(root.dir, 'package.json')) !== null ? [root.dir] : files.readDir(root.dir).map((name) => join(root.dir, name))
-      for (const dir of candidates) if (!dirs.includes(dir)) dirs.push(dir)
+    const add = (dir: string, name: (n: number) => string, system: boolean) => {
+      const at = normalize(dir)
+      if (roots.some((r) => r.dir === at)) return
+      const count = roots.filter((r) => r.name.startsWith(name(0).replace(/0$/, ''))).length
+      roots.push({ name: name(count), dir: at, system })
     }
-    const read = dirs.map((dir) => LocalRegistry.#read(files, dir)).filter((p): p is { dir: string; name: string; manifest: PackageManifest } => p !== null)
+    for (const dir of given.dev) add(dir, (n) => `dev-${n}`, false)
+    for (const dir of given.system) add(join(dir, 'acde', 'packages'), (n) => `system-${n}`, true)
+    if (given.user) add(join(given.user, 'acde', 'packages'), (n) => (n === 0 ? 'user' : `user-${n}`), false)
+    return roots
+  }
+
+  static scan(files: LocalFiles, given: RootDirs, desktopId: string | null): LocalRegistry {
+    const roots = LocalRegistry.roots(given)
+    const dirs: { dir: string; system: boolean }[] = []
+    for (const root of roots) {
+      const candidates = files.readText(join(root.dir, 'package.json')) !== null
+        ? [root.dir]
+        : files.readDir(root.dir).sort().map((name) => join(root.dir, name)).filter((dir) => files.readText(join(dir, 'package.json')) !== null)
+      for (const dir of candidates) if (!dirs.some((d) => d.dir === dir)) dirs.push({ dir, system: root.system })
+    }
+    const read = dirs.map(({ dir, system }) => {
+      const found = LocalRegistry.#read(files, dir)
+      return found && { ...found, system }
+    }).filter((p): p is { dir: string; name: string; manifest: PackageManifest; system: boolean } => p !== null)
     const owner = read.find((p) => (p.manifest.desktops ?? []).some((d) => desktopId === null || d.id === desktopId))
-    if (!owner) throw Object.assign(new Error(`no desktop ${desktopId ?? ''} in ACDE_PATH (${path.join(':') || 'unset'})`), { status: 404 })
+    if (!owner) {
+      const where = roots.map((r) => r.dir).join(':') || 'none'
+      throw Object.assign(new Error(`no desktop ${desktopId ?? ''} in ACDE_PATH or the package folders (${where})`), { status: 404 })
+    }
     const refused: string[] = []
     const packages: LocalPackage[] = read.map((p) => ({ ...p, resources: AppLookup.resources(p.dir, p.manifest), system: p === owner }))
     const desktopPackage = packages[read.indexOf(owner)]!

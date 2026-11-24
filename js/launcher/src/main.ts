@@ -3,7 +3,7 @@ import type { WebInit } from '../../page/src/contract'
 import type { FileFilter, Lent, WebGrants, WebThreadHandle } from '../../page/src/sys/natives'
 import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
 import { Log } from '../../page/src/log'
-import { screenshotFile } from '../../page/src/sys/os'
+import { screenshotFile, xdgHome } from '../../page/src/sys/os'
 import { readDirOr, readTextOr, stat } from '../../page/src/sys/fs'
 import { join } from '../../page/src/sys/path'
 import { onceSignal, process } from '../../page/src/sys/process'
@@ -729,8 +729,12 @@ class Launcher {
 
 async function localDesktop(natives: LauncherNatives, args: LaunchArgs): Promise<number> {
   const files = { readText: (file: string) => readTextOr(file, null), readDir: readDirOr, isFile: (file: string) => stat(file)?.isFile === true }
-  const path = (process.env['ACDE_PATH'] ?? '').split(':').filter(Boolean)
-  const scan = () => LocalRegistry.scan(files, path, args.app || null)
+  const roots = {
+    dev: (process.env['ACDE_PATH'] ?? '').split(':').filter(Boolean),
+    system: (process.env['XDG_DATA_DIRS'] || '/usr/local/share:/usr/share').split(':').filter(Boolean),
+    user: xdgHome('data'),
+  }
+  const scan = () => LocalRegistry.scan(files, roots, args.app || null)
   const registry = scan()
   const shell = Launcher.shell(natives, registry.desktop.desktop.name)
   const session = new LocalSession({
