@@ -53,6 +53,7 @@ export class InputMethod {
   #failedAt = -Infinity
   #focused = false
   #sent: TextInputState | null = null
+  #told: 'passed' | 'unfocused' | null = null
 
   constructor(open: () => NativeIme) {
     this.#open = open
@@ -87,6 +88,8 @@ export class InputMethod {
         ime.setCapability({ preedit: true, surroundingText: true, password: false, clientPanel: true })
         ime.focusIn()
         this.#focused = true
+        this.#told = null
+        InputMethod.#note(`input method: a text field takes it (${ime.backend})`)
       }
       const changed = sent?.text !== state.text || sent.cursor !== state.cursor || sent.anchor !== state.anchor
       if (changed) ime.setSurroundingText(state.text, state.cursor, state.anchor)
@@ -96,16 +99,41 @@ export class InputMethod {
     })
   }
 
+  windowActive(active: boolean): void {
+    this.#told = null
+    InputMethod.#note(`input method: the window is ${active ? 'active' : 'inactive'}`)
+  }
+
   blur(): void {
     if (!this.#focused) return
+    InputMethod.#note('input method: no text field holds it')
     this.#focused = false
     this.#sent = null
     if (this.#ime) this.#guard((ime) => ime.focusOut())
   }
 
   key(key: string, keycode: number, modifiers: Modifiers | undefined, release: boolean): boolean {
-    if (!this.#focused) return false
-    return this.#guard((ime) => ime.processKey(InputMethod.keysym(key), keycode, InputMethod.state(modifiers), release)) ?? false
+    if (!this.#focused) {
+      this.#tell('unfocused', `input method: the key ${key} goes to the page, no text field holds the input method`)
+      return false
+    }
+    const taken = this.#guard((ime) => ime.processKey(InputMethod.keysym(key), keycode, InputMethod.state(modifiers), release)) ?? false
+    if (!taken && !release) this.#tell('passed', `input method: it gave the key ${key} back to the page`)
+    return taken
+  }
+
+  #tell(what: 'passed' | 'unfocused', line: string): void {
+    if (this.#told === what) return
+    this.#told = what
+    InputMethod.#note(line)
+  }
+
+  static #note(line: string): void {
+    try {
+      if (Log.enabled('acde_host', Level.Info)) Log.write(Level.Info, 'acde_host', line)
+    } catch {
+      return
+    }
   }
 
   #native(): NativeIme | null {

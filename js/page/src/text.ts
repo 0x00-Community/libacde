@@ -119,6 +119,7 @@ export class TextEntry {
   set surfaceActive(active: boolean) {
     if (this.#inactive === !active) return
     this.#inactive = !active
+    this.#ime?.windowActive(active)
     if (!active && this.#reported) this.#ime?.blur()
     if (!active) this.#hideFloat()
     this.#reported = null
