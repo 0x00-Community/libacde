@@ -3,8 +3,56 @@ use blitz_dom::parley::fontique::{Collection, CollectionOptions, SourceCache};
 use blitz_dom::parley::{FontContext, FontFamily, FontWeight, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use kurbo::{Affine, BezPath, Circle, Line, Rect, RoundedRect, Shape, Stroke, Vec2};
 use peniko::{Color, Fill};
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{OnceLock, PoisonError, RwLock};
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FrameMetrics {
+    pub inset: f64,
+    pub dot: f64,
+    pub gap: f64,
+    pub caption: f64,
+    pub title_size: f32,
+    pub title_weight: f32,
+}
+
+impl Default for FrameMetrics {
+    fn default() -> Self {
+        Self { inset: 12.0, dot: 12.0, gap: 8.0, caption: 46.0, title_size: 13.0, title_weight: 600.0 }
+    }
+}
+
+static METRICS: RwLock<Option<FrameMetrics>> = RwLock::new(None);
+
+impl FrameMetrics {
+    pub const NUMBERS: usize = 6;
+
+    pub fn current() -> Self {
+        METRICS.read().unwrap_or_else(PoisonError::into_inner).unwrap_or_default()
+    }
+
+    pub fn set(metrics: Option<Self>) {
+        *METRICS.write().unwrap_or_else(PoisonError::into_inner) = metrics;
+    }
+
+    pub fn from_numbers(numbers: &[f64]) -> Option<Self> {
+        let &[inset, dot, gap, caption, size, weight] = numbers else { return None };
+        let d = Self::default();
+        let or = |given: f64, fallback: f64| if given >= 0.0 { given } else { fallback };
+        Some(Self {
+            inset: or(inset, d.inset),
+            dot: or(dot, d.dot),
+            gap: or(gap, d.gap),
+            caption: or(caption, d.caption),
+            title_size: or(size, f64::from(d.title_size)) as f32,
+            title_weight: or(weight, f64::from(d.title_weight)) as f32,
+        })
+    }
+
+    pub fn buttons(&self) -> f64 {
+        2.0 * self.inset + 3.0 * self.dot + 2.0 * self.gap
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FrameStyle {
@@ -47,8 +95,8 @@ impl FrameStyle {
 
     pub fn reserved(self) -> f64 {
         match self {
-            FrameStyle::Mac => Decoration::BUTTONS,
-            FrameStyle::Windows => 3.0 * Decoration::CAPTION,
+            FrameStyle::Mac => FrameMetrics::current().buttons(),
+            FrameStyle::Windows => 3.0 * FrameMetrics::current().caption,
         }
     }
 
@@ -192,8 +240,8 @@ impl FrameButton {
         }
     }
 
-    fn centre(self) -> f64 {
-        Decoration::PAD + Decoration::DOT / 2.0 + self.index() as f64 * (Decoration::DOT + Decoration::GAP)
+    fn centre(self, m: &FrameMetrics) -> f64 {
+        m.inset + m.dot / 2.0 + self.index() as f64 * (m.dot + m.gap)
     }
 
     fn slot(self, style: FrameStyle, side: ButtonSide, width: f64) -> (f64, f64) {
@@ -201,14 +249,15 @@ impl FrameButton {
             ButtonSide::Left => 0.0,
             ButtonSide::Right => width - style.reserved(),
         };
+        let m = FrameMetrics::current();
         match style {
             FrameStyle::Mac => {
-                let reach = (Decoration::DOT + Decoration::GAP) / 2.0;
-                (start + self.centre() - reach, start + self.centre() + reach)
+                let reach = (m.dot + m.gap) / 2.0;
+                (start + self.centre(&m) - reach, start + self.centre(&m) + reach)
             }
             FrameStyle::Windows => {
-                let x = start + self.caption() as f64 * Decoration::CAPTION;
-                (x, x + Decoration::CAPTION)
+                let x = start + self.caption() as f64 * m.caption;
+                (x, x + m.caption)
             }
         }
     }
@@ -286,7 +335,7 @@ impl Bar {
     pub fn menus_start(&self) -> f64 {
         match self.side() {
             ButtonSide::Left => self.style().reserved() + Decoration::MENU_LEAD,
-            ButtonSide::Right => Decoration::PAD - Decoration::MENU_PAD,
+            ButtonSide::Right => FrameMetrics::current().inset - Decoration::MENU_PAD,
         }
     }
 
@@ -354,13 +403,7 @@ impl Default for Decoration {
 }
 
 impl Decoration {
-    pub const BUTTONS: f64 = 76.0;
-    pub const CAPTION: f64 = 46.0;
     const GLYPH: f64 = 10.0;
-    const PAD: f64 = 12.0;
-    const DOT: f64 = 12.0;
-    const GAP: f64 = 8.0;
-    const FONT_SIZE: f32 = 13.0;
     const FAMILY: &'static str = "system-ui, sans-serif";
     const ELLIPSIS: &'static str = "…";
     const RING: Color = Color::from_rgba8(0, 0, 0, 46);
@@ -401,8 +444,9 @@ impl Decoration {
                 FrameStyle::Mac => {
                     let centre = ((from + to) / 2.0, h / 2.0);
                     let fill = if bar.minimize || button != FrameButton::Minimize { colors.buttons.map_or_else(|| button.color(), paint) } else { off };
-                    scene.fill(Fill::NonZero, scale, fill, None, &Circle::new(centre, Self::DOT / 2.0));
-                    scene.stroke(&Stroke::new(0.5), scale, Self::RING, None, &Circle::new(centre, Self::DOT / 2.0 - 0.25));
+                    let dot = FrameMetrics::current().dot;
+                    scene.fill(Fill::NonZero, scale, fill, None, &Circle::new(centre, dot / 2.0));
+                    scene.stroke(&Stroke::new(0.5), scale, Self::RING, None, &Circle::new(centre, dot / 2.0 - 0.25));
                 }
                 FrameStyle::Windows => {
                     let glyph = Self::glyph(button, bar.fullscreen, ((from + to) / 2.0 - Self::GLYPH / 2.0).round(), ((h - Self::GLYPH) / 2.0).round());
@@ -537,11 +581,11 @@ impl Decoration {
         let reserved = bar.style().reserved();
         let (mut left, right) = match (bar.align(), bar.side()) {
             (TitleAlign::Center, _) => (reserved, reserved),
-            (TitleAlign::Start, ButtonSide::Right) => (Self::PAD, reserved + Self::PAD),
-            (TitleAlign::Start, ButtonSide::Left) => (reserved + Self::PAD, Self::PAD),
+            (TitleAlign::Start, ButtonSide::Right) => (FrameMetrics::current().inset, reserved + FrameMetrics::current().inset),
+            (TitleAlign::Start, ButtonSide::Left) => (reserved + FrameMetrics::current().inset, FrameMetrics::current().inset),
         };
         if let Some(lead) = lead {
-            left = left.max(lead + Self::PAD);
+            left = left.max(lead + FrameMetrics::current().inset);
         }
         let room = (bar.width - left - right) * bar.scale;
         if bar.title.is_empty() || room <= 0.0 {
@@ -578,13 +622,13 @@ impl Decoration {
     }
 
     fn layout(&mut self, text: &str, scale: f64) -> Layout<()> {
-        self.styled(text, 600.0, scale)
+        self.styled(text, FrameMetrics::current().title_weight, scale)
     }
 
     fn styled(&mut self, text: &str, weight: f32, scale: f64) -> Layout<()> {
         let mut builder = self.layouts.ranged_builder(&mut self.fonts, text, scale as f32, true);
         builder.push_default(StyleProperty::FontFamily(FontFamily::from(Self::FAMILY)));
-        builder.push_default(StyleProperty::FontSize(Self::FONT_SIZE));
+        builder.push_default(StyleProperty::FontSize(FrameMetrics::current().title_size));
         builder.push_default(StyleProperty::FontWeight(FontWeight::new(weight)));
         builder.push_default(StyleProperty::LineHeight(LineHeight::FontSizeRelative(1.0)));
         builder.push_default(StyleProperty::Locale(blitz_dom::parley::Language::parse("zh-Hans").ok()));

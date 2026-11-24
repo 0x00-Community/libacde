@@ -1,5 +1,5 @@
 use acde::gpu::RenderCommand;
-use acde::render::{Bar, ButtonSide, Decoration, FrameButton, FrameColors, FrameStyle, FrameTheme, MenuList, MenuRow, TitleAlign};
+use acde::render::{Bar, ButtonSide, Decoration, FrameButton, FrameColors, FrameMetrics, FrameStyle, FrameTheme, MenuList, MenuRow, TitleAlign};
 
 mod common;
 
@@ -80,7 +80,7 @@ fn a_long_title_ends_in_an_ellipsis_within_the_buttons_margins() {
     let narrow = glyph_runs(&bar(title, 260.0, 1.0));
     let count: usize = narrow.iter().map(|(_, n)| n).sum();
     assert!(count > 0 && count < wide, "{count} of {wide}");
-    assert!(narrow[0].0 >= Decoration::BUTTONS - 0.5, "{narrow:?}");
+    assert!(narrow[0].0 >= FrameMetrics::default().buttons() - 0.5, "{narrow:?}");
     assert_eq!(glyph_count(&bar(title, 150.0, 1.0)), 0, "no room left between the button areas");
 }
 
@@ -254,7 +254,7 @@ fn menu_titles_follow_the_buttons_and_push_the_title_past_them() {
     let mac = with_menus(bar("Notes", 600.0, 1.0));
     let labels = Decoration::new().menu_labels(&mac);
     assert_eq!(labels.len(), 2);
-    assert_eq!(labels[0][0], Decoration::BUTTONS + 2.0, "after the traffic lights");
+    assert_eq!(labels[0][0], FrameMetrics::default().buttons() + 2.0, "after the traffic lights");
     assert_eq!(labels[1][0], labels[0][0] + labels[0][2], "side by side");
     assert!(labels.iter().all(|r| r[1] == 0.0 && r[3] == 32.0), "as tall as the bar");
     let win = with_menus(windows("Notes", 600.0, 1.0));

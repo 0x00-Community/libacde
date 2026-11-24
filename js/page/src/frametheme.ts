@@ -94,8 +94,10 @@ export type MotionOf = (preset: string) => MotionWire | null
 
 type Fields = Record<string, unknown>
 
-const LOOK_KEYS = ['corners', 'shadows', 'motion', 'titlebarHeight'] as const
+const LOOK_KEYS = ['corners', 'shadows', 'motion', 'titlebarHeight', 'controls', 'title'] as const
 export const TITLEBAR_HEIGHTS = [24, 64] as const
+const LOOK_CONTROLS: Readonly<Record<string, readonly [number, number]>> = { inset: [0, 48], size: [6, 32], gap: [0, 32], caption: [24, 80] }
+const LOOK_TITLE: Readonly<Record<string, readonly [number, number]>> = { size: [9, 24], weight: [100, 900] }
 const LOOK_CORNERS = ['radius', 'shape'] as const
 const LOOK_STATES = ['focused', 'unfocused'] as const
 const LOOK_LAYER = ['x', 'y', 'blur', 'spread', 'color'] as const
@@ -149,13 +151,45 @@ export class WindowLookReader {
     const motion = typeof preset === 'string' ? this.#motionOf(preset) : null
     if (!motion) return `motion is not a motion preset of this runtime: ${JSON.stringify(preset)}`
     numbers.push(motion.wire)
+    const frame = this.#frame(look)
+    if (typeof frame === 'string') return frame
+    numbers.push(...frame)
+    return { numbers, ignored: this.#ignored, motion: motion.preset }
+  }
+
+  #frame(look: Fields): number[] | string {
+    let titlebar = 0
     if (look['titlebarHeight'] !== undefined) {
       const [low, high] = TITLEBAR_HEIGHTS
-      const titlebar = this.#number('titlebarHeight', look['titlebarHeight'], low, high)
-      if (typeof titlebar === 'string') return `${titlebar} (CSS px)`
-      numbers.push(Math.round(titlebar))
+      const given = this.#number('titlebarHeight', look['titlebarHeight'], low, high)
+      if (typeof given === 'string') return `${given} (CSS px)`
+      titlebar = Math.round(given)
     }
-    return { numbers, ignored: this.#ignored, motion: motion.preset }
+    if (look['controls'] === undefined && look['title'] === undefined) return titlebar ? [titlebar] : []
+    const controls = this.#part('controls', look['controls'], LOOK_CONTROLS)
+    if (typeof controls === 'string') return controls
+    const title = this.#part('title', look['title'], LOOK_TITLE)
+    if (typeof title === 'string') return title
+    return [titlebar, ...controls, ...title]
+  }
+
+  #part(what: string, raw: unknown, ranges: Readonly<Record<string, readonly [number, number]>>): number[] | string {
+    const keys = Object.keys(ranges)
+    if (raw === undefined) return keys.map(() => -1)
+    const fields = this.#object(what, raw, keys, `${what}.`)
+    if (typeof fields === 'string') return fields
+    const out: number[] = []
+    for (const key of keys) {
+      if (fields[key] === undefined) {
+        out.push(-1)
+        continue
+      }
+      const [low, high] = ranges[key]!
+      const value = this.#number(`${what}.${key}`, fields[key], low, high)
+      if (typeof value === 'string') return value
+      out.push(value)
+    }
+    return out
   }
 
   #object(what: string, raw: unknown, keys: readonly string[], prefix: string): Fields | string {

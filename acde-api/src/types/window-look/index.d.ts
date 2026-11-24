@@ -39,6 +39,20 @@ export interface WindowLook {
   readonly shadows?: WindowShadows
   readonly motion?: MotionPreset
   readonly titlebarHeight?: number
+  readonly controls?: WindowControls
+  readonly title?: WindowTitle
+}
+
+export interface WindowControls {
+  readonly inset?: number
+  readonly size?: number
+  readonly gap?: number
+  readonly caption?: number
+}
+
+export interface WindowTitle {
+  readonly size?: number
+  readonly weight?: number
 }
 
 export type MaterialName = 'glass' | 'blur' | 'none' | (string & {})

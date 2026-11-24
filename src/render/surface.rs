@@ -77,6 +77,7 @@ pub struct WindowLook {
     pub unfocused: Vec<WindowShadow>,
     pub motion: acde_scene::motion::Preset,
     pub titlebar: Option<f64>,
+    pub frame: Option<crate::render::FrameMetrics>,
 }
 
 impl WindowLook {
@@ -87,12 +88,14 @@ impl WindowLook {
         let (&[radius, superellipse], rest) = numbers.split_first_chunk::<2>()?;
         let (focused, rest) = Self::layers(rest)?;
         let (unfocused, rest) = Self::layers(rest)?;
-        let (motion, titlebar) = match *rest {
-            [motion] => (motion, None),
-            [motion, titlebar] => (motion, Some(titlebar)),
-            _ => return None,
+        let (&motion, rest) = rest.split_first()?;
+        let (titlebar, frame) = match rest {
+            [] => (None, None),
+            [titlebar] => (Some(*titlebar), None),
+            [titlebar, metrics @ ..] => (Some(*titlebar), Some(crate::render::FrameMetrics::from_numbers(metrics)?)),
         };
-        Some(Self { radius, superellipse, focused, unfocused, motion: acde_scene::motion::Preset::from_wire(motion as u32), titlebar })
+        let titlebar = titlebar.filter(|t| *t > 0.0);
+        Some(Self { radius, superellipse, focused, unfocused, motion: acde_scene::motion::Preset::from_wire(motion as u32), titlebar, frame })
     }
 
     fn layers(numbers: &[f64]) -> Option<(Vec<WindowShadow>, &[f64])> {
@@ -206,13 +209,21 @@ mod tests {
         let numbers = [12.0, 2.0, 1.0, 0.0, 8.0, 24.0, -4.0, f64::from(0x0000_0040u32), 0.0, 1.0];
         let look = WindowLook::from_numbers(&numbers).expect("a look");
         let shadow = WindowShadow { x: 0.0, y: 8.0, blur: 24.0, spread: -4.0, color: [0, 0, 0, 0x40] };
-        let expected = WindowLook { radius: 12.0, superellipse: 2.0, focused: vec![shadow], unfocused: Vec::new(), motion: Preset::Reduced, titlebar: None };
+        let expected =
+            WindowLook { radius: 12.0, superellipse: 2.0, focused: vec![shadow], unfocused: Vec::new(), motion: Preset::Reduced, titlebar: None, frame: None };
         assert_eq!(look, expected);
         assert_eq!(WindowLook::from_numbers(&[1.0, 2.0, 0.0, 0.0, 0.0]).map(|l| l.motion), Some(Preset::Standard));
         assert_eq!(WindowLook::from_numbers(&numbers[..8]), None, "a layer cut short");
         assert_eq!(WindowLook::from_numbers(&[1.0, 2.0, 0.0, 0.0]), None, "no motion");
         assert_eq!(WindowLook::from_numbers(&[1.0, 2.0, 0.0, 0.0, 0.0, 40.0]).and_then(|l| l.titlebar), Some(40.0), "the desktop's titlebar height");
         assert_eq!(WindowLook::from_numbers(&[1.0, 2.0, 0.0, 0.0, 0.0, 40.0, 7.0]), None, "numbers left over");
+        let framed = WindowLook::from_numbers(&[1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 14.0, -1.0, 6.0, -1.0, 12.0, -1.0]).expect("a look with frame metrics");
+        assert_eq!(framed.titlebar, None, "0 is the runtime's titlebar");
+        let metrics = framed.frame.expect("metrics");
+        let d = crate::render::FrameMetrics::default();
+        assert_eq!((metrics.inset, metrics.dot, metrics.gap, metrics.caption), (14.0, d.dot, 6.0, d.caption));
+        assert_eq!((metrics.title_size, metrics.title_weight), (12.0, d.title_weight));
+        assert_eq!(metrics.buttons(), 2.0 * 14.0 + 3.0 * d.dot + 2.0 * 6.0);
         let five: Vec<f64> = [12.0, 2.0, 5.0].into_iter().chain([0.0; 25]).chain([0.0, 0.0]).collect();
         assert_eq!(WindowLook::from_numbers(&five), None, "more than four layers");
     }

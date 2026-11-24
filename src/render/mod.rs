@@ -26,7 +26,9 @@ pub use blitz_paint;
 pub use canvas::encode_png;
 pub use capture::Capture;
 pub use commands::Commands;
-pub use decoration::{Bar, ButtonSide, Decoration, FrameButton, FrameColors, FrameStyle, FrameTheme, MenuList, MenuPlace, MenuRow, Rgba, TitleAlign};
+pub use decoration::{
+    Bar, ButtonSide, Decoration, FrameButton, FrameColors, FrameMetrics, FrameStyle, FrameTheme, MenuList, MenuPlace, MenuRow, Rgba, TitleAlign,
+};
 pub use dom::{AnimationEvent, AnimationEvents, Dom, NONE, NodeType, Ns, Quad, Viewport};
 pub use error::{Error, Result};
 pub use geometry::Metrics;

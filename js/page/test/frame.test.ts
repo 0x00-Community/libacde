@@ -69,6 +69,14 @@ describe('Frame.desktop', () => {
     assert.deepEqual(Frame.windowSize({ frame: true, size: [800, 600] } as never, 40), [800, 640])
   })
 
+  test('setWindowLook passes the window controls and title metrics after the titlebar, -1 where the runtime keeps its own', () => {
+    const calls: number[][] = []
+    const desktop = Frame.desktop({ setWindowLook: (...args) => void calls.push(args), motion })
+    desktop.setWindowLook({ controls: { inset: 12, size: 12, gap: 8 }, title: { weight: 590 } })
+    assert.deepEqual(calls, [[0, 1, 0, 0, 0, 0, 12, 12, 8, -1, -1, 590]])
+    assert.throws(() => desktop.setWindowLook({ controls: { size: 40 } }), /controls.size is a number from 6 to 32/)
+  })
+
   test('setWindowLook changes only the keys it is given; null goes back to square, no shadows, standard', () => {
     const calls: number[][] = []
     const desktop = Frame.desktop({ setWindowLook: (...args) => void calls.push(args), motion })
