@@ -26,6 +26,10 @@ const CSS: &str = "html, body { margin: 0; height: 100%; }
   .ds25 { filter: drop-shadow(0 0 25px black); }
   .bl6 { filter: blur(6px); }
   .merge { --acde-glass-merge: 10px; }
+  .masked { position: absolute; left: 100px; top: 40px; width: 80px; height: 80px; background: #fff;
+            mask-image: linear-gradient(to right, #000 50%, transparent 50%); }
+  .masked.shadowed { filter: drop-shadow(0 0 4px black); }
+  .masked.blurred { filter: blur(2px) drop-shadow(0 0 4px black); }
   .pill { position: absolute; top: 20px; width: 60px; height: 40px; border-radius: 20px; backdrop-filter: blur(2px); --acde-glass: regular; }";
 
 struct Page {
@@ -311,4 +315,43 @@ fn a_union_name_does_not_reach_across_layers() {
     glass_in(&page, bar, "left: 20px; top: 20px; --acde-glass-union: u");
     glass_in(&page, bar, "left: 86px; top: 20px; --acde-glass-union: u");
     assert_eq!(glass_groups(&page), [2, 2]);
+}
+
+fn pixel(pixels: &[u8], width: u32, (x, y): (u32, u32)) -> [u8; 4] {
+    let i = ((y * width + x) * 4) as usize;
+    [pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]]
+}
+
+#[test]
+fn a_masked_drop_shadow_leaves_nothing_outside_the_mask() {
+    let composed = |class: Option<&str>| {
+        let page = Page::new(1.0);
+        if let Some(class) = class {
+            page.div(class);
+        }
+        let frame = page.frame();
+        let scenes =
+            if frame.plane.layers.is_empty() { vec![frame.plane.drawing.scene()] } else { frame.plane.layers.iter().map(|l| l.drawing.scene()).collect() };
+        (frame.size, raster(frame.size, scenes))
+    };
+    let ((width, _), masked) = composed(Some("masked shadowed"));
+    let (_, empty) = composed(None);
+    for at in [(160, 80), (178, 60), (184, 80), (120, 124), (96, 80)] {
+        assert_eq!(pixel(&masked, width, at), pixel(&empty, width, at), "outside the mask at {at:?} the page shows through");
+    }
+    assert_eq!(pixel(&masked, width, (120, 80)), [255, 255, 255, 255], "inside the mask the element is drawn");
+}
+
+#[test]
+fn a_masked_filter_keeps_its_other_effects_and_masks_inside_its_segment() {
+    let page = Page::new(1.0);
+    page.div("masked blurred");
+    let frame = page.frame();
+    let layer = frame.plane.layers.iter().find(|l| l.filter.is_some()).expect("the blurred element is its own segment");
+    let effects = layer.filter.as_ref().unwrap().filter.effects();
+    assert!(effects.iter().all(|e| !matches!(e, FilterEffect::DropShadow(_))), "{effects:?}");
+    assert!(matches!(effects, [FilterEffect::GaussianBlur(_)]), "{effects:?}");
+    let alone = raster(frame.size, vec![layer.drawing.scene()]);
+    assert_eq!(pixel(&alone, frame.size.0, (160, 80))[3], 0, "the mask is applied before the blur, inside the segment");
+    assert_eq!(pixel(&alone, frame.size.0, (120, 80)), [255, 255, 255, 255]);
 }

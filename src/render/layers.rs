@@ -222,6 +222,10 @@ fn merge_into_first(layers: &mut [Layer], members: impl Iterator<Item = usize>, 
     Some(b)
 }
 
+fn unshadowed(filter: &Filter) -> Filter {
+    filter.effects().iter().filter(|e| !matches!(e, FilterEffect::DropShadow(_))).cloned().collect()
+}
+
 const LOGGED_FILTERS: usize = 64;
 
 static LOGGED: Mutex<Vec<Filter>> = Mutex::new(Vec::new());
@@ -267,6 +271,7 @@ pub(crate) struct Split<'a> {
     backdrop: Option<Backdrop>,
     filter: Option<LayerFilter>,
     filter_depth: Option<usize>,
+    masked_until: Option<usize>,
     tolerance: f64,
     device: f64,
     viewport: Rect,
@@ -295,6 +300,7 @@ impl<'a> Split<'a> {
             backdrop: None,
             filter: None,
             filter_depth: None,
+            masked_until: None,
             tolerance,
             device,
             viewport,
@@ -310,7 +316,7 @@ impl<'a> Split<'a> {
 
     fn command(&mut self, i: usize, command: &RenderCommand, t: Affine) {
         match command {
-            RenderCommand::PushLayer(l) if self.filter_depth.is_none() && l.backdrop_filter.is_some() => {
+            RenderCommand::PushLayer(l) if self.splits() && l.backdrop_filter.is_some() => {
                 let shape = (t * l.transform) * l.clip.clone();
                 let bounds = shape.bounding_box();
                 let backdrop = Backdrop {
@@ -330,14 +336,23 @@ impl<'a> Split<'a> {
                 self.backdrop = Some(backdrop);
                 self.push_plain(command, t, |l| l.backdrop_filter = None);
             }
-            RenderCommand::PushLayer(l) if self.filter_depth.is_none() && l.filter.is_some() => {
-                let filter = l.filter.clone().unwrap();
+            RenderCommand::PushLayer(l) if self.splits() && l.filter.is_some() => {
+                let masked = self.masked_after(i);
+                let filter = match masked {
+                    Some(_) => Arc::new(unshadowed(l.filter.as_deref().unwrap())),
+                    None => l.filter.clone().unwrap(),
+                };
+                if filter.effects().is_empty() {
+                    self.push_plain(command, t, |l| l.filter = None);
+                    return;
+                }
                 let content = ((t * l.transform) * l.clip.clone()).bounding_box();
                 let e = filter.linear_bounds_expansion(&(Affine::scale(self.device) * t * l.transform));
                 let bounds = Rect::new(content.x0 + e.x0, content.y0 + e.y0, content.x1 + e.x1, content.y1 + e.y1);
                 self.cut();
                 self.filter = Some(LayerFilter { filter, bounds: bounds.intersect(self.clip()), scale: self.scale(t * l.transform) });
                 self.filter_depth = Some(self.open.len());
+                self.masked_until = masked;
                 self.push_plain(command, t, |l| l.filter = None);
             }
             RenderCommand::PushLayer(l) if l.filter.is_some() || l.backdrop_filter.is_some() => {
@@ -358,6 +373,12 @@ impl<'a> Split<'a> {
                 self.open_kinds.pop();
                 if self.filter_depth == Some(self.open.len()) {
                     self.filter_depth = None;
+                    if self.masked_until.is_none() {
+                        self.cut();
+                    }
+                }
+                if self.masked_until == Some(i) {
+                    self.masked_until = None;
                     self.cut();
                 }
             }
@@ -377,6 +398,32 @@ impl<'a> Split<'a> {
                 self.draws(i);
             }
             _ => self.draws(i),
+        }
+    }
+
+    fn splits(&self) -> bool {
+        self.filter_depth.is_none() && self.masked_until.is_none()
+    }
+
+    fn masked_after(&self, pushed: usize) -> Option<usize> {
+        let closing = |from: usize| {
+            let mut depth = 0usize;
+            (from..self.source.len()).find(|&j| match self.source.get(j) {
+                Some((RenderCommand::PushLayer(_) | RenderCommand::PushClipLayer(_), _)) => {
+                    depth += 1;
+                    false
+                }
+                Some((RenderCommand::PopLayer, _)) => {
+                    depth = depth.saturating_sub(1);
+                    depth == 0
+                }
+                _ => false,
+            })
+        };
+        let after = closing(pushed)? + 1;
+        match self.source.get(after) {
+            Some((RenderCommand::PushLayer(l), _)) if l.blend.compose == peniko::Compose::DestIn => closing(after),
+            _ => None,
         }
     }
 

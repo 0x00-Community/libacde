@@ -30,6 +30,12 @@
   先画进临时纹理再合成. 光栅化方 (src/vello) 做 filter 的 drop-shadow、模糊、颜色矩阵, backdrop 的模糊和所有颜色函数 (`Backdrop::effect`:
   按顺序合成一个颜色矩阵, 几个 blur 按平方和开方合并); backdrop-filter 里的 drop-shadow 不做; 只切最外层: 已有 filter 的元素里面再有 filter / backdrop-filter 时不做 (#46);
   这两种同一组滤镜只记一次 warn (最多记 64 组).
+  同一元素既有 `mask-image` 又有 filter (2026-11-24, AC/libacde#5): 规范的顺序是先滤镜、再遮罩、最后 clip-path, 但段模型里滤镜由前端在合成时套用, 没有"滤镜之后
+  再套遮罩"这一步; 原来滤镜层弹出就切段, 遮罩的 DestIn 落进下一段新开的空隔离层, 遮罩丢掉, 整块显示 (dopame 菜单栏充电闪电成白方块). 现在 `Split` 在滤镜层之后紧跟着
+  DestIn 层时 (`masked_after`) 把这层遮罩并进滤镜那一段 (段到遮罩层弹出为止), 并去掉滤镜里的 drop-shadow (`unshadowed`; 只剩 drop-shadow 时不切段).
+  内容在遮罩内不透明时 (按规范投影全被遮罩裁掉) 和规范逐像素相同. 和规范不一致的两处: 模糊在遮罩之后做, 遮罩边缘会被柔化; 内容在遮罩内半透明时看不到本该透出的投影.
+  按规范的完整修法见 AC/libacde#5 (跨 libacde、acdes、acdev: Part 加滤镜之后的遮罩, 各合成器先把阴影和内容画到临时图上再套遮罩), 留作后续.
+  回归测试在 `tests/render_layers.rs` (遮罩外的像素和没有这个元素时相同; 模糊保留、遮罩在段内).
   `text-shadow` (2026-11-23, vendor/blitz `blitz-paint/src/text/shadow.rs`): 每个阴影是同一段字形按偏移再画一遍, 颜色用阴影的, 写在后面的画在下面, 都在文字之前;
   有模糊时这段字形放进一个 GaussianBlur 滤镜图层 (标准差为模糊半径的一半, 同 box-shadow 和 drop-shadow), 所以带模糊的文字阴影也走上面的 filter 段, 受同样的限制
   (已有 filter 的元素里面不做); 装饰线和 "…" 不带阴影, `background-clip: text` 的蒙版不画阴影.
