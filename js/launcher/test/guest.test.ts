@@ -39,6 +39,13 @@ describe('the window table the session manager sends along', () => {
     assert.equal(guest.mine(), 7)
   })
 
+  test('a window the session manager marks topmost is topmost in the inspect table, the others are not', () => {
+    const guest = new GuestWindows(42, 'app')
+    const inspect = new Inspect(guest.host(base(1, []), () => 1))
+    guest.place([row(7, 42), row(9, 50, { topmost: true })])
+    assert.deepEqual(inspect.windows().map((w) => [w.ref, w.topmost ?? false]), [['w7', false], ['w9', true]])
+  })
+
   test('the own window maps back to the local one; the desktop process owns w0', () => {
     const focused: number[] = []
     const app = new GuestWindows(42, 'app')

@@ -28,6 +28,7 @@ export interface InspectWindow {
   readonly parent?: number | null
   readonly modal?: boolean
   readonly stage?: boolean
+  readonly topmost?: boolean
 }
 
 export interface InspectMatch extends InspectNode {

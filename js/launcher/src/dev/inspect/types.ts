@@ -17,6 +17,7 @@ export interface ShellWindow {
   readonly pid?: number | null
   readonly parent?: number | null
   readonly modal?: boolean
+  readonly topmost?: boolean
   readonly minimize?: boolean
   readonly stage?: boolean
   readonly output?: string
