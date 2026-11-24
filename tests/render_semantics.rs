@@ -107,3 +107,21 @@ fn adjacent_text_nodes_join_as_written() {
         assert!(named(&doc, name, false).is_some(), "{name}: {:?}", nodes(&doc, false).iter().map(|n| n["name"].clone()).collect::<Vec<_>>());
     }
 }
+
+#[test]
+fn hidden_descendants_stay_out_of_names() {
+    let doc = page(
+        "<button><span aria-hidden=true>\u{e121}</span>Move</button>\
+         <ul role=listbox><li role=option aria-selected=true>Layer A <i aria-hidden=true>eye</i></li></ul>\
+         <button title=Icon><i aria-hidden=true title=glyph>x</i></button>\
+         <span id=lbl>Size <b inert>(px)</b></span><input aria-labelledby=lbl>\
+         <label>Opacity <span aria-hidden=true>%</span><input type=number></label>",
+    );
+    assert!(named(&doc, "Move", false).is_some(), "the hidden glyph is not part of the button's name");
+    let option = named(&doc, "Layer A", false).expect("the option is named by its visible text only");
+    assert_eq!(states(&option), ["selected"]);
+    assert!(named(&doc, "Icon", false).is_some(), "a hidden descendant's title does not name the button; its own title does");
+    assert!(named(&doc, "Size", false).is_some(), "aria-labelledby skips inert parts of the label");
+    assert!(named(&doc, "Opacity", false).is_some(), "a wrapping label skips its hidden parts");
+    assert!(nodes(&doc, false).iter().all(|n| n["name"] != "eye" && n["name"] != "glyph"), "hidden nodes are not listed either");
+}

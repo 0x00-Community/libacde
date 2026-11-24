@@ -427,12 +427,22 @@ impl Engine {
     }
 
     pub(in crate::render::dom) fn inner_text(&self, node: NodeId) -> String {
+        self.rendered_text(node, false)
+    }
+
+    /// The text an accessible name takes from content: innerText without the subtrees marked
+    /// `aria-hidden="true"` or `inert`, which accname leaves out.
+    pub(in crate::render::dom) fn name_text(&self, node: NodeId) -> String {
+        self.rendered_text(node, true)
+    }
+
+    fn rendered_text(&self, node: NodeId, skip_hidden: bool) -> String {
         let Some(n) = self.doc.get_node(node) else { return String::new() };
         if !n.is_element() || n.style().is_none() {
             return n.text_content();
         }
         let mut pieces = Vec::new();
-        self.inner_text_walk(n, &mut pieces);
+        self.inner_text_walk(n, &mut pieces, skip_hidden);
         let mut out = String::new();
         let mut breaks = 0;
         for piece in pieces {
@@ -459,7 +469,7 @@ impl Engine {
         out
     }
 
-    pub(in crate::render::dom) fn inner_text_walk(&self, n: &Node, out: &mut Vec<Piece>) {
+    pub(in crate::render::dom) fn inner_text_walk(&self, n: &Node, out: &mut Vec<Piece>, skip_hidden: bool) {
         use blitz_dom::DisplayOutside;
         use blitz_dom::acss::properties::keywords::Visibility;
         for &child in &n.children {
@@ -490,6 +500,9 @@ impl Engine {
                     if display.is_none() {
                         continue;
                     }
+                    if skip_hidden && e.attrs().iter().any(|a| (&*a.name.local == "aria-hidden" && a.value.trim() == "true") || &*a.name.local == "inert") {
+                        continue;
+                    }
                     let tag = &*e.name.local;
                     if tag == "br" {
                         out.push(Piece::Text("\n".into()));
@@ -502,7 +515,7 @@ impl Engine {
                         _ => 0,
                     };
                     out.push(Piece::Break(gap));
-                    self.inner_text_walk(c, out);
+                    self.inner_text_walk(c, out, skip_hidden);
                     out.push(Piece::Break(gap));
                     let css = self.doc.resolved_style_value(c.id, "display");
                     match css.as_str() {

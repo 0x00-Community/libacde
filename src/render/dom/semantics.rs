@@ -462,7 +462,7 @@ impl<'a> Walk<'a> {
             return collapse(&label, NAME_MAX);
         }
         if let Some(ids) = attr("aria-labelledby") {
-            let text: Vec<String> = ids.split_whitespace().filter_map(|id| self.e.doc.get_element_by_id(id)).map(|l| self.e.inner_text(l)).collect();
+            let text: Vec<String> = ids.split_whitespace().filter_map(|id| self.e.doc.get_element_by_id(id)).map(|l| self.e.name_text(l)).collect();
             let text = collapse(&text.join(" "), NAME_MAX);
             if !text.is_empty() {
                 return text;
@@ -494,7 +494,7 @@ impl<'a> Walk<'a> {
             return collapse(&self.e.inner_text(title), NAME_MAX);
         }
         if content {
-            let text = collapse(&self.e.inner_text(n.id), NAME_MAX);
+            let text = collapse(&self.e.name_text(n.id), NAME_MAX);
             if !text.is_empty() {
                 return text;
             }
@@ -507,6 +507,9 @@ impl<'a> Walk<'a> {
 
     fn inner_label(&self, id: NodeId) -> Option<String> {
         for d in self.e.descendants(id) {
+            if self.hidden_below(d, id) {
+                continue;
+            }
             let Some(e) = self.node(d).and_then(|n| n.element_data()) else { continue };
             for key in ["aria-label", "alt", "title"] {
                 if let Some(v) = e.attrs().iter().find(|a| &*a.name.local == key).map(|a| a.value.trim().to_owned()).filter(|v| !v.is_empty()) {
@@ -515,6 +518,15 @@ impl<'a> Walk<'a> {
             }
         }
         None
+    }
+
+    /// Whether `node` or an ancestor below `root` is `aria-hidden="true"` or `inert`.
+    fn hidden_below(&self, node: NodeId, root: NodeId) -> bool {
+        self.e.ancestors(node).into_iter().take_while(|&a| a != root).any(|a| {
+            self.node(a).and_then(|a| a.element_data()).is_some_and(|e| {
+                e.attrs().iter().any(|x| (&*x.name.local == "aria-hidden" && x.value.trim() == "true") || &*x.name.local == "inert")
+            })
+        })
     }
 
     fn label_of(&self, n: &Node, attr: &dyn Fn(&str) -> Option<String>) -> Option<String> {
@@ -528,7 +540,7 @@ impl<'a> Walk<'a> {
         let wrapping =
             || self.e.ancestors(n.id).into_iter().skip(1).find(|&a| self.node(a).and_then(|a| a.element_data()).is_some_and(|e| &*e.name.local == "label"));
         let label = by_for.or_else(wrapping)?;
-        let text = collapse(&self.e.inner_text(label), NAME_MAX);
+        let text = collapse(&self.e.name_text(label), NAME_MAX);
         (!text.is_empty()).then_some(text)
     }
 
