@@ -40,7 +40,10 @@ impl Hole {
     }
 
     pub fn largest(scene: &Scene, images: &ImageSet) -> Option<Self> {
-        Self::candidates(scene, images, true).flatten().max_by_key(|h| u64::from(h.rect[2]) * u64::from(h.rect[3]))
+        Self::candidates(scene, images, true)
+            .flatten()
+            .filter(|h| h.image.texture.usage().contains(wgpu::TextureUsages::TEXTURE_BINDING))
+            .max_by_key(|h| u64::from(h.rect[2]) * u64::from(h.rect[3]))
     }
 
     fn candidates<'s>(scene: &'s Scene, images: &'s ImageSet, scaled: bool) -> impl Iterator<Item = Option<Self>> + 's {

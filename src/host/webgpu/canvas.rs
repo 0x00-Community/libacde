@@ -47,7 +47,8 @@ impl Context {
         {
             return self.images[i].clone();
         }
-        let texture = texture(gpu, size, wgpu::TextureFormat::Rgba8Unorm, usage | wgpu::TextureUsages::COPY_SRC, view_formats);
+        let texture =
+            texture(gpu, size, wgpu::TextureFormat::Rgba8Unorm, usage | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::TEXTURE_BINDING, view_formats);
         let image = GpuImage::new(texture, &gpu.images);
         self.images.push(image.clone());
         image
