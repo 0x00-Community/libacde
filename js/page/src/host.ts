@@ -39,6 +39,7 @@ export class Host {
   #closed = false
   #buttons = 0
   #moves: RawShellEvent[] = []
+  #moveFrame = false
   onActivation: (active: boolean) => void = () => {}
   onPanelMove: (id: number, extent: readonly [number, number, number, number]) => void = () => {}
   onPanelEnded: (id: number, why: PanelEnd) => void = () => {}
@@ -313,7 +314,6 @@ export class Host {
         }
         if (raw.type === 'pointermove') {
           const moves = this.#moves
-          if (!moves.length) surface.requestFrame()
           const last = moves[moves.length - 1]
           if (last && moves.length >= Host.MOVES_KEPT) {
             moves[moves.length - 1] = last.deltaX !== undefined && raw.deltaX !== undefined ? { ...raw, deltaX: last.deltaX + raw.deltaX, deltaY: (last.deltaY ?? 0) + (raw.deltaY ?? 0) } : raw
@@ -326,9 +326,14 @@ export class Host {
       }
       this.#handle(events)
     }
+    if (this.#moves.length && !this.#moveFrame && (this.#buttons || this.#drag.active || this.#page.input.movesWanted())) {
+      this.#moveFrame = true
+      surface.requestFrame()
+    }
   }
 
   #flushMove(events: ShellEvent[]): void {
+    this.#moveFrame = false
     const moves = this.#moves
     if (!moves.length) return
     this.#moves = []

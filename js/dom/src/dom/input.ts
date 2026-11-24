@@ -199,6 +199,10 @@ export class Input {
     this.#path = this.#chain(was).map((id) => wrap<Element>(id)!)
   }
 
+  movesWanted(): boolean {
+    return this.#watched() || this.selects.picker !== null
+  }
+
   #watched(): boolean {
     if (this.#buttons || this.capture || pointerLockElement() || flags.inlineHandlers) return true
     for (const type of HOVER_TYPES) if (listenedTypes.has(type)) return true
