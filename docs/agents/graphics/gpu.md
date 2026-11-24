@@ -40,7 +40,7 @@
   `DXGI_ERROR_DEVICE_REMOVED`), 不用 dxcompiler.dll.
 - 原生应用经 linux-dmabuf v4 零拷贝, 全屏且格式合适时直扫; pre-commit 钩子等 syncobj acquire point 或 dmabuf 的读 fence. 缺口: presentation
   不是硬件时间戳, 没有 tearing-control 和 VRR.
-- 网页图层 (会话): vello 画进 web 自己 GBM 分配的 linear dmabuf. 交上去时不等 GPU 画完: 光栅线程的 sync_file 作为写 fence 挂到画布 dma-buf 上 (隐式同步, `DMA_BUF_IOCTL_IMPORT_SYNC_FILE`) 就 commit, 合成器在 GPU 上等它 (`Device::wait_for`: sync_file 临时导入 64 个二值信号量里的一个, 挂进下一次提交的等待; 导入失败把 fd 退回, 调用方在 CPU 上等), CPU 读画布时内核在 `DMA_BUF_IOCTL_SYNC` 里等; 挂不上 fence 的内核上照旧等 sync_file 落定再 commit. 以前每帧都等 GPU 画完才 commit, 页面这一帧的 GPU 时间整段压在帧循环里 (.243 Xe3 1080p 压力页约 4 ms). 光栅化线程 `acde-web` 一次一帧, CPU 编码和 GPU 执行
+- 网页图层 (会话): vello 画进 web 自己 GBM 分配的 linear dmabuf. 交上去时不等 GPU 画完: 光栅线程的 sync_file 作为写 fence 挂到画布 dma-buf 上 (隐式同步, `DMA_BUF_IOCTL_IMPORT_SYNC_FILE`) 就 commit, 合成器在 GPU 上等它 (`Device::wait_for`: sync_file 临时导入 64 个二值信号量里的一个, 挂进下一次提交的等待; 导入失败把 fd 退回, 调用方在 CPU 上等), CPU 读画布时内核在 `DMA_BUF_IOCTL_SYNC` 里等; 挂不上 fence 的内核上照旧等 sync_file 落定再 commit. 光栅化线程 `acde-web` 一次一帧, CPU 编码和 GPU 执行
   重叠, 挪窗口不重新光栅化, 闲 2 秒 (`Raster::idle`) 放掉中间纹理和 vello 的中间缓冲 (见下「vello 的中间缓冲」). 一帧里所有窗口、所有图层按损伤区切出的块 (`Part::pieces`) 排进一张图集
   (`Raster` 的 `Atlas`, 架子式摆放, 先排高的; 宽高取这一帧最大的画布、至少 4096, 不超过设备的 2D 纹理上限; 放不下时退回按顺序分批), 整张图集
   一次 `Vello::render_clipped` (每块裁在自己的格子里), 再按原顺序在同一个编码器里清区、背景模糊、阴影、贴回画布 (`Composer` 的 `at` 是块在图集里

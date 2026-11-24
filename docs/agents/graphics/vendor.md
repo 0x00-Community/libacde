@@ -114,7 +114,7 @@ blitz fork 和上游结构的不同: HTML 解析用 src/render 自己的 html5ev
 是语法错误. 原版的 `std::usize::MAX` 和省掉的生命周期写全了.
 上限 (照 ANGLE): 标识符最多 1024 个字符 (WebGL 2 的规定; WebGL 1 是 256, 这里也按 1024, 超了是 `IdentifierTooLong`), `#if` 里一元运算符和
 括号最多嵌套 256 层, 宏参数的展开最多嵌套 256 层, 一份源码 (连 `#if` / `#line`) 从宏里展开出来的一共最多 16 MB (标识符按长度算, 宏参数每复制到一层都再算一次),
-超了是 `RecursionLimitReached` 编译错误 (以前能把栈耗尽, 进程直接崩); `#if` 里展开成空的宏之后接着往下读 (以前当成输入到头了).
+超了是 `RecursionLimitReached` 编译错误; `#if` 里展开成空的宏之后接着往下读.
 
 **`src/webgl/glsl`**: naga 30.0.1 的 GLSL 前端整个搬进来 (原 `front/glsl`, MIT OR Apache-2.0), 跑在 crates.io 原版 naga 的公开接口上
 (naga 私有的几样在 `glsl/compat.rs` 重写); 改动处加 `acde:` 注释. 加的是 WebGL 方言 (`Frontend::parse_webgl`、`WebGlOptions`: `front/glsl` 的 `Frontend::parse_webgl`、`WebGlOptions`: ES 1.00 / 3.00、attribute / varying、组合采样器拆开 (数组按常量下标、采样器参数带隐藏的采样器参数)、散 uniform 成块、`gl_FragColor` / `gl_FragData` / int `gl_VertexID`、矩阵 attribute 按列、出口翻 y 改 z、宽点、丢掉的接口变量), 另外 `const in` 参数、`modf`、精度语句接受采样器、嵌套深度上限 128 (表达式和语句; 深的源码报错而不是栈溢出)、数组层数 / 采样器数组长度的上界.

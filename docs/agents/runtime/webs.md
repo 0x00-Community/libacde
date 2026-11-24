@@ -125,8 +125,7 @@
   - **按调用者层级注入** (外壳模块名单是清单规则 `@acde/api/manifest` 的 `SHELL_MODULES`; 会话里按管家 welcome 的 `tier` 给, 宿主窗口的单应用会话见 `js/launcher/src/local/session.ts`): 外壳模块 (`SHELL_MODULES`: `windows`、`packages`、`session`、`desktops`、`inspect`、
     `desktop`、`setDefault`) 只给桌面页面、声明了它的桌面服务和声明了它的系统应用 (与某个已安装桌面同包的应用); 应用模块 (`APP_MODULES`: `launch`、
     `apps` 只有 list / open、`open`、`openPath`、`handlers`、`window`, 以及管家自己给每个应用页面的 `icons`、`sounds` (按名查图标和声音, acdes
-    `docs/agents/manager.md`「主题」, 2026-11-23 起; 这两个名字也因此不许桌面服务占用, 和管家的保留名单一致)) 给所有应用, 不用声明, 也不用列服务
-    (以前规则里没有它们, 一个服务都没列的应用导入 `acde:icons` 被 `acdev check` / `build` 当成「不是系统模块」拒绝, 虽然运行时管家照给). 声明外壳模块的第三方应用启动时拒绝 (403, `shell_module`).
+    `docs/agents/manager.md`「主题」, 2026-11-23 起; 这两个名字也因此不许桌面服务占用, 和管家的保留名单一致)) 给所有应用, 不用声明, 也不用列服务. 声明外壳模块的第三方应用启动时拒绝 (403, `shell_module`).
     没给的模块经 `host.refuseModule` 记下原因, import 时报模块名和缺的声明. 哪个模块要哪条声明只在 SDK `Manifest.importRule(name, app, origin)`
     (`{allowed, missing, reason, unverified}`, app 为 null 是桌面; acde-host 的 `Tiers` / `CapabilityCheck` 和 acdev 的检查都用它).
     **服务的命名空间** (不是系统模块的名字): 运行时按服务名授权, 应用列了 `clock` 就拿到这个服务 `api` 的每个键 (`DesktopServices.start` 把每个键记到服务名上,
