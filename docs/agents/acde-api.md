@@ -27,7 +27,7 @@
 - 副本只读, 放在 `acde-api/` 里 (`package.json` 的 `files` 含 `vendor`), acdev 拷 acde-api 时一并带走. 只放类型和校验用得到的源码: 从 `src/tools.ts`
   出发顺着相对 import 取到的文件 (现在 4 个), 不带测试、例子和一致性用例. 这几个是 `.ts` 源码, 本包因此不再是纯 `.d.ts`, 但仍只供 `import type` 和清单规则用.
 - `acde-api/vendor/plugin-api/SYNCED.json` 记源提交. 更新: 在 plugin-api 检出里提交好 (没有未提交改动), 然后 `bun scripts/sdk/plugin-api.ts sync`
-  (源目录取 `PLUGIN_API_DIR`, 默认仓库旁边的 `../plugin-api`, 即里的检出), 跑类型检查和 page、launcher 的单测后连同 `SYNCED.json` 一起提交.
+  (源目录取 `PLUGIN_API_DIR`, 默认仓库旁边的 `../plugin-api`), 跑类型检查和 page、launcher 的单测后连同 `SYNCED.json` 一起提交.
   `bun scripts/sdk/plugin-api.ts check` 核对副本和记下的提交一致 (源目录不在就跳过); 不一致说明有人直接改了副本: 改 plugin-api, 再 sync. 只复制 git 跟踪的文件,
   跳过 `AGENTS.md` 和 `.gitignore`.
 
@@ -36,7 +36,7 @@
 - 版本号跟 `acde-api/package.json` 的 `version`; 小版本 (含补丁) 只增不删: 新增类型、方法、事件、字段可以, 不删、不改名、不收窄已有的.
 - 要替换的接口先标过时并保留可用: 运行时照旧实现, 旧事件照旧发出 (可以由新事件推出来). 标法两处都要:
   - 声明文件里, 在它上方写一行 `/** @deprecated 改用 <替代者> */`, 让编辑器划线. 这是代码不写注释的唯一例外 (用户定), 只限 `acde-api/` 的 `.d.ts`,
-    只写这一行质量检查只放行这种单行写法;
+    只写这一行;
   - 登记在下面的「已过时」清单: 替代者、从哪个版本起过时.
 - 升大版本时统一清理已标过时的接口, 清理清单写进发版说明.
 - 从来没有发出过、也没有实现的声明不算接口, 可以在小版本里删, 在这里记一笔.
