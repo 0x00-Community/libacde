@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
 
@@ -9,9 +10,18 @@ const OUTLINES: [[u8; 4]; 3] = [*b"glyf", *b"CFF ", *b"CFF2"];
 
 static SEEN: LazyLock<Mutex<HashMap<u64, Option<FontData>>>> = LazyLock::new(Mutex::default);
 
+thread_local! {
+    static KNOWN: RefCell<HashMap<u64, Option<FontData>>> = RefCell::default();
+}
+
 pub fn outlined(font: &FontData) -> Option<FontData> {
-    let mut seen = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    seen.entry(font.data.id()).or_insert_with(|| without_masks(font)).clone()
+    let id = font.data.id();
+    if let Some(known) = KNOWN.with_borrow(|k| k.get(&id).cloned()) {
+        return known;
+    }
+    let found = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).entry(id).or_insert_with(|| without_masks(font)).clone();
+    KNOWN.with_borrow_mut(|k| k.insert(id, found.clone()));
+    found
 }
 
 fn be16(bytes: &[u8], at: usize) -> Option<usize> {
