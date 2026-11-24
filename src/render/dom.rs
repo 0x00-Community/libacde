@@ -23,7 +23,7 @@ mod semantics;
 mod types;
 mod values;
 
-pub use types::{AnimationEvent, AnimationEvents, NodeType, Ns, Quad, Viewport};
+pub use types::{AnimationEvent, AnimationEvents, FrameTake, NodeType, Ns, Quad, Viewport};
 
 use values::{Control, Piece, RangeValue, collapse_whitespace, namespace, ns_of, number_string};
 

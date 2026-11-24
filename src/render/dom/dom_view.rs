@@ -320,6 +320,11 @@ impl Dom {
         self.read(|e| Ok(e.take_animation_events())).unwrap_or_default()
     }
 
+    pub fn take_frame(&self, animation_events: bool) -> FrameTake {
+        self.read(|e| Ok(FrameTake { scrolled: e.take_scrolled(), loaded: e.take_loaded(), animation: animation_events.then(|| e.take_animation_events()) }))
+            .unwrap_or_default()
+    }
+
     pub fn sheet_state(&self, id: u32) -> Result<u8> {
         self.on(id, |e, node| {
             e.doc.handle_messages();

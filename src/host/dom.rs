@@ -226,6 +226,12 @@ impl<'s> IntoJs<'s> for (crate::render::NodeType, crate::render::Ns, bool, Strin
     }
 }
 
+impl<'s> IntoJs<'s> for crate::render::FrameTake {
+    fn js(self, scope: &mut v8::PinScope<'s, '_>) -> v8::Local<'s, v8::Value> {
+        crate::js_object!(scope, {"scrolled" => Ids(self.scrolled), "loaded" => Ids(self.loaded), "animation" => self.animation}).into()
+    }
+}
+
 impl<'s> IntoJs<'s> for crate::render::AnimationEvents {
     fn js(self, scope: &mut v8::PinScope<'s, '_>) -> v8::Local<'s, v8::Value> {
         let events: Vec<v8::Local<v8::Value>> = self
@@ -731,6 +737,7 @@ natives! {
     "takeLoaded" => fn take_loaded(scope, args, dom) { Ok(Ids(dom.take_loaded())) }
     "wantAnimationEvents" => fn want_animation_events(scope, args, dom) { dom.want_animation_events() }
     "takeAnimationEvents" => fn take_animation_events(scope, args, dom) { Ok(dom.take_animation_events()) }
+    "takeFrame" => fn take_frame(scope, args, dom) { let wanted = bind::arg_bool(scope, &args, 0); Ok(dom.take_frame(wanted)) }
     "sheetState" => fn sheet_state(scope, args, dom) { let id = id(scope, &args, 0); dom.sheet_state(id).map(f64::from) }
     "sheetUrl" => fn sheet_url(scope, args, dom) { let id = id(scope, &args, 0); dom.sheet_url(id) }
     "sheetOpaque" => fn sheet_opaque(scope, args, dom) { let id = id(scope, &args, 0); dom.sheet_opaque(id) }

@@ -36,6 +36,13 @@ pub struct AnimationEvents {
     pub events: Vec<AnimationEvent>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct FrameTake {
+    pub scrolled: Vec<u32>,
+    pub loaded: Vec<u32>,
+    pub animation: Option<AnimationEvents>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Viewport {
     pub width: f64,

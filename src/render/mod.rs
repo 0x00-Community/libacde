@@ -30,7 +30,7 @@ pub(crate) use damage::draw_bounds;
 pub use decoration::{
     Bar, ButtonSide, Decoration, Dot, FrameButton, FrameColors, FrameMetrics, FrameStyle, FrameTheme, MenuList, MenuPlace, MenuRow, Rgba, TitleAlign,
 };
-pub use dom::{AnimationEvent, AnimationEvents, Dom, NONE, NodeType, Ns, Quad, Viewport};
+pub use dom::{AnimationEvent, AnimationEvents, Dom, FrameTake, NONE, NodeType, Ns, Quad, Viewport};
 pub use error::{Error, Result};
 pub use geometry::Metrics;
 pub use hud::{Hud, HudStats};
