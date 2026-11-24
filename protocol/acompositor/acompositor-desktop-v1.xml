@@ -11,7 +11,7 @@
     background use wlr-layer-shell.
   </description>
 
-  <interface name="acompositor_desktop_v1" version="19">
+  <interface name="acompositor_desktop_v1" version="20">
     <description summary="the desktop's handle on acompositor">
       On bind acompositor sends a window event for every toplevel already shown, then
       work_area, then done. Later windows come as they are shown. From version 2 the
@@ -40,7 +40,9 @@
       measures of that titlebar's controls and title. From version 17 it tells which shell
       sub-layer each of its panels belongs to (set_panel_kind). From version 18 windows
       (acompositor_window_v1 version 10) can be kept on top (set_topmost, topmost). From
-      version 19 a dev-level client lists every surface's layer (layers).
+      version 19 a dev-level client lists every surface's layer (layers). From version 20 the
+      dev-level client also hears window state changes, configures and their acks, keep-on-top
+      changes and activations, each with who asked for it and whether acompositor took it.
     </description>
 
     <enum name="error">
@@ -450,6 +452,93 @@
       </description>
       <arg name="window" type="uint"/>
       <arg name="dropped" type="uint"/>
+    </event>
+
+    <enum name="actor" since="20">
+      <description summary="who asked for a change the dev-level events tell"/>
+      <entry name="client" value="0" summary="the window's own client (xdg_toplevel)"/>
+      <entry name="desktop" value="1" summary="a desktop-level connection"/>
+      <entry name="agent" value="2" summary="an Agent-level connection"/>
+      <entry name="dev" value="3" summary="a dev-level connection"/>
+      <entry name="compositor" value="4" summary="acompositor itself (Esc leaving full screen, switching windows)"/>
+      <entry name="activation" value="5" summary="an xdg_activation_v1 token"/>
+      <entry name="input" value="6" summary="injected or real input bringing the keyboard to a window"/>
+    </enum>
+
+    <enum name="configure_state" bitfield="true" since="20">
+      <entry name="maximized" value="1"/>
+      <entry name="fullscreen" value="2"/>
+      <entry name="resizing" value="4"/>
+      <entry name="activated" value="8"/>
+    </enum>
+
+    <event name="window_state" since="20">
+      <description summary="dev level: a window was asked to change its state">
+        from is the state before, to the state asked for (both as acompositor_window_v1.state).
+        screen is the screen a full-screen window goes to, -1 when none applies. accepted is 1
+        when the change took effect; otherwise 0 and reason says why (not placed yet, so kept
+        for when it is shown; a child window; already in that state).
+      </description>
+      <arg name="window" type="uint"/>
+      <arg name="from" type="uint" enum="acompositor_window_v1.state"/>
+      <arg name="to" type="uint" enum="acompositor_window_v1.state"/>
+      <arg name="by" type="uint" enum="actor"/>
+      <arg name="screen" type="int"/>
+      <arg name="accepted" type="uint"/>
+      <arg name="reason" type="string"/>
+    </event>
+
+    <event name="configure" since="20">
+      <description summary="dev level: a toplevel was sent a configure">
+        width and height are those of xdg_toplevel.configure (0 lets the client choose),
+        states its states as configure_state bits, bounds_width and bounds_height those of
+        xdg_toplevel.configure_bounds sent with it (0 when the client is too old for it).
+        serial is that of xdg_surface.configure. Every configure is told, also while a window is
+        resized interactively.
+      </description>
+      <arg name="window" type="uint"/>
+      <arg name="serial" type="uint"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+      <arg name="states" type="uint" enum="configure_state"/>
+      <arg name="bounds_width" type="int"/>
+      <arg name="bounds_height" type="int"/>
+    </event>
+
+    <event name="configure_ack" since="20">
+      <description summary="dev level: a toplevel acked a configure">
+        latest is 1 when serial is that of the latest configure sent to it, 0 for an older one.
+      </description>
+      <arg name="window" type="uint"/>
+      <arg name="serial" type="uint"/>
+      <arg name="latest" type="uint"/>
+    </event>
+
+    <event name="topmost" since="20">
+      <description summary="dev level: a window was asked to be kept on top or no longer">
+        on is what was asked. accepted is 1 when acompositor took the request (changed is then
+        1 when the window's keep-on-top really changed, 0 when it already was so); otherwise 0
+        and reason says why, as for a connection that may not keep windows on top.
+      </description>
+      <arg name="window" type="uint"/>
+      <arg name="on" type="uint"/>
+      <arg name="by" type="uint" enum="actor"/>
+      <arg name="accepted" type="uint"/>
+      <arg name="changed" type="uint"/>
+      <arg name="reason" type="string"/>
+    </event>
+
+    <event name="activate" since="20">
+      <description summary="dev level: a window was asked to come to the front">
+        window is 0 when the surface asked for is no toplevel. accepted is 1 when the window was
+        brought forward; otherwise 0 and reason says why (an unknown or used token, a token
+        refused when it was made, a window not shown yet, a window on the Agent's stage). The
+        keyboard moving with it is told by focus.
+      </description>
+      <arg name="window" type="uint"/>
+      <arg name="by" type="uint" enum="actor"/>
+      <arg name="accepted" type="uint"/>
+      <arg name="reason" type="string"/>
     </event>
 
     <request name="render_state" since="12">
