@@ -1,8 +1,8 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Once, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::vello::Shared;
 
@@ -15,6 +15,7 @@ pub type ErrorSink = Box<dyn FnMut(wgpu::Error)>;
 const WAIT: Duration = Duration::from_secs(10);
 const POLL_BUSY: Duration = Duration::from_millis(2);
 const POLL_IDLE: Duration = Duration::from_millis(4);
+const FRAME_STALE: Duration = Duration::from_secs(1);
 
 pub struct Gpu {
     pub shared: Arc<Shared>,
@@ -46,6 +47,19 @@ static REPLACED: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     static SINK: RefCell<Option<ErrorSink>> = const { RefCell::new(None) };
+    static FRAMES: RefCell<VecDeque<Frame>> = const { RefCell::new(VecDeque::new()) };
+}
+
+struct Frame {
+    gpu: Arc<Gpu>,
+    at: Instant,
+    done: Arc<AtomicBool>,
+}
+
+impl Frame {
+    fn pending(&self, now: Instant) -> bool {
+        !self.done.load(Ordering::Acquire) && !self.gpu.gone() && now.duration_since(self.at) < FRAME_STALE
+    }
 }
 
 pub fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -439,6 +453,31 @@ impl Gpu {
                 drop(self.polling.wait_timeout(polls, pause).unwrap_or_else(|e| e.into_inner()));
             }
         }
+    }
+
+    pub fn frame(self: &Arc<Self>) -> Arc<AtomicBool> {
+        let done = Arc::new(AtomicBool::new(false));
+        FRAMES.with(|f| f.borrow_mut().push_back(Frame { gpu: self.clone(), at: Instant::now(), done: done.clone() }));
+        done
+    }
+
+    pub fn frames_in_flight(at_least: usize) -> usize {
+        let count = || {
+            let now = Instant::now();
+            FRAMES.with(|f| {
+                let mut frames = f.borrow_mut();
+                frames.retain(|frame| frame.pending(now));
+                (frames.len(), frames.front().map(|frame| frame.gpu.clone()))
+            })
+        };
+        let (pending, oldest) = count();
+        if pending < at_least.max(1) {
+            return pending;
+        }
+        if let Some(gpu) = oldest {
+            _ = gpu.device.poll(wgpu::PollType::Poll);
+        }
+        count().0
     }
 
     pub fn on_lost(&self, f: impl Fn(&str) + Send + 'static) -> u64 {

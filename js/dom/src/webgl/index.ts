@@ -12,7 +12,8 @@ export interface WebglNative {
   create(node: number, webgl2: boolean, attributes: object, width: number, height: number): number | null
   release(context: number): void
   present(context: number): boolean
-  done(): Promise<void>
+  done(): void
+  inFlight(atLeast: number): number
   pixels(context: number): { width: number; height: number; rgba: Uint8Array } | null
   onLost(callback: (context: number) => void): void
   watch?(callback: (kind: 'lost' | 'restored') => void): void
@@ -1484,7 +1485,7 @@ export const webglContexts = {
   present(): void {
     let shown = false
     for (const gl of live) shown = contextHooks.present(gl) || shown
-    if (shown) gpuFrames.submitted(native.done())
+    if (shown) native.done()
   },
   endTask(): void {
     epoch++
@@ -1505,6 +1506,7 @@ export const webglContexts = {
 
 export function installWebgl(webgl: WebglNative, request: () => void): Record<string, unknown> {
   native = webgl
+  gpuFrames.counted((atLeast) => native.inFlight(atLeast))
   contextHooks.request = request
   canvasSources.present = (canvas) => {
     const gl = byCanvas.get(canvas)

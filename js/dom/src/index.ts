@@ -305,7 +305,7 @@ export function install(global: typeof globalThis, domNative: DomNative, hostNat
       moved()
       try {
         deliverScrolls()
-        if (!gpuFrames.behind() && !documentState.hidden && !documentState.suspended) runAnimationFrames(clockNow(), report)
+        if (framesPending() && !documentState.hidden && !documentState.suspended && !gpuFrames.behind()) runAnimationFrames(clockNow(), report)
         deliverObservations()
         animating = deliverCssEvents()
       } catch (error) {

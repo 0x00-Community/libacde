@@ -111,12 +111,7 @@ fn run(job: Job) {
                 then();
                 return;
             }
-            gpu.hold_poll();
-            let held = gpu.clone();
-            gpu.queue.on_submitted_work_done(move || {
-                then();
-                held.release_poll();
-            });
+            gpu.queue.on_submitted_work_done(then);
         }
     }
 }

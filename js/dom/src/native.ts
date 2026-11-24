@@ -343,6 +343,8 @@ export interface GpuNative {
   writeBuffer(device: number, buffer: number, offset: number, data: ArrayBufferView | ArrayBuffer): void
   writeTexture(device: number, descriptor: string, data: ArrayBufferView | ArrayBuffer): void
   onSubmittedWorkDone(device: number): Promise<void>
+  presented(): void
+  inFlight(atLeast: number): number
 
   preferredFormat(): string
   configure(node: number, device: number, descriptor: string): void

@@ -3,13 +3,17 @@ import { test } from 'node:test'
 import type { WebglNative } from '../src/webgl/index.ts'
 import { page } from './harness.ts'
 
-// A WebGL native that draws nothing and hands out the GPU completion of each presented frame for the test to settle.
 function gpu(): { native: WebglNative; done: Array<() => void> } {
   const done: Array<() => void> = []
+  let pending = 0
   const calls: Record<string, unknown> = {
     create: () => 1,
     present: () => true,
-    done: () => new Promise<void>((resolve) => done.push(resolve)),
+    done: () => {
+      pending++
+      done.push(() => pending--)
+    },
+    inFlight: () => pending,
     onLost: () => {},
     getError: () => 0,
     supported: () => [],

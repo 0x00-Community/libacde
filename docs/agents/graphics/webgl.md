@@ -26,7 +26,9 @@ WebGL 1 和 2 在每个 OS 上都有 (Windows 没验过), 是 wgpu 上的一台 
   实例 (6 个顶点), 属性按实例步进 (`ALIASED_POINT_SIZE_RANGE` [1, 1024]). 多重采样的深度经 `blitFramebuffer` 由 frag_depth 解析 (模板不解析).
 - **画布**: 默认帧缓冲是 RGBA8 (`antialias` 时 4 倍多重采样), `alpha: false` 时不写 alpha. 绘制缓冲在渲染那一步 (`frame`, 2D 画布刷新之前)
   交成 canvas 的 `GpuImage` (`Dom::canvas_image`), `preserveDrawingBuffer: false` 时下一次绘制先清; 2D `drawImage` 一个 WebGL canvas 前先交.
-  交了画面的一帧经 `natives.webgl.done()` (共享设备上已提交工作的完成) 记进 acde-dom `gpu/frames.ts`, 和 WebGPU canvas 共用一个计数:
+  交了画面的一帧经 `natives.webgl.done()` 记进 src/gpu `Gpu::frame` (这条 JS 线程的帧表, 完成标记由 `on_submitted_work_done` 置上, 不占
+  `acde-gpu-poll`), 和 WebGPU canvas (`natives.gpu.presented()`) 共用一张表; acde-dom `gpu/frames.ts` 要跑 rAF 时才经 `inFlight(2)` 数, 不到两帧
+  不查, 到了才在页面线程上非阻塞 `poll` 一次 (光栅化线程每帧的 `poll` 也会置上标记), 超过 1 秒的不算:
   还有两帧在 GPU 上时这一帧不跑 `requestAnimationFrame` 回调 (页面最多领先 GPU 两帧; 不限时 GPU 慢的页面会一直排帧, 直到 Metal 的命令缓冲区额度
   在帧中间卡住它, 落后半秒). 只拦 rAF: 用 `setTimeout` 驱动画面的页面照样能跑在 GPU 前面.
   `toDataURL` / `toBlob` / WebGPU 外部拷贝读交出去的图. 纹理来源: `ImageData`、`<img>` (位图按 CPU 字节、SVG 在 GPU 上画)、2D canvas、

@@ -321,7 +321,7 @@
   宿主窗口的出帧线程这样做 (acdev `docs/agents/hostwin.md`「只有 WebGPU canvas 变了的帧」), 中间缓冲因此在 canvas 动着时也能放掉. WebGPU canvas 的
   `present` 按 `alphaMode` 标 `GpuImage::set_opaque`. 会话的 `Raster` 还没有这条路.
 - 帧预算: 120 fps 下每帧 8 ms. 盯 acde-dom `test/cost.test.ts` / `test/caches.test.ts`、shell / DomNative 的 `stats`、`drive.sh perf`; 提交里写测到的数.
-- WebGPU (`navigator.gpu`, Linux 和 macOS; Windows 上还关着 (没编过也没跑过, 见 acdev #56)): src/host `webgpu/`, 跑在光栅化线程的设备上; 回调由 `acde-gpu-poll` 线程非阻塞轮询 (每帧路径上不用
+- WebGPU (`navigator.gpu`, Linux 和 macOS; Windows 上还关着 (没编过也没跑过, 见 acdev #56)): src/host `webgpu/`, 跑在光栅化线程的设备上; 页面的 `mapAsync` / `onSubmittedWorkDone` 回调由 `acde-gpu-poll` 线程非阻塞轮询, canvas 的帧数在途不经它 (见 `docs/agents/graphics/webgl.md`) (每帧路径上不用
   `poll(Wait)`, 它拿着 snatch 读锁会卡住别的线程的提交). WebGL 也只经 wgpu, 见 `docs/agents/graphics/webgl.md`.
 
 ## src/render 的已知问题和测试数据

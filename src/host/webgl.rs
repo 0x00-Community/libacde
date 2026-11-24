@@ -405,23 +405,14 @@ fn present(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv
     rv.set_bool(shown);
 }
 
-/// A promise for the GPU work submitted so far on the shared device (every context's presents included): the page counts
-/// frames still on the GPU with it and holds back requestAnimationFrame callbacks while two are, as for WebGPU canvases.
-fn done(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
-    let Some((token, promise)) = bind::promise(scope) else { return };
-    rv.set(promise.into());
-    let settle = move |scope: &mut v8::PinScope| {
-        if let Some(resolver) = bind::resolver(scope, token) {
-            let undefined = v8::undefined(scope);
-            resolver.resolve(scope, undefined.into());
-        }
-    };
-    let Some(gpu) = crate::gpu::Gpu::shared().filter(|gpu| !gpu.gone()) else {
-        settle(scope);
-        return;
-    };
-    let tx = rt::current().sender();
-    crate::webgl::submit::when_done(gpu, Box::new(move || _ = tx.send(Msg::Task(Box::new(settle)))));
+fn done(_: &mut v8::PinScope, _: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
+    let Some(gpu) = crate::gpu::Gpu::shared().filter(|gpu| !gpu.gone()) else { return };
+    let frame = gpu.frame();
+    crate::webgl::submit::when_done(gpu, Box::new(move || frame.store(true, std::sync::atomic::Ordering::Release)));
+}
+
+fn in_flight(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    rv.set_uint32(crate::gpu::Gpu::frames_in_flight(bind::arg_u32(scope, &args, 0) as usize) as u32);
 }
 
 fn pixels(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
@@ -497,6 +488,7 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>) {
         "release" => release,
         "present" => present,
         "done" => done,
+        "inFlight" => in_flight,
         "pixels" => pixels,
         "png" => png,
         "onLost" => on_lost,

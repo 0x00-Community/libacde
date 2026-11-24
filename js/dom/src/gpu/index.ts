@@ -722,8 +722,7 @@ export const contexts = {
     let device: GPUDevice | null = null
     for (const context of contexts.waiting) device = present(context) ?? device
     contexts.waiting.clear()
-    if (!device) return
-    gpuFrames.submitted(native.onSubmittedWorkDone(device[ID]))
+    if (device) native.presented()
   },
 }
 
@@ -733,6 +732,7 @@ const TEXTURE_USAGE = { COPY_SRC: 0x1, COPY_DST: 0x2, TEXTURE_BINDING: 0x4, STOR
 export function installGpu(global: typeof globalThis, gpu: GpuNative, pixels: ExternalPixels): Record<string, unknown> {
   native = gpu
   externalPixels = pixels
+  gpuFrames.counted((atLeast) => native.inFlight(atLeast))
   const instance = new GPU()
   const navigator = (global as unknown as { navigator: object }).navigator
   Object.defineProperty(Object.getPrototypeOf(navigator), 'gpu', { get: () => instance, enumerable: true, configurable: true })

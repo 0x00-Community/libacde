@@ -1234,6 +1234,17 @@ natives! {
         Ok(().into())
     }
 
+    "presented" => fn presented(_scope, _args) {
+        let Some(gpu) = with_state(|s| s.gpu.clone().flatten()).filter(|gpu| !gpu.gone()) else { return Ok(().into()) };
+        let frame = gpu.frame();
+        gpu.queue.on_submitted_work_done(move || frame.store(true, std::sync::atomic::Ordering::Release));
+        Ok(().into())
+    }
+
+    "inFlight" => fn in_flight(scope, args) {
+        Ok(Ret::Num(Gpu::frames_in_flight(bind::arg_u32(scope, &args, 0) as usize) as f64))
+    }
+
     "onSubmittedWorkDone" => fn on_submitted_work_done(scope, args) {
         let device = bind::arg_u32(scope, &args, 0);
         let Some((token, promise)) = promise(scope) else { return Ok(().into()) };

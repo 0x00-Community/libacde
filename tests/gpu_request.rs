@@ -43,3 +43,24 @@ fn open_fails_only_when_every_tier_fails() {
     assert!(error.contains("WebGPU features: no WebGPU features"), "{error}");
     assert!(error.contains("downlevel limits: no downlevel limits"), "{error}");
 }
+
+#[test]
+fn presented_frames_leave_the_count_once_the_gpu_is_done_with_them() {
+    use std::sync::atomic::Ordering;
+    let Ok((_, _, gpu)) = acde::gpu::Gpu::open("frames test") else { return };
+    for _ in 0..2 {
+        let encoder = gpu.device.create_command_encoder(&Default::default());
+        gpu.submit([encoder.finish()]);
+        let frame = gpu.frame();
+        gpu.queue.on_submitted_work_done(move || frame.store(true, Ordering::Release));
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while acde::gpu::Gpu::frames_in_flight(2) > 0 {
+        assert!(std::time::Instant::now() < deadline, "the frames never finished");
+        std::thread::yield_now();
+    }
+    let unfinished = gpu.frame();
+    assert_eq!(acde::gpu::Gpu::frames_in_flight(2), 1, "a frame whose work was never registered stays in flight");
+    unfinished.store(true, Ordering::Release);
+    assert_eq!(acde::gpu::Gpu::frames_in_flight(2), 0);
+}
