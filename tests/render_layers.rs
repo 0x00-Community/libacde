@@ -298,7 +298,9 @@ fn glass_inside_glass_is_its_own_layer_and_wrappers_make_none() {
     assert_eq!(group_sizes(&frame), [2, 2], "the bar merges with its neighbour, its two buttons with each other, never across");
     let mut names: Vec<&str> = frame.plane.layers.iter().filter_map(|l| l.backdrop.as_ref()?.group_name.as_deref()).collect();
     names.sort_unstable();
-    assert_eq!(names, ["g0", "g1"], "each connected group gets its own name within the surface");
+    assert_eq!(names.len(), 2, "each connected group gets its own name");
+    assert_ne!(names[0], names[1]);
+    assert!(names.iter().all(|n| n.starts_with('c')), "groups made by a container are named after it: {names:?}");
 }
 
 #[test]

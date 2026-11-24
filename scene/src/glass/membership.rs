@@ -48,6 +48,13 @@ impl Membership {
         Self { spacing: self.spacing * factor as f32, ..self }
     }
 
+    pub fn group_name(&self) -> String {
+        match self.union {
+            Some(Name(hash)) => format!("u{hash:016x}.{:x}", self.layer),
+            None => format!("c{:x}.{:x}", self.container.unwrap_or_default(), self.layer),
+        }
+    }
+
     pub fn joins(&self, other: &Self) -> bool {
         let together = (self.container.is_some() && self.container == other.container) || (self.union.is_some() && self.union == other.union);
         self.layer == other.layer && together
@@ -89,6 +96,20 @@ mod tests {
         assert!(member(Some(1), Some("u")).joins(&member(None, Some("u"))));
         assert!(!member(None, None).joins(&member(None, None)));
         assert_ne!(Name::of("a"), Name::of("b"));
+    }
+
+    #[test]
+    fn a_group_is_named_by_its_union_or_its_container_and_its_layer() {
+        let at =
+            |layer: u64, container: Option<u64>, union: Option<&str>| Membership { layer, container, spacing: 8.0, union: union.and_then(Name::of), id: None };
+        let named = at(3, Some(9), Some("dopa-drop")).group_name();
+        assert_eq!(named, at(3, None, Some("dopa-drop")).group_name(), "the union name is the same in every panel");
+        assert_ne!(named, at(4, None, Some("dopa-drop")).group_name());
+        assert_ne!(named, at(3, None, Some("island")).group_name());
+        assert_eq!(at(0, Some(0x2a), None).group_name(), "c2a.0");
+        for name in [named, at(u64::MAX, Some(u64::MAX), None).group_name()] {
+            assert!(name.len() <= 64 && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b".-_".contains(&b)), "{name}");
+        }
     }
 
     #[test]

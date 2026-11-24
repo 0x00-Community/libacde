@@ -147,7 +147,7 @@
   没有这样的祖先就是顶层 0 (`Membership.layer`, blitz-paint `glass_layer` 推断); 不是玻璃的包装元素 (`li`、布局用的 `div`) 不产生新层. 只有同一层的玻璃才可能
   融合 (`Membership::joins` 先比层, 再看同容器或同 union 名): 工具条和它里面的按钮即使在同一容器、写同一 union 名也不合, 按钮之间照常合.
   页面层也不和窗口层 (窗口材质) 融合, 不跨窗口; 原定的 `--acde-glass-group` 已取消. 送合成器时 (`acompositor_backdrop_v1` v4 `add_glass_area_grouped`, 页面层, 组名只在本表面内有效) 组名用 `render::Backdrop.group_name`:
-  `merge_glass` 按连通组 (同层, 且同容器或同 union 名) 依次编号 `g0`、`g1`…, 只在这一帧这张平面内唯一, 不用会话级组名; 合成器按 (页面层, 表面, 组名) 登记.
+  `merge_glass` 给每个连通组 (同层, 且同容器或同 union 名) 一个在整页内稳定的名字 (`Membership::group_name`, 2026-11-24): 组里有成员写了 union 名时取第一个这样的成员, 名字是 `u<union 名的 FNV-1a 散列, 16 位十六进制>.<层号十六进制>`; 只靠容器成组时是 `c<容器节点号>.<层号>` (都是十六进制). 同一页的各钉住面板里同一个 union 名、同一层的组因此同名, 合成器只要按页面而不是按表面登记页面层的组, 两个面板里的玻璃就能融合 (现在的协议版本 4 仍按 (页面层, 表面, 组名) 登记, 跨面板要等 acdes 改). 名字只用 `[a-z0-9.]`, 最长 34 字节, 合协议的组名规则. 原来按 `g0`、`g1`… 每帧依次编号, 跨面板会撞名.
   libacde 自己还没有发这条请求的路径 (会话里由 acdes 的窗口客户端发), 前端照这个名字发即可. 名字存成 FNV-1a 64 位散列 (`Name`), `none` 和空串当没写. 没有容器也没有 union 名字的玻璃不成组. src/render `Split` 切完图层后
   (`merge_glass`): 同一容器或同一 union 名字 (`Membership::joins`, 可传递) 的玻璃图层, 按绘制顺序把各块 (`Backdrop::piece`: 外框、半径、指数、玻璃) 放进
   第一块那层的 `Backdrop.group`, 外框和裁剪取各块的并集, 其余几块的图层去掉 backdrop (只剩内容). 间距取组内最大 (只靠 union 成组时为 0, 各块不鼓出).

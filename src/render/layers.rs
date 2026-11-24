@@ -173,14 +173,13 @@ fn merge_glass(layers: &mut [Layer]) {
     let members: Vec<(usize, Membership)> =
         layers.iter().enumerate().filter_map(|(i, l)| l.backdrop.as_ref().filter(|b| b.glass.is_some()).and_then(|b| Some((i, b.membership?)))).collect();
     let mut taken = vec![false; members.len()];
-    let mut named = 0;
     for start in 0..members.len() {
         if !taken[start] {
             let joined = joined_with(&members, &mut taken, start);
             let spacing = joined.iter().map(|&k| members[k].1.spacing).fold(0.0, f32::max);
+            let naming = joined.iter().map(|&k| members[k].1).find(|m| m.union.is_some()).unwrap_or(members[start].1);
             if let Some(b) = merge_into_first(layers, joined.iter().map(|&k| members[k].0), spacing) {
-                b.group_name = Some(format!("g{named}"));
-                named += 1;
+                b.group_name = Some(naming.group_name());
             }
         }
     }
