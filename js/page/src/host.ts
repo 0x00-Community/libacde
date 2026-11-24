@@ -313,6 +313,7 @@ export class Host {
           continue
         }
         if (raw.type === 'pointermove') {
+          if (this.#moves.length && !this.#moves[this.#moves.length - 1]!.pen !== !raw.pen) this.#flushMove(events)
           const moves = this.#moves
           const last = moves[moves.length - 1]
           if (last && moves.length >= Host.MOVES_KEPT) {

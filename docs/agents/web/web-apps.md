@@ -322,8 +322,16 @@
   `'mouse'`, `isPrimary` true, `width` / `height` 1, `pressure` 按着按钮时 0.5、否则 0 (规范给鼠标的值), `tiltX` / `tiltY` / `twist` /
   `tangentialPressure` 0. 宿主给的事件带 `pen` (model `Event.pen`, 见下) 时是数位笔: `pointerId` 2, `pointerType` `'pen'`, `pressure` /
   `tangentialPressure` / `tiltX` / `tiltY` / `twist` 照宿主的值 (悬停时压力 0); 笔的橡皮端 (`pen.eraser`) 按下是 `button` 5、`buttons` 32
-  (Pointer Events 3 的 eraser 按钮; page `keys.ts` 的 `ShellInput.normalize` 把左键换成 5), 所以不产生 click. 没有笔的 `pointerover` / `pointerout`
-  切换 (换设备时 hover 不重来), `altitudeAngle` / `azimuthAngle` 还没有. `pointermove` 按帧派发 (`docs/agents/runtime/webs.md`「输入」), 两次派发之间宿主送来的每个位置都留着: 派发的事件是
+  (Pointer Events 3 的 eraser 按钮; page `keys.ts` 的 `ShellInput.normalize` 把左键换成 5), 所以不产生 click. 位置不变、只有压力 / 倾斜 / 旋转变了时
+  宿主照样发 pointermove (规范: 这些属性变了就是 `pointermove`), 页面不按位置去重. `altitudeAngle` / `azimuthAngle` (Pointer Events 3) 由
+  `dom/events.ts` 的 `PointerEvent` 构造时从 `tiltX` / `tiltY` 换算 (规范「Converting between tiltX / tiltY and altitudeAngle / azimuthAngle」的
+  算法, 和 Chromium `pointer_event.cc` 一样: init 只给了倾斜就由倾斜算角度, 只给了角度就由角度算倾斜 (`Math.round`), 两组都给或都不给就各用各的,
+  缺省倾斜 0、`altitudeAngle` π/2、`azimuthAngle` 0; 换算前先把超出范围的值折回范围; 角度不是有限数时照 WebIDL 抛 TypeError), 所以鼠标是 π/2 和 0, 笔的每个样本
+  从它自己的整数倾斜算. 换设备: 鼠标和笔是两个指针, hover 状态按最近一次进入时的 `pointerId` 记 (`Input.#hoverInit`); 下一个事件的 `pointerId`
+  不同时, 先给旧指针 `pointerout` + 整条祖先链的 `pointerleave` (旧指针最后的 `pointerType` / 位置 / 压力, `relatedTarget` null), 再给新指针
+  `pointerover` + `pointerenter` (`relatedTarget` null); 兼容的 `mouseover` / `mouseout` / `mouseenter` / `mouseleave` 只跟着元素走 (屏幕上只有一个光标), 元素没变就不发,
+  变了照常按旧 → 新发. 同一个指针时和原来完全一样. 页面里等帧的移动遇到换设备先把前面的派发掉 (page `host.ts` 的 `#turn`), 一个
+  `pointermove` 的样本只属于一个指针. 笔离开接近范围时宿主不发事件, 所以笔的 out / leave 要等下一次鼠标事件才发. `pointermove` 按帧派发 (`docs/agents/runtime/webs.md`「输入」), 两次派发之间宿主送来的每个位置都留着: 派发的事件是
   最后一个样本, `getCoalescedEvents()` 按先后给出全部样本 (至少一个). 每个样本是单独的可信 `PointerEvent`: `target` 和派发的那个相同,
   不冒泡、不可取消, 有自己的 `clientX` / `offsetX` / `movementX` / `buttons` / `pressure` / `timeStamp` (笔还有自己的 `pointerType` / 倾斜 / `twist`),
   它自己的 `getCoalescedEvents()` 为空.

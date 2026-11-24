@@ -93,6 +93,7 @@ export class Input {
   #time: number | undefined
   #shift = 0
   #pen: PenState | undefined
+  #hoverInit: Record<string, unknown> | null = null
   #untracked = false
   capture: Element | null = null
   readonly selects = new SelectInput()
@@ -164,6 +165,9 @@ export class Input {
 
   #hoverTo(target: Element | null, init: Record<string, unknown>): void {
     if (pointerLockElement()) return
+    const previous = this.#hoverInit
+    this.#hoverInit = init
+    if (previous && this.#hover && previous.pointerId !== init.pointerId) return this.#switchPointer(target, previous, init)
     if (this.#hover === target && (!target || inner(target, 'isConnected'))) return
     const old = this.#hover?.[CONNECTED] ? this.#hover : (this.#path.find((e) => inner(e, 'isConnected')) ?? null)
     const was = this.#chain(old), now = this.#chain(target)
@@ -178,6 +182,29 @@ export class Input {
     if (!target) return
     this.#pointer(target, 'over', { ...init, relatedTarget: old })
     for (let i = now.length - 1; i >= 0; i--) if (!wasSet.has(now[i]!)) for (const type of ['pointerenter', 'mouseenter']) this.#boundary(now[i]!, type, init, old)
+  }
+
+  #switchPointer(target: Element | null, was: Record<string, unknown>, init: Record<string, unknown>): void {
+    const old = this.#hover?.[CONNECTED] ? this.#hover : (this.#path.find((e) => inner(e, 'isConnected')) ?? null)
+    const before = this.#chain(old), after = this.#chain(target)
+    this.#hover = target
+    this.#path = after.map((id) => wrap<Element>(id)!)
+    const beforeSet = new Set(before), afterSet = new Set(after)
+    const moved = old !== target
+    if (old) {
+      this.#fire(old, 'pointerout', { ...was, relatedTarget: null }, PointerEvent as never)
+      for (const id of before) this.#boundary(id, 'pointerleave', was, null)
+      if (moved) {
+        this.#fire(old, 'mouseout', { ...init, relatedTarget: target })
+        for (const id of before) if (!afterSet.has(id)) this.#boundary(id, 'mouseleave', init, target)
+      }
+    }
+    if (!target) return
+    this.#fire(target, 'pointerover', { ...init, relatedTarget: null }, PointerEvent as never)
+    for (let i = after.length - 1; i >= 0; i--) this.#boundary(after[i]!, 'pointerenter', init, null)
+    if (!moved) return
+    this.#fire(target, 'mouseover', { ...init, relatedTarget: old })
+    for (let i = after.length - 1; i >= 0; i--) if (!beforeSet.has(after[i]!)) this.#boundary(after[i]!, 'mouseenter', init, old)
   }
 
   leave(options: PointerOptions = {}): void {
@@ -213,6 +240,7 @@ export class Input {
     this.#untracked = false
     const was = this.elementAt(undefined, this.#last.x, this.#last.y, true)
     this.#hover = was
+    this.#hoverInit = null
     this.#path = this.#chain(was).map((id) => wrap<Element>(id)!)
   }
 

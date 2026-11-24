@@ -443,6 +443,106 @@ test('a pen stroke carries pointerType pen, its pressure, tilt and twist on ever
   ])
 })
 
+test('altitudeAngle and azimuthAngle follow tiltX / tiltY and back, default to π/2 and 0, and come with every pen sample', async () => {
+  using web = await page('<!doctype html><html><body><div id="pad"></div></body></html>')
+  web.dom.boxes.set(web.internals.idOf(web.run('document.getElementById("pad")')), { x: 0, y: 0, width: 300, height: 200 })
+  const failures = web.json<string[]>(`(() => {
+    const failures = []
+    const P = Math.PI
+    const check = (init, want) => {
+      const e = new PointerEvent('pointerdown', { pointerId: 'pointer1', ...init })
+      for (const [key, value] of Object.entries(want)) if (e[key] !== value) failures.push(JSON.stringify(init) + ' ' + key + ' ' + e[key] + ' != ' + value)
+    }
+    for (const [tiltX, tiltY, azimuthAngle, altitudeAngle] of [[0, 0, 0, P / 2], [0, 90, P / 2, 0], [0, -90, 3 * P / 2, 0], [90, 0, 0, 0], [90, 90, 0, 0],
+      [90, -90, 0, 0], [-90, 0, P, 0], [-90, 90, 0, 0], [-90, -90, 0, 0], [0, 45, P / 2, P / 4], [0, -45, 3 * P / 2, P / 4], [45, 0, 0, P / 4], [-45, 0, P, P / 4]])
+      check({ tiltX, tiltY }, { azimuthAngle, altitudeAngle })
+    check({}, { azimuthAngle: 0, altitudeAngle: P / 2, tiltX: 0, tiltY: 0 })
+    for (const [azimuthAngle, altitudeAngle, tiltX, tiltY] of [[0, 0, 90, 0], [0, P / 4, 45, 0], [0, P / 2, 0, 0], [P / 2, 0, 0, 90], [P / 2, P / 4, 0, 45],
+      [P, 0, -90, 0], [P, P / 4, -45, 0], [3 * P / 2, 0, 0, -90], [3 * P / 2, P / 4, 0, -45]])
+      check({ azimuthAngle, altitudeAngle }, { tiltX, tiltY })
+    check({ tiltX: 45 }, { tiltX: 45, tiltY: 0, azimuthAngle: 0, altitudeAngle: P / 4 })
+    check({ tiltY: 45 }, { tiltX: 0, tiltY: 45, azimuthAngle: P / 2, altitudeAngle: P / 4 })
+    check({ azimuthAngle: P / 4 }, { azimuthAngle: P / 4, altitudeAngle: P / 2, tiltX: 0, tiltY: 0 })
+    check({ altitudeAngle: P / 4 }, { azimuthAngle: 0, altitudeAngle: P / 4, tiltX: 45, tiltY: 0 })
+    check({ tiltX: 45, azimuthAngle: P / 4 }, { tiltX: 45, tiltY: 0, azimuthAngle: P / 4, altitudeAngle: P / 2 })
+    check({ tiltY: 45, altitudeAngle: P / 4 }, { tiltX: 0, tiltY: 45, azimuthAngle: 0, altitudeAngle: P / 4 })
+    check({ tiltX: 30.9, tiltY: -10 }, { tiltX: 30, tiltY: -10 })
+    check({ azimuthAngle: P }, { tiltX: 0, tiltY: 0 })
+    try { new PointerEvent('pointerdown', { altitudeAngle: NaN }); failures.push('NaN accepted') } catch (e) { if (e.name !== 'TypeError') failures.push(e.name) }
+    const keys = Object.keys(PointerEvent.prototype)
+    if (!keys.includes('altitudeAngle') || !keys.includes('tiltX')) failures.push('not enumerable: ' + keys.join())
+    return failures
+  })()`)
+  assert.deepEqual(failures, [])
+  web.run(`
+    globalThis.seen = []
+    const pad = document.getElementById('pad')
+    pad.addEventListener('pointermove', (e) => seen.push([e.pointerType, e.tiltX, e.tiltY, e.altitudeAngle, e.azimuthAngle, e.getCoalescedEvents().map((s) => [s.altitudeAngle, s.azimuthAngle])]))
+  `)
+  const input = web.internals.input
+  const pen = (tiltX: number, tiltY: number) => ({ pressure: 0.5, tangentialPressure: 0, tiltX, tiltY, twist: 0, eraser: false })
+  input.pointer('pointermove', 10, 10, { pen: pen(30, -20), samples: [{ x: 5, y: 10, pen: pen(0, 40) }, { x: 10, y: 10, pen: pen(30, -20) }] })
+  input.pointer('pointermove', 20, 10)
+  const rad = (degrees: number) => (degrees * Math.PI) / 180
+  const altitude = Math.atan(1 / Math.sqrt(Math.tan(rad(30)) ** 2 + Math.tan(rad(-20)) ** 2))
+  const azimuth = Math.atan2(Math.tan(rad(-20)), Math.tan(rad(30))) + 2 * Math.PI
+  assert.deepEqual(web.json('seen'), [
+    ['pen', 30, -20, altitude, azimuth, [[Math.PI / 2 - rad(40), Math.PI / 2], [altitude, azimuth]]],
+    ['mouse', 0, 0, Math.PI / 2, 0, [[Math.PI / 2, 0]]],
+  ])
+})
+
+test('switching between the mouse and a pen: the old pointer leaves, the new one enters, compat mouse events follow only the element', async () => {
+  using web = await page('<!doctype html><html><body><div id="pad"></div><div id="other"></div></body></html>')
+  const id = (name: string) => web.internals.idOf(web.run(`document.getElementById("${name}")`))
+  web.dom.boxes.set(id('pad'), { x: 0, y: 0, width: 300, height: 200 })
+  web.dom.boxes.set(id('other'), { x: 0, y: 200, width: 300, height: 200 })
+  web.run(`
+    globalThis.log = []
+    const name = (t) => t ? t.id || t.nodeName : 'null'
+    for (const type of ['pointerover', 'pointerout', 'pointerenter', 'pointerleave', 'mouseover', 'mouseout', 'mouseenter', 'mouseleave'])
+      document.addEventListener(type, (e) => log.push([type, name(e.target), type.startsWith('pointer') ? e.pointerType + e.pointerId : '', name(e.relatedTarget)].join(':')), true)
+    document.addEventListener('pointermove', (e) => log.push(['pointermove', e.pointerType, e.clientX, e.movementX, e.pressure, e.tiltX].join(':')), true)
+  `)
+  const input = web.internals.input
+  const pen = (pressure: number, tiltX = 0) => ({ pressure, tangentialPressure: 0, tiltX, tiltY: 0, twist: 0, eraser: false })
+  const take = () => web.json<string[]>('log.splice(0)')
+  input.pointer('pointermove', 10, 10)
+  take()
+  input.pointer('pointermove', 12, 10, { pen: pen(0) })
+  assert.deepEqual(take(), [
+    'pointerout:pad:mouse1:null', 'pointerleave:pad:mouse1:null', 'pointerleave:BODY:mouse1:null', 'pointerleave:HTML:mouse1:null',
+    'pointerover:pad:pen2:null', 'pointerenter:HTML:pen2:null', 'pointerenter:BODY:pen2:null', 'pointerenter:pad:pen2:null',
+    'pointermove:pen:12:2:0:0',
+  ])
+  input.pointer('pointerdown', 12, 10, { pen: pen(0.2) })
+  input.pointer('pointermove', 12, 10, { pen: pen(0.6) })
+  input.pointer('pointermove', 12, 10, { pen: pen(0.6, 20) })
+  input.pointer('pointerup', 12, 10, { pen: pen(0) })
+  assert.deepEqual(take(), ['pointermove:pen:12:0:0.6:0', 'pointermove:pen:12:0:0.6:20'], 'pressure and tilt changes without motion are moves')
+  input.pointer('pointermove', 14, 10)
+  assert.deepEqual(take(), [
+    'pointerout:pad:pen2:null', 'pointerleave:pad:pen2:null', 'pointerleave:BODY:pen2:null', 'pointerleave:HTML:pen2:null',
+    'pointerover:pad:mouse1:null', 'pointerenter:HTML:mouse1:null', 'pointerenter:BODY:mouse1:null', 'pointerenter:pad:mouse1:null',
+    'pointermove:mouse:14:2:0:0',
+  ])
+  input.pointer('pointermove', 14, 250, { pen: pen(0) })
+  assert.deepEqual(take(), [
+    'pointerout:pad:mouse1:null', 'pointerleave:pad:mouse1:null', 'pointerleave:BODY:mouse1:null', 'pointerleave:HTML:mouse1:null',
+    'mouseout:pad::other', 'mouseleave:pad::other',
+    'pointerover:other:pen2:null', 'pointerenter:HTML:pen2:null', 'pointerenter:BODY:pen2:null', 'pointerenter:other:pen2:null',
+    'mouseover:other::pad', 'mouseenter:other::pad',
+    'pointermove:pen:14:0:0:0',
+  ])
+  input.leave()
+  assert.deepEqual(take(), [
+    'pointerout:other:pen2:null', 'mouseout:other::null',
+    'pointerleave:other:pen2:null', 'mouseleave:other::null', 'pointerleave:BODY:pen2:null', 'mouseleave:BODY::null', 'pointerleave:HTML:pen2:null', 'mouseleave:HTML::null',
+  ])
+  input.pointer('pointermove', 20, 20)
+  assert.deepEqual(take().slice(0, 2), ['pointerover:pad:mouse1:null', 'mouseover:pad::null'], 'after leaving, the next pointer enters as before')
+})
+
 test('dragging an overlay scrollbar thumb scrolls its box and fires no pointer events at the page', async () => {
   using web = await page('<!doctype html><html><body><div id="box" data-scroll-height="1000"></div></body></html>')
   const box = web.internals.idOf(web.run('document.getElementById("box")'))

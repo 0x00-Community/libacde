@@ -253,12 +253,84 @@ function pointerEvents(value: unknown, member: string): readonly PointerEvent[] 
   return list as PointerEvent[]
 }
 
+const HALF_PI = Math.PI / 2
+const ORIENTATION = Symbol('orientation')
+
+interface Orientation {
+  readonly tiltX: number
+  readonly tiltY: number
+  readonly altitudeAngle: number
+  readonly azimuthAngle: number
+}
+
+function long(value: unknown): number {
+  const n = Number(value)
+  return Number.isFinite(n) ? Math.trunc(n) | 0 : 0
+}
+
+function angle(value: unknown, member: string): number {
+  const n = Number(value)
+  if (Number.isFinite(n)) return n
+  const why = 'The provided double value is non-finite.'
+  throw new TypeError(`Failed to construct 'PointerEvent': Failed to read the '${member}' property from 'PointerEventInit': ${why}`)
+}
+
+function into(value: number, low: number, high: number, step: number): number {
+  if (value > high) return value - step * Math.ceil((value - high) / step)
+  if (value < low) return value + step * Math.ceil((low - value) / step)
+  return value
+}
+
+function spherical(tiltX: number, tiltY: number): { altitudeAngle: number; azimuthAngle: number } {
+  const x = (tiltX * Math.PI) / 180
+  const y = (tiltY * Math.PI) / 180
+  const edge = Math.abs(tiltX) === 90 || Math.abs(tiltY) === 90
+  let azimuthAngle = 0
+  if (tiltX === 0) azimuthAngle = tiltY > 0 ? HALF_PI : tiltY < 0 ? 3 * HALF_PI : 0
+  else if (tiltY === 0) azimuthAngle = tiltX < 0 ? Math.PI : 0
+  else if (!edge) {
+    azimuthAngle = Math.atan2(Math.tan(y), Math.tan(x))
+    if (azimuthAngle < 0) azimuthAngle += 2 * Math.PI
+  }
+  const slope = Math.sqrt(Math.tan(x) ** 2 + Math.tan(y) ** 2)
+  const altitudeAngle = edge ? 0 : tiltX === 0 ? HALF_PI - Math.abs(y) : tiltY === 0 ? HALF_PI - Math.abs(x) : Math.atan(1 / slope)
+  return { altitudeAngle, azimuthAngle }
+}
+
+function tilt(altitudeAngle: number, azimuthAngle: number): { tiltX: number; tiltY: number } {
+  const a = azimuthAngle
+  if (altitudeAngle !== 0) {
+    const tan = Math.tan(altitudeAngle)
+    const degrees = (part: number) => Math.round(Math.atan(part / tan) * (180 / Math.PI)) | 0
+    return { tiltX: degrees(Math.cos(a)), tiltY: degrees(Math.sin(a)) }
+  }
+  const tiltX = a === HALF_PI || a === 3 * HALF_PI ? 0 : a < HALF_PI || a > 3 * HALF_PI ? 90 : -90
+  const tiltY = a === 0 || a === Math.PI || a === 2 * Math.PI ? 0 : a < Math.PI ? 90 : -90
+  return { tiltX, tiltY }
+}
+
+function orientation(init: Init | null | undefined): Orientation {
+  const hasTilt = init?.tiltX !== undefined || init?.tiltY !== undefined
+  const hasAngle = init?.altitudeAngle !== undefined || init?.azimuthAngle !== undefined
+  const tiltX = long(init?.tiltX)
+  const tiltY = long(init?.tiltY)
+  const altitudeAngle = init?.altitudeAngle === undefined ? HALF_PI : angle(init.altitudeAngle, 'altitudeAngle')
+  const azimuthAngle = init?.azimuthAngle === undefined ? 0 : angle(init.azimuthAngle, 'azimuthAngle')
+  if (hasTilt && !hasAngle) return { tiltX, tiltY, ...spherical(into(tiltX, -90, 90, 180), into(tiltY, -90, 90, 180)) }
+  if (hasAngle && !hasTilt) {
+    return { ...tilt(into(altitudeAngle, 0, HALF_PI, HALF_PI), into(azimuthAngle, 0, 2 * Math.PI, 2 * Math.PI)), altitudeAngle, azimuthAngle }
+  }
+  return { tiltX, tiltY, altitudeAngle, azimuthAngle }
+}
+
 export class PointerEvent extends MouseEvent {
   readonly #coalesced: readonly PointerEvent[]
   readonly #predicted: readonly PointerEvent[]
+  readonly [ORIENTATION]: Orientation
 
   constructor(type: string, init?: (EventInit & Init) | null) {
     super(type, init)
+    this[ORIENTATION] = orientation(init)
     this.#coalesced = pointerEvents(init?.coalescedEvents, 'coalescedEvents')
     this.#predicted = pointerEvents(init?.predictedEvents, 'predictedEvents')
   }
@@ -276,12 +348,19 @@ initFields(PointerEvent, {
   height: 1,
   pressure: 0,
   tangentialPressure: 0,
-  tiltX: 0,
-  tiltY: 0,
   twist: 0,
   pointerType: '',
   isPrimary: false,
 })
+for (const name of ['tiltX', 'tiltY', 'altitudeAngle', 'azimuthAngle'] as const) {
+  Object.defineProperty(PointerEvent.prototype, name, {
+    get(this: PointerEvent) {
+      return this[ORIENTATION][name]
+    },
+    enumerable: true,
+    configurable: true,
+  })
+}
 tag(PointerEvent)
 
 export class WheelEvent extends MouseEvent {
