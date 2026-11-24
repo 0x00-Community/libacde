@@ -38,6 +38,7 @@ export interface WindowLook {
   readonly corners?: WindowCorners
   readonly shadows?: WindowShadows
   readonly motion?: MotionPreset
+  readonly titlebarHeight?: number
 }
 
 export type MaterialName = 'glass' | 'blur' | 'none' | (string & {})

@@ -94,7 +94,8 @@ export type MotionOf = (preset: string) => MotionWire | null
 
 type Fields = Record<string, unknown>
 
-const LOOK_KEYS = ['corners', 'shadows', 'motion'] as const
+const LOOK_KEYS = ['corners', 'shadows', 'motion', 'titlebarHeight'] as const
+export const TITLEBAR_HEIGHTS = [24, 64] as const
 const LOOK_CORNERS = ['radius', 'shape'] as const
 const LOOK_STATES = ['focused', 'unfocused'] as const
 const LOOK_LAYER = ['x', 'y', 'blur', 'spread', 'color'] as const
@@ -148,6 +149,12 @@ export class WindowLookReader {
     const motion = typeof preset === 'string' ? this.#motionOf(preset) : null
     if (!motion) return `motion is not a motion preset of this runtime: ${JSON.stringify(preset)}`
     numbers.push(motion.wire)
+    if (look['titlebarHeight'] !== undefined) {
+      const [low, high] = TITLEBAR_HEIGHTS
+      const titlebar = this.#number('titlebarHeight', look['titlebarHeight'], low, high)
+      if (typeof titlebar === 'string') return `${titlebar} (CSS px)`
+      numbers.push(Math.round(titlebar))
+    }
     return { numbers, ignored: this.#ignored, motion: motion.preset }
   }
 

@@ -27,6 +27,7 @@ export interface Place {
   readonly wallTone: WallTone
   readonly glass: { readonly level: number; readonly reducedTransparency: boolean }
   readonly reducedMotion: boolean
+  readonly titlebar: number
 }
 
 export class AppLookup {
@@ -121,6 +122,7 @@ function common(token: bigint, window: number, place: Place, services: WebInit['
     wallTone: place.wallTone,
     glass: place.glass,
     reducedMotion: place.reducedMotion,
+    titlebar: place.titlebar,
     languages: place.languages,
     navigator: place.navigator,
     services,

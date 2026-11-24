@@ -166,7 +166,10 @@
   由合成器画, 窗口页面自己不再画外阴影和外圆角. 规则见 `docs/runtime/webs.md`「窗框」.
   各键都可省: 只改给了的键, 没给的保持上一次的 (起初是方角、无阴影、`standard`; `setWindowLook(null)` 回到这个状态), 所以可以单独 `setWindowLook({motion})`.
   `look.motion` 选窗口动画的档 (`'standard'` 缺省、`'reduced'`), 只能选档不能给数值; 档的定义只在 `acde_scene::motion` (见 `docs/graphics/render-gpu.md`「动画曲线」),
-  经 `WindowLook.motion` (Rust `acde_scene::motion::Preset`, 页面交出的数列最后一个是它的线上编号) 交给合成器.
+  经 `WindowLook.motion` (Rust `acde_scene::motion::Preset`, 页面交出的数列里紧跟阴影层的那个数是它的线上编号) 交给合成器.
+  `look.titlebarHeight` (2026-11-24) 是运行时画的窗框标题栏高度, CSS px, 24 到 64 的整数 (小数四舍五入), 由桌面声明 (Dopame 取 uikit 令牌 `--dp-titlebar-h`, 40);
+  没给过时用运行时缺省 `Frame.HEIGHT` (32). 它是数列的最后一个数 (可省; Rust `WindowLook.titlebar`, `None` 是没给), 经合成器交给各应用进程的窗口一侧,
+  各应用进程的启动器在建窗时问原生 `titlebarHeight()` (没有这个方法的宿主, 如 acdev, 用缺省), 窗框画多高、内容区往下让多少都按它.
   `acde:desktop.motion(preset?)` 同步返回 `{preset, duration, easing}`: `duration` 毫秒, `easing` 是 CSS `linear(…)` 缓动 (24 段采样), 页面要和合成器的动画对齐时用它,
   不另存数值; 不给 `preset` 时是上一次 `setWindowLook` 选的档 (没设过或设成 null 时 `standard`). 不认识的档名抛 TypeError. 取值来自原生 `surface.motion(name)` (`webnative.rs`).
 - 想让自己画标题栏的应用跟着桌面的主题, 由桌面自己经服务发布 (dopame 的做法), 运行时不管.

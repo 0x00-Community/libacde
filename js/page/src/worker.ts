@@ -95,7 +95,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   if (init.glass) dom.setGlass?.(init.glass.level, init.glass.reducedTransparency)
   if (init.accent) dom.setAccent?.(init.accent)
   if (init.reducedMotion) dom.setReducedMotion?.(true)
-  const surface = natives.claimSurface(init.token, { frame: init.kind === 'window' ? Frame.height(init.app) : 0 })
+  const surface = natives.claimSurface(init.token, { frame: init.kind === 'window' ? Frame.height(init.app, init.titlebar) : 0 })
   const title = (text: string) => surface.setTitle(text || (init.app?.label ?? init.name))
   title('')
   host.requestFrame = () => surface.requestFrame()
@@ -408,7 +408,7 @@ export default async function boot(natives: WebNatives): Promise<void> {
   }
   await page.loadPage(html, fetched?.type)
   launched?.hand(page.window as never)
-  if (init.kind === 'window' && Frame.height(init.app) > 0) Frame.followScheme(page.window as never, surface, (run) => void setTimeout(run, 50))
+  if (init.kind === 'window' && Frame.height(init.app, init.titlebar) > 0) Frame.followScheme(page.window as never, surface, (run) => void setTimeout(run, 50))
   if (init.devState) {
     DevState.restore(page.window as never, init.devState as DevSnapshot, (restored, missed) =>
       Log.write(Level.Info, 'acde_host', `[${init.name}] acde dev: state restored (${restored} kept${missed ? `, ${missed} not found` : ''})`),

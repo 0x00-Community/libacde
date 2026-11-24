@@ -43,7 +43,7 @@ describe('the single-app launcher', () => {
     const found = lookup({ '/w/package.json': pkg([app('hello')]) }).find('/w', [], '/')
     const navigator = { userAgent: '', platform: 'Linux x86_64' }
     const glass = { level: 1, reducedTransparency: false }
-    const look = { dark: true, accent: '#ffd60a', wallTone: 'light' as const, glass, reducedMotion: false }
+    const look = { dark: true, accent: '#ffd60a', wallTone: 'light' as const, glass, reducedMotion: false, titlebar: 32 }
     const place = { width: 800, height: 600, scale: 2, languages: { language: 'en-US' }, navigator, ...look }
     const init = webInit(found, 7n, place)
     assert.deepEqual([init.kind, init.name, init.token, init.window, init.width, init.height], ['window', 'hello#1', 7n, 1, 1600, 1200])

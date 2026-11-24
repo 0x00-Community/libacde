@@ -57,6 +57,18 @@ describe('Frame.desktop', () => {
     assert.deepEqual(calls, [[12, 2.5, 1, 0, 8, 24, -4, 0x00000040, 0, 0], [12, 1, 0, 0, 1], []])
   })
 
+  test('setWindowLook passes the desktop titlebar height last, within 24 to 64 px, and runtime frames follow it', () => {
+    const calls: number[][] = []
+    const desktop = Frame.desktop({ setWindowLook: (...args) => void calls.push(args), motion })
+    desktop.setWindowLook({ titlebarHeight: 40 })
+    assert.deepEqual(calls, [[0, 1, 0, 0, 0, 40]])
+    assert.throws(() => desktop.setWindowLook({ titlebarHeight: 80 }), /titlebarHeight is a number from 24 to 64/)
+    assert.equal(Frame.height({ frame: true }, 40), 40)
+    assert.equal(Frame.height({ frame: true }), Frame.HEIGHT)
+    assert.equal(Frame.height({ frame: false }, 40), 0)
+    assert.deepEqual(Frame.windowSize({ frame: true, size: [800, 600] } as never, 40), [800, 640])
+  })
+
   test('setWindowLook changes only the keys it is given; null goes back to square, no shadows, standard', () => {
     const calls: number[][] = []
     const desktop = Frame.desktop({ setWindowLook: (...args) => void calls.push(args), motion })

@@ -17,8 +17,9 @@
   窗框的 hint (标题栏移动, 四边 4 px / 四角 10 px 改大小) 优先. 会话里是 acdebin-system 的 `crates/window` `decoration.rs` 在页面 surface 上开的同步 `wl_subsurface`
   (`set_window_geometry(0, -H, W, 整高)`, 自己的画布 plane `usize::MAX`); 宿主窗口里见 `docs/runtime/window-model.md`「宿主窗口」. 三个按钮 (样式见 render 的「窗框」, `ACDE_FRAME_STYLE`: 红绿灯或 Windows 的最小化 / 最大化 / 关闭) 按下和松开在同一个上时发
   `framebutton {key}` (`close` / `minimize` / `fullscreen` / `restore`), acde-host 调 `acde.window` 的 `close()` / `minimize()` / `requestMode`.
-  标题是 `document.title` 或 `acde.window.setTitle` (没有时用 `label`), 经 surface 的 `setTitle`. 高度只在 acde-host `frame.ts` 的
-  `Frame.HEIGHT` (32), 经 `claimSurface(token, {frame})` 交给 surface; 画法在 render 的 `Decoration`. 全屏时窗框照旧在. `acde:inspect` 看不到窗框
+  标题是 `document.title` 或 `acde.window.setTitle` (没有时用 `label`), 经 surface 的 `setTitle`. 高度由桌面经 `setWindowLook({titlebarHeight})` 声明
+  (见 `docs/runtime/desktop.md`), 启动器从原生 `titlebarHeight()` 取, 没有时用 `frame.ts` 的缺省 `Frame.HEIGHT` (32), 经 `WebInit.titlebar` 和
+  `claimSurface(token, {frame})` 交给 surface; 画法在 render 的 `Decoration`. 全屏时窗框照旧在. `acde:inspect` 看不到窗框
   (页面坐标加 `contentOffset`).
 - **钉住的面板** (Dock、菜单栏、弹出层): 桌面页面调 `acde.desktop.pin(element, {margin?})` → `{update(), unpin()}`, 元素成为单独的 `pinned`
   窗口, 状态和 React 树还在同一个文档里. `pinned.ts` 量元素 (并上 render 报的绘制范围 `panelmove`, 页面坐标由 render 用画那一帧的面板矩形算 (`Panel.reach`); 绘制范围记在当时的视口坐标里, 视口宽高或 `devicePixelRatio` 变了就丢掉重量, 并完截到视口以内是裁边不是平移), 要令牌 (`Shell.grant({mode: 'pinned', rect})`),

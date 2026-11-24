@@ -30,13 +30,13 @@ export class Frame {
   static readonly #SIZE: readonly [number, number] = [800, 600]
   static readonly DOUBLE_CLICK: readonly DoubleClickAction[] = ['fill', 'minimize', 'none']
 
-  static height(app: Pick<AppManifest, 'frame'> | null | undefined): number {
-    return app && app.frame !== false ? Frame.HEIGHT : 0
+  static height(app: Pick<AppManifest, 'frame'> | null | undefined, titlebar: number = Frame.HEIGHT): number {
+    return app && app.frame !== false ? titlebar : 0
   }
 
-  static windowSize(app: Pick<AppManifest, 'frame' | 'size'>): readonly [number, number] {
+  static windowSize(app: Pick<AppManifest, 'frame' | 'size'>, titlebar: number = Frame.HEIGHT): readonly [number, number] {
     const [width, height] = app.size ?? Frame.#SIZE
-    return [width, height + Frame.height(app)]
+    return [width, height + Frame.height(app, titlebar)]
   }
 
   static grabs(surface: Pick<NativeSurface, 'requestGrab' | 'releaseGrab'>): {

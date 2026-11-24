@@ -67,6 +67,7 @@ interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 'setState
   kill?(window: number): void
   setState?(window: number, state: 'normal' | 'minimized' | 'filled' | 'fullscreen'): void
   setAside?(window: number, on: boolean): boolean
+  titlebarHeight?(): number
   windows(): ReturnType<InspectShell['windows']>
   inject?(event: Parameters<InspectShell['inject']>[0]): void
   injectSequence?(events: Parameters<InspectShell['play']>[0]): Promise<unknown>
@@ -259,7 +260,7 @@ class Launcher {
     const app = desktop ? null : (this.session.found?.app.id ?? null)
     const call = (service: string, method: string, args: readonly unknown[]) => rpc.call(service, method, args)
     const post = (message: Record<string, unknown>) => this.#thread?.post(message)
-    const frame = desktop ? 0 : Frame.height(this.session.found?.app)
+    const frame = desktop ? 0 : Frame.height(this.session.found?.app, this.#titlebar)
     const lock = this.session.lock ? { lock: true } : {}
     const window = this.#guest?.global(this.#window) ?? this.#window
     return { name: init.name, app, kind, window, title: this.#title, frame, ...lock, call, post }
@@ -280,8 +281,13 @@ class Launcher {
     }
   }
 
-  get #look(): Pick<Place, 'dark' | 'accent' | 'wallTone' | 'glass' | 'reducedMotion'> {
-    return { dark: this.#dev.dark, accent: this.#accent, wallTone: this.#walls.tone, glass: this.#glass, reducedMotion: this.#reducedMotion }
+  get #look(): Pick<Place, 'dark' | 'accent' | 'wallTone' | 'glass' | 'reducedMotion' | 'titlebar'> {
+    const titlebar = this.#titlebar
+    return { dark: this.#dev.dark, accent: this.#accent, wallTone: this.#walls.tone, glass: this.#glass, reducedMotion: this.#reducedMotion, titlebar }
+  }
+
+  get #titlebar(): number {
+    return this.#shell.titlebarHeight?.() ?? Frame.HEIGHT
   }
 
   #appearance({ dark, accent, glass, reducedTransparency, reducedMotion, wallTones, primaryOutput }: AppearanceChange): void {
