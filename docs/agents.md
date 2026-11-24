@@ -19,7 +19,10 @@
 | 改 `acde:fs`、应用的根、拖放和打开请求的句柄、文件夹和文件选择器 | [agents/web/fs.md](agents/web/fs.md) |
 | 改默认应用、文件类型判断、打开方式或 Windows 的文件关联 | [agents/web/default-apps.md](agents/web/default-apps.md) |
 | 改 `acde:inspect` 的语义树、ref 和操作, 或原生窗口的 AT-SPI | [agents/web/inspect.md](agents/web/inspect.md) |
-| 改 `src/render` 的接口、canvas 2D、窗框绘制、模糊、GPU 设备或性能预算 | [agents/graphics/render-gpu.md](agents/graphics/render-gpu.md) |
+| 改 `src/render` 的接口、DOM 原生接口、出帧、canvas 2D、窗框绘制、动画曲线 | [agents/graphics/render.md](agents/graphics/render.md) |
+| 改模糊、系统玻璃 (`--acde-glass`)、材质表、玻璃组或透镜 | [agents/graphics/glass.md](agents/graphics/glass.md) |
+| 改 napi 类 `Shell`、surface 认领与给 surface 的事件 | [agents/graphics/shell.md](agents/graphics/shell.md) |
+| 改 GPU 设备选择、性能预算, 或查 `src/render` 的已知问题 | [agents/graphics/gpu.md](agents/graphics/gpu.md) |
 | 改 WebGL (`src/webgl`、`js/dom/src/webgl/`) 或 GLSL 前端 | [agents/graphics/webgl.md](agents/graphics/webgl.md) |
 | 改运行时自带的 JS (`js/`: 网页接口层、页面胶水、单应用启动器) 或它的打包 | [agents/runtime/layout.md](agents/runtime/layout.md)「js」 |
 | 改 `vendor/blitz`, 或升 stylo / parley / html5ever / naga 这类跟着 blitz 走的依赖 | [agents/graphics/vendor.md](agents/graphics/vendor.md) |

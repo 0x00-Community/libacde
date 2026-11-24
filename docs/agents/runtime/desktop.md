@@ -165,7 +165,7 @@
 - 窗口的外圆角与阴影也只能声明: `acde:desktop.setWindowLook(look | null)` (SDK `WindowLook`: 圆角半径与 CSS 角形 (`round`、`squircle`、`superellipse(k)`), 聚焦 / 不聚焦两档 CSS 外阴影层),
   由合成器画, 窗口页面自己不再画外阴影和外圆角. 规则见 `docs/agents/runtime/webs.md`「窗框」.
   各键都可省: 只改给了的键, 没给的保持上一次的 (起初是方角、无阴影、`standard`; `setWindowLook(null)` 回到这个状态), 所以可以单独 `setWindowLook({motion})`.
-  `look.motion` 选窗口动画的档 (`'standard'` 缺省、`'reduced'`), 只能选档不能给数值; 档的定义只在 `acde_scene::motion` (见 `docs/agents/graphics/render-gpu.md`「动画曲线」),
+  `look.motion` 选窗口动画的档 (`'standard'` 缺省、`'reduced'`), 只能选档不能给数值; 档的定义只在 `acde_scene::motion` (见 `docs/agents/graphics/render.md`「动画曲线」),
   经 `WindowLook.motion` (Rust `acde_scene::motion::Preset`, 页面交出的数列里紧跟阴影层的那个数是它的线上编号) 交给合成器.
   `look.titlebarHeight`  是运行时画的窗框标题栏高度, CSS px, 24 到 64 的整数 (小数四舍五入), 由桌面声明 (Dopame 取 uikit 令牌 `--dp-titlebar-h`, 40);
   没给过时用运行时缺省 `Frame.HEIGHT` (32). 它是数列的最后一个数 (可省; Rust `WindowLook.titlebar`, `None` 是没给), 经合成器交给各应用进程的窗口一侧,

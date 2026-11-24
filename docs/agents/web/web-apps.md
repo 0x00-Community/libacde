@@ -333,7 +333,7 @@
 - **光标** (CSS UI `cursor`, `src/render/cursor.rs`): render 取指针下的节点 (render 线程的 hover, 每次 `RenderHandle::pointer` 和每次重算样式之后)
   最近的元素的计算值 `cursor` 的关键字; `auto` 照 CSS UI 4 定: 在链接 (`a[href]` / `area[href]` 和它们里面, 和浏览器一样) 上是 `pointer`, 在可编辑的地方 (有
   文字输入的 input、textarea、`contenteditable` 不是 false 的, disabled 的除外) 或可选的文字 (命中在文字上, `user-select` 用到的值不是 none: 自己是 `auto` 就往上看祖先) 上是 `text`, 别处是
-  `default`. `url(…)` 只用后面的关键字 (图片光标还没有). 指针停着、页面改了样式或布局时也跟着变. 交给前端: `docs/agents/graphics/render-gpu.md` 的
+  `default`. `url(…)` 只用后面的关键字 (图片光标还没有). 指针停着、页面改了样式或布局时也跟着变. 交给前端: `docs/agents/graphics/render.md` 的
   `RenderHandle::on_cursor`; 宿主窗口见 acdev `docs/agents/hostwin.md`「光标」; 会话 (acdes 的 crates/window) 和 C 接口还没接, 一直是默认箭头.
 - **指针锁定** (https://w3c.github.io/pointerlock/, acde-dom `dom/pointerlock.ts`): `Element.requestPointerLock(options?)` 返回 promise,
   `document.pointerLockElement` / `ShadowRoot.pointerLockElement` (和 `activeElement` 一样不往影子宿主换), `document.exitPointerLock()`,
