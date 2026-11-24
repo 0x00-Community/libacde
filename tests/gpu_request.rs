@@ -64,3 +64,35 @@ fn presented_frames_leave_the_count_once_the_gpu_is_done_with_them() {
     unfinished.store(true, Ordering::Release);
     assert_eq!(acde::gpu::Gpu::frames_in_flight(2), 0);
 }
+
+#[test]
+fn a_held_poll_finishes_a_mapping_without_anyone_else_polling() {
+    let Ok((_, _, gpu)) = acde::gpu::Gpu::open("poll test") else { return };
+    mappings_finish(gpu);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_held_poll_waits_on_a_sync_file_where_the_device_exports_them() {
+    let Ok(device) = acde::gpu::Device::open_hardware() else { return };
+    mappings_finish(acde::gpu::Gpu::new(device.device.clone(), device.queue.clone(), device.info.clone()));
+}
+
+fn mappings_finish(gpu: std::sync::Arc<acde::gpu::Gpu>) {
+    let usage = acde::gpu::wgpu::BufferUsages::MAP_READ | acde::gpu::wgpu::BufferUsages::COPY_DST;
+    let buffer = gpu.device.create_buffer(&acde::gpu::wgpu::BufferDescriptor { label: None, size: 256, usage, mapped_at_creation: false });
+    for round in 0..3 {
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        encoder.clear_buffer(&buffer, 0, None);
+        gpu.submit([encoder.finish()]);
+        let (tx, rx) = std::sync::mpsc::channel();
+        gpu.hold_poll();
+        let held = gpu.clone();
+        buffer.slice(..).map_async(acde::gpu::wgpu::MapMode::Read, move |result| {
+            _ = tx.send(result.is_ok());
+            held.release_poll();
+        });
+        assert_eq!(rx.recv_timeout(std::time::Duration::from_secs(5)), Ok(true), "round {round}");
+        buffer.unmap();
+    }
+}

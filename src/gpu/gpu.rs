@@ -26,6 +26,10 @@ pub struct Gpu {
     lost: Mutex<HashMap<u64, LostListener>>,
     gone: AtomicBool,
     compositor: OnceLock<Arc<dyn Compositor>>,
+    #[cfg(target_os = "linux")]
+    signals: Mutex<Option<crate::vello::Signals>>,
+    #[cfg(target_os = "linux")]
+    fenceless: AtomicBool,
 }
 
 enum State {
@@ -240,6 +244,10 @@ impl Gpu {
             lost: Mutex::default(),
             gone: AtomicBool::new(false),
             compositor: OnceLock::new(),
+            #[cfg(target_os = "linux")]
+            signals: Mutex::new(None),
+            #[cfg(target_os = "linux")]
+            fenceless: AtomicBool::new(false),
         });
         let weak = Arc::downgrade(&gpu);
         gpu.device.on_uncaptured_error(Arc::new(move |error: wgpu::Error| {
@@ -437,12 +445,51 @@ impl Gpu {
         self.polling.notify_all();
     }
 
+    #[cfg(target_os = "linux")]
+    fn fence(&self) -> Option<std::os::fd::OwnedFd> {
+        let mut signals = lock(&self.signals);
+        let signals = signals.get_or_insert_with(|| crate::vello::Signals::new(&self.device, &self.queue));
+        let submitting = self.submit_lock();
+        let Some(fence) = signals.arm() else {
+            self.fenceless.store(true, Ordering::Relaxed);
+            return None;
+        };
+        self.queue.submit(std::iter::empty::<wgpu::CommandBuffer>());
+        drop(submitting);
+        signals.sync_file(fence)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn wait_fence(&self) -> bool {
+        if self.fenceless.load(Ordering::Relaxed) {
+            return false;
+        }
+        let held = *lock(&self.polls);
+        let Some(fence) = self.fence() else { return false };
+        let mut fds = [rustix::event::PollFd::new(&fence, rustix::event::PollFlags::IN)];
+        _ = rustix::event::poll(&mut fds, Some(&rustix::event::Timespec { tv_sec: 1, tv_nsec: 0 }));
+        _ = self.device.poll(wgpu::PollType::Poll);
+        let polls = lock(&self.polls);
+        if *polls > 0 && *polls >= held {
+            drop(self.polling.wait_timeout(polls, POLL_BUSY).unwrap_or_else(|e| e.into_inner()));
+        }
+        true
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn wait_fence(&self) -> bool {
+        false
+    }
+
     fn poll_forever(&self) {
         loop {
             drop(self.polling.wait_while(lock(&self.polls), |p| *p == 0 && !self.gone()).unwrap_or_else(|e| e.into_inner()));
             // a lost device has nothing more to finish; ending here lets it go once its other holders do
             if self.gone() {
                 return;
+            }
+            if self.wait_fence() {
+                continue;
             }
             let pause = match self.device.poll(wgpu::PollType::Poll) {
                 Ok(wgpu::PollStatus::QueueEmpty) | Err(_) => POLL_IDLE,
