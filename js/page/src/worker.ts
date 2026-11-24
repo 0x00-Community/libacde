@@ -7,7 +7,7 @@ import { DevicesModule, type DevicesNatives } from './devices'
 import { Frame } from './frame'
 import { WatchFeed, Watched, type WatchNatives } from './watched'
 import { checkedModule, SystemWatch, type SystemSource } from './sysmodules'
-import { FsModule } from './fsmodule'
+import { FsModule, type FsWatchNatives } from './fsmodule'
 import { Host } from './host'
 import type { ImeEvent, NativeIme } from './ime'
 import type { NativeSurface } from './native'
@@ -337,7 +337,11 @@ export default async function boot(natives: WebNatives): Promise<void> {
     }
     const listed = async () => HostStrings.roots(await (typed as unknown as { roots(): Promise<unknown> }).roots(), language)
     const revoke = async (root: string) => void (await rpc.call('page', 'unlend', [String(root)]))
-    bridge.value['fs'] = { ...typed, roots: listed, on, revoke }
+    const fsNatives = natives.fs as unknown as FsWatchNatives
+    const watch = (root: unknown, path: unknown, handler: unknown) => FsModule.watch(fsNatives, root, path, handler, (error) => Log.write(Level.Warn, 'acde_host', `acde:fs watch: ${(error as Error)?.message ?? String(error)}`))
+    const module: Record<string, unknown> = { ...typed, roots: listed, on, revoke, watch }
+    delete module['unwatch']
+    bridge.value['fs'] = module
   }
   if (natives.terminal) bridge.value['terminal'] = natives.terminal
   const checked = (name: string, value: object) => {

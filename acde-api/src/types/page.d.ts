@@ -155,6 +155,20 @@ export interface AcdeFs {
   openPath(root: string, path: string): Promise<{ root: string; path: string; file: string }>
   revoke(rootPath: string): Promise<void>
   on?(type: 'roots', handler: (event: FsRootsEvent) => void): () => boolean
+  watch?(root: string, path: string, handler: (event: FsWatchEvent) => void): Promise<() => boolean>
+}
+
+export interface FsChange {
+  readonly type: 'appeared' | 'disappeared' | 'modified' | 'moved' | 'unknown'
+  readonly path: string
+  readonly from?: string
+  readonly kind: 'file' | 'directory'
+}
+
+export interface FsWatchEvent {
+  readonly root: string
+  readonly path: string
+  readonly changes: readonly FsChange[]
 }
 
 export interface FsRootsEvent {

@@ -41,9 +41,14 @@ struct Changes {
     pending: Arc<AtomicUsize>,
 }
 
+#[cfg(target_os = "linux")]
+type Watching = (v8::Global<v8::Function>, Option<crate::runtime::fs::watch::Watch>);
+
 thread_local! {
     static WORKSPACE: RefCell<Option<Workspace>> = const { RefCell::new(None) };
     static CHANGES: RefCell<Option<Changes>> = const { RefCell::new(None) };
+    #[cfg(target_os = "linux")]
+    static WATCHES: RefCell<bind::Slab<Watching>> = RefCell::default();
 }
 
 fn readers() -> &'static offload::Pool {
@@ -58,6 +63,7 @@ pub fn install(scope: &mut v8::PinScope, natives: v8::Local<v8::Object>, workspa
         let data = v8::Integer::new_from_unsigned(scope, index as u32).into();
         bind::method_with(scope, fs, name, call, Some(data));
     }
+    crate::methods!(scope, fs, "watch" => watch, "unwatch" => unwatch);
     bind::set(scope, natives, "fs", fs.into());
 }
 
@@ -109,7 +115,7 @@ fn settle(scope: &mut v8::PinScope, resolver: v8::Local<v8::PromiseResolver>, re
             let read = crate::js_object!(scope, {"text" => text, "modifiedMs" => modified_ms, "size" => size, "version" => version});
             resolver.resolve(scope, read.into());
         }
-        Ok(FsReply::Done) => {
+        Ok(FsReply::Done | FsReply::Dir(_)) => {
             let done = v8::undefined(scope).into();
             resolver.resolve(scope, done);
         }
@@ -130,3 +136,77 @@ fn settle(scope: &mut v8::PinScope, resolver: v8::Local<v8::PromiseResolver>, re
         }
     }
 }
+
+#[cfg(target_os = "linux")]
+fn watch(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let Some(workspace) = WORKSPACE.with(|w| w.borrow().clone()) else {
+        return bind::throw_error(scope, "acde.fs: not given to this web");
+    };
+    let Ok(callback) = v8::Local::<v8::Function>::try_from(args.get(2)) else {
+        return bind::throw_type_error(scope, "acde.fs.watch: the handler is not a function");
+    };
+    let (root, path) = (bind::arg_string(scope, &args, 0), bind::arg_string(scope, &args, 1));
+    let id = WATCHES.with(|w| w.borrow_mut().add((v8::Global::new(scope, callback), None)));
+    readers().run(scope, &mut rv, move || (id, workspace.call(crate::runtime::FsCall::Watch { root, path })), watched);
+}
+
+#[cfg(target_os = "linux")]
+fn watched(scope: &mut v8::PinScope, resolver: v8::Local<v8::PromiseResolver>, (id, reply): (u32, Result<FsReply, FsError>)) {
+    let started = match reply {
+        Ok(FsReply::Dir(dir)) => {
+            let tx = crate::host::rt::current().sender();
+            let sink = move |changes: Vec<crate::runtime::fs::watch::Change>| {
+                let deliver = move |scope: &mut v8::PinScope| {
+                    let Some(callback) = WATCHES.with(|w| w.borrow().get(&id).map(|(callback, _)| callback.clone())) else { return };
+                    let value = serde_json::to_value(&changes).unwrap_or_default();
+                    let value = offload::json(scope, &value);
+                    bind::call(scope, &callback, &[value]);
+                };
+                tx.send(crate::host::rt::Msg::Task(Box::new(deliver))).is_ok()
+            };
+            crate::runtime::fs::watch::watch(&dir, Box::new(sink)).map_err(|e| FsError { status: 500, code: "EIO", message: format!("watching: {e}") })
+        }
+        Ok(_) => Err(FsError { status: 500, code: "EIO", message: "watching: not a directory handle".into() }),
+        Err(e) => Err(e),
+    };
+    match started {
+        Ok(handle) if WATCHES.with(|w| w.borrow().get(&id).is_some()) => {
+            WATCHES.with(|w| {
+                if let Some(entry) = w.borrow_mut().get_mut(&id) {
+                    entry.1 = Some(handle);
+                }
+            });
+            let id = v8::Integer::new_from_unsigned(scope, id).into();
+            resolver.resolve(scope, id);
+        }
+        Ok(_) => {
+            let id = v8::Integer::new_from_unsigned(scope, id).into();
+            resolver.resolve(scope, id);
+        }
+        Err(FsError { status, code, message }) => {
+            WATCHES.with(|w| w.borrow_mut().remove(&id));
+            let thrown = offload::failure(scope, &message, Some(i32::from(status)), code);
+            resolver.reject(scope, thrown);
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn unwatch(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
+    let id = bind::arg_u32(scope, &args, 0);
+    let entry = WATCHES.with(|w| w.borrow_mut().remove(&id));
+    drop(entry);
+}
+
+#[cfg(not(target_os = "linux"))]
+fn watch(scope: &mut v8::PinScope, _: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    let Some((token, promise)) = bind::promise(scope) else { return };
+    rv.set(promise.into());
+    if let Some(resolver) = bind::resolver(scope, token) {
+        let thrown = offload::failure(scope, "acde.fs.watch: not on this platform", Some(501), "ENOSYS");
+        resolver.reject(scope, thrown);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn unwatch(_: &mut v8::PinScope, _: v8::FunctionCallbackArguments, _: v8::ReturnValue) {}

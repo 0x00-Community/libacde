@@ -112,6 +112,16 @@ Windows 的 `XDG_DESKTOP_DIR` 和 `XDG_DOWNLOAD_DIR` 支持盘符绝对路径及
 `$HOME` 可用两种分隔符展开. 设备路径、逐字路径、IPC 共享、相对路径和指向用户主目录的覆盖项使用默认目录 `%USERPROFILE%\<名>`.
 没设 (或为空) 时按路径的根和第 1 级公共位置一样用系统已知文件夹 (`known_folder`), 桌面挪进 OneDrive 时不再新建 `%USERPROFILE%\Desktop`.
 
+**看着文件夹** (`watch(root, path, handler)`, 2026-11-24 dopame 要的: 桌面文件夹和 Finder 不再每 15 秒重列): 回 `Promise<() => boolean>` (取消函数, 第二次调回 false),
+handler 收 SDK `FsWatchEvent {root, path, changes}`, 每项 `FsChange {type, path, from?, kind}`, `path` / `from` 是相对 root 的路径. `type` 借 WICG `FileSystemObserver`
+记录的名字: `appeared` / `disappeared` / `modified` / `moved` (同一批里配上对的改名, `from` 是旧路径) / `unknown` (内核的事件队列溢出, 要重列); 看着的文件夹自己被删或挪走时
+发一项 `disappeared`, `path` 就是它. 只看这一层 (不递归). 不用标准的 `FileSystemObserver`: 它看的是 `FileSystemHandle`, `acde:fs` 的根和路径不是句柄, 它也还只是 WICG 的草案.
+实现 (只在 Linux; 别的平台 reject 501 `ENOSYS`, 页面照旧轮询): 和 `list` 一样按根和路径在 root 之下打开文件夹 (`FsCall::Watch`, 在读的线程池里, 权限和根的缓存同 `list`),
+页面线程上把 `/proc/self/fd/<fd>` 交给全进程一个 inotify (runtime `fs/watch.rs`, 线程 `acde-fs-watch` 阻塞读, 不轮询), 之后关掉描述符, inotify 按 inode 看着.
+看 `CREATE` / `DELETE` / `CLOSE_WRITE` / `ATTRIB` / `MOVED_FROM` / `MOVED_TO` / `DELETE_SELF` / `MOVE_SELF` (不看 `MODIFY`: 写一次发一次; 写完关闭才算 `modified`),
+一次读到的事件按看的文件夹合成一批、去重, 经页面的事件循环交给 handler (handler 抛错只记日志). 同一文件夹被看多次共用一个 inotify watch, 最后一个取消时 `inotify_rm_watch`;
+页面没了 (投递失败) 的订阅随即去掉. 页面胶水 `fsmodule.ts` `FsModule.watch` 把原生的 `{type, name, from?, directory}` 转成上面的形状, 原生的 `unwatch` 不出现在模块上.
+
 **失败**: reject 一个 `Error` (`AcdeFsError`), 字段来自 runtime `failure.rs` 的 `Failure`: `message` 人读的英文, `status`, node 风格的 `code`:
 
 | `code` | `status` | 什么时候 |

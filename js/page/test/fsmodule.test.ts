@@ -49,3 +49,33 @@ test('a roots event carries the removed ids and the added ones only when a drive
   assert.deepEqual(FsModule.rootsEvent({ added: [], removed: ['removable-1234-ABCD', 7] }), { removed: ['removable-1234-ABCD'] })
   assert.deepEqual(FsModule.rootsEvent({}), { removed: [] })
 })
+
+test('watch: native changes become paths under the root, a throwing handler is reported, unsubscribing ends it once', async () => {
+  let deliver: (changes: { type: string; name: string; from?: string; directory: boolean }[]) => void = () => {}
+  const unwatched: number[] = []
+  const natives = {
+    watch: async (_root: string, path: string, callback: typeof deliver) => {
+      assert.equal(path, 'Projects/a')
+      deliver = callback
+      return 7
+    },
+    unwatch: (id: number) => unwatched.push(id),
+  }
+  const seen: unknown[] = []
+  const reported: unknown[] = []
+  const stop = await FsModule.watch(natives as never, 'desktop', '/Projects/a/', (event: unknown) => {
+    seen.push(event)
+    throw new Error('handler broke')
+  }, (error) => reported.push(error))
+  deliver([{ type: 'moved', name: 'new.txt', from: 'old.txt', directory: false }, { type: 'disappeared', name: '', directory: true }])
+  assert.deepEqual(seen, [{
+    root: 'desktop',
+    path: 'Projects/a',
+    changes: [{ type: 'moved', path: 'Projects/a/new.txt', from: 'Projects/a/old.txt', kind: 'file' }, { type: 'disappeared', path: 'Projects/a', kind: 'directory' }],
+  }])
+  assert.equal(reported.length, 1)
+  assert.equal(stop(), true)
+  assert.equal(stop(), false)
+  assert.deepEqual(unwatched, [7])
+  await assert.rejects(FsModule.watch(natives as never, 'desktop', '', 'nope', () => {}), TypeError)
+})

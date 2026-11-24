@@ -6,6 +6,8 @@ mod picked;
 mod ranged;
 pub(crate) mod removable;
 mod save;
+#[cfg(target_os = "linux")]
+pub mod watch;
 pub(crate) mod workspace;
 
 pub use access::files::{Files, LentRoot};
@@ -169,6 +171,7 @@ pub enum FsCall {
     TruncateWrite { id: String, size: Option<u64> },
     CommitWrite { id: String },
     AbortWrite { id: String },
+    Watch { root: String, path: String },
 }
 
 pub enum FsReply {
@@ -177,6 +180,7 @@ pub enum FsReply {
     Text { text: String, modified_ms: i64, size: u64, version: String },
     Bytes { data: Vec<u8>, modified_ms: i64, version: String },
     Range(Range),
+    Dir(cap_std::fs::Dir),
     Done,
 }
 
@@ -209,6 +213,7 @@ impl FsCall {
                 | Self::ReadText { .. }
                 | Self::ReadBytes { .. }
                 | Self::ReadRange { .. }
+                | Self::Watch { .. }
         )
     }
 
@@ -237,6 +242,7 @@ impl FsCall {
             | Self::Rename { root, .. }
             | Self::Delete { root, .. }
             | Self::ReadRange { root, .. }
+            | Self::Watch { root, .. }
             | Self::OpenWrite { root, .. } => Some(root),
         }
     }
@@ -265,6 +271,7 @@ impl Shared {
                 json(WorkspaceFs::mkdir_in(&root(at)?, path, &options).json())
             }
             FsCall::Stat { root: at, path } => json(WorkspaceFs::stat_in(&root(at)?, path).json()),
+            FsCall::Watch { root: at, path } => WorkspaceFs::dir(&root(at)?, path).map(FsReply::Dir),
             FsCall::ReadText { root: at, path } => {
                 let Contents { data, modified_ms, version } = WorkspaceFs::read_bytes_in(&root(at)?, path)?;
                 let text = String::from_utf8(data).map_err(|_| Failure::invalid("file is not valid UTF-8 text").with(crate::runtime::failure::Errno::Ilseq))?;
