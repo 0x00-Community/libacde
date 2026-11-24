@@ -405,7 +405,7 @@ impl Engine {
             }
         }
         let (x, y) = (x / scale as f32, y / scale as f32);
-        let hit = self.resolved().hit(x, y).map(|h| h.node_id);
+        let hit = self.laid_out().hit(x, y).map(|h| h.node_id);
         let viewport = self.doc.viewport_scroll();
         let mut scrolled = Vec::new();
         let changed = match hit {
@@ -426,7 +426,7 @@ impl Engine {
 
     pub(crate) fn pointer(&mut self, x: f32, y: f32) {
         let scale = self.doc.viewport().scale_f64() as f32;
-        self.resolved();
+        self.laid_out();
         if self.doc.set_hover_to(x / scale, y / scale) {
             self.touch();
         }
@@ -558,6 +558,13 @@ impl Engine {
             }
         };
         at.max(self.resolved_at)
+    }
+
+    pub(crate) fn laid_out(&mut self) -> &BaseDocument {
+        if self.stale || self.resolved_at == 0.0 {
+            return self.resolved();
+        }
+        &self.doc
     }
 
     pub(crate) fn resolved(&mut self) -> &BaseDocument {

@@ -140,7 +140,7 @@ impl Dom {
 
     pub fn hit_test(&self, x: f64, y: f64) -> Option<u32> {
         self.read(|e| {
-            let hit = e.resolved().element_from_point(x as f32, y as f32);
+            let hit = e.laid_out().element_from_point(x as f32, y as f32);
             Ok(hit.and_then(|n| e.element_of(n)).map(|node| e.hit_option(node, x, y)).map(|node| e.ids.id_of(node)))
         })
         .ok()
@@ -167,7 +167,7 @@ impl Dom {
 
     pub fn hit_test_all(&self, x: f64, y: f64) -> Vec<u32> {
         self.read(|e| {
-            let hits = e.resolved().elements_from_point(x as f32, y as f32);
+            let hits = e.laid_out().elements_from_point(x as f32, y as f32);
             let mut nodes: Vec<NodeId> = Vec::new();
             for hit in hits {
                 if let Some(node) = e.element_of(hit)

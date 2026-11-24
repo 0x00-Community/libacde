@@ -342,7 +342,7 @@ impl Engine {
     }
 
     pub(in crate::render::dom) fn take_animation_events(&mut self) -> AnimationEvents {
-        self.resolved();
+        self.laid_out();
         let mut events = Vec::new();
         for event in self.doc.take_animation_events() {
             let connected = self.doc.get_node(event.node).is_some_and(|n| n.flags.is_in_document());
