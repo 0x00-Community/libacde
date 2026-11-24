@@ -122,6 +122,8 @@ What you can read and use today:
 
 ## 📚🧭 Docs
 
+New here? Start with [docs/humans.md](docs/humans.md). The authoritative notes, kept in step with the code, are listed in [docs/agents.md](docs/agents.md).
+
 | Read this | When |
 | --- | --- |
 | 🏛️ [docs/agents/runtime/architecture.md](docs/agents/runtime/architecture.md) | First time here: front ends, how it runs, processes and threads |

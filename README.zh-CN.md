@@ -117,6 +117,8 @@ git clone --recursive https://github.com/0x00-Community/libacde.git
 
 ## 📚🧭 文档
 
+第一次来先读 [docs/humans.md](docs/humans.md). 和代码同步的权威说明列在 [docs/agents.md](docs/agents.md).
+
 | 读这个 | 什么时候 |
 | --- | --- |
 | 🏛️ [docs/agents/runtime/architecture.md](docs/agents/runtime/architecture.md) | 第一次来: 前端、跑法、进程与线程 |
