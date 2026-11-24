@@ -401,7 +401,11 @@ impl Bar {
         FrameButton::ALL.into_iter().map(dot).collect()
     }
 
-    fn button_at(&self, m: &FrameMetrics, x: f64, y: f64) -> Option<FrameButton> {
+    pub fn button_at(&self, x: f64, y: f64) -> Option<FrameButton> {
+        self.button_by(&FrameMetrics::current(), x, y)
+    }
+
+    fn button_by(&self, m: &FrameMetrics, x: f64, y: f64) -> Option<FrameButton> {
         if y < 0.0 || y >= self.height {
             return None;
         }
@@ -460,7 +464,7 @@ impl Decoration {
     }
 
     pub fn button_at(&self, bar: &Bar, x: f64, y: f64) -> Option<FrameButton> {
-        bar.button_at(&self.metrics, x, y)
+        bar.button_by(&self.metrics, x, y)
     }
 
     pub fn grab_hints(&self, theme: &FrameTheme, w: f64, h: f64, top: f64) -> [([f64; 4], u32); 9] {
