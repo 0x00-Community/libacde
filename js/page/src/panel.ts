@@ -159,6 +159,11 @@ export class ImePanel {
       else this.#actions.page(target.dataset['page'] === 'next')
     })
     panel.addEventListener('mousedown', (event) => event.preventDefault())
+    panel.addEventListener('wheel', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.deltaY !== 0) this.#actions.page(event.deltaY > 0)
+    })
     return panel
   }
 }

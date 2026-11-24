@@ -95,3 +95,27 @@ test('the float is dropped when the field loses focus or the window goes inactiv
   text.surfaceActive = false
   assert.deepEqual(shell.at(-1), [0, 0, 0, 0])
 })
+
+test('a click on the float picks the word under it and the wheel turns the page, without moving focus', async () => {
+  const { web, native, surface } = await floating()
+  using _ = web
+  const picked: number[] = []
+  const pages: boolean[] = []
+  const layer = new ImeLayer(web.context['document'] as Document, native, (node) => web.internals.idOf(node as never))
+  layer.attach(surface)
+  const panel = new ImePanel(web.context['document'] as Document, layer, { select: (index) => void picked.push(index), page: (next) => void pages.push(next) })
+  web.run(`document.getElementById('field').focus()`)
+  panel.show({ ...EVENT, candidates: [{ label: '1', text: '你' }, { label: '2', text: '尼' }] }, CARET)
+  web.run(`
+    const word = document.querySelector('[data-acde-ime-panel] [data-index="1"] .ime-text')
+    word.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }))
+    globalThis.__kept = !word.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+    const box = document.querySelector('[data-acde-ime-panel]')
+    box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 40 }))
+    box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -40 }))
+  `)
+  assert.deepEqual(picked, [1])
+  assert.deepEqual(pages, [true, false])
+  assert.equal(web.run('globalThis.__kept'), true, 'the press does not take the focus')
+  assert.equal(web.run(`document.activeElement.id`), 'field')
+})
