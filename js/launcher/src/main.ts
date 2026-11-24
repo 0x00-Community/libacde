@@ -4,8 +4,8 @@ import type { FileFilter, Lent, WebGrants, WebThreadHandle } from '../../page/sr
 import { bindNatives, sys, type Natives } from '../../page/src/sys/natives'
 import { Log } from '../../page/src/log'
 import { screenshotFile, xdgHome } from '../../page/src/sys/os'
-import { readDirOr, readTextOr, stat } from '../../page/src/sys/fs'
-import { join } from '../../page/src/sys/path'
+import { mkdirSync, readDirOr, readTextOr, renameSync, stat, writeFileSync } from '../../page/src/sys/fs'
+import { dirname, join } from '../../page/src/sys/path'
 import { onceSignal, process } from '../../page/src/sys/process'
 import { Rpc } from '../../page/src/rpc'
 import { SessionLanguage } from '../../page/src/language'
@@ -28,6 +28,7 @@ import { Inspect, type InspectHost, type InspectShell, type PlaceChange, type Pl
 import { GuestWindows } from './dev/guest'
 import { standalone } from './standalone'
 import { LocalRegistry } from './local/registry'
+import { LocalOpener } from './local/open'
 import { LocalSession, type Seat } from './local/session'
 import type { LocalLink } from './local/link'
 import { Frame } from '../../page/src/frame'
@@ -284,7 +285,7 @@ class Launcher {
     const { session } = this
     const welcome = this.manager?.welcome
     const adopted = this.#lending.adopt(welcome?.lent, welcome?.fds)
-    const request = Lending.entered(session.request, welcome?.lent, adopted)
+    const request = this.#seat ? session.request : Lending.entered(session.request, welcome?.lent, adopted)
     const init = this.#desktop
       ? desktopInit(session.page!, session.resources, grant.token, this.#place(), session.tier!, session.services)
       : webInit(session.found!, grant.token, this.#place(), { tier: session.tier, request, services: session.services }, grant.window)
@@ -661,6 +662,7 @@ class Launcher {
       else if (event.type === 'devreload') void this.#devReload(event['hot'] === true)
       else if (event.type === 'invoke') { const message = this.#lent.invoke(event); if (message) this.#thread?.post(message) }
       else if (event.type === 'request' && !this.#desktop) this.#deliver(event)
+      else if (event.type === 'lend' && !this.#desktop && this.#seat) this.#thread?.post({ type: 'fsroots', added: [String(event['name'] ?? '')], removed: [] })
       else if (event.type === 'lend' && !this.#desktop) this.#lending.lend([event as unknown as Lent], event['fds'])
       else if (event.type === 'unlend' && !this.#desktop) this.#lending.unlend(String(event['name'] ?? ''))
       else if (event.type === 'visibility' && !this.#desktop) void this.#rpc?.call('window', 'visible', [event['visible'] === true]).catch(() => undefined)
@@ -686,7 +688,7 @@ class Launcher {
   }
 
   #deliver(event: ManagerEvent): void {
-    const handed = this.#lending.request(event)
+    const handed = this.#seat ? ((event['request'] as Record<string, unknown> | undefined) ?? null) : this.#lending.request(event)
     void this.#rpc?.call('window', 'request', [handed]).catch(() => undefined)
   }
 
@@ -737,8 +739,28 @@ async function localDesktop(natives: LauncherNatives, args: LaunchArgs): Promise
   const scan = () => LocalRegistry.scan(files, roots, args.app || null)
   const registry = scan()
   const shell = Launcher.shell(natives, registry.desktop.desktop.name)
+  const data = [xdgHome('data'), ...(process.env['XDG_DATA_DIRS'] || '/usr/local/share:/usr/share').split(':').filter(Boolean)]
+  if (process.platform === 'darwin') data.push('/opt/homebrew/share', '/opt/local/share')
+  const opener = new LocalOpener({
+    readText: (file) => readTextOr(file, null),
+    readDir: readDirOr,
+    isDirectory: (path) => stat(path)?.isDirectory === true,
+    exists: (path) => stat(path) !== null,
+    writeText: (file, text) => {
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(`${file}.new`, text)
+      renameSync(`${file}.new`, file)
+    },
+  }, {
+    data,
+    config: xdgHome('config'),
+    configDirs: (process.env['XDG_CONFIG_DIRS'] || '/etc/xdg').split(':').filter(Boolean),
+    applications: data.map((dir) => join(dir, 'applications')),
+  })
   const session = new LocalSession({
     shell,
+    opener,
+    ...(shell.openDefault && { openDefault: (path: string) => shell.openDefault!(path) }),
     ...(natives.native.DevTools && { devtools: natives.native.DevTools }),
     registry,
     rescan: scan,

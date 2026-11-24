@@ -12,6 +12,8 @@ import { process } from '../../../page/src/sys/process'
 import { ShellHub, type ShellView } from './hub'
 import { LocalLink, type Peer, type PeerSide } from './link'
 import { LocalRegistry, type LocalApp, type LocalService } from './registry'
+import { DESKTOP_SUFFIX, LocalOpener, UNKNOWN, type Chosen } from './open'
+import { sys } from '../../../page/src/sys/natives'
 
 export interface SeatedPage {
   readonly window: number
@@ -50,6 +52,8 @@ export interface ServiceRunner {
 
 export interface LocalHost {
   readonly shell: LauncherShell
+  readonly opener?: LocalOpener
+  openDefault?(path: string): Promise<void>
   readonly devtools?: NativeDevTools
   readonly registry: LocalRegistry
   launcher(session: Session, link: LocalLink, seat: Seat): SeatedLauncher
@@ -121,6 +125,7 @@ export class LocalSession implements PeerSide {
   readonly #refs = new Map<number, string>()
   readonly #places = new Map<number, readonly [number, number, number, number]>()
   readonly #targets = new Map<number, readonly NativeDevToolsTarget[]>()
+  readonly #lentFolders = new Map<number, Map<string, string>>()
   #nextRef = 1
   #next = 0
   readonly windows: SessionWindows = {
@@ -444,7 +449,14 @@ export class LocalSession implements PeerSide {
         const opened = this.#openLink(url, name === null ? null : (this.#registry.byName(name)?.app.id ?? name), false) as { app: string }
         return { ok: true, text: `opened ${url} with ${opened.app}`, app: opened.app }
       }
-      if (path !== null) throw unsupported('open', 'path')
+      if (path !== null) {
+        if (!path.startsWith('/') || !this.host.opener?.files.exists(path)) return { ok: false, text: `open: ${path} is not an absolute path that exists` }
+        const target = name === null ? null : name.endsWith(DESKTOP_SUFFIX) ? name : (this.#registry.byName(name)?.app.id ?? name)
+        return this.#openFile(path, target, false, true).then(
+          (opened) => ({ ok: true, text: `opened ${path} with ${(opened as { id?: string }).id ?? 'the system'}`, app: (opened as { id?: string }).id }),
+          (error: Error) => ({ ok: false, text: `open: ${error.message}` }),
+        )
+      }
       const app = this.#registry.byName(name!)
       if (!app) return { ok: false, text: `open: no app ${name} (apps: ${this.#registry.apps.map((a) => a.app.id).join(', ') || 'none'})` }
       this.#start(app, null, false)
@@ -470,7 +482,7 @@ export class LocalSession implements PeerSide {
     try {
       if (op === 'webs') return respond(true, JSON.stringify(await this.#answerWebs()))
       if ((op === 'console' || op === 'network') && request['pages'] === true) return respond(true, JSON.stringify(await this.#answerPages(request)))
-      if (op === 'open') return respond(true, JSON.stringify(this.#answerOpen(request)))
+      if (op === 'open') return respond(true, JSON.stringify(await this.#answerOpen(request)))
       const target = op === 'snapshot' && request['web'] === undefined ? this.#focused() : this.#byWeb(request['web'])
       if (!target) {
         const known = [this.#desktop, ...this.#apps()].filter(Boolean).map((r) => r!.web).join(', ')
@@ -591,7 +603,16 @@ export class LocalSession implements PeerSide {
       case 'apps.open':
         return this.#open(peer, args)
       case 'apps.handlers':
-        return []
+        return this.#handlers(String(args[0] ?? ''))
+      case 'apps.openPath': {
+        const options = (args[1] ?? {}) as { app?: unknown }
+        const natives = desktop || me?.app?.package.system === true
+        return this.#openFile(String(args[0] ?? ''), typeof options.app === 'string' ? options.app : null, false, natives)
+      }
+      case 'apps.setDefault':
+        return this.#setDefault(args)
+      case 'apps.unlend':
+        return this.#unlend(args[0])
       case 'capabilities.request': {
         const name = String(args[0] ?? '')
         const declared = desktop || Object.hasOwn(me?.app?.app.capabilities ?? {}, name)
@@ -640,22 +661,130 @@ export class LocalSession implements PeerSide {
     const request = rawRequest && typeof rawRequest === 'object' ? { ...(rawRequest as Record<string, unknown>) } : null
     const options = (typeof args[0] === 'string' ? args[2] : args[1]) as Record<string, unknown> | undefined
     const newWindow = options?.['newWindow'] === true
-    if (options?.['root'] !== undefined && options['root'] !== null) throw unsupported('apps', 'open with a lent folder (options.root)')
+    const root = options?.['root'] === undefined || options['root'] === null ? null : LocalSession.#folder(options['root'])
+    if (root && !desktop) throw forbidden('only the desktop lends an app a folder (options.root)')
     const kind = request?.['kind']
     const system = kind === 'open-link' || kind === 'open-file'
-    if (target === null || system) {
+    if (root === null && (target === null || system)) {
       if (!request) throw badRequest('apps.open needs an app id or a system request')
       if (kind === 'open-link') return this.#openLink(String(request['url'] ?? ''), target, newWindow)
-      if (kind === 'open-file') throw unsupported('apps', 'open of a file (open-file)')
+      if (kind === 'open-file') {
+        const path = request['path'] ?? request['file']
+        if (typeof path !== 'string' || !path) throw badRequest('an open-file request needs a path here')
+        return this.#openFile(path, target, newWindow, false)
+      }
       throw badRequest('a system request is open-file or open-link')
     }
+    if (target === null) throw badRequest('lending a folder names the app: apps.open(app, request, {root})')
     const app = this.#registry.app(target)
     if (!app) throw notFound(`no app ${target}`)
-    if (request) {
+    if (root && !LocalSession.#declares(app, 'fs')) throw refusal(409, 'not_accepted', `${target} does not declare "fs" in its capabilities: it cannot take a folder`)
+    if (request && !system) {
       if (typeof kind !== 'string') throw refusal(400, 'untyped_request', `a request to ${target} needs a kind`)
       if (!app.app.requests.includes(kind)) throw refusal(409, 'not_accepted', `${target} does not accept ${kind} requests (its manifest's requests)`)
     }
-    return this.#start(app, request, newWindow)
+    return this.#start(app, request, newWindow, root?.dir ?? null)
+  }
+
+  static #folder(given: unknown): { dir: string } {
+    const root = given as { dir?: unknown } | string
+    const dir = typeof root === 'string' ? root : root?.dir
+    if (typeof dir !== 'string' || !dir.startsWith('/')) throw badRequest('options.root is a folder: an absolute path, or {dir, label}')
+    return { dir }
+  }
+
+  #lendFolder(record: Running, dir: string): string {
+    const [entry] = sys().lendPaths?.(record.app!.app.id, [dir]) ?? []
+    if (!entry || entry.kind !== 'directory') throw badRequest(`${dir} is not a folder this session can lend`)
+    let folders = this.#lentFolders.get(record.peer.id)
+    if (!folders) this.#lentFolders.set(record.peer.id, (folders = new Map()))
+    folders.set(dir, entry.name)
+    return entry.name
+  }
+
+  #unlend(given: unknown): unknown {
+    if (typeof given !== 'string' || !given) throw badRequest("apps.unlend needs a folder's path")
+    let revoked = 0
+    for (const record of this.#apps()) {
+      const name = this.#lentFolders.get(record.peer.id)?.get(given)
+      if (name === undefined) continue
+      this.#lentFolders.get(record.peer.id)!.delete(given)
+      record.link.push({ type: 'unlend', name })
+      revoked++
+    }
+    return { revoked }
+  }
+
+  #opener(): LocalOpener {
+    if (!this.host.opener) throw unsupported('apps', 'openPath')
+    return this.host.opener
+  }
+
+  #chosen(mime: string, natives: ReturnType<LocalOpener['natives']>): Chosen | null {
+    return this.#opener().chosen(mime, natives, (id) => this.#registry.app(id) !== undefined, (type) => this.#registry.forType(type)?.app.id ?? null)
+  }
+
+  async #openFile(path: string, target: string | null, newWindow: boolean, nativesAllowed: boolean): Promise<unknown> {
+    if (!path.startsWith('/')) throw badRequest(`${path} is not an absolute path`)
+    const opener = this.#opener()
+    const mime = opener.mimeOf(path)
+    let chosen: Chosen | null
+    if (target !== null && this.#registry.app(target)) chosen = { kind: 'acde', app: target }
+    else if (target !== null && target.endsWith(DESKTOP_SUFFIX)) {
+      if (!nativesAllowed) throw forbidden(`${target}: only the desktop and system apps open files with programs`)
+      const native = opener.natives(mime).find((n) => n.id === target)
+      if (!native) throw notFound(`${target} does not open ${mime}`)
+      chosen = { kind: 'native', native }
+    } else if (target !== null) throw notFound(`no app ${target}`)
+    else chosen = this.#chosen(mime, opener.natives(mime))
+    if (chosen?.kind === 'acde') {
+      const app = this.#registry.app(chosen.app)!
+      const [entry] = sys().lendPaths?.(app.app.id, [path]) ?? []
+      if (!entry) throw badRequest(`${path} is neither a file nor a folder this session can lend`)
+      return this.#start(app, { kind: 'open-file', file: entry.label, entry }, newWindow)
+    }
+    if (chosen?.kind === 'native') {
+      if (!nativesAllowed) throw refusal(404, 'no_app', `no app opens ${mime} (${path})`)
+      const spawn = sys().spawn
+      if (!spawn) throw unsupported('apps', 'openPath with a program')
+      const pid = spawn(['gio', 'launch', chosen.native.file, path], { env: { ...process.env } as Record<string, string>, prefix: `[${chosen.native.id}] ` }, () => {})
+      return { kind: 'native', id: chosen.native.id, window: 0, pid }
+    }
+    if (nativesAllowed && this.host.openDefault) {
+      await this.host.openDefault(path)
+      return { kind: 'native', id: null, window: 0, pid: 0 }
+    }
+    throw refusal(404, 'no_app', `no app opens ${mime} (${path})`)
+  }
+
+  #handlers(path: string): unknown {
+    const opener = this.#opener()
+    const mime = opener.mimeOf(path)
+    const natives = opener.natives(mime)
+    const chosen = this.#chosen(mime, natives)
+    const preferred = chosen?.kind === 'acde' ? chosen.app : chosen?.kind === 'native' ? chosen.native.id : null
+    const handles = (types: readonly string[]) => types.some((t) => t === mime || (t.endsWith('/*') && mime.split('/')[0] === t.slice(0, -2)))
+    const acde = this.#registry.apps.filter((a) => handles(a.app.mimeTypes)).map((a) => ({
+      kind: 'acde', id: a.app.id, label: a.app.label, icon: a.app.icon, default: preferred === a.app.id, system: a.package.system,
+    }))
+    const native = natives.map((n) => ({ kind: 'native', id: n.id, label: n.label, icon: n.icon ?? '', default: preferred === n.id }))
+    return { mime: mime === UNKNOWN ? '' : mime, association: mime === UNKNOWN ? null : mime, handlers: [...acde, ...native] }
+  }
+
+  #setDefault(args: readonly unknown[]): unknown {
+    const opener = this.#opener()
+    const mime = args[0]
+    if (typeof mime !== 'string' || !mime.includes('/')) throw badRequest('setDefault needs a MIME type')
+    const handler = args[1]
+    if (typeof handler !== 'string') throw badRequest('setDefault needs an app id or a .desktop id')
+    const id = this.#registry.app(handler) ? LocalOpener.desktopId(handler) : opener.natives(mime).some((n) => n.id === handler) ? handler : null
+    if (id === null) throw notFound(`${handler} is neither an app nor a program that opens ${mime}`)
+    try {
+      opener.remember(mime, id)
+    } catch (error) {
+      throw refusal(503, 'unavailable', (error as Error).message)
+    }
+    return handler
   }
 
   #mayOpen(peer: Peer, args: readonly unknown[]): void {
@@ -683,19 +812,23 @@ export class LocalSession implements PeerSide {
     return this.#start(app, { kind: 'open-link', url }, newWindow)
   }
 
-  #start(app: LocalApp, request: Record<string, unknown> | null, newWindow: boolean): unknown {
+  #start(app: LocalApp, request: Record<string, unknown> | null, newWindow: boolean, folder: string | null = null): unknown {
     const id = app.app.id
     const fresh = newWindow && app.app.multiple
     const running = fresh ? undefined : this.#apps().filter((r) => r.app!.app.id === id).sort((a, b) => a.peer.instance - b.peer.instance)[0]
     if (running) {
-      if (request) running.link.push({ type: 'request', request, lent: [] })
+      const root = folder === null ? null : this.#lendFolder(running, folder)
+      if (root !== null) running.link.push({ type: 'lend', name: root })
+      if (request) running.link.push({ type: 'request', request: root === null ? request : { ...request, root }, lent: [] })
       this.host.shell.focus(running.window)
       return { kind: 'acde', id, app: id, window: running.window, pid: process.pid, instance: running.peer.instance, running: true }
     }
     const instance = (this.#instances.get(id) ?? 0) + 1
     this.#instances.set(id, instance)
     const peer = this.#peer('app', id, null, instance)
-    const welcome = this.#appWelcome(app, instance, request)
+    const lent = folder === null ? null : sys().lendPaths?.(id, [folder])?.[0] ?? null
+    if (folder !== null && (!lent || lent.kind !== 'directory')) throw badRequest(`${folder} is not a folder this session can lend`)
+    const welcome = this.#appWelcome(app, instance, request && lent ? { ...request, root: lent.name } : request)
     const link = new LocalLink(welcome, peer, this)
     const view = this.hub.view()
     const sized: GrantOptions = { mode: 'free', ...windowGrant(welcome, app.app.size) }
@@ -717,6 +850,10 @@ export class LocalSession implements PeerSide {
       throw refusal(503, 'unavailable', `${id}: ${(error as Error).message}`)
     }
     record.window = [...view.windows][0] ?? 0
+    if (lent) {
+      this.#lentFolders.set(peer.id, new Map([[folder!, lent.name]]))
+      link.push({ type: 'lend', name: lent.name })
+    }
     this.#toDesktop({ type: 'windowopen', window: record.window, appId: id, title: app.app.label, web, instance })
     void launcher.run().then(
       () => this.#gone(record),
@@ -737,6 +874,7 @@ export class LocalSession implements PeerSide {
     record.view.releaseAll()
     this.#refs.delete(record.window)
     this.#places.delete(record.window)
+    this.#lentFolders.delete(record.peer.id)
     if (this.#targets.delete(record.peer.id)) this.host.devtools?.targets([...this.#targets.values()].flat())
     if (record.window && !this.#ending) this.#toDesktop({ type: 'windowclose', window: record.window })
   }

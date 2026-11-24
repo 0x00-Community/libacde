@@ -272,7 +272,7 @@ acdes 一列按 acdes 的代码核对过; 宿主窗口一列取自 `docs/runtime
 | `acde:permissions`、`capabilities.request` | 回 501 (还没有询问可答) | `permissions.list` / `pending` 回空; `capabilities.request` 声明了的是 `available` |
 | 快照的 `rect`、`list()` 的位置 | 有 | 有 (宿主窗口每帧比较后发 `windowgeometry`, 实测) |
 | `apps.open`、`windowopen` / `windowclose`、`windowmenus` | 有 | 有 (本地会话, 实测) |
-| `apps.openPath`、`open-file`、`handlers` | 有 | 回 501 (还没有) |
+| `apps.openPath`、`open-file`、`handlers`、`setDefault`、借文件夹 | 有 | 有 (本地会话, 实测打开 Markdown、文件夹); 没有 acde 应用时 macOS / Windows 交给系统默认 |
 
 acdes 里系统应用声明的外壳模块现在只有 `session`、`desktops`、`setDefault`、`packages.refresh`、`software` 能用, `windows`、`permissions`、`inspect` 回 501;
 要这些能力的界面先放在桌面页里.

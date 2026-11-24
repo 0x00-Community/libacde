@@ -51,4 +51,5 @@ export interface LauncherShell extends DevShell, Omit<InspectShell, 'focus' | 's
   showDesk?(desk: number): unknown
   moveToDesk?(window: number, desk: number): unknown
   setWallpaper?(color: string, image?: string | null): unknown
+  openDefault?(target: string): Promise<void>
 }

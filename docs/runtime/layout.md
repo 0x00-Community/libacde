@@ -89,7 +89,18 @@
     `kind`, 否则 400 `untyped_request` / 409 `not_accepted`; `open-link` 按 scheme 找应用), `window.setTitle` / `setMenus` (告诉桌面
     `windowtitle` / `windowmenus`), `window.openUrl`、`page.notify` (桌面收 `notification`)、`windows.screenshot` (整个宿主窗口)、
     `windows.invokeMenu` (按窗口号给应用 `menuinvoke`)、`capabilities.request`、`permissions.list` / `pending` (空)、`desktops.list`、`session.others` (空)、
-    `session.logout` (结束会话); 别的回 501 `unsupported`. 还没有: `open-file`、`openPath`、`handlers` (按类型选应用, 宿主上回 501)、借文件夹 (`options.root`).
+    `session.logout` (结束会话); 别的回 501 `unsupported`.
+  - 按类型打开 (`local/open.ts`, 照 acdes `mime.rs` / `apps/defaults.rs`): 类型是文件夹 `inode/directory`, 文件先按 shared-mime-info 的 `mime/globs2`
+    (`$XDG_DATA_HOME`、`XDG_DATA_DIRS`, macOS 另加 `/opt/homebrew/share`、`/opt/local/share`; 权重高的、模式长的先, `cs` 才分大小写), 没有就按和 acdes 同一张扩展名表,
+    再没有是 `application/octet-stream`. 选谁: 记住的 (`$XDG_CONFIG_HOME/acde-mimeapps.list`、`mimeapps.list`、`XDG_CONFIG_DIRS`、各 `applications/mimeapps.list`;
+    `acde-<应用>.desktop` 指 acde 应用) → 清单 `mimeTypes` 列了它 (或 `type/*`) 的第一个应用 → 原生程序 (`applications/` 下列了这个类型的 `.desktop`, `gio launch` 打开,
+    只给桌面和系统应用) → 只给桌面和系统应用: macOS / Windows 交给系统默认 (`Shell.openDefault`, 回 `{kind: 'native', id: null}`) → 404 `no_app`.
+    交给 acde 应用时先 `lendPaths` 把文件或文件夹借给它 (进程里的借出表, 同单应用的 `acdev open`), 请求是 `{kind: 'open-file', file, entry}` (acdes 的形状);
+    启动器坐在本地会话里时请求原样交给页面, 不走 `Lending.entered` (那是收管家的文件描述符用的). `apps.openPath(path, {app?})` (`app` 可以是应用 id 或 `.desktop`)、
+    `apps.open({kind: 'open-file', path})`、`apps.handlers(path)` (`{mime, association, handlers: [{kind, id, label, icon, default, system?}]}`)、
+    `apps.setDefault(mime, 应用 id 或 .desktop)` (写 `acde-mimeapps.list`)、调试通道 `open {path, name?}` (绝对路径且存在) 都走这里.
+  - 借文件夹 (`apps.open(id, request, {root})`, 只给桌面, 应用要声明 `fs`, 否则 403 / 409): `lendPaths` 借给它, 请求带 `root: <借出名>`, 再给它的启动器推 `lend`,
+    启动器给页面发 `fsroots` (加一个根); 在跑的应用同样先借再交请求. `apps.unlend(dir)` 给借过这个文件夹的应用推 `unlend` (启动器 `unlendRoot` 并发 `fsroots` 去掉), 回 `{revoked}`.
   - 应用开在桌面之上的 `free` 窗口里 (`grant({mode: 'free', size?})`, 尺寸同上), 起来后告诉桌面 `windowopen {window, appId, title, web, instance}`,
     退出时放掉它的窗口并告诉 `windowclose`; 页面名 `<应用 id>#<实例号>`. 页面重起 (重载、重建后的 `devreload`) 时启动器带着原来的窗口号再要窗口,
     会话把宿主窗口删掉旧表项时发的 `windowgone` (正常状态的位置; 不交给桌面, acdes 不发这个) 或最后一次正常状态的 `windowgeometry` 作 `rect` 给它,

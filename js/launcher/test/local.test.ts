@@ -9,12 +9,16 @@ import { ShellHub } from '../src/local/hub.ts'
 import type { LocalLink } from '../src/local/link.ts'
 import { LocalRegistry, type LocalFiles } from '../src/local/registry.ts'
 import { LocalSession, type Seat, type SeatedLauncher, type ServiceRunner } from '../src/local/session.ts'
+import { LocalOpener } from '../src/local/open.ts'
 
 const env = { HOME: '/home/dev', XDG_STATE_HOME: '/state', ACDE_STORAGE: '/storage' }
 const made: string[] = []
 bindNatives({
   host: { logEnabled: () => false, log: () => {} },
-  sys: { platform: 'darwin', argv: [], pid: 4242, env: () => env, stderr: () => {}, homedir: () => '/home/dev', mkdir: (path: string) => void made.push(path), chmod: () => {} },
+  sys: {
+    platform: 'darwin', argv: [], pid: 4242, env: () => env, stderr: () => {}, homedir: () => '/home/dev', mkdir: (path: string) => void made.push(path), chmod: () => {},
+    lendPaths: (app: string, paths: readonly string[]) => paths.map((path) => ({ name: `${app}:${path}`, label: path.split('/').at(-1)!, kind: path.startsWith('/dirs/') ? 'directory' : 'file', writable: true })),
+  },
 } as never)
 
 const app = (id: string, extra: object = {}) => ({ id, label: id.toUpperCase(), icon: 'apps', entry: '/index.html', ...extra })
@@ -37,7 +41,7 @@ const DESK = pkg('desk', {
 
 const TREE = {
   '/work/desk/package.json': DESK,
-  '/work/appa/package.json': pkg('appa', { apps: [app('appa', { requests: ['greet'], services: ['clock'], icon: '/img/a.svg' })], assets: { '/img/': ['art'] } }),
+  '/work/appa/package.json': pkg('appa', { apps: [app('appa', { requests: ['greet'], services: ['clock'], icon: '/img/a.svg', mimeTypes: ['text/markdown', 'image/*'], capabilities: { fs: { roots: ['documents'] } } })], assets: { '/img/': ['art'] } }),
   '/work/appb/package.json': pkg('appb', { apps: [app('appb', { capabilities: { open: ['appa'], terminal: true, windows: true, fs: { roots: ['documents', 'nowhere'] } } }), app('appa')] }),
 }
 
@@ -199,9 +203,26 @@ function session() {
   const launchers: FakeLauncher[] = []
   const services: FakeService[] = []
   const registry = () => LocalRegistry.scan(files(TREE), dev(['/work']), 'desk')
+  const written: Record<string, string> = {}
+  const openFiles = {
+    readText: (path: string) => written[path] ?? null,
+    readDir: () => [],
+    isDirectory: (path: string) => path === '/docs',
+    exists: () => true,
+    writeText: (path: string, text: string) => {
+      written[path] = text
+    },
+  }
+  const opener = new LocalOpener(openFiles, { data: [], config: '/cfg', configDirs: [], applications: [] })
+  const handedToSystem: string[] = []
   const local = new LocalSession({
     shell: fake.shell,
     devtools,
+    opener,
+    openDefault: (path) => {
+      handedToSystem.push(path)
+      return Promise.resolve()
+    },
     registry: registry(),
     rescan: registry,
     launcher: (given, link, seat) => {
@@ -216,7 +237,7 @@ function session() {
     },
   })
   const running = local.run()
-  return { fake, launchers, services, local, running, published }
+  return { fake, launchers, services, local, running, published, handedToSystem }
 }
 
 async function started() {
@@ -338,6 +359,62 @@ describe('what an app may do in the local session (as acdes checks it)', () => {
     const appb = launchers[1]!
     await assert.rejects(appb.link.call('apps', 'open', ['settings', { kind: 'open-link', url: 'https://a.b' }]), { status: 403 } as never)
     await assert.rejects(appb.link.call('apps', 'open', [{ kind: 'open-link', url: 'https://a.b' }]), { status: 403, message: /openFiles/ } as never)
+    local.end(0)
+  })
+})
+
+describe('opening files in the local session (as acdes defaults.rs)', () => {
+  test('openPath starts the app whose manifest lists the type, with an open-file request', async () => {
+    const { desktop, launchers, local } = await started()
+    const opened = (await desktop.link.call('apps', 'openPath', ['/docs/a.md'])) as Record<string, unknown>
+    assert.equal(opened['app'], 'appa')
+    assert.deepEqual(launchers[1]!.link.welcome.request, {
+      kind: 'open-file', file: 'a.md', entry: { name: 'appa:/docs/a.md', label: 'a.md', kind: 'file', writable: true },
+    })
+    await desktop.link.call('apps', 'openPath', ['/docs/b.png'])
+    assert.deepEqual(launchers[1]!.link.pump().filter((e) => e.type === 'request').map((e) => (e['request'] as { file: string }).file), ['b.png'])
+    local.end(0)
+  })
+
+  test('nobody opens it: the desktop hands it to the system default; an app gets 404 no_app; an app names a program only if it is a system app', async () => {
+    const { desktop, launchers, local, handedToSystem } = await started()
+    assert.deepEqual(await desktop.link.call('apps', 'openPath', ['/docs/a.pdf']), { kind: 'native', id: null, window: 0, pid: 0 })
+    assert.deepEqual(handedToSystem, ['/docs/a.pdf'])
+    await desktop.link.call('apps', 'open', ['appb'])
+    const appb = launchers[1]!
+    await assert.rejects(appb.link.call('apps', 'openPath', ['/docs/a.pdf']), { status: 403, message: /openFiles/ } as never)
+    await desktop.link.call('apps', 'open', ['settings'])
+    await assert.rejects(launchers[2]!.link.call('apps', 'openPath', ['/docs/a.pdf']), { status: 403 } as never)
+    await assert.rejects(desktop.link.call('apps', 'openPath', ['relative.md']), { status: 400 } as never)
+    await assert.rejects(desktop.link.call('apps', 'openPath', ['/docs/a.md', { app: 'gedit.desktop' }]), { status: 404 } as never)
+    local.end(0)
+  })
+
+  test('the desktop lends a folder: the app gets it as a root with the request, also when running; unlend takes it back', async () => {
+    const { desktop, launchers, local } = await started()
+    await desktop.link.call('apps', 'open', ['appa', { kind: 'greet' }, { root: { dir: '/dirs/usb', label: 'USB' } }])
+    const appa = launchers[1]!
+    assert.deepEqual(appa.link.welcome.request, { kind: 'greet', root: 'appa:/dirs/usb' })
+    assert.deepEqual(appa.link.pump().filter((e) => e.type === 'lend').map((e) => e['name']), ['appa:/dirs/usb'])
+    await desktop.link.call('apps', 'open', ['appa', { kind: 'greet' }, { root: '/dirs/other' }])
+    assert.deepEqual(appa.link.pump().map((e) => [e.type, e['name'] ?? (e['request'] as { root?: string })?.root]), [['lend', 'appa:/dirs/other'], ['request', 'appa:/dirs/other']])
+    assert.deepEqual(await desktop.link.call('apps', 'unlend', ['/dirs/usb']), { revoked: 1 })
+    assert.deepEqual(appa.link.pump().map((e) => [e.type, e['name']]), [['unlend', 'appa:/dirs/usb']])
+    await desktop.link.call('apps', 'open', ['appb'])
+    await assert.rejects(launchers[2]!.link.call('apps', 'open', ['appa', null, { root: '/dirs/x' }]), { status: 403 } as never)
+    await assert.rejects(desktop.link.call('apps', 'open', ['settings', null, { root: '/dirs/x' }]), { status: 409 } as never)
+    local.end(0)
+  })
+
+  test('an open-file request by type, handlers and setDefault', async () => {
+    const { desktop, launchers, local } = await started()
+    await desktop.link.call('apps', 'open', [{ kind: 'open-file', path: '/docs/c.md' }])
+    assert.equal((launchers[1]!.link.welcome.request as { file: string }).file, 'c.md')
+    const listed = (await desktop.link.call('apps', 'handlers', ['/docs/c.md'])) as { mime: string; handlers: { id: string; default: boolean }[] }
+    assert.deepEqual([listed.mime, listed.handlers.map((h) => [h.id, h.default])], ['text/markdown', [['appa', true]]])
+    assert.equal(await desktop.link.call('apps', 'setDefault', ['text/markdown', 'appa']), 'appa')
+    await assert.rejects(desktop.link.call('apps', 'setDefault', ['text/markdown', 'nope']), { status: 404 } as never)
+    await assert.rejects(desktop.link.call('apps', 'setDefault', ['markdown', 'appa']), { status: 400 } as never)
     local.end(0)
   })
 })
