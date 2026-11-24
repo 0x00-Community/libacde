@@ -119,7 +119,8 @@ impl Nm {
     }
 
     fn wifi_device(&self) -> zbus::Result<Option<OwnedObjectPath>> {
-        Ok(self.devices()?.into_iter().find(|d| d.kind == WIFI).map(|d| d.path))
+        let managed = |d: &Device| d.props.get::<u32>("State").is_ok_and(|state| device_state(state) != "unmanaged");
+        Ok(self.devices()?.into_iter().find(|d| d.kind == WIFI && managed(d)).map(|d| d.path))
     }
 
     fn device_by_iface(&self, iface: &str) -> Result<OwnedObjectPath> {
@@ -425,5 +426,18 @@ impl Networks {
             self.hub.locked().watching = false;
             e.reason
         })
+    }
+}
+
+#[cfg(test)]
+mod scanning_tests {
+    use super::device_state;
+
+    #[test]
+    fn a_device_networkmanager_does_not_manage_is_never_the_wifi_device() {
+        assert_eq!(device_state(10), "unmanaged");
+        assert_eq!(device_state(0), "unmanaged");
+        assert_ne!(device_state(30), "unmanaged");
+        assert_ne!(device_state(20), "unmanaged");
     }
 }
