@@ -104,7 +104,10 @@ export class LocalRegistry {
     const owner = read.find((p) => (p.manifest.desktops ?? []).some((d) => desktopId === null || d.id === desktopId))
     if (!owner) {
       const where = roots.map((r) => r.dir).join(':') || 'none'
-      throw Object.assign(new Error(`no desktop ${desktopId ?? ''} in ACDE_PATH or the package folders (${where})`), { status: 404 })
+      const name = desktopId === null ? 'no desktop' : `no desktop ${desktopId}`
+      const fix = 'give acdev dev a desktop project (--desktop <folder>; acdev new <name> --template desktop makes one), '
+        + `or install a desktop package (acdev install in its project${given.user ? `, into ${join(given.user, 'acde', 'packages')}` : ''})`
+      throw Object.assign(new Error(`${name} in ACDE_PATH or the package folders (${where}): ${fix}`), { status: 404 })
     }
     const refused: string[] = []
     const packages: LocalPackage[] = read.map((p) => ({ ...p, resources: AppLookup.resources(p.dir, p.manifest), system: p === owner }))

@@ -77,7 +77,11 @@ describe('the local registry of acdev dev', () => {
 
   test('no desktop id takes the first desktop; an unknown one is a 404', () => {
     assert.equal(LocalRegistry.scan(files(TREE), dev(['/work']), null).desktop.desktop.id, 'desk')
-    assert.throws(() => LocalRegistry.scan(files(TREE), dev(['/work']), 'other'), { message: 'no desktop other in ACDE_PATH or the package folders (/work)', status: 404 } as never)
+    assert.throws(() => LocalRegistry.scan(files(TREE), dev(['/work']), 'other'), {
+      message: 'no desktop other in ACDE_PATH or the package folders (/work): give acdev dev a desktop project (--desktop <folder>; '
+        + 'acdev new <name> --template desktop makes one), or install a desktop package (acdev install in its project)',
+      status: 404,
+    } as never)
   })
 })
 
