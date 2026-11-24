@@ -478,7 +478,10 @@ fn set_ime_area(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _
 
 fn set_ime_float(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {
     let rect = [0, 1, 2, 3].map(|i| bind::arg_f64(scope, &args, i));
-    with_surface(scope, |surface| surface.set_ime_float(crate::render::ImeFloat::of(rect)));
+    let float = crate::render::ImeFloat::of(rect);
+    let told = float.map_or_else(|| "hidden".to_owned(), |f| format!("x={} y={} width={} height={}", f.x, f.y, f.width, f.height));
+    log::info!(target: "acde::ime", "ime float {told}");
+    with_surface(scope, |surface| surface.set_ime_float(float));
 }
 
 fn set_clipboard(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, _: v8::ReturnValue) {

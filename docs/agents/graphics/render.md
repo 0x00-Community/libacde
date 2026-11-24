@@ -52,7 +52,7 @@
   `position:fixed; inset:0` 的容器 (`data-acde-ime-float`, `js/page/src/panel.ts` 的 `ImeLayer`) 里, 自身改 `position:absolute`, 不再在窗口下沿翻到光标上方 (越出屏幕由合成器平移).
   每次变动后量出各子元素外框的并集 (CSS 像素, 页面坐标), 变了才发: dom `setImeFloat(容器, x, y, w, h)` 把容器的子树当作一块面板画, 面板号固定为
   `render::IME_FLOAT_PANEL` (`u32::MAX`, 在 `Frame.panels` 里, 只在浮层显示的帧里有); surface `setImeFloat(x, y, w, h)` 发 `SurfaceCommand::Ime(Some(ImeFloat {x, y, width, height}))`
-  (整数, 逻辑像素, 原点是页面内容区左上角). 宽或高为 0 即 `Ime(None)`: 输入结束 (预编辑清空且候选框收起)、输入框失焦或窗口失去激活、候选框收起后都立刻发 None, 合成器看不到
+  (整数, 逻辑像素, 原点是页面内容区左上角). 每次发出都记一行 info 日志 (target `acde::ime`, `ime float x=… y=… width=… height=…` 或 `hidden`), 取证用. 宽或高为 0 即 `Ime(None)`: 输入结束 (预编辑清空且候选框收起)、输入框失焦或窗口失去激活、候选框收起后都立刻发 None, 合成器看不到
   输入框是否激活 (页面经 D-Bus 直连 fcitx5), 靠这条防止浮层残留. 宿主把这块面板画进 `acde_ime_surface_v1` 的表面 (acdes, 放在输入法段, 不收输入).
   返回 false 的宿主 (acdev 的宿主窗口) 照旧画在文档里. C 接口不转发 `Ime`.
   指针 (5.1 第 4 条): 合成器把落在浮层上的指针事件只交回本连接, 宿主把浮层表面内坐标加上 `ImeFloat` 的 x、y, 当作普通页面指针事件 (同钉住面板) 交给页面; 候选框就在文档里那个位置,
