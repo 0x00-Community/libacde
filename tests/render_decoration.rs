@@ -329,5 +329,9 @@ fn glass_dots_leave_the_buttons_to_the_compositor() {
     painter.glass_dots(true);
     let (w, h) = b.pixels();
     let px = (common::rasterize(painter.scene(&b), (w, h)), w);
-    assert_eq!(rgb(&px, 18.0, 16.0), rgb(&px, 150.0, 10.0), "no dot drawn: the bar's own background shows");
+    let alpha = |x: f64, y: f64| px.0[((y as usize) * w as usize + x as usize) * 4 + 3];
+    assert_eq!(alpha(18.0, 16.0), 0, "a hole in the bar where the dot was: the compositor's glass under it shows");
+    assert_eq!(alpha(18.0, 11.0), 0, "the whole dot is open");
+    assert_eq!(alpha(150.0, 10.0), 255, "the bar itself stays solid");
+    assert_eq!(alpha(18.0, 3.0), 255, "around the dot too");
 }

@@ -469,6 +469,14 @@ impl Decoration {
         theme.grab_hints_by(&self.metrics, w, h, top)
     }
 
+    fn ground(&self, bar: &Bar) -> BezPath {
+        let mut ground = Rect::new(0.0, 0.0, bar.width, bar.height).to_path(0.1);
+        for dot in self.dots(bar).into_iter().filter(|_| self.glass_dots) {
+            ground.extend(Circle::new(dot.centre, dot.radius).path_elements(0.1));
+        }
+        ground
+    }
+
     pub fn scene(&mut self, bar: &Bar) -> Scene {
         let mut scene = Scene::new();
         let scale = Affine::scale(bar.scale);
@@ -477,7 +485,7 @@ impl Decoration {
         let paint = |rgba: Rgba| Color::from_rgba8(rgba[0], rgba[1], rgba[2], rgba[3]);
         let text = colors.title.map_or(Color::TRANSPARENT, paint);
         let off = text.multiply_alpha(Self::OFF_ALPHA);
-        scene.fill(Fill::NonZero, scale, colors.background.map_or(Color::TRANSPARENT, paint), None, &Rect::new(0.0, 0.0, w, h));
+        scene.fill(Fill::EvenOdd, scale, colors.background.map_or(Color::TRANSPARENT, paint), None, &self.ground(bar));
         scene.fill(Fill::NonZero, scale, colors.line.map_or(Color::TRANSPARENT, paint), None, &Rect::new(0.0, h - 1.0, w, h));
         let (style, side) = (bar.style(), bar.side());
         for dot in self.dots(bar).into_iter().filter(|_| !self.glass_dots) {

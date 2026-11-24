@@ -175,7 +175,7 @@
   范围: inset 0–48, size 6–32, gap 0–32, caption 24–80, title.size 9–24, title.weight 100–900. 线上是标题栏高度之后再跟 6 个数 (没给的写 -1, 标题栏没给写 0),
   Rust 进 `WindowLook.frame`; 宿主 (各应用进程的窗口一侧) 拿到后调 `FrameMetrics::set(Some(..))`, 它只改进程里给之后新建窗框用的值: 每个 `Decoration` 建立时存一份 `FrameMetrics::current()` (2026-11-24), 之后画窗框、按钮位置 (`Decoration::dots`、`button_at`、`grab_hints`) 都只用这一份, 所以和标题栏高度一样只对新开的窗口生效, 已开的窗口不会变成旧栏高配新按钮尺寸. `FrameTheme::grab_hints` (没有 `Decoration` 的宿主用) 取当前值.
   mac 样式三个按钮的圆心、半径和颜色由 `Decoration::dots(bar)` 给 (`Dot {button, centre, radius, color}`, 2026-11-24; 颜色同 `Decoration` 画的: 主题的按钮色或红黄绿, 失焦按主题, 最小化不可用时是标题色的 16%), 只此一份;
-  宿主能让合成器画玻璃时 (acdes 会话) 调 `Decoration::glass_dots(true)`, `Decoration` 不再画这三个圆点和描边, 由宿主按 `Decoration::dots` 在每个按钮处加一块 clear 玻璃, 着色取按钮色.
+  宿主能让合成器画玻璃时 (acdes 会话) 调 `Decoration::glass_dots(true)`, `Decoration` 不再画这三个圆点和描边, 并在标题栏背景上把这三个圆挖空 (背景按奇偶规则填, 2026-11-24 修: 不挖空时不透明的标题栏背景盖住合成器画在下面的玻璃, 按钮整个看不见), 由宿主按 `Decoration::dots` 在每个按钮处加一块 clear 玻璃, 着色取按钮色.
   `acde:desktop.motion(preset?)` 同步返回 `{preset, duration, easing}`: `duration` 毫秒, `easing` 是 CSS `linear(…)` 缓动 (24 段采样), 页面要和合成器的动画对齐时用它,
   不另存数值; 不给 `preset` 时是上一次 `setWindowLook` 选的档 (没设过或设成 null 时 `standard`). 不认识的档名抛 TypeError. 取值来自原生 `surface.motion(name)` (`webnative.rs`).
 - 想让自己画标题栏的应用跟着桌面的主题, 由桌面自己经服务发布 (dopame 的做法), 运行时不管.
