@@ -7,7 +7,8 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 - [acdev](http://gitea.dopamine/AC/acdev): 跨平台调试运行时 (宿主窗口)、多平台模拟器和开发者命令行 `acdev`.
 - [acdes](http://gitea.dopamine/AC/acdes): Dopame OS 的系统态运行时 (Wayland 合成器、DRM/KMS、会话、RDP), 只在 Linux.
 
-两边都用的放这里, 只有一边用的放那一边. 闭源. 说明都在本文件和 `docs/` 里: 没有 README, 子目录不放 AGENTS.md. 按下面的文件路由选读.
+两边都用的放这里, 只有一边用的放那一边. 以 AGPL-3.0-only 开源 (`LICENSE`), 公开在 GitHub [0x00-Community/libacde](https://github.com/0x00-Community/libacde).
+说明都在本文件和 `docs/` 里; 根目录的 `README.md` / `README.zh-CN.md` 是给外部开发者的介绍, 子目录不放 AGENTS.md. 按下面的文件路由选读.
 
 > **第一原则: 不许在任何层次上魔改 web 接口.**
 >
@@ -34,9 +35,9 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 
 ## 代码约定
 
-- 闭源 (用户定 2026-11-08): 自己的代码是专有的 (`LICENSE`), package.json 写 `"license": "UNLICENSED"`, Cargo.toml 不写 `license`.
-  `libacde` 只发到内网 cargo 源 ac (`publish = ["ac"]`, 见 `docs/dev/release.md`「cargo 源 ac」); 仓库和 release 不公开.
-  `vendor/` 和 `src/napi` 保留上游的许可证文件和版权行.
+- 许可证 (用户定 2026-11-24, 取代 11-08 的闭源): 自己的代码是 AGPL-3.0-only (`LICENSE`), package.json 写 `"license": "AGPL-3.0-only"`,
+  Cargo.toml 经 `license.workspace = true` 继承. 仓库公开在 GitHub (`0x00-Community/libacde`), 从 1.0.0 起. `libacde` 的 crate 仍发到 cargo 源 ac
+  (`publish = ["ac"]`, 见 `docs/dev/release.md`「cargo 源 ac」). `vendor/`、`src/napi` 和 `src/webgl/glsl` 保留上游的许可证文件和版权行.
 - Rust 和 TypeScript 代码不写注释 (`//`、`/* */`、`///`、JSDoc 都不写), 要说明的写进 `docs/` 里对应的文件. 例外: 版权和许可证行 (`src/napi` 的
   Deno 版权)、工具指令 (`/// <reference>`, `@ts-expect-error`)、`vendor/` 改动处的 `acrender:` (blitz fork 里) / `acde:` 标记、
   SDK 声明文件 (`acde-api/` 的 `.d.ts`) 里过时接口上方单行的 `/** @deprecated 改用 … */` (写明替代者, 让编辑器划线;
@@ -63,7 +64,8 @@ libacde 是 Dopame 运行时库 (原 AC/acdert, 2026-11-17 并进 acdev 的 `acd
 - CI 与发版不在云端试错 (用户定 2026-11-18): 改 CI 工作流或准备发版前, 先读 `~/.agents/references/github-release.md`; 先在本机或执行机上
   复现 (本机用 `cargo xwin` 等把各平台构建与打包跑一遍, 执行机环境先登录核对或问用户), 全部通过后才动云端; 云端 CI 只用于本地通过后的一次
   不发布预演和正式打标签发版, 失败就回本地修, 不连续重跑. CI 的触发 (手动运行、推发版标签) 只由测试 Agent 或主会话做, 开发 Agent 只改代码.
-- 仓库在内网 Gitea (`origin` = `ssh://git@gitea.dopamine:2333/AC/libacde.git`, 网页 `http://gitea.dopamine/AC/libacde`), 只推这里.
+- 仓库在内网 Gitea (`origin` = `ssh://git@gitea.dopamine:2333/AC/libacde.git`, 网页 `http://gitea.dopamine/AC/libacde`), 是主仓库, 平时只推这里;
+  `main` 和发版标签同步推到 GitHub `git@github.com:0x00-Community/libacde.git` (公开仓库, 不 force push).
 - 远端只有 `main`, 不推别的分支. 本地需要时在总仓 `.worktrees/libacde-<后缀>` 开工作树和本地分支 `Akira/<后缀>` (基于 `origin/main`), 做完普通合并回
   `main` 再推 `origin main`. 不开工作树时几个会话共用工作区和 git index: 只改自己负责的路径, 别人没提交的文件先等.
 - 提交用 `git commit -- <自己的路径...>` (acde 的仓库不依赖 uv). 推前 `git show --stat HEAD` 和 `git log origin/main..HEAD` 看一眼. `git add` / `git rm` 之后立刻提交. 做完就提交并推送.

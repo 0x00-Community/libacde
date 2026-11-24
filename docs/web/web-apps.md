@@ -179,7 +179,7 @@
     - 尾巴 (`Node::tail`): 输入静了以后节点还会出声的帧数 (延迟 = `maxDelayTime`, 压缩器 1.625 s, 卷积 = 冲激响应长度, 滤波器到输出低于 1e-7),
       尾巴没完的节点不回收、算作还活着.
     - 对 Chrome: 同一段脚本 (`OfflineAudioContext`, 每种节点) 在 Chrome 和 acdev 里各跑一遍, 结果对比见 libacde 提交信息.
-- **视频** (src/media `acde-media`): 用系统的框架解码, 不随包带编解码器 (用户定, 2026-11-09; libacde 闭源, 不链接 GPL 的 ffmpeg).
+- **视频** (src/media `acde-media`): 用系统的框架解码, 不随包带编解码器 (用户定, 2026-11-09; 不链接 ffmpeg).
   - `Player::open(source)` (`Source::Bytes` 内存里的字节, 或 `Source::File` 打开的文件, 按字节范围读, 不整份读进内存) 探出 `Info {duration, width, height, audio, video}`, 每个轨一条读线程 (`acde-video` / `acde-video-audio`) 各自往
     有界队列里解: 视频 RGBA 帧 (领先 4 帧), 音频 48 kHz 立体声 f32 交错 (领先半秒). 两个轨分开读, 不会一个轨满了卡住解封装器让另一个轨饿死.
     `seek(t)`: 清队列, 两条线程都停下后由最后一条重启解码器. 消费方拉: `take_audio` (混音器线程)、`frame_at(t)` (取到时间的最后一帧,
