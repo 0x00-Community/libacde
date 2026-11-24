@@ -20,7 +20,7 @@ export interface ConsoleEntry {
   readonly time: number
   readonly web: string
   readonly app: string | null
-  readonly kind: 'console' | 'dialog' | PageErrorKind
+  readonly kind: 'console' | 'dialog' | 'build' | PageErrorKind
   readonly level: ConsoleLevel
   readonly text: string
   readonly dialog?: DialogEntry
@@ -98,6 +98,11 @@ export class DevLog {
         return this.#log({ seq: this.#nextConsole++, time: post.time, web: source.name, app: source.app, kind: 'dialog', level: 'info', text: DevLog.text(text), dialog: { ...d, message: DevLog.text(d.message) } })
       }
     }
+  }
+
+  build(source: Source, time: number, error: string | null): void {
+    const text = error === null ? 'built again after a failed build' : `build failed, the window still runs the last good build: ${error}`
+    this.#log({ seq: this.#nextConsole++, time, web: source.name, app: source.app, kind: 'build', level: error === null ? 'info' : 'error', text: DevLog.text(text) })
   }
 
   gone(web: string): void {

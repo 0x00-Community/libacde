@@ -519,6 +519,21 @@ describe('host window events and dev requests in the local session', () => {
     local.end(0)
   })
 
+  test('a build result goes to the running pages of that app, to the desktop when none runs, and a desktop build to the desktop', async () => {
+    const { desktop, launchers, fake, local } = await started()
+    await desktop.link.call('apps', 'open', ['appa'])
+    const appa = launchers[1]!
+    desktop.seen.length = 0
+    fake.emit({ type: 'devbuild', key: 'appa', data: { error: 'boom' } })
+    assert.deepEqual(appa.seen.filter((e) => e.type === 'devbuild').map((e) => e['key']), ['appa'])
+    assert.deepEqual(desktop.seen.map((e) => e.type), [])
+    fake.emit({ type: 'devbuild', key: 'appb', data: { error: 'boom' } })
+    fake.emit({ type: 'devbuild', data: { error: 'boom' } })
+    assert.deepEqual(desktop.seen.filter((e) => e.type === 'devbuild').map((e) => e['key'] ?? null), ['appb', null])
+    assert.equal(appa.seen.filter((e) => e.type === 'devbuild').length, 1)
+    local.end(0)
+  })
+
   test('a rebuilt desktop: the services end and start again from a fresh module, then the desktop reloads', async () => {
     const { desktop, services, fake, local } = await started()
     const clock = services[0]!

@@ -18,10 +18,14 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
   (桌面是 null), `window` 是窗口号. 按键不进页面线程, 所以页面停在断点上时 F12 也照样到. acdev dev 收到后和 `acdev devtools <web>`
   一样打开 DevTools (见 acdev 的 `dev.ts`).
 
-收到的消息 (`reload` / `quit` 哪条连接发都照做):
+收到的消息 (`reload` / `build` / `quit` 哪条连接发都照做):
 
 - `{"type":"reload","app"?,"hot"?}` → Broker 的 `devreload`: 有 app 时关掉它所有窗口 (不问 `beforeclose`) 再按记住的 rect 打开 (清单的 `size` 变了时按新尺寸, 中心不动, 不超出屏幕), 没有 app 时
   重起 desktop web (服务不重起). `hot: true` 时先试热替换 (下面).
+- `{"type":"build","app"?,"ok","error"?}`: acdev dev 重建这个应用 (没有 app 时是桌面) 失败 (`ok: false`, `error` 是整段错误) 或失败后又成功
+  (`ok: true`). hostwin 记下失败画横幅 (acdev `docs/agents/hostwin.md`「构建失败的横幅」), 再推 Broker 的 `devbuild` 事件 (`key` 是 app,
+  失败时 `data.error`). 单应用启动器在 `#shellEvents` 里接住, 本地会话 (`local/session.ts` `#devBuild`) 交给那个应用正在跑的每个启动器, 一个都没有时交给桌面的;
+  两处都在转给桌面页面之前拦下, 页面线程收不到 (不碰 web 接口). 启动器调 `DevChannel.built` 记一条 console (见下 **dev 日志**).
 - `{"type":"quit"}` (dev 连接断开也一样) → Broker 的 `quit` 事件 (结束原因 `quit`, 退出码 0; `exit` 是意外退出, 退出码 1), 照常收尾 (关页面、停后端、删 socket 目录) 后退出; 6 秒没退完
   直接 `Cmd::Exit(0)`.
 - `{"type":"request","id","op",…}` (id 是数字或字符串, 只在这条连接里有意义) → id 换成进程内递增的号, 整行作为 `devrequest` 推给 Broker
@@ -42,7 +46,7 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
   - `console {web?, since?, limit?, level?}` → `{entries, next, dropped}`: 页面的 `console.*` 和没人接的错误 (`devlog.ts`, 见下), `level` 是
     log / info / warn / error / debug, 或 errors (console.error 和错误); `web` 是 web 名、应用 id 或 desktop; `since` 是上次的 `next`, `dropped`
     是 since 之后已经丢掉的条数. 不给 since 时回最新的 `limit` 条 (默认 500), `skipped` 是更早而没回的条数; 给了 since 时从 since 起按先后回最多 `limit` 条,
-    还有没回的就 `more: true`, `next` 指向下一条没回的, 跟随的一方接着用 next 问就不漏 (2026-11-24). 条目 `{seq, time (ms, 和日志同一个零点), web, app, kind: console | error | rejection, level, text}`.
+    还有没回的就 `more: true`, `next` 指向下一条没回的, 跟随的一方接着用 next 问就不漏 (2026-11-24). 条目 `{seq, time (ms, 和日志同一个零点), web, app, kind: console | error | rejection | dialog | build, level, text}`.
     console 和 network 的应答另带 `origin`: 本进程时间零点的墙钟毫秒 (Unix epoch, `Date.now() - Log.clock()`), 会话里 acdev 合并多个页面进程时用它把各进程的 `time` 换到同一条时间轴 .
       管家的 `{pages: true, since: {key: seq}}` 分发给各页面进程, 每项原样带回这份应答.
   - `network {web?, since?, limit?, failed?}` → 同样的形状, 条目 `{seq, time, web, app, id, kind: fetch | xhr | websocket | eventsource, method,
@@ -124,6 +128,9 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
   文件, 也没有后端」还是「不是这个应用的地址」). 页面 (`worker.ts`) 把它们单向 `port.post` 成 `{devlog, time, …}` 给 Broker (不是 rpc,
   页面重启、崩溃了记录还在); Broker 的 `DevLog` 两种各留最后 5000 条、文字最长 16 KB, 请求按 web + id 合成一条, web 没了时还开着的记成
   `the page went away`.
+  构建结果 (`kind: build`) 不是页面报的, 由启动器按 IPC 的 `build` 消息记 (`DevLog.build`): 失败是 level error、
+  `build failed, the window still runs the last good build: <错误>`, 之后成功是 level info、`built again after a failed build`. `web` / `app` 是那个应用的页面
+  (启动器里没有它的页面时是应用 id, 桌面是 `desktop` / null), 所以 `console --level errors` 和按 web 筛都看得到它.
 
 **热重载** (acdev 构建时不压缩, `NODE_ENV` 是 development). acdev 比较构建前后的产物 (acdev 仓库 `src/changes.ts`): 只有 `.css` / `.js` 变了、
 HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应用的窗口 (或桌面) 发 `devhot`, web (acde-host `devhot.ts`) 重读入口 HTML,

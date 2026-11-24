@@ -644,6 +644,7 @@ class Launcher {
       else if (event.type === 'devtools') this.#devtools.pressed()
       else if (!this.#desktop && (event.type === 'menuselect' || event.type === 'shortcut')) this.#appKey(event)
       else if (event.type === 'devreload') void this.#devReload(event['title'] === 'hot', Launcher.#backendSame(event['data']))
+      else if (event.type === 'devbuild') this.#dev.built(event, Log.clock())
       else if (this.#desktop) this.#toDesktop(this.#snapshots.toDesktop(event))
     }
     this.#walls.check()

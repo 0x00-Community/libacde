@@ -355,6 +355,8 @@ export class LocalSession implements PeerSide {
         return void this.#devRequest(String(event['key'] ?? ''))
       case 'devreload':
         return this.#devReload(event)
+      case 'devbuild':
+        return this.#devBuild(event)
       case 'quit':
       case 'close':
       case 'exit':
@@ -381,6 +383,12 @@ export class LocalSession implements PeerSide {
       return
     }
     void this.#restartServices().then(() => this.#desktop?.view.push(event))
+  }
+
+  #devBuild(event: ShellEvent): void {
+    const app = typeof event['key'] === 'string' ? event['key'] : null
+    const running = app === null ? [] : this.#apps().filter((r) => r.app!.app.id === app)
+    for (const target of running.length ? running : [this.#desktop]) target?.view.push(event)
   }
 
   async #restartServices(): Promise<void> {

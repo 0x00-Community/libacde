@@ -128,6 +128,15 @@ export class DevChannel {
     this.log.gone(name)
   }
 
+  built(event: Readonly<Record<string, unknown>>, time: number): void {
+    const app = typeof event['key'] === 'string' ? event['key'] : null
+    const data = event['data'] as { error?: unknown } | null | undefined
+    const error = typeof data?.error === 'string' ? data.error : null
+    const page = this.#host.page()
+    const source = page && page.app === app ? { name: page.name, app } : { name: app ?? 'desktop', app }
+    this.log.build(source, time, error)
+  }
+
   async snapshot(): Promise<unknown> {
     const page = this.#host.page()
     if (!page) return null

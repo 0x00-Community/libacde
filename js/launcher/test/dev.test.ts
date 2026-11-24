@@ -48,6 +48,26 @@ describe('the single-app dev channel', () => {
     assert.deepEqual(read.entries.map((e) => [e.text, e.web, e.app]), [['notes ready', 'notes#1', 'notes']])
   })
 
+  test('a failed build of the app is an error entry of its page, and the build after it an info entry', async () => {
+    const { dev, posted, ask } = channel()
+    dev.built({ type: 'devbuild', key: 'notes', data: { error: 'src/App.tsx:7:18: Unexpected token' } }, 5)
+    dev.built({ type: 'devbuild', key: 'notes' }, 9)
+    const errors = (await ask({ id: 7, op: 'console', level: 'errors' })).payload as { entries: Record<string, unknown>[] }
+    assert.deepEqual(errors.entries.map((e) => [e['kind'], e['level'], e['web'], e['app'], e['time']]), [['build', 'error', 'notes#1', 'notes', 5]])
+    assert.match(String(errors.entries[0]!['text']), /^build failed, the window still runs the last good build: src\/App\.tsx:7:18: Unexpected token$/)
+    const all = (await ask({ id: 8, op: 'console' })).payload as { entries: Record<string, unknown>[] }
+    assert.deepEqual(all.entries.map((e) => [e['level'], e['text']]).at(-1), ['info', 'built again after a failed build'])
+    assert.deepEqual(posted, [])
+  })
+
+  test('a build entry for an app that has no page here is kept under the app id', async () => {
+    const { dev, ask } = channel()
+    dev.built({ type: 'devbuild', key: 'other', data: { error: 'boom' } }, 1)
+    dev.built({ type: 'devbuild', data: { error: 'desk' } }, 2)
+    const read = (await ask({ id: 9, op: 'console' })).payload as { entries: Record<string, unknown>[] }
+    assert.deepEqual(read.entries.map((e) => [e['web'], e['app']]), [['other', 'other'], ['desktop', null]])
+  })
+
   test('an unknown web, an op that does not exist, open and a request that is not JSON', async () => {
     const { dev, answers, ask } = channel()
     assert.match(String((await ask({ id: 4, op: 'eval', web: 'other', code: '1' })).payload), /no web other \(webs: notes#1/)
