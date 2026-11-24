@@ -11,12 +11,12 @@
 | `wire/` | `acde-wire` (2026-11-23, 总仓 `.scratch/acdev-debug-insight` 07 的 S2; 不发到 ac): 会话管家控制套接字的帧格式 (`channel`: JSON 帧、SCM_RIGHTS 描述符、超过 `FRAME_MAX` 经 memfd 的大帧、`Frame` / `Refusal` / `answer` / `event`、接口级别), 原样搬自 acdes `crates/manager/src/wire.rs`; feature `acompositor` 由下面 `protocol/acompositor/` 的 XML 生成 wayland-client 绑定 (`desktop`: 窗口表、`capture`、`window`; `inject`). acdes (管家、会话、合成器) 和 acdev 的客户机代理 `acdev-agent` 都用这一份; 只依赖 rustix 与 serde_json, 开 `acompositor` 才带 wayland-client |
 | `dirs/` | `acde-dirs` (2026-11-24): XDG 用户目录 (`Place`: desktop、documents、downloads、music、pictures、videos 与变量名、缺省英文名的对照) 和 `~/.config/user-dirs.dirs` 的读法 (`listed`、`$HOME` 展开的 `expanded`、Unix 上的取法 `user_dir`: 列的值是绝对路径且不是主目录本身才用, 否则用缺省名). 本库 `runtime/fs/workspace/userdirs.rs` 与 acdes 的管家 (给受限应用挂公共位置)、会话 (截图的默认目录) 都用这一份, 不另写; 只用标准库, 发到 ac |
 | `protocol/acompositor/` | acompositor 的私有协议 `acompositor-desktop-v1.xml`、`acompositor-inject-v1.xml`, 合成器 (acdes, 服务端) 与客户端 (acdes 会话、acdev 代理, 经 `acde-wire`) 共用这一份. **协议的主人是 acdes**: 放在这里只因为两个仓都要用 (只此一份), 改协议要 acdes 负责人 (system-lead) 同意, 改动和 acdes 的实现同一波推 |
-| `src/webgl` | `acde-webgl`: wgpu 上的 WebGL 1 / 2 (见 `docs/graphics/webgl.md`「WebGL」). 检查: `cargo test --release -p libacde webgl` |
+| `src/webgl` | `acde-webgl`: wgpu 上的 WebGL 1 / 2 (见 `docs/agents/graphics/webgl.md`「WebGL」). 检查: `cargo test --release -p libacde webgl` |
 | `src/runtime` | 系统接口 (napi 导出 + 注入用的 Rust 对象). 异步执行器 `rt.rs`: `acde-rt` 线程上的 ntex System (不用 tokio, TLS 用 rustls + ring (不用 aws-lc: Windows 要 NASM, 每个平台都多编一个 C 库; 用户定 2026-11-18), 证书校验用 rustls-platform-verifier). 检查: `cargo test -p libacde runtime` (含真 pty / Windows 伪控制台上的终端、unix socket 上的 HTTP / WebSocket)、`ime-check.sh`、`portal-check.sh`、`atspi-check.sh` (经 `tests/run.sh`) |
 | `src/model` | canvas / 窗口表、计划、快捷键、shell 事件 (`Event` / `Inbox`) |
 | `src/log` | `acde-log`: 日志和计时 |
-| `src/media` | `acde-media`: 解码音视频, 读摄像头和麦克风 (Linux GStreamer, macOS AVFoundation; 见 `docs/web/web-apps.md`「视频」「摄像头和麦克风」). 检查: `cargo test --release -p libacde media` (`tests/fixtures` 是 ffmpeg 命令行生成的 1 秒小片段; `tests/capture.rs` 用假设备; `tests/devices.rs` 里 `--ignored` 的列出 / 读真设备、在 macOS 上问权限) |
-| `src/storage` | `acde-storage`: 网页存储的分区和 SQLite (见 `docs/web/storage.md`「网页存储」). 检查: `cargo test --release -p libacde storage` |
+| `src/media` | `acde-media`: 解码音视频, 读摄像头和麦克风 (Linux GStreamer, macOS AVFoundation; 见 `docs/agents/web/web-apps.md`「视频」「摄像头和麦克风」). 检查: `cargo test --release -p libacde media` (`tests/fixtures` 是 ffmpeg 命令行生成的 1 秒小片段; `tests/capture.rs` 用假设备; `tests/devices.rs` 里 `--ignored` 的列出 / 读真设备、在 macOS 上问权限) |
+| `src/storage` | `acde-storage`: 网页存储的分区和 SQLite (见 `docs/agents/web/storage.md`「网页存储」). 检查: `cargo test --release -p libacde storage` |
 | `src/napi` | rusty_v8 实现的 Node-API (napi8), 让 `#[napi]` 导出在 Broker 里可用. 改自 Deno `ext/napi` 0.191.0 (MIT, LICENSE-MIT), 去掉了用不到的入口 |
 | `js/dom` | 网页接口层: web 里的浏览器全局对象和 DOM (原 acde-dom) |
 | `js/page` | 页面一侧的胶水: 在 web 里起页面、`acde:` 模块、和启动方的 rpc、输入与窗框 (原 acde-host 的 `worker.ts` 及其依赖) |
@@ -43,7 +43,7 @@
 调试版运行时设了 `ACDEV_JS_DIR` 时从那个目录读 `page.js`、`webworker.js`、`launcher.js`, 读不到才用内嵌的 (发布版只用内嵌的): 改 `js/` 后
 `cd js && bun run bundle` 一两秒出新包, 重开页面即生效, 不重编 Rust; 进客户机时只推这几个文件. `js/tsconfig.json` 的 paths 把 `@acde/dom` 指向 `js/dom/src`,
 `@acde/api` 指向 SDK 的声明 `acde-api/src`, `@acde/api/manifest` 指向清单模块 `manifest/`
-(acdev 的命令行用同一份清单规则, 见 `docs/acde-api.md`); 窗框主题的解析 (`FrameThemes`) 只有页面用, 在 `js/page/src/frametheme.ts`. 页面和启动方之间的类型
+(acdev 的命令行用同一份清单规则, 见 `docs/agents/acde-api.md`); 窗框主题的解析 (`FrameThemes`) 只有页面用, 在 `js/page/src/frametheme.ts`. 页面和启动方之间的类型
 (`WebInit`、服务形状、菜单、权限等级) 在 `js/page/src/contract.ts`; 管理中枢 (原 `broker.js`) 没有取回: 管家部分归 system (工作项 09).
 
 单应用启动器 (`js/launcher`, 用户 2026-11-17 定的临时做法, 总仓 `.scratch/acdev/issues/09-temporary-launcher-and-old-js.md`) 和页面包一样由
@@ -53,7 +53,7 @@
 没有管家时 `desktop` 是本地会话 (见下), 一个进程里跑桌面、它打开的应用和桌面服务.
 
 - **有管家时** (会话里, 环境里有 `ACDE_MANAGER_FD` 且 `native.Manager` 在, acdebin-system 的管家, 总仓 `.scratch/system/issues/09-manager.md`,
-  协议见 acdebin-system `docs/manager.md`): `native.Manager.connect()` 拿 welcome, 应用的清单、包目录、资源、等级 (`tier`)、授予 (`grants`)、
+  协议见 acdebin-system `docs/agents/manager.md`): `native.Manager.connect()` 拿 welcome, 应用的清单、包目录、资源、等级 (`tier`)、授予 (`grants`)、
   拉起时的请求 (`request`) 都取自它; 窗口大小按欢迎消息顶层的 `size` (`[宽, 高]`, 管家按 `apps.open` 的 `size` 给, 1–16384 的整数) 或 `outerSize` (含标题栏的外框, 逻辑像素, 和
   `size` 二选一; 原样交给 `grant({outerSize})`, 窗口客户端扣标题栏; 只在欢迎消息这条内部路径上, 页面的 `apps.open` 没有这个选项) → 清单 `size` →
   窗口系统默认 (800x600) 取第一个有的 (`windowGrant` 和 `windowSize`, 形状不对的欢迎消息值不用); 桌面的页面是 `welcome.dir` 加 `welcome.desktop.entry`. 子进程的环境里不再带 `ACDE_MANAGER_FD`.
@@ -131,7 +131,7 @@
   `desktops.choose`、`lock.*`) 回 `unsupported` (501).
   `window.setTitle` 记下标题 (语义树、`webs`、DevTools 目标用它); `window.setMenus` 交给宿主窗口 (`Shell.setMenus`, 菜单画在框上), 带 `shortcut`
   的菜单项注册成 `menu` 范围的快捷键, 宿主推来的 `menuselect` 和按下的菜单快捷键转成页面的 `window.menu` (`app/menus.ts`); `page.open` / `page.save`
-  (页面的打开、保存文件选择器) 用 `sys.pickFiles` / `sys.pickSave` (见 `docs/web/fs.md`「打开和保存文件」), `page.notify` 用 `Shell.notify` (`app/page.ts`); `page.download` 仍回 501.
+  (页面的打开、保存文件选择器) 用 `sys.pickFiles` / `sys.pickSave` (见 `docs/agents/web/fs.md`「打开和保存文件」), `page.notify` 用 `Shell.notify` (`app/page.ts`); `page.download` 仍回 501.
 - **密钥输入框** (2026-11-24): `type=password` 的 `<input>`, 以及 `autocomplete` 里有 `current-password` / `new-password` /
   `one-time-code` 的 `<input>` / `<textarea>`, 算密钥输入框 (`TextEntry.secret`, `js/page/src/text.ts`): 所有页面里都不启用输入法 (`InputMethod.focus`
   不发 `focusIn`, 即不发 text-input 的 enable; 从普通输入框切过来时发 `focusOut`), 没有预编辑和候选面板, 也不能复制、剪切出去; 普通输入框不变.
@@ -140,13 +140,13 @@
   `{desktops: DesktopInfo[], current}`)、`desktops.choose(id, remember?)` 经 rpc 转出, 有管家时原样 `manager.call`. 同步的
   `session.lock()` 同样经 rpc 转出 (管家调 logind 的 Lock). `session.own()` 取 `WebInit.session.own`: 启动器把 welcome 顶层的 `session: {own}` 带进去, 没有这一项或没有管家时为 false. `session.others()` (2026-11-22) 回别的用户还开着的会话 `[{user, uid, place, remote}]` (SDK 类型 `SessionOther`, `place` 是座位或终端, 可为 null), 关机、重启前先问它; `session.switchUser()` 锁定本会话并切到登录页去换人 (登录页在别的终端上按需起, 原会话留在后台可切回). 两者都由管家 (acdes) 实现, 页面胶水原样转发; 旧版管家以 RPC 错误拒绝, 页面要 catch.
   管家 (acdes) 推来的服务里若也有 `session` / `desktops`, 会盖掉这两个模块; acdes 在本工单后去掉登录模式里的这条绕法.
-- **锁屏页** (`acde:lock`, 日常桌面工作项 18; 管家一侧见 acdes `docs/manager.md`「锁屏」): 管家以锁屏模式起的进程收到的 welcome 是桌面的形状
+- **锁屏页** (`acde:lock`, 日常桌面工作项 18; 管家一侧见 acdes `docs/agents/manager.md`「锁屏」): 管家以锁屏模式起的进程收到的 welcome 是桌面的形状
   (`kind: 'desktop'`) 加顶层 `lock: true`, 启动器打开 `join(dir, desktop.lock ?? desktop.entry)` (桌面没写 `lock` 时管家给 acdes 自带的锁屏包),
   页面初始化数据带 `lock: true`. 页面胶水对锁屏页只定义 `acde:lock` 和 `acde:services`, 不给外壳模块; 锁屏页的电源菜单用的 `acde:session` 来自管家在 welcome 的 `services` 里给的 `session` 服务 (acdes 只列 `poweroff`、`reboot`、`suspend`, 系统确认页不给), 同登录页的做法.
   `lock.user()` 回 `{name, fullName, avatar}` (`avatar` 是 `data:` URL 或 null), `lock.unlock(password)` 失败时的错误带 `code`: `auth` (403,
   密码错)、`busy` (409, 上一次验证还没完)、`throttled` (429, 失败后的延迟期内, 另带 `retryAfter` 秒数); 这些字段由 rpc 原样带回页面
   (SDK 类型 `LockError`). `lock.status()` (2026-11-22) 回 `{battery, network, pending}` (SDK 类型 `LockStatus`: 电池 `{percent, charging}` (`percent` 是 0 到 100 的整数, 管家取整)、网络 `{online, kind}`、等用户处理的件数, 不知道的为 null), 锁屏页拿来显示网络、电量和件数; 锁屏页自己发起的关机、重启要系统确认时, 页面经 `lock.answer({allow})` 回答 (2026-11-22, acdes 的关机确认 power-admin; 登录页走管家服务的 `greeter.answer`, 不经胶水); 胶水总会转出 `status`、`cancel` 与 `answer`, 不支持它们的管家 (旧版 acdes, 或锁屏页调 `cancel`) 以 RPC 错误拒绝, 页面要 catch, 不能靠方法在不在判断; `lock.user()` 的应答另带起页那一刻的 `status` 与 `render` (`'gpu'` 或 `'cpu'`, CPU 画法下页面不用模糊). 这些都由管家定, 页面胶水原样转发. 管家按调用方拒绝: 锁屏页只能调 `lock.*`、`session` 的电源方法、`window.ready`、`page.shown`.
-  系统确认页 (2026-11-21, 管家以确认模式开同一个锁屏进程, 欢迎消息和 `lock.user()` 的应答多一项 `confirm`, 见 acdes `docs/manager.md`) 另有两处,
+  系统确认页 (2026-11-21, 管家以确认模式开同一个锁屏进程, 欢迎消息和 `lock.user()` 的应答多一项 `confirm`, 见 acdes `docs/agents/manager.md`) 另有两处,
   都只是加法: `lock.unlock(password, {remember?})` 的第二个参数 (`'once' | 'task' | 'scope' | 'until'`, 这次批准记多久, 原样转给管家;
   确认页不要密码时 `password` 传空串), 和 `lock.cancel()` (拒绝, 管家立刻回成功, 随后会话进程让页面放开锁屏并退出). 页面胶水按原样转发参数,
   不看 `confirm` 的内容; 它的形状是 SDK 的 `LockConfirm` (`{id, agent, waiting: {title, detail, expires, password, judge, remember?: {may, default, max_days?},
@@ -213,7 +213,7 @@
   `--shot` 在 `--shot-after` (默认 2000) 毫秒后存一张宿主窗口截图, 无头 (`ACDE_HEADLESS=1`) 也行; 首帧没画完时截到的是空屏 (WSL 的 Dozen 上
   调试版首帧要 5～6 秒, 验证时用 `--shot-after 15000`).
 - **调试通道** (`js/launcher/src/dev/dev.ts` 的 `DevChannel`, acdev-single-app 工作项 10、11): 宿主窗口的 `devrequest` 事件 (hostwin `dev.rs`
-  转来的 `acdev dev` 请求, 协议见 `docs/dev/dev-ipc.md`) 由本进程按单页回答, 结果经 `Shell.devRespond` 回去; 页面发来的 `{devlog}` (console、
+  转来的 `acdev dev` 请求, 协议见 `docs/agents/dev/dev-ipc.md`) 由本进程按单页回答, 结果经 `Shell.devRespond` 回去; 页面发来的 `{devlog}` (console、
   错误、请求、对话框) 收进 `DevLog`, `{devroute}` 记下假回应用掉一次. `dev-ipc.md` 的请求类型都回答: `snapshot` / `act` / `run` / `query` /
   `input` 由 `inspect.ts` (删 `web/` 前的 `inspect.ts` 取回, 只登记本进程的窗口; 它用的类型和常量在 `dev/inspect/types.ts`, 快照文字的窗口行、窗框菜单节点在 `dev/inspect/text.ts`, 2026-11-23 为行数门禁拆出) 经页面的 `inspect` 服务做; `route` / `init` 记在启动方,
   当场推给页面并在重载时随 `WebInit.devRoutes` / `devInit` 带上; `reload` 和 `acdev dev` 改了文件后的 `devreload` (非热替换时) 先取页面状态
@@ -231,11 +231,11 @@
   线路一行一个 JSON (UTF-8, `\n` 结尾, 单行最多 262144 字节): 页面发的经 rpc 帧 `{portline}` 到启动器写到连接上 (连上之前先排着),
   连接来的按行切开以 `{type: 'portline', line}` 推给页面 (超长的行丢掉, 页面那端收到 `messageerror`). 页面关端口发 `{portclosed: true}`,
   启动器关连接; 连接断了或被拒 (503 `service_not_running`、403、没有 `connectBackend` 时 501 `unsupported`, 都记一行日志) 推
-  `{type: 'portclosed'}`, 页面那端收到 `close`. 重载、退出时关掉旧连接. 页面一侧的约定见 `docs/web/web-apps.md`「启动时交给页面的端口」.
+  `{type: 'portclosed'}`, 页面那端收到 `close`. 重载、退出时关掉旧连接. 页面一侧的约定见 `docs/agents/web/web-apps.md`「启动时交给页面的端口」.
 - **应用后端** (`js/launcher/src/backend/backend.ts` 的 `AppBackend`, 工作项 13; 用户 2026-11-18 定由启动器起, 宿主和客户机同一份): 应用清单有 `backend`
   时随应用起, 地址 (`sockets` / `channel`) 每次开页面都并进 `WebInit`; `acdev dev` 的 `devreload` (非热替换) 和页面的 `window.reload` 都先停后端
   再起 (`devreload` 用重新找到的清单), 页面的请求在后端就绪前重试 10 秒; 启动器退出前停掉它并删本进程的 socket 目录. 起停、崩溃重起和日志见
-  `docs/web/backend.md`.
+  `docs/agents/web/backend.md`.
 - 没有的: `desktops` / `sessions` / `applications` / `open`.
   测试在 `js/launcher/test`.
 

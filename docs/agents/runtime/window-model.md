@@ -19,7 +19,7 @@
   全屏用 `requestState`); 改模式时当前状态在新模式下不允许就回到 `normal`. 独立应用的窗口 (`<运行时> app`) 内部仍是 `fullscreen` 模式, 页面改不了.
   会话 (acdebin-system 的 `crates/window`) 把请求映射成标准 xdg_toplevel 请求 (`set_fullscreen` / `set_maximized` / `set_minimized` / 取消), 按 configure 里的
   fullscreen / maximized 给页面发 `state`. winman 执行四种状态; 桌面的 `acde:windows.requestState` 经 acdes 的
-  `native.Windows.setState` 发 `winman_window_v1.set_state`, 变化由 winman 报回, acdes 窗口客户端给桌面页发 `window` 快照 (见 webs.md). `filled` 是 xdg 的 maximized, 铺满工作区 (见 `docs/runtime/webs.md`「钉住的面板」); `fullscreen` 铺满输出. 只有 `normal` 的窗口能拖动、拖边改尺寸;
+  `native.Windows.setState` 发 `winman_window_v1.set_state`, 变化由 winman 报回, acdes 窗口客户端给桌面页发 `window` 快照 (见 webs.md). `filled` 是 xdg 的 maximized, 铺满工作区 (见 `docs/agents/runtime/webs.md`「钉住的面板」); `fullscreen` 铺满输出. 只有 `normal` 的窗口能拖动、拖边改尺寸;
   输出或工作区变了, 铺满的窗口跟着改 rect; `windowgone` 报的是 `normal` 时的 rect. 还没显示就要铺满 / 全屏的客户端 (Firefox 记着上次是最大化)
   在显示时照做, 这样的窗口没有 `normal` 的 rect: 回到 `normal` 时让客户端自己定尺寸, 等它确认离开铺满 / 全屏后的第一次提交再放到中间
   (之前那一帧还是铺满的尺寸). 最小化的窗口藏起, 桌面 `focus` / `show` 它时回到之前的状态. 页面的 `minimize()` 在会话里走自己的

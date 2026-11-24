@@ -1,6 +1,6 @@
 # 网页应用 (清单, 浏览器接口)
 
-网页存储见 `docs/web/storage.md`, 应用后端和请求路由见 `docs/web/backend.md`.
+网页存储见 `docs/agents/web/storage.md`, 应用后端和请求路由见 `docs/agents/web/backend.md`.
 
 工程、构建和 `acdev dev` 是 acdev 仓库的事 (`acdev new / check / build / install / dev`, 框架识别、模板、listen preload). 本仓库对外只发 SDK
 `@acde/api`. 运行时只认构建出来的包: 清单 `package.json`、`web/`、`backend/server.js` 和 `backend/acde-listen.js` (把每个
@@ -53,9 +53,9 @@
   用户文件的类型不走这张表, 走宿主系统 (`env.fileType`, #98).
 - **浏览器接口 → 窗口** (acde-host `webapp.ts` / `pagecalls.ts` / `downloads.ts`): `window.close()` / `location.reload()` 关闭 / 重启这个 web;
   桌面页也接 `location.reload()` (F5、Ctrl+R 同样走它; 2026-11-24 起, 之前桌面页没接, 重载什么也不做): `WebAppPage.reloadable` 先派 `beforeunload`, 没被拦下就发 `window.reload`, 启动器按桌面重新拿面再起页面;
-  `localStorage` / `sessionStorage` 见 `docs/web/storage.md`「网页存储」; `alert` 画在窗口里 (`confirm` / `prompt` 返回 false / null; acdev dev 里能事先答复, 见
-  `docs/dev/dev-ipc.md`「acdev dev」的 `dialog`. 页面可以等用户回答的模态对话框还没有);
-  外部链接交给浏览器应用 (宿主窗口里要 slots 的浏览器应用跑不了, 不打开, 见 `docs/web/default-apps.md`「默认应用」), 下载存进下载目录 (桌面收 `on('download')`); 打开 / 保存文件的选择器见 `docs/web/fs.md`「打开和保存文件」; 隐藏 / 显示是 `visibilitychange`;
+  `localStorage` / `sessionStorage` 见 `docs/agents/web/storage.md`「网页存储」; `alert` 画在窗口里 (`confirm` / `prompt` 返回 false / null; acdev dev 里能事先答复, 见
+  `docs/agents/dev/dev-ipc.md`「acdev dev」的 `dialog`. 页面可以等用户回答的模态对话框还没有);
+  外部链接交给浏览器应用 (宿主窗口里要 slots 的浏览器应用跑不了, 不打开, 见 `docs/agents/web/default-apps.md`「默认应用」), 下载存进下载目录 (桌面收 `on('download')`); 打开 / 保存文件的选择器见 `docs/agents/web/fs.md`「打开和保存文件」; 隐藏 / 显示是 `visibilitychange`;
   `screen.*` 是主输出的逻辑尺寸; `navigator.userAgent` / `platform` 在所有宿主上都报 Linux (`X11; Linux x86_64` / `Linux x86_64`, Broker 的 `UserAgent`,
   经 `WebInit.navigator`), 产品段是 `acde/<真实版本>`. 运行时对应用呈现统一的 Linux 环境: 交互语义一律照 Linux (编辑快捷键是 Ctrl;
   页面若看到 `MacIntel`, 编辑器库会把快捷键改绑到 Command, 同一窗口里就有两套规矩), 跨宿主一致.
@@ -231,7 +231,7 @@
 - **摄像头和麦克风** (`getUserMedia`; src/media `capture/`, src/host `capture.rs` / `audio/live.rs`, acde-dom `src/media/stream.ts`):
   - 权限: 清单 `capabilities` 写了 `camera` / `microphone` 的应用才拿得到 (Broker `#grants` → web 的 grant →
     `natives.capture` 只装给有的 web, 桌面两个都有); 没写的: `getUserMedia` `NotAllowedError`、`enumerateDevices` 不列这一类、
-    `navigator.permissions.query` 是 `denied`. 写了的第三方应用还要用户批准 (见 `docs/runtime/webs.md`「批准」), **标准接口照浏览器的样子带出这一步**
+    `navigator.permissions.query` 是 `denied`. 写了的第三方应用还要用户批准 (见 `docs/agents/runtime/webs.md`「批准」), **标准接口照浏览器的样子带出这一步**
     (`broker/access/approval/permits.ts` `Permits.capture(native, access)`, web 起来时包在 `natives.capture` 外面; acde-dom 只认
     `CaptureNative` 上两个可选成员 `request(kind)` / `onPermission(cb)`, 不知道批准是什么):
     - `navigator.permissions.query({name: 'camera'})`: 批准了 → 系统的状态 (`granted` / `prompt` / `denied`); 还没问或正在问 (`not-asked` /
@@ -302,7 +302,7 @@
 - **MessageChannel / MessagePort** (acde-dom `core/message.ts`): 同一个页面里两端互发, `postMessage` 当场结构化克隆; 没有 `start()` 也没设
   `onmessage` 之前消息在收端排队, `start()` 后按顺序派发. 关闭 (2026-11-21, 全局行为变化, 照 HTML 规范和 Chrome 123 起的做法): 一端
   `close()` 后, 另一端在下一个任务里收到一次 `close` 事件 (`onclose` 也有), 之后两端互发都静默丢弃; 关的那一端自己不收 `close`, 再关一次什么也不做.
-- **启动时交给页面的端口** (2026-11-21; 运行时一侧见 `docs/runtime/layout.md` 同名一条): 管家要给页面一条通往别处的连接时 (如 Dopame 的
+- **启动时交给页面的端口** (2026-11-21; 运行时一侧见 `docs/agents/runtime/layout.md` 同名一条): 管家要给页面一条通往别处的连接时 (如 Dopame 的
   插件窗口), 页面在 `load` 事件之后的下一个任务里收到一次标准的 `message` 事件 (发在 `window` 上, `data` 由管家给, `ports[0]` 是一个
   `MessagePort`, `source` 为 null). 页面的约定:
   - 监听器要在 `load` 之前挂上 (同步脚本或模块顶层都行); 错过了就收不到, 不会补发, 一次页面加载只给一个端口; 重载后的新页面再给一个新的.
@@ -320,7 +320,7 @@
 - **还没有**: shadow root 里的 `<style>` 不隔离 (会作用到整个文档)、XML 文档里的样式表处理指令 (`<?xml-stylesheet?>`)、从文件读的页面 (`PageSource.html`) 只认 `.html` 入口 (`.xhtml` 文件不按 XML 解析)、页面按响应的字符编码解码 (现在总按 UTF-8)、`DecompressionStream` / `CompressionStream`、`speechSynthesis`; `<select>` 的 `appearance: base-select` / `::picker(select)`、`<datalist>`、Storage Buckets、`SharedWorker` 和 Service Worker、`crypto.subtle` 除 `digest` 以外的方法 (`encrypt` / `sign` / `importKey` / `generateKey` / `deriveBits` … 都不在 `SubtleCrypto.prototype` 上, 也没有 `CryptoKey`)、OffscreenCanvas、全屏、`:target`; 从别的主机 `import` ES 模块 (`modules.rs`; `blob:` 和 `data:` 模块可以: `compile_graph` 经 `host.setModuleSource` 登记的 acde-dom `moduleSource` 同步取文字, 只认 JavaScript MIME 类型, 和 fetch 走同一个 `inline`).
 - **指针事件** (https://w3c.github.io/pointerevents/, acde-dom `dom/input.ts` / `dom/events.ts`, 2026-11-21): 只有鼠标: `pointerId` 1, `pointerType`
   `'mouse'`, `isPrimary` true, `width` / `height` 1, `pressure` 按着按钮时 0.5、否则 0 (规范给鼠标的值), `tiltX` / `tiltY` / `twist` /
-  `tangentialPressure` 0. `pointermove` 按帧派发 (`docs/runtime/webs.md`「输入」), 两次派发之间宿主送来的每个位置都留着: 派发的事件是
+  `tangentialPressure` 0. `pointermove` 按帧派发 (`docs/agents/runtime/webs.md`「输入」), 两次派发之间宿主送来的每个位置都留着: 派发的事件是
   最后一个样本, `getCoalescedEvents()` 按先后给出全部样本 (至少一个). 每个样本是单独的可信 `PointerEvent`: `target` 和派发的那个相同,
   不冒泡、不可取消, 有自己的 `clientX` / `offsetX` / `movementX` / `buttons` / `pressure` / `timeStamp`, 它自己的 `getCoalescedEvents()` 为空.
   `timeStamp` 是宿主把输入排进队列的时刻 (`Event.stamp`, src/host `webnative.rs` 的 `pump` 换成页面循环的时钟; 装了 `clock` 假时钟时按样本
@@ -329,12 +329,12 @@
   (不是 `PointerEvent` 的序列时照 WebIDL 抛 TypeError), 没给是空的; `getPredictedEvents()` 总是空的 (不做预测, 规范允许). 宿主的队列
   (model `Inbox`) 和页面里等帧的样本都最多留 1024 个连着的移动, 再多时最新的一个并进最后一个 (位置取新的, `deltaX` / `deltaY` 相加),
   只有页面卡住时才会碰到. 和规范的差别 (还没改): `pointermove` 的 `button` 是 0 (规范是 -1), 没有 `pointerrawupdate`; 数位笔
-  (`pointerType: 'pen'`、压力、倾斜) 还没有: 宿主窗口见 acdev `docs/hostwin.md`「光标」后的「数位板」, 会话的 crates/window 只接 `wl_pointer`.
+  (`pointerType: 'pen'`、压力、倾斜) 还没有: 宿主窗口见 acdev `docs/agents/hostwin.md`「光标」后的「数位板」, 会话的 crates/window 只接 `wl_pointer`.
 - **光标** (CSS UI `cursor`, `src/render/cursor.rs`, 2026-11-21): render 取指针下的节点 (render 线程的 hover, 每次 `RenderHandle::pointer` 和每次重算样式之后)
   最近的元素的计算值 `cursor` 的关键字; `auto` 照 CSS UI 4 定: 在链接 (`a[href]` / `area[href]` 和它们里面, 和浏览器一样) 上是 `pointer`, 在可编辑的地方 (有
   文字输入的 input、textarea、`contenteditable` 不是 false 的, disabled 的除外) 或可选的文字 (命中在文字上, `user-select` 用到的值不是 none: 自己是 `auto` 就往上看祖先) 上是 `text`, 别处是
-  `default`. `url(…)` 只用后面的关键字 (图片光标还没有). 指针停着、页面改了样式或布局时也跟着变. 交给前端: `docs/graphics/render-gpu.md` 的
-  `RenderHandle::on_cursor`; 宿主窗口见 acdev `docs/hostwin.md`「光标」; 会话 (acdes 的 crates/window) 和 C 接口还没接, 一直是默认箭头.
+  `default`. `url(…)` 只用后面的关键字 (图片光标还没有). 指针停着、页面改了样式或布局时也跟着变. 交给前端: `docs/agents/graphics/render-gpu.md` 的
+  `RenderHandle::on_cursor`; 宿主窗口见 acdev `docs/agents/hostwin.md`「光标」; 会话 (acdes 的 crates/window) 和 C 接口还没接, 一直是默认箭头.
 - **指针锁定** (https://w3c.github.io/pointerlock/, acde-dom `dom/pointerlock.ts`, 2026-11-19): `Element.requestPointerLock(options?)` 返回 promise,
   `document.pointerLockElement` / `ShadowRoot.pointerLockElement` (和 `activeElement` 一样不往影子宿主换), `document.exitPointerLock()`,
   `pointerlockchange` / `pointerlockerror` 发在 document 上 (同一个任务里先发事件再落定 promise). 拒绝: 元素不在文档里或窗口没有焦点
@@ -342,7 +342,7 @@
   `NotAllowedError`, 没有用户激活 (见下条) 也 `NotAllowedError`, 除非上一次锁是页面自己 `exitPointerLock` 放开的; 宿主收回 (Esc 等) 之后要比收回更晚的一次激活, 页面不能在
   `pointerlockchange` 里拿锁前那次点击马上再锁回去;
   已经锁着时换元素直接成功, 不问宿主. Esc 由宿主收回, 页面拦不住. 窗口能不能锁看
-  surface 的 `pointerLock` (`platform::Window::pointer_lock`, 缺省 false: 会话和 C 接口没有; 宿主窗口见 acdev `docs/hostwin.md`「输入」),
+  surface 的 `pointerLock` (`platform::Window::pointer_lock`, 缺省 false: 会话和 C 接口没有; 宿主窗口见 acdev `docs/agents/hostwin.md`「输入」),
   能锁时 acde-host `host.ts` 把 `env.pointerLock` 接到 `surface.lockPointer(on)` (`SurfaceCommand::PointerLock`). 宿主的回答是
   `pointerlock {code: 1 | 0, title: 'request'}` (每个请求恰好一次), 宿主收回 (Esc、失焦、焦点给了别的窗口) 是 `pointerlock {code: 0, title: 'lost'}`;
   页面自己 `exitPointerLock` 不等回答. 锁着时 `pointermove` 带 `deltaX` / `deltaY` 成为 `movementX` / `movementY` (每个样本是自己的, 派发的事件是一帧里的和), 位置停在锁定时的点,
@@ -359,7 +359,7 @@
   `read()` (一项 `ClipboardItem`, 剪贴板空时空数组) / `write([item])` (只写第一项; 有不认的类型时 `NotAllowedError`), `ClipboardItem`
   (`types`、`getType` (没有时 `NotFoundError`)、`presentationStyle`、`supports()` 认上面三种). `paste` 事件的 `clipboardData` 带上剪贴板的全部类型:
   文字类型照旧 `setData`, 图片是一个 `kind: 'file'`、`type: 'image/png'` 的项 (`files` 里是 `image.png`); 页面自己处理的 `copy` / `cut` 写
-  `text/plain` 和 `text/uri-list`. 权限照旧 (`clipboard-read` / `clipboard-write`). 宿主各平台的限制见 acdev `docs/hostwin.md`.
+  `text/plain` 和 `text/uri-list`. 权限照旧 (`clipboard-read` / `clipboard-write`). 宿主各平台的限制见 acdev `docs/agents/hostwin.md`.
 - **密码框** (`<input type=password>`, 2026-11-18): 照成熟浏览器的做法. 显示: 渲染层给 blitz 的编辑器的是掩码 (`engine_state.rs` 的
   `show_form_state`, 每个 UTF-16 码元一个 `•`, 所以页面的选区偏移不用换算; 没改过值时也按 `value` 属性掩码, `type` 改掉后恢复明文),
   无障碍树里本来就只给 `•••`. 复制和剪切: 在密码框里不发 `copy` / `cut` 事件, 也不写剪贴板 (`js/page/src/text.ts` 的 `clipboard`),

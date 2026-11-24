@@ -14,7 +14,7 @@ root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOW
 `SHGetKnownFolderPath`, `path.rs` `known_folder`; 取哪个文件夹在 `fs/workspace/userdirs.rs`, 测试里用 `ACDE_TEST_KNOWN_<名>` 代替已知文件夹;
 位置名与变量名的对照、`~/.config/user-dirs.dirs` 的读法和 `$HOME` 的展开只在本仓库的 `acde-dirs` (`dirs/`, 只用标准库) 一份, acdes 的管家与会话也用它), 用户选的文件夹是借出的根, 按借出名 (`work`、`work-2`…) 当 root. `fs: true` 只给 `private` 和借给它的文件夹;
 公共位置要在 `fs.roots` 里点名 (校验器: 不是这六个名字就是错误, `agentos-work` 不算;
-末段是位置名的路径如 `~/Downloads` 提示改写位置名, 别的提示用户选的文件夹) 并经批准 (见 `docs/runtime/webs.md`「批准」). `roots()` 回
+末段是位置名的路径如 `~/Downloads` 提示改写位置名, 别的提示用户选的文件夹) 并经批准 (见 `docs/agents/runtime/webs.md`「批准」). `roots()` 回
 `{id, label, source: 'private' | 'place' | 'lent' | 'removable', mode, reason, exists, place?}`, 只有点名了公共位置的系统应用另带 `path`; 别的应用拿不到绝对路径,
 `locate` / `openPath` 报 403 `EACCES`. 没批准或撤销了的位置: web 侧 (`FileAccess.guard`, 经 `Permits`)
 把它从 `roots()` 里去掉, 以它为 root 的调用 reject 403 `denied` (`AcdePermissionError`). `fs.revoke(name)` 收回借给自己的文件夹 (经页面调用 `unlend` 到启动器: 会话里调管家 `fs.unlend({name})`, 再从本进程去掉并发 `fsroots {removed}`;
@@ -85,7 +85,7 @@ root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOW
   `dataTransfer.items` 同浏览器按下标取 (`items[i]`, 活的, 越界是 `undefined`, 同一项每次是同一个对象), 也能迭代; 下标经 acde-dom `events.ts` 的代理.
   `items.clear()` 同规范移除全部项 (字符串、文件和句柄项), `clearData()` 只清字符串. 没有拖放数据存储的只读 / 受保护模式, 页面拿到的列表一律可写.
 - `File.type`: 拖放的 `File`、句柄的 `getFile()`、`<input type=file>` 和 `showOpenFilePicker` 的文件都按名字取类型, 和选应用用的同一套
-  (`mimedb.ts` `FileTypes.byName`: Windows 是扩展名登记的 `Content Type`, 别处是 shared-mime-info 的 globs; 见 `docs/web/default-apps.md`「默认应用」的「文件的类型」),
+  (`mimedb.ts` `FileTypes.byName`: Windows 是扩展名登记的 `Content Type`, 别处是 shared-mime-info 的 globs; 见 `docs/agents/web/default-apps.md`「默认应用」的「文件的类型」),
   acde-host `PageCalls` 把它设成 acde-dom 的 `env.fileType`. 系统不知道的是空字符串, 同浏览器. 不按内容猜 (浏览器也只看名字).
 - 打开请求: 接收方的 `request` 带内部的 `entry: {name, kind, label, writable}` (见上「openPath 交来的文件」), 接收方的 web (`remote.ts`
   `WindowSelf`) 把它换成 `handle` 再交给页面, `entry` 不进页面. 来源可写 (`mode` 有属主写位; Windows 只读属性) 时句柄可写. `FileAccess.view` 是 `handle` 的
@@ -101,10 +101,10 @@ root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOW
   句柄只读时带 `writable: false` (只能由可写变只读), 可写时不带 (沿用). 请求的 `kind` 照应用给的原样转发, 条目的类型由管家按 `path` 打开后的实际类型定.
   `acde:office` 的 `state(handle)` 只认整个借出的文件 (`PageCalls.lentFile`).
   页面自己给的 `lend` / `entry` / `handed` 丢掉, 不再有按路径的 `held`. 会话里请求经启动器原样交给管家 `apps.open`: 管家核对名字确实借给了发起的进程,
-  按自己记的路径 (带 `path` 时在那个根下用 openat2 `RESOLVE_BENEATH` 打开子项, `label` 是子项自己的名字) 重新打开, 以目标应用自己的名字交过去 (见 acdes `docs/manager.md`「转交借来的东西」). 目标收到的请求带 `lend: [{name}]`, 条目和描述符在
+  按自己记的路径 (带 `path` 时在那个根下用 openat2 `RESOLVE_BENEATH` 打开子项, `label` 是子项自己的名字) 重新打开, 以目标应用自己的名字交过去 (见 acdes `docs/agents/manager.md`「转交借来的东西」). 目标收到的请求带 `lend: [{name}]`, 条目和描述符在
   welcome 或 `request` 事件的 `lent` 里; 启动器 (`Lending.entered`) 取第一个名字, 和 openPath 交来的一样换成 `entry` 交给页面, 页面造出句柄.
   宿主窗口里没有管家, 单应用启动器不支持 `apps.open` (501), 也就没有转交.
-  借出的文件 (`lent-file:`) 也能交给 `acde:office` 的 `state` (原生 `office.openLent(name)`, 见 `docs/runtime/architecture.md` 的 office 一段).
+  借出的文件 (`lent-file:`) 也能交给 `acde:office` 的 `state` (原生 `office.openLent(name)`, 见 `docs/agents/runtime/architecture.md` 的 office 一段).
 
 工作区内的相对路径用 `/` 分隔. Windows 上拒绝反斜杠、数据流分隔符、保留设备名和以空格或点结尾的名称;
 判断解析后的路径是否在 root 内时按系统路径组件比较.
@@ -139,7 +139,7 @@ Windows 的 `XDG_DESKTOP_DIR` 和 `XDG_DOWNLOAD_DIR` 支持盘符绝对路径及
 - `list(root, path, hidden)` → `{root, path, entries, truncated, skipped?}`: `hidden` 默认 false, 不列隐藏项 (点开头的名字, Windows 另加隐藏或系统属性; #149, 之前默认列出), 给 true 才列; 先排好 (文件夹在前, 区域排序规则) 再截到 5000 条 (`truncated`);
   名字不是合法 UTF-8 (Windows UTF-16) 的项跳过, `skipped` 是个数 (没有时不出现); 目录句柄的列出同样跳过这些名字.
 - `download(root, path)` → `{name, contentType, data: Uint8Array}`: runtime 只回名字和内容 (`FsReply::File`), `contentType` 由 web 侧 `fsmodule.ts` `FsModule.typed`
-  (`worker.ts` 把 `natives.fs` 包上它再交出去) 按名字从 `FileTypes.system().byName` 取, 和 `File.type` 同一个库 (见 `docs/web/default-apps.md`「默认应用」的「文件的类型」:
+  (`worker.ts` 把 `natives.fs` 包上它再交出去) 按名字从 `FileTypes.system().byName` 取, 和 `File.type` 同一个库 (见 `docs/agents/web/default-apps.md`「默认应用」的「文件的类型」:
   `.md` 是 `text/markdown`); 系统不认识的名字是 `application/octet-stream`.
 - `stat(root, path)` → `FinderEntry & {path}` (lstat; 普通文件多带 `version`; 悬空的链接也照样报告是链接, 不是 404).
 - `readText` → `{text, modifiedMs, size, version}` (最多 64 MiB, BOM 原样留), `readBytes` → `{data: Uint8Array, modifiedMs, size, version}`.

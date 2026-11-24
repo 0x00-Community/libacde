@@ -18,7 +18,7 @@ acdev (Agent Computer Desktop Environment) 是 Dopame 的桌面基座, 分三个
 (还没有, acdes 开 detour 加 wgpu: Xe3 上走 detour, 别的 GPU 走 wgpu); 以前的 acgpu / detour-gpu 0.1 不再用. feature `napi` 打开 model 的 `#[napi(object)]`. 测试在根 `tests/` (`<原模块>_<名字>.rs`, 夹具 `tests/fixtures`,
 runtime 的手动检查脚本 `tests/runtime/`), Wayland 协议在 `protocol/`. crate-type 是 rlib + cdylib, cdylib 即 `libacde.so`.
 
-C 接口见 `docs/runtime/ffi.md`; 发布到 cargo 源 ac 见 `docs/dev/release.md`「cargo 源 ac」.
+C 接口见 `docs/agents/runtime/ffi.md`; 发布到 cargo 源 ac 见 `docs/agents/dev/release.md`「cargo 源 ac」.
 
 外部 crate 用的绑定工具在 lib 根上平铺导出 (`acde::{string, get, set, offload, failure, current, Msg, methods!, …}`).
 会话里的 shell / window / paint / supervise 已搬到 acdebin-system; vendor (只剩 blitz 子模块) 仍在本仓库, 前端的 Cargo.toml 里不再 `[patch]` 它.
@@ -37,7 +37,7 @@ crate; `acde:` 模块、`@acde/api`、`acde_*` 协议、`ACDE_*` 环境变量、
 | **调试桌面** (`acdev dev`) | `acdev runtime desktop <id \| 包目录>` | Linux / Windows / macOS, 在别人的桌面里 | **一个**宿主原生窗口, 里面合成桌面和所有窗口 | acdev runtime 的 crates/hostwin |
 | **调试窗口** | `acdev runtime app <id>` | 同上 | 一个宿主原生窗口, 所选应用铺满, 关闭该应用后退出 | 同上 |
 
-选哪种看跑的是哪个二进制: `acdev runtime` 一律宿主窗口, `acdebin-system` (只在 Linux; Arch 包里 `/usr/bin/acdert` 链到它) 一律会话, 怎么起见 acdebin-system 的 `docs/architecture.md`. 会话里只支持 Wayland: 没有 Xwayland, 只会 X11 的程序跑不了. 会话里只支持 Wayland: 没有 Xwayland, 只会 X11 的程序跑不了.
+选哪种看跑的是哪个二进制: `acdev runtime` 一律宿主窗口, `acdebin-system` (只在 Linux; Arch 包里 `/usr/bin/acdert` 链到它) 一律会话, 怎么起见 acdebin-system 的 `docs/agents/architecture.md`. 会话里只支持 Wayland: 没有 Xwayland, 只会 X11 的程序跑不了. 会话里只支持 Wayland: 没有 Xwayland, 只会 X11 的程序跑不了.
 
 调试桌面用桌面的模块、服务和 `acde:windows` / `acde:desktop` 事件. 调试窗口用清单授权的模块和 `acde:window` 事件.
 宿主窗口的 `native.Shell` 带 `hosted: true`, acde-host `Main.session` 见到它就不算「自己的会话」: 不起 fcitx5、
@@ -49,7 +49,7 @@ crate; `acde:` 模块、`@acde/api`、`acde_*` 协议、`ACDE_*` 环境变量、
 ## 进程与线程
 
 ```
-会话: 主进程 (`supervise.rs`)、合成器线程和运行时子进程怎么分在 acdebin-system 里, 见它的 docs/architecture.md.
+会话: 主进程 (`supervise.rs`)、合成器线程和运行时子进程怎么分在 acdebin-system 里, 见它的 docs/agents/architecture.md.
 
 宿主窗口:
 运行时 (一个进程)   主线程: 平台事件循环 (Windows win32, 别处 winit); `acdev` 线程 (栈 64 MiB): Broker;
@@ -57,13 +57,13 @@ crate; `acde:` 模块、`@acde/api`、`acde_*` 协议、`ACDE_*` 环境变量、
                     `acde-compose` 合成到宿主窗口的 surface
 ```
 
-- **主进程** (会话): 在 acdebin-system 的 `src/supervise.rs`, 起停和重起运行时子进程的规则见它的 `docs/architecture.md`.
+- **主进程** (会话): 在 acdebin-system 的 `src/supervise.rs`, 起停和重起运行时子进程的规则见它的 `docs/agents/architecture.md`.
 - **web** (src/host `web.rs` `spawnWeb`): runtime 里的一条 JS 线程 `acdev` (栈 8 MiB), 自己的 isolate (堆上限 `heapMb`) 和事件循环.
   和 Broker 之间是结构化克隆的字节, 投进对方事件循环 (没有 socket). `terminate` 置停止并 `terminate_execution` (退出码 137);
   线程 panic 只结束这个 web (134, `panic: …`). 句柄带 `busyMs` (当前任务跑了多久, 判卡死) 和 `cpuMs` (`/proc/self/task/<tid>/schedstat`).
   段错误、abort 带掉整个 runtime (主进程重起它), 所以共享的 Rust 状态里不写 `unsafe`, 绑定层不 `unwrap`, 每个绑定在边界上
   `catch_unwind`.
-- **Web Worker** (src/host `worker.rs`, 见 `docs/web/web-apps.md`「Web Worker」): web 线程起的 `acde-worker` 线程 (栈 8 MiB), 自己的 isolate
+- **Web Worker** (src/host `worker.rs`, 见 `docs/agents/web/web-apps.md`「Web Worker」): web 线程起的 `acde-worker` 线程 (栈 8 MiB), 自己的 isolate
   (它的 web 的所有 worker 合用一份 `heapMb` 大的堆预算, CPU 算进 web 的 `cpuMs`) 和事件循环; 和页面之间交换 `Envelope` (序列化的字节加转移的 backing store, 不复制), 投进对方事件循环.
   唯一的 `unsafe` 是 `envelope.rs` 的 `Moved` 实现 `Send`: v8 的 `SharedRef<BackingStore>` 不是 `Send` (`BackingStore` 不是 `Sync`), 但转移后
   发送方已把 ArrayBuffer 分离、不再碰这块内存, 引用计数是 `std::shared_ptr` 的原子计数, 内存由 isolate 共享持有的分配器释放 (rusty_v8 总是
@@ -74,7 +74,7 @@ crate; `acde:` 模块、`@acde/api`、`acde_*` 协议、`ACDE_*` 环境变量、
   `picker.rs`; 阻塞的活经 `offload.rs` 交给别的线程, promise 在这个 web 的事件循环上落定; `acde:fs` 的改动 (mkdir、copy、rename、delete、
   writeFile、revoke) 在每个 web 一条的有序队列 `acde-fs-changes` 上按调用顺序跑, 读在全进程 4 条线程的 `acde-fs-<n>` 池里跑, 这个 web 还有改动
   没做完时读也排进有序队列, 所以没等的写之后的读看得到写的结果). 限制 (fs 的 roots) 在注入时绑进去, 没给的
-  `import('acde:<名字>')` 直接失败. Broker 自己只用 napi `Finder` 的 `locate` (`docs/web/default-apps.md`「默认应用」), 是另一份.
+  `import('acde:<名字>')` 直接失败. Broker 自己只用 napi `Finder` 的 `locate` (`docs/agents/web/default-apps.md`「默认应用」), 是另一份.
   terminal 起用户的登录 shell, 在家目录: unix 是账户数据库里的 shell (`getpwuid_r` 的 `pw_shell`, 不可执行时 `$SHELL`, 再不行 `/bin/sh`), 带 `-l`, pty
   子进程 exec 前关掉 3 以上的所有 fd, 每秒从 `/proc` 报 `cwd` (只在 Linux); Windows 用 ConPTY (runtime `conpty.rs`), shell 依次取 Windows Terminal
   默认配置的 `commandline` (`settings.json`, 商店版、预览版、非打包版三处)、PATH 上的 `pwsh.exe`、Windows PowerShell、`%ComSpec%`; 子进程不继承

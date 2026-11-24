@@ -6,7 +6,7 @@ WebGL 1 和 2 在每个 OS 上都有 (Windows 没验过), 是 wgpu 上的一台 
   对象包装和扩展对象; 状态、校验和 GL 错误都在 acde-webgl 的 `Context` (Rust, 不依赖 V8, 能单测); src/host `webgl.rs` 把它绑成 `natives.webgl`
   (每个 canvas 一个 `Context`, 调用的第一个参数是上下文编号). `getError` 同步, 所以每个调用自己校验; 会失败的 wgpu 调用 (建纹理 / 渲染缓冲 /
   绘制缓冲 / 管线 / 绑定组、提交) 都在错误范围 (`Context::scoped`) 里, 失败时报 GL 错误 (`OUT_OF_MEMORY` / `INVALID_OPERATION`) 并记日志.
-- **着色器**: GLSL ES 1.00 / 3.00 经 `src/webgl/glsl` 的 WebGL 方言 (`Frontend::parse_webgl`, 见 `docs/graphics/vendor.md` 末尾) 变成 naga IR, 直接交给 wgpu
+- **着色器**: GLSL ES 1.00 / 3.00 经 `src/webgl/glsl` 的 WebGL 方言 (`Frontend::parse_webgl`, 见 `docs/agents/graphics/vendor.md` 末尾) 变成 naga IR, 直接交给 wgpu
   (`ShaderSource::Naga`). `compileShader` 只解析校验, `linkProgram` 按两个着色器重新解析一遍: attribute 位置 (`bindAttribLocation` / layout / 依次)、
   varying 按名字配位置、不活跃的 attribute 和对面没有的 varying 降成普通全局. 活跃与否 (`getActiveUniform` 等) 按 `live.rs` 从语句往回追的表达式算.
   varying 上限 (`MAX_VARYING_VECTORS`、`gl_MaxVaryingVectors` 和输入输出分量) 是设备的 `max_inter_stage_shader_variables` 减一 (留一个给宽点的

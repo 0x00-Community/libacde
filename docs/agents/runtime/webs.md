@@ -2,23 +2,23 @@
 
 每个 web 有自己的 DOM、CSS、JS 堆、render 文档和 surface.
 
-- **渲染 (会话)**: 每个 web 一个 xdg_toplevel, 自己光栅化 (acdebin-system 的 `crates/paint`, 三块轮转的 GBM 画布, 见它的 `docs/window-paint.md`), 经 linux-dmabuf 交给合成器. 窗口 id:
+- **渲染 (会话)**: 每个 web 一个 xdg_toplevel, 自己光栅化 (acdebin-system 的 `crates/paint`, 三块轮转的 GBM 画布, 见它的 `docs/agents/window-paint.md`), 经 linux-dmabuf 交给合成器. 窗口 id:
   桌面 0, web 窗口从 `1<<20` 起 (Broker 发), 和原生窗口同一空间. 应用窗口先是居中的 `free` 窗口, 页面尺寸是清单的 `size` (默认 800x600),
   Broker `grant` 时加上窗框的高 (`Frame.windowSize`), 整个窗口不超过屏幕.
 - **输入**: 合成器按 z 找到指针下的窗口; acdebin-system 的 `crates/window` 转成 shell 事件; 滚轮的默认滚动、:hover 和光标在 render 线程上. pointermove 对齐到帧
   (acde-host `host.ts`: 两次派发之间的样本都留着, 下一个 `frame` 或别的事件前派发一次, 最后一个样本是派发的事件, 全部样本给
-  `getCoalescedEvents()`, 见 `docs/web/web-apps.md`「指针事件」; model 的 `Inbox` 也不再合并移动).
+  `getCoalescedEvents()`, 见 `docs/agents/web/web-apps.md`「指针事件」; model 的 `Inbox` 也不再合并移动).
 - **记住位置** (`src/places.ts`): 窗口没了时合成器发 `windowgone`, Broker 按应用 id 记最后的 rect (全屏的记进全屏之前的) 到
   `$XDG_STATE_HOME/acde/windows.json` (`ACDE_STORAGE` 为空时只在内存); 下次打开且没有别的窗口开着时摆回 (露出屏幕不到 48 像素或标题栏
-  在屏幕上沿之外时照旧居中). 只有桌面能隐藏 / 显示 / 提前 (`acde.windows.hide` / `show` / `focus`); 应用的 `minimize` 由运行时最小化 (见 `docs/runtime/window-model.md`「窗口状态」;
+  在屏幕上沿之外时照旧居中). 只有桌面能隐藏 / 显示 / 提前 (`acde.windows.hide` / `show` / `focus`); 应用的 `minimize` 由运行时最小化 (见 `docs/agents/runtime/window-model.md`「窗口状态」;
   会话里由合成器执行, 发 `windowstate`).
 - **窗框**: 应用窗口 (清单 `frame` 不是 false; 桌面和面板没有) 有一条标题栏, **不在页面的文档里**: `<html>`、`innerHeight`、`100vh`、`resize`
   都只是内容区. 窗口表的 rect、grab hint、backdrop 是含窗框的整个窗口; 页面给的 `setGrabHint` / `setBackdrop` 是页面坐标, 加上窗框高再交出去,
   窗框的 hint (标题栏移动, 四边 4 px / 四角 10 px 改大小) 优先. 会话里是 acdebin-system 的 `crates/window` `decoration.rs` 在页面 surface 上开的同步 `wl_subsurface`
-  (`set_window_geometry(0, -H, W, 整高)`, 自己的画布 plane `usize::MAX`); 宿主窗口里见 `docs/runtime/window-model.md`「宿主窗口」. 三个按钮 (样式见 render 的「窗框」, `ACDE_FRAME_STYLE`: 红绿灯或 Windows 的最小化 / 最大化 / 关闭) 按下和松开在同一个上时发
+  (`set_window_geometry(0, -H, W, 整高)`, 自己的画布 plane `usize::MAX`); 宿主窗口里见 `docs/agents/runtime/window-model.md`「宿主窗口」. 三个按钮 (样式见 render 的「窗框」, `ACDE_FRAME_STYLE`: 红绿灯或 Windows 的最小化 / 最大化 / 关闭) 按下和松开在同一个上时发
   `framebutton {key}` (`close` / `minimize` / `fullscreen` / `restore`), acde-host 调 `acde.window` 的 `close()` / `minimize()` / `requestMode`.
   标题是 `document.title` 或 `acde.window.setTitle` (没有时用 `label`), 经 surface 的 `setTitle`. 高度由桌面经 `setWindowLook({titlebarHeight})` 声明
-  (见 `docs/runtime/desktop.md`), 启动器从原生 `titlebarHeight()` 取, 没有时用 `frame.ts` 的缺省 `Frame.HEIGHT` (32), 经 `WebInit.titlebar` 和
+  (见 `docs/agents/runtime/desktop.md`), 启动器从原生 `titlebarHeight()` 取, 没有时用 `frame.ts` 的缺省 `Frame.HEIGHT` (32), 经 `WebInit.titlebar` 和
   `claimSurface(token, {frame})` 交给 surface; 画法在 render 的 `Decoration`. 全屏时窗框照旧在. `acde:inspect` 看不到窗框
   (页面坐标加 `contentOffset`).
 - **钉住的面板** (Dock、菜单栏、弹出层): 桌面页面调 `acde.desktop.pin(element, {margin?})` → `{update(), unpin()}`, 元素成为单独的 `pinned`
@@ -29,20 +29,20 @@
   要令牌之前就 `set_panel`, 元素从此不画在主窗口里: 面板生效前它哪儿都不显示, 不会出现“看得见、点击却落到下面窗口”的一段
   (桌面页的主窗口在 background 层, 应用窗口盖在它上面); 令牌要不到时取消 `set_panel`, 元素回到主窗口. backdrop-filter 转成 `set_backdrop`.
   `pin(element, {keyboard})`: `'on-demand'` (默认, 点到面板时才给键盘) 或 `'exclusive'` (面板开着时独占键盘, 菜单这类用键盘打开、要立刻接按键的);
-  别的值在页面里抛 TypeError. 它经 surface 的 `openPanel(…, exclusive, userOnly, popup, parent)` 进 `SurfaceCommand::OpenPanel { exclusive, user_only, popup, parent }` (弹出窗口见 `docs/runtime/desktop.md`) (C 接口是
-  `OPEN_PANEL` 的 `flag` 和 `number`), 由前端决定怎么做 (acdes 的 layer 面: Exclusive / OnDemand; `user_only` 的面板报给会话管家, 见 `docs/runtime/desktop.md`「面板与占边」).
+  别的值在页面里抛 TypeError. 它经 surface 的 `openPanel(…, exclusive, userOnly, popup, parent)` 进 `SurfaceCommand::OpenPanel { exclusive, user_only, popup, parent }` (弹出窗口见 `docs/agents/runtime/desktop.md`) (C 接口是
+  `OPEN_PANEL` 的 `flag` 和 `number`), 由前端决定怎么做 (acdes 的 layer 面: Exclusive / OnDemand; `user_only` 的面板报给会话管家, 见 `docs/agents/runtime/desktop.md`「面板与占边」).
   `pin(element, {reserve: {edge, thickness?}})` 让面板在输出的一条边上占一条 (像 layer-shell 的 exclusive zone; 不给 thickness 时是从那条边到面板远端的距离,
   跟着量的结果变), 经 surface 的 `reservePanel(id, edge, thickness)` 交给运行时. 宿主窗口 (`State::work_area`) 用输出减去显示着的面板占的边得到工作区,
   面板隐藏、挪动、改尺寸、取消钉住或输出变了时重算 (`refill`): `filled` 的窗口跟着改 rect, 全屏不管工作区; 工作区变了给 Broker 发
   `workarea {x, y, width, height}`, Broker (`broker/output.ts`) 把它放进发给每个 web 的 `screen` 消息和 `WebInit.screen.workArea`
   (`acde:window.output.workArea`). 不写 reserve 的面板什么都不占. 钉住后用句柄的 `reserve({edge, thickness?} | null)` 就地换占的边或厚度 (不用 unpin 再钉,
   工作区只变一次, 中间没有整个输出的一步; `null` 不再占, 不认识的边或负的厚度抛 TypeError). 一个宿主窗口就是一个输出. 会话里 acdes 的 `crates/window` 把面板做成 wlr-layer-shell 的面, `reservePanel` 设它的独占区, 工作区由 winman 算 (输出减去各面的独占区),
-  变了经 `winman_desktop_v1.work_area` 报给桌面进程, 铺满的窗口由 winman 跟着改 rect (acdes 的 `docs/workspace.md`). 元素要是 stacking context, 不带祖先的裁剪和透明度.
+  变了经 `winman_desktop_v1.work_area` 报给桌面进程, 铺满的窗口由 winman 跟着改 rect (acdes 的 `docs/agents/workspace.md`). 元素要是 stacking context, 不带祖先的裁剪和透明度.
   `acde.desktop.requestGrab(kind)` / `releaseGrab(kind)` (`'pointer'` | `'keyboard'`, 别的值抛 TypeError; 只有桌面页面有, 用户 2026-11-20 定) 和应用窗口的
   `acde.window.requestGrab` / `releaseGrab` 同一条路: 经桌面页面自己的 surface 的 `request_grab`, 由会话 (acdes 转给 winman) 决定给不给; Dopame 的确认卡片用它抢键盘.
   `acde.desktop.setDoubleClick('fill' | 'minimize' | 'none')` (SDK `DoubleClickAction`) 声明双击标题栏做什么, 随时可以再设, 下一次双击就按新的;
   不认识的值抛 TypeError. 桌面页面和声明了 `acde:desktop` 的系统应用窗口都有 (经自己的 surface 的 `setDoubleClick`, 整个宿主一份), 服务没有;
-  会话里 (acdes) 桌面页设的经管家传到每个应用进程, 系统应用设的只管它自己的进程 (acdes `docs/manager.md`「窗框设置」).
+  会话里 (acdes) 桌面页设的经管家传到每个应用进程, 系统应用设的只管它自己的进程 (acdes `docs/agents/manager.md`「窗框设置」).
   `acde.desktop.setFrameTheme(theme | null)` (SDK `FrameTheme`: `active` / `inactive` 各 `{background?, title?, line?, buttons?}`, 颜色是
   `#rgb` / `#rgba` / `#rrggbb` / `#rrggbbaa` / `rgb()` / `rgba()`; `buttonStyle: 'dots' | 'glyphs'`, `buttonSide: 'left' | 'right'`,
   `titleAlign: 'center' | 'start'`, `light: {active?, inactive?}`; 每次给的是整个主题, 不和上次的合并) 声明运行时画的标题栏的样子, 运行时照旧画、命中、拖动和双击.
@@ -58,7 +58,7 @@
   每次给整套, `null` 回到直角、没有阴影. 检查在 js/page `frametheme.ts` 里的 `WindowLookReader` (和窗框主题无关, 只因 `js/page/src` 文件数已到阈值暂放这里, 整理该目录时挪出; `WindowLookReader.parse`: 缺键、越界、坏颜色、超过 4 层抛 TypeError,
   不认识的键忽略并记一行 warn), 转成一串数 (`radius, k, 聚焦层数, 每层 x y blur spread 颜色, 不聚焦层数, …`; `null` 不带参数) 交给
   surface 的 `setWindowLook`, 原生 `WindowLook::from_numbers` 还原 (每档超过 4 层或数目对不上时整套丢弃, 不靠 JS 一侧的检查) 后发 `SurfaceCommand::WindowLook(Option<WindowLook>)`. 只有 acdes 的桌面进程用它
-  (经 `acompositor_desktop_v1` 版本 6 交给合成器, 只管窗口外圆角与阴影, 磨砂的角形按各元素自己的 CSS 带出, 不取这里的指数; 见 acdes `docs/acompositor/desktop.md`「窗口外观」); acdev 宿主窗口
+  (经 `acompositor_desktop_v1` 版本 6 交给合成器, 只管窗口外圆角与阴影, 磨砂的角形按各元素自己的 CSS 带出, 不取这里的指数; 见 acdes `docs/agents/acompositor/desktop.md`「窗口外观」); acdev 宿主窗口
   和 C 接口 (`ffi.rs`) 不处理. 桌面要先探测 (`desktop.setWindowLook?.(…)`): 可选方法, 不提契约级别.
   **页面不支持深色时用 `light`** (#114): 主题带了 `light` 的配色时, 页面没声明支持深色的窗口改画 `light` 那套 (缺的项用运行时默认, 不借深色主题的);
   声明了的照旧用 `active` / `inactive`. 规则同浏览器: 根元素计算后的 `color-scheme` 含 `dark`, 或根元素没写 (`normal`) 而 `<meta name="color-scheme">` 的内容含 `dark`;
@@ -81,7 +81,7 @@
 - **帧**: `requestFrame` 之后, 上一帧交出去就给下一帧, 两帧之间至少隔最快输出刷新周期的 0.9 倍; 页面没出新帧时退回 wl_surface 的
   frame 回调. `ACDE_WEB_FPS` 指定帧率. 节奏由 `model::Pacer` 管: 默认按定时器 (`wait` / `tick`); 前端有显示器 vsync 时
   `set_synced(true)`, 由 `vsync` 在每个 vsync 出帧 (`wants`: 页面要帧或有动画), 定时器只在停了一阵后的第一帧和 vsync 4 个周期没来时出帧;
-  设了 `ACDE_WEB_FPS` 时不跟 vsync. 现在只有 acdev 的宿主窗口 (macOS, `CVDisplayLink`) 用 vsync, 见 acdev `docs/hostwin.md`「出帧节奏」.
+  设了 `ACDE_WEB_FPS` 时不跟 vsync. 现在只有 acdev 的宿主窗口 (macOS, `CVDisplayLink`) 用 vsync, 见 acdev `docs/agents/hostwin.md`「出帧节奏」.
 - **通信**: acde-host `remote.ts` 的 `RemoteBridge` 按 Broker 给的能力建代理 (注入的能力直接用 natives), `define` 登记成内置模块
   `acde:<名字>` (`modules.rs` 用 V8 合成模块, 导出 `{<名字>, default}`). 事件不派到 `window` 上: 页面用模块上的 `on(类型, fn)` 订阅 (返回退订
   函数, 不认识的类型抛 TypeError, 文字是 `acde:<模块> has no <类型> event (<有的类型>)`; `acde:window` 也一样, `WindowSelf` 里的事件名表按 SDK `WindowEventName`
@@ -101,7 +101,7 @@
     (SDK `NativeWindow.state` 必有; web 侧 `remote.ts` 的 `WindowList.deliver` 按 `window` 快照 (和 `windowclose`、`windowcrash`) 维护行, 先发 `window`, 再按快照的 `first` / `changed` 推出已过时的 `open` / `title` / `state` / `activate` / `parent` / `desk` / `geometry` 照发,
     没收到过 `windowstate` 的窗口是 `normal`, 换标题不丢状态; `key` 是桌面页重载后也不变的窗口键 (winman window v4 的 identifier, acdes 原样转成 `key`),
     `window` 快照和 `windowopen` 带了就记在行上, 后来的事件不带时保留, 推出的 `open` 也带上; 合成器不给时没有这个字段), `acde:inspect` 的窗口 (driver 用的) 带 `state`.
-  - window web: 清单给的服务和能力; `acde.window` (标题、菜单、关闭、最小化、`requestMode` / `setGrabHint` / `setBackdrop` / `setMaterial` (背景材质, 经 surface 的 `set_material` 交给宿主, 见 `docs/acde-api.md`) /
+  - window web: 清单给的服务和能力; `acde.window` (标题、菜单、关闭、最小化、`requestMode` / `setGrabHint` / `setBackdrop` / `setMaterial` (背景材质, 经 surface 的 `set_material` 交给宿主, 见 `docs/agents/acde-api.md`) /
     `requestActivate` / `requestGrab` / `releaseGrab`、app 级 `shortcut(combo)`; `beforeclose` 返回 false 留住窗口; `request` 是别的应用
     `acde.open(<id>, {…})` 要它打开的东西, 要对方清单的 `open` 允许, 为一个请求开的窗口把它交给第一个 `request` 处理函数, 只给一次;
     `acde.window.id` 是自己的窗口号). **系统请求** (SDK `SystemRequest`): `{kind: 'open-link', url}` 和 `{kind: 'open-file', url}`
@@ -125,7 +125,7 @@
   - **按调用者层级注入** (`broker/tier.ts`): 外壳模块 (`SHELL_MODULES`: `windows`、`packages`、`session`、`desktops`、`inspect`、
     `desktop`、`setDefault`) 只给桌面页面、声明了它的桌面服务和声明了它的系统应用 (与某个已安装桌面同包的应用); 应用模块 (`APP_MODULES`: `launch`、
     `apps` 只有 list / open、`open`、`openPath`、`handlers`、`window`, 以及管家自己给每个应用页面的 `icons`、`sounds` (按名查图标和声音, acdes
-    `docs/manager.md`「主题」, 2026-11-23 起; 这两个名字也因此不许桌面服务占用, 和管家的保留名单一致)) 给所有应用, 不用声明, 也不用列服务
+    `docs/agents/manager.md`「主题」, 2026-11-23 起; 这两个名字也因此不许桌面服务占用, 和管家的保留名单一致)) 给所有应用, 不用声明, 也不用列服务
     (以前规则里没有它们, 一个服务都没列的应用导入 `acde:icons` 被 `acdev check` / `build` 当成「不是系统模块」拒绝, 虽然运行时管家照给). 声明外壳模块的第三方应用启动时拒绝 (403, `shell_module`).
     没给的模块经 `host.refuseModule` 记下原因, import 时报模块名和缺的声明. 哪个模块要哪条声明只在 SDK `Manifest.importRule(name, app, origin)`
     (`{allowed, missing, reason, unverified}`, app 为 null 是桌面; acde-host 的 `Tiers` / `CapabilityCheck` 和 acdev 的检查都用它).
@@ -152,7 +152,7 @@
   `actions` (声明式操作, 见下).
 - **声明式操作** (J2, 2026-11-24, 总仓 `.scratch/system/arch-decisions-plan.md`): 清单 `acde.apps[].actions` 每项和插件的“工具”同形:
   `{name, description, inputSchema, outputSchema?, annotations?: {readOnly?, destructive?, toolRisk?}, longRunning?, target?: {type}}`. 校验在 `manifest/actions.ts`:
-  `name` 同插件工具名 (plugin-api 的 `TOOL_NAME`, 类型和常量都取自副本, 见 `docs/acde-api.md`「plugin-api 副本」: 小写字母开头, 小写字母、数字、`_`、`-`, 至多 64), 同一个应用里不重名; `description` 非空; 两个 schema 都是 `type: "object"`
+  `name` 同插件工具名 (plugin-api 的 `TOOL_NAME`, 类型和常量都取自副本, 见 `docs/agents/acde-api.md`「plugin-api 副本」: 小写字母开头, 小写字母、数字、`_`、`-`, 至多 64), 同一个应用里不重名; `description` 非空; 两个 schema 都是 `type: "object"`
   的 JSON schema; `toolRisk` 是 `readOnly` / `risky` / `destructive` (`TOOL_RISKS`); 解析后缺省为 `[]`. 声明是静态的, 管家不运行应用就能列出;
   `readOnly` 只对系统包里的应用生效, `destructive`、`toolRisk` 只能调高档位 (由管家和系统总管执行). 应用在页面里用 `acde:actions` 的
   `handle(名字, (args, call) => 结果)` 注册处理函数 (`page/src/actions/`), 名字必须是清单里声明过的, 返回值用来撤销. `call` 带调用方
@@ -190,13 +190,13 @@
   `… is waiting for the user's answer` 或 `… is denied by the user` (`Permits.reason`, 一个模块有几道门时 (`acde:launch` 的 `launch` / `slots`) 每道没批准的各说一句;
   状态变了 `RemoteBridge.permit` 重新 `refuseModule`, 所以拒绝之后的 import 说的是拒绝); 调用报 `AcdePermissionError` (403, 带 `capability`),
   `code` 是 `denied`、`not_asked` 或 `asking`, 文字是 `<label>: ` 加同一句: `acde:fs` / `acde:office` 里还没问过的公共位置 (`FileAccess.guard`)、
-  `acde.launch` / `acde.windows.launch` (`Approvals.allow`)、撤销后的 terminal / network 都走这里 (camera / microphone 走标准接口: `getUserMedia` 自己弹提示, 见 `docs/web/web-apps.md`「摄像头和麦克风」). 决定按应用持久 (`$XDG_CONFIG_HOME/acde/permissions.json`, `{"<app>:<能力>": "granted" | "denied"}`, 不看 `ACDE_STORAGE`);
+  `acde.launch` / `acde.windows.launch` (`Approvals.allow`)、撤销后的 terminal / network 都走这里 (camera / microphone 走标准接口: `getUserMedia` 自己弹提示, 见 `docs/agents/web/web-apps.md`「摄像头和麦克风」). 决定按应用持久 (`$XDG_CONFIG_HOME/acde/permissions.json`, `{"<app>:<能力>": "granted" | "denied"}`, 不看 `ACDE_STORAGE`);
   拒绝也记 (不影响列表), 桌面收 `appschanged` (`acde:apps` 的 `on('changed')`): 每次决定变了 (`Approvals` 的 `changed`) 都经
   `broker/listing.ts` `AppListing.changed()` 比一次, 列表和桌面上次拿到的 (桌面页面起来时、`list()` 的结果或上一次事件) 不一样才发; `refreshApps` 也走它 (清单变了一定发). 撤销 (`revoke`) 删掉记录: 这一次运行里当作拒绝 (同一次运行不问第二次), 下次运行再问. 撤销后的调用报同样的
   403 `denied`: Broker 侧 (`acde.launch` / `acde.windows.launch`) 当场查, web 侧 terminal / network 的模块和 camera / microphone 的 capture 经
   `broker/access/approval/permits.ts` `Permits` 包一层. 外壳模块 `acde:permissions` (桌面和声明它的系统应用): `pending()`、`answer(id, allow)`、`list(app?)`、
   `revoke(app, capability)`、`on('prompt' | 'answered')` (`permissionprompt {id, app, label, capability, reason: 'request'}`、
-  `permissionanswered {id, app, capability, allowed}`). 用户选给应用的文件夹 (#86) 由管家记 (见 `docs/web/fs.md`「临时借出的根」), 权限界面经管家 `fs.lent({app})` 列出、`fs.unlend({app, name})` 收回;
+  `permissionanswered {id, app, capability, allowed}`). 用户选给应用的文件夹 (#86) 由管家记 (见 `docs/agents/web/fs.md`「临时借出的根」), 权限界面经管家 `fs.lent({app})` 列出、`fs.unlend({app, name})` 收回;
   下面是 Broker 时期的旧说明, 只剩 `broker/access/approval/permissions.ts` 的接口形状: 每个一行 `{app, label, capability: 'fs.folder-<令牌>',
   decision: 'granted', folder: {label, exists}}` (只给文件夹名, 不给路径; Broker 经 napi `Finder.folders(app)` 读授权文件), `revoke(app, 'fs.folder-<令牌>')`
   经 `Finder.revokeFolder` 删掉授权 (回有没有删到) 并给这个应用的 web 发 `permit` 拒绝: 它离开 `roots()`, 以它为 root 的调用 403 `denied` (`FileAccess.guard`).
@@ -231,4 +231,4 @@
   `setLifecycle`: 没声明 `suspendable` 的只节流 (`throttled`: 计时器至少隔 1 秒 (`THROTTLED_MS`), 不跑 `requestAnimationFrame`、不要帧), 声明了的冻结
   (`frozen`: 计时器一个都不跑, 留着到恢复); `resume` 先回到 `running` (到期的计时器马上跑, 有帧要就要帧) 再发 `resume` 事件. 进程层面的 cgroup 冻结和降调度优先级
   由 acdes 做. “要结束了”不另造接口: 沿用关窗的 `beforeclose` / `beforeunload` / `pagehide`. 卡死照旧是 `windowhang`.
-- **调试**: 每个 web 有名字 (`files#1048576`, 也是事件循环和日志里的名字); 运行中的会话用 `ACDE_DEBUG_DIR` 和 acdebin-system 的 `packaging/qemu/drive.sh` (见它的 `docs/qemu.md`).
+- **调试**: 每个 web 有名字 (`files#1048576`, 也是事件循环和日志里的名字); 运行中的会话用 `ACDE_DEBUG_DIR` 和 acdebin-system 的 `packaging/qemu/drive.sh` (见它的 `docs/agents/qemu.md`).

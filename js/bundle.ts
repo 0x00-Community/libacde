@@ -53,7 +53,7 @@ for (const [entry, name] of ENTRIES) {
   if (lost.length) {
     console.error(`${name}: bun renamed ${lost.length} declaration(s), so their .name is wrong in pages:\n  ${lost.join('\n  ')}`)
     console.error('A module refers to the name without binding it (a bare global, or a value import used only as a type in an import cycle),')
-    console.error('or two modules declare it. Write globalThis.<name>, import it with `type`, or rename one; see docs/runtime/layout.md "js".')
+    console.error('or two modules declare it. Write globalThis.<name>, import it with `type`, or rename one; see docs/agents/runtime/layout.md "js".')
     process.exit(1)
   }
 }

@@ -15,7 +15,7 @@
   (页面都是 `http://acde.local`)、校验器的测试. 其余都适用, 运行时没实现的是缺口 (期望文件里记 FAIL / NOLOAD), 不是不适用.
 - 托管: 和浏览器跑 WPT 一样用 wptserve (`.sub.` 模板、`.headers`、`.py` 处理器、worker 和 `.any` 变体都由它现场生成). 每个 worker 是一个
   `"entry": "/"` 的测试应用 (页面由后端给), 后端 `proxy.ts` 把页面的请求原样转给 wptserve (字节流, 不经 HTTP 客户端改写); 它还原运行时为后端改的
-  `Host` / `Origin` / `Referer` (后端看到的是 `localhost`, 见 `docs/web/backend.md`「路由」) 成 `acde.local`, 并换上本目录的 `testharnessreport.js` /
+  `Host` / `Origin` / `Referer` (后端看到的是 `localhost`, 见 `docs/agents/web/backend.md`「路由」) 成 `acde.local`, 并换上本目录的 `testharnessreport.js` /
   `testdriver-vendor.js`. wptserve 由 `serve.py` 起: 对外 (模板里) 的端口是 80 / 8001 / 8443 …, 实际监听 `--serve-port` 起的几个端口
   (缺省 18000), 所以不用 root. 运行器还托管不了的 (不是不适用, 计数, 报告里单列): https / h2 (页面不是 https)、websockets (ws 服务器在另一个端口,
   `acde.local:<端口>` 不进后端)、打印 reftest. 跨端口 / 子域名 (`HTTP_PORT2`、`www.`) 的子测试会失败, 记在期望里.

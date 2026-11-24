@@ -19,7 +19,7 @@
   `getBoundingClientRect` 当 border 盒, 按 taffy 的 margin / border / padding 宽度外扩内缩, 颜色是 Chrome 的默认半透明配色), 所以滚动、
   缩放和布局变化都跟着走; 元素不在文档里、`display: none` 或不是元素时不画. 改了就标脏并叫醒出帧线程, 不需要 `Dom::commit`. `scroll_at` 落在打开的列表上时滚列表, 落在外面先关掉它.
 - 光标: `RenderHandle::on_cursor(listener)` (`CursorListener`, `Fn(&'static str)`): 指针下的光标变了时在 render 线程上调, 值是 CSS 的关键字
-  (`auto` 已经定成 `default` / `text` / `pointer`, 见 `docs/web/web-apps.md`「光标」); 装上时已经有值就先调一次. `Engine` 在每次 `pointer`
+  (`auto` 已经定成 `default` / `text` / `pointer`, 见 `docs/agents/web/web-apps.md`「光标」); 装上时已经有值就先调一次. `Engine` 在每次 `pointer`
   和每次重算 (`resolved` 里真的 resolve 了) 之后取一次, 出帧线程每轮末尾比较, 变了才调.
 - 出帧 (物理像素): `RenderHandle {tick(now_ms), frame(), scroll_at, pointer, commit, invalidate, set_waker, on_cursor}`. CSS 动画的时钟是单调墙上时间,
   tick 只对齐到 vblank. 脚本的一个任务里 (从任务里第一次经 `Dom` 读写引擎到任务末的 `Dom::commit`) 动画时钟不走: 任务里第一次重算记下当时的时间,
@@ -211,7 +211,7 @@
   `UNPACK_FLIP_Y_WEBGL` / `UNPACK_PREMULTIPLY_ALPHA_WEBGL`); `<video>` 来源报 `NotSupportedError`. 2D `drawImage` 和 WebGPU 外部拷贝收它.
 - 选项 `default_lang` (默认 zh-Hans)、`dark` (事后用 `set_dark` 改, 都只改
   viewport, 媒体查询和 `matchMedia` 跟着变). 页面能用的偏好类媒体查询: `prefers-color-scheme` (`dark` / `set_dark`)、`prefers-reduced-transparency`
-  (`set_glass` 的减少透明度, 见 `docs/dev/build-run.md` 的玻璃通透度)、`prefers-reduced-motion` (acss 现在恒为 `no-preference`, 还没接系统的值). 系统颜色 `AccentColor` / `AccentColorText` 跟 `set_accent` (`Option<[u8; 3]>`, 见 `docs/dev/build-run.md` 的强调色). `semantics(root, limit, offscreen, invisible)`: offscreen 时不按可见范围剪, invisible 见 `docs/web/inspect.md`「看和操作桌面」. `<iframe>` 不加载
+  (`set_glass` 的减少透明度, 见 `docs/agents/dev/build-run.md` 的玻璃通透度)、`prefers-reduced-motion` (acss 现在恒为 `no-preference`, 还没接系统的值). 系统颜色 `AccentColor` / `AccentColorText` 跟 `set_accent` (`Option<[u8; 3]>`, 见 `docs/agents/dev/build-run.md` 的强调色). `semantics(root, limit, offscreen, invisible)`: offscreen 时不按可见范围剪, invisible 见 `docs/agents/web/inspect.md`「看和操作桌面」. `<iframe>` 不加载
   (`skip_iframe_content`), 只是空盒子. 增量录制见 vendor/blitz; `ACDE_PAINT_VERIFY=1` 每帧再整页录一次比对 (测试用). 图片缓存最多 256 张 /
   64 MB. 所有入口 `catch_unwind`.
 - 窗框 (`decoration.rs`): `Decoration::scene(&Bar {title, width, height, scale, style, fullscreen})` → 物理像素的场景 (背景 #f4f2f7; `FrameStyle::Mac`:
@@ -221,7 +221,7 @@
   `Bar.theme` (`FrameTheme`: `active` / `inactive` 两组 `FrameColors {background, title, line, buttons}`, RGBA, 没给的用默认; 失焦的组没给的项用
   有焦点的; `style` / `side` (`ButtonSide`) / `align` (`TitleAlign`) 没给时按 `Bar.style`: `Mac` 是左边、居中, `Windows` 是右边、靠左) 和
   `Bar.active` 只改样子; 按钮放在哪一边时命中和 `FrameTheme::grab_hints` 跟着换边. `buttons` 给圆点上色 (不给是红黄绿), 给图标上色 (不给是标题色).
-- 帧率面板 (`hud.rs`, 宿主窗口的调试用, 谁画、数从哪来见 acdev `docs/hostwin.md`「帧率面板」): `Hud::scene(Option<&HudStats>, scale)` → `Hud::SIZE`
+- 帧率面板 (`hud.rs`, 宿主窗口的调试用, 谁画、数从哪来见 acdev `docs/agents/hostwin.md`「帧率面板」): `Hud::scene(Option<&HudStats>, scale)` → `Hud::SIZE`
   (236 × 112 逻辑像素, `Hud::pixels(scale)` 是物理像素) 的场景: 圆角深色底, 大字 FPS (按平均帧间隔着色: 不超过预算的 1.25 倍绿、2 倍以内黄、
   更长红), 平均 / 最长帧间隔和每帧光栅化时间, 下面是最近 `Hud::BARS` (120) 帧的帧间隔柱 (同样着色, 高度到 3 倍预算封顶) 和 1 倍、2 倍预算两条线.
   `None` 是「idle」(一秒内没有新帧). 字和窗框共用 `draw_line`, 等宽字体 `ui-monospace, SF Mono, Menlo, monospace`.
@@ -229,7 +229,7 @@
 ## shell (napi 类 `Shell`)
 
 会话里的合成器是 winman (协议、DRM/KMS、HiDPI 见 winman 的 docs), 远程桌面是 acdes 的远程进程;
-宿主窗口里是 acdev runtime 的 `crates/hostwin`, 见它的 `docs/hostwin.md`. 下面是 Broker 和 web 看到的接口.
+宿主窗口里是 acdev runtime 的 `crates/hostwin`, 见它的 `docs/agents/hostwin.md`. 下面是 Broker 和 web 看到的接口.
 
 - 启动器侧的窗口系统对象: acdes 里是 `native.Windows.connect()`, acdev 宿主窗口里是 `native.Shell.broker()`. 都有 `onEvents(cb)` / `pump()`、
   `grant({desktop?, window?, mode?, rect?, size?, parent?, modal?})` → `{window, token}` (随机 64 位令牌, acdes 的窗口客户端在本进程里按令牌取回)、`place`、`windows()`、
@@ -253,7 +253,7 @@
   `toDataURL`).
 - **网页优先在 GPU 上画, 没有 GPU 时回退 CPU** (用户定 2026-11-13): 没有 vello_cpu; `acde::gpu::adapters` 真 GPU 排前, CPU 类型的设备 (lavapipe)
   排最后, 只有它时用它 (虚拟机 / VNC, 慢). 这时页面的 WebGPU 适配器 `isFallbackAdapter` (`GPUAdapter` 和 `GPUAdapterInfo` 上都有) 为 true, 页面可以据此降级 (src/host/webgpu `adapter_info`: 设备类型是 CPU). 什么设备都没有时网页图层不可用 (日志 `web layer unavailable`), 页面不出帧.
-  合成器自己 (GLES) 不在此列. acdebin-system 的会话不走这条: 没有 GPU 时它在 CPU 上画页面, 不用 lavapipe (见它的 `docs/window-paint.md`).
+  合成器自己 (GLES) 不在此列. acdebin-system 的会话不走这条: 没有 GPU 时它在 CPU 上画页面, 不用 lavapipe (见它的 `docs/agents/window-paint.md`).
 - **两种后端, 按 feature 选** (用户定 2026-11-19): wgpu (src/vello) 和 detour (还没有, 以后在 `src/detour`). acdev 只开 wgpu: 三个平台一致, 给开发者用;
   acdes 开 detour 加 wgpu: Xe3 上走 detour, 别的 GPU 走 wgpu, 没有 GPU 时在 CPU 上画, WebGPU 总是 wgpu. wgpu 每个 OS 只编一个后端: Windows DX12、Linux Vulkan、
   macOS Metal (`acde::gpu::BACKEND`). Linux 另编进 wgpu 的 GL 后端 (`gles` 特性), 不进 `BACKEND`, 只经 `acde::vello::Device` 用
@@ -310,7 +310,7 @@
   `getImageData`、`putImageData`、`shadowBlur`、`ctx.filter`、`capture` 用到它). `Vello::trim` 重建 renderer (同一设备、同样的建管线线程数; 着色器走驱动缓存,
   M4 上 5–16 ms) 再 `poll` 一次, 旧的缓冲池和图集随旧 renderer 放掉; 上次建好以来没画过就不重建 (回 `false`), 建不出来时留着旧的 (回错误).
   每个 `Vello` 建出来有个进程内唯一的编号, `Overrides` 记着给哪个编号登记过 GPU 图片 (`follow`), 换了就清掉重登 (不然新 renderer 把 GPU 图片当成
-  没有字节的普通图片). 闲时调它的: 宿主窗口的出帧线程, 最后一次画出新内容 2 秒后 (acdev `docs/hostwin.md`); 会话的 `Raster::idle` (acdes 光栅化线程
+  没有字节的普通图片). 闲时调它的: 宿主窗口的出帧线程, 最后一次画出新内容 2 秒后 (acdev `docs/agents/hostwin.md`); 会话的 `Raster::idle` (acdes 光栅化线程
   闲 2 秒时调); 进程级 `Offscreen` 由 `acde-offscreen-trim` 线程在最后一次离屏绘制 2 秒后做 (`gpu::Offscreen::trim`, 拿着 `Offscreen` 锁, 这十几毫秒里
   画布绘制要等), 设备丢了时不做. 代价在闲下来之后的第一帧: 重新分配并清零这些缓冲 (`tests/vello_trim.rs` 打出时间, M4 1280×800 含 GPU 执行: 平时 1.4–1.7 ms, 重建后第一次
   8.2–8.5 ms); 一直在画的窗口不受影响.
@@ -318,11 +318,11 @@
   铺满窗口的 WebGPU canvas 336.1 → 89.4 MiB; 剩下的是窗口大小的页面纹理、草稿和合成器画布.
   「闲」要按 vello 算: 页面只有 WebGPU canvas 在变时, 前端可以不经 vello 出帧 (`vello::Hole` 找出场景里那张不透明、一对一、整像素的 GPU 图片和
   它的矩形, `Hole::above` 给出盖在它上面的命令, `Kept` 判断这一帧除了图片是哪一张以外和上一帧是否相同; `Composer::place_from` 从任意纹理贴),
-  宿主窗口的出帧线程这样做 (acdev `docs/hostwin.md`「只有 WebGPU canvas 变了的帧」), 中间缓冲因此在 canvas 动着时也能放掉. WebGPU canvas 的
+  宿主窗口的出帧线程这样做 (acdev `docs/agents/hostwin.md`「只有 WebGPU canvas 变了的帧」), 中间缓冲因此在 canvas 动着时也能放掉. WebGPU canvas 的
   `present` 按 `alphaMode` 标 `GpuImage::set_opaque`. 会话的 `Raster` 还没有这条路.
 - 帧预算: 120 fps 下每帧 8 ms. 盯 acde-dom `test/cost.test.ts` / `test/caches.test.ts`、shell / DomNative 的 `stats`、`drive.sh perf`; 提交里写测到的数.
 - WebGPU (`navigator.gpu`, Linux 和 macOS; Windows 上还关着 (没编过也没跑过, 见 acdev #56)): src/host `webgpu/`, 跑在光栅化线程的设备上; 回调由 `acde-gpu-poll` 线程非阻塞轮询 (每帧路径上不用
-  `poll(Wait)`, 它拿着 snatch 读锁会卡住别的线程的提交). WebGL 也只经 wgpu, 见 `docs/graphics/webgl.md`.
+  `poll(Wait)`, 它拿着 snatch 读锁会卡住别的线程的提交). WebGL 也只经 wgpu, 见 `docs/agents/graphics/webgl.md`.
 
 ## src/render 的已知问题和测试数据
 

@@ -34,7 +34,7 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
   - `eval {web, code, node?, arg?}` → `{value}`: 和 `ACDE_DEBUG_DIR` 一样求值 (promise 等落定), 结构化克隆回来再 JSON (undefined 是 null, JSON 不了的回错).
     给了 `node` (render 节点 id, 即 ref 里点后面的数) 时 `code` 是一个函数的源码, 以 `(元素, arg)` 调用 (rpc `debug.evalOn`).
   - `shot {web}` → `{png: <base64>, width, height}` (`Shell.capture`, 设备像素, 桌面的含面板).
-  - `snapshot` / `act` / `run` / `query {selector, window?, ref?, limit?, attributes?}` → `Broker.inspect.api` 的同名方法 (`docs/web/inspect.md`「看和操作桌面」).
+  - `snapshot` / `act` / `run` / `query {selector, window?, ref?, limit?, attributes?}` → `Broker.inspect.api` 的同名方法 (`docs/agents/web/inspect.md`「看和操作桌面」).
   - `open {name?, path?, url?}` (2026-11-23, acdev `acdev open`): 只给 `name` 拉起应用; 带 `path` (绝对路径, 文件或文件夹) 用默认应用或 `name` 打开它, 带 `url` (只认 http / https)
     交给应用当链接打开; `path` 和 `url` 至多给一个, 应答 `{ok, text, app?}` (`DevChannel.opening` 查形状). 会话里由 acdes 管家做 (复用 `apps.openPath` 和 open-link).
     宿主窗口的单应用会话只有这一个应用: `name` 只能是它; `path` 经启动器 `sys.lendPaths` (src/host `web.rs` `lend_paths`, `Workspace::lend_path`: 能写就可写借出,
@@ -110,7 +110,7 @@ MCP、driver) 都直连它, 中间没有转发. unix 上是 unix socket (地址�
   - `resize {web, width, height}` → `{width, height}`: 页面 (不含标题栏) 改成这么大. `free` 窗口经 `Shell.place`; 铺满的 (单应用的 acdev dev、
     桌面) 改宿主窗口 (`Shell.resizeScreen` → hostwin `Cmd::Resize`: headless 直接换输出尺寸, winit `request_inner_size`, Windows 还没有);
     会话里回错.
-- **DevTools 端点**: 见 `docs/dev/devtools.md`.
+- **DevTools 端点**: 见 `docs/agents/dev/devtools.md`.
 - **dev 日志** (只在有 `ACDE_DEV` 时): acde-dom `core/observe.ts` 的 `observe(observer)` 是页面里唯一的观察点, 没注册时零开销. `console.*`
   (照打日志之外) 报 `console(level, text)`; 有 inspector 的 dev 页面 (`host.inspected()`) 里 acde-dom 的 console 还把原参数交给 V8 自带的
   `console` (装上前的 `globalThis.console`, 同名方法, 每次一份), 由它报给 inspector (`Runtime.consoleAPICalled`, 真的 RemoteObject 和调用栈);

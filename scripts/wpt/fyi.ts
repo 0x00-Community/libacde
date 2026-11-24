@@ -20,7 +20,10 @@ if (!api.ok) throw new Error(`wpt.fyi runs for ${REVISION}: HTTP ${api.status}`)
 const listed = (await api.json()) as Run[]
 const runs = products.flatMap((p) => listed.filter((r) => r.browser_name === p).slice(0, 1))
 const missing = products.filter((p) => !runs.some((r) => r.browser_name === p))
-if (missing.length) throw new Error(`wpt.fyi has no run of ${missing.join(', ')} at ${REVISION}: pick a revision with runs of every product (see docs/dev/testing.md)`)
+if (missing.length) {
+  const hint = 'pick a revision with runs of every product (see docs/agents/dev/testing.md)'
+  throw new Error(`wpt.fyi has no run of ${missing.join(', ')} at ${REVISION}: ${hint}`)
+}
 
 const manifest = join(STATE, 'tests.json')
 const kinds = new Map(existsSync(manifest) ? (JSON.parse(readFileSync(manifest, 'utf8')) as Test[]).map((t) => [t.url, t.kind]) : [])

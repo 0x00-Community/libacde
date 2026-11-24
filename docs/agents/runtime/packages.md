@@ -1,6 +1,6 @@
 # 桌面包
 
-桌面包是一个目录, `package.json` 的 `acde` 字段 (类型 acde-api `manifest.d.ts`). 桌面要遵守的行为规则 (窗口、面板、锁屏页 …) 见 `docs/runtime/desktop.md`.
+桌面包是一个目录, `package.json` 的 `acde` 字段 (类型 acde-api `manifest.d.ts`). 桌面要遵守的行为规则 (窗口、面板、锁屏页 …) 见 `docs/agents/runtime/desktop.md`.
 
 ```json
 "acdev": {
@@ -13,8 +13,8 @@
 
 - **desktops**: `entry` 是包里的 HTML, 满屏在所有窗口后面; 桌面拿全部 `acde:` 模块. `heapMb` 默认 1024, 最小 32.
   `lock` (可选) 是锁屏页的入口, 写法同 `entry`. `Manifest.check` 对两者都要求是包里的相对路径 (不以 `/` 起头, 不含 `..`), 调用方给了
-  `isFile` 时还查文件在不在 (acdev 打包检查给). 锁屏页只拿 `acde:lock` (`user()` / `unlock(password)`), 见 `docs/runtime/layout.md`「锁屏页」.
-- **apps**: 见 `docs/runtime/webs.md`「应用清单」. **assets**: 同源 URL 前缀 → 包里的目录.
+  `isFile` 时还查文件在不在 (acdev 打包检查给). 锁屏页只拿 `acde:lock` (`user()` / `unlock(password)`), 见 `docs/agents/runtime/layout.md`「锁屏页」.
+- **apps**: 见 `docs/agents/runtime/webs.md`「应用清单」. **assets**: 同源 URL 前缀 → 包里的目录.
 - **services**: 在 Broker isolate 里跑的 ES 模块, 默认导出 `ServiceFactory` (只用 `ServiceContext` 和 web 标准接口). 随桌面起停; 应用要在
   清单的 `services` 里写服务名才能调 (写在 capabilities 里是校验错误). 服务名不能用系统模块的名字 (`RESERVED_NAMES`). 重活放进 `ctx.spawn(argv, {cwd, env, onLine, onExit})` 起的进程 (`child.rs`: 自己的进程组, stderr 进日志加前缀
   `[<服务名>]`, 服务关闭后 SIGTERM, 3 秒后 SIGKILL).
@@ -50,7 +50,7 @@
 (第 1 级之前构建的) 同样拒绝, 报 `Manifest.UNVERSIONED` (`no acde.apiLevel: ...; rebuild it with the current acdev (level 1)`), 要用现在的 acdev
 重新构建; 校验器也把它当错误. 第 0 级 (契约级别之前的扩展期形态) 已全部去掉. acde-host 自己的包不查.
 现在的契约是第 1 级.
-**运行时还不是安全边界**: 按层级注入、能力和批准是契约, 不是隔离 (见 `docs/runtime/webs.md`「沙箱」);
+**运行时还不是安全边界**: 按层级注入、能力和批准是契约, 不是隔离 (见 `docs/agents/runtime/webs.md`「沙箱」);
 第三方沙箱上线之前, 本地和开发构建的包都按开发者自己的代码运行.
 
 **启动哪个桌面**: `--desktop <id|包目录>`, 否则 `ACDE_DESKTOP`, 否则上次进的 (`$XDG_STATE_HOME/acde/desktop`; `--greeter` 和 `app` /

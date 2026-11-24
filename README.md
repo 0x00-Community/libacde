@@ -67,7 +67,7 @@ import self from 'acde:window'
 | 🌐🖥️ **The desktop IS the page** | A desktop is a package with an HTML entry that fills the screen behind every window. Any desktop package can be the desktop; the runtime knows none of them by name. |
 | 🦀🚫 **Zero browser. Zero Chromium. Zero Electron.** | No Chromium, no Electron, no Node. JS runs in libacde's own embedded V8; layout and painting are a Blitz fork drawing into `acde-scene`, rendered by vello on wgpu. |
 | 🔌⚡ **Native system superpowers** | `acde:fs`, `acde:terminal`, `acde:window`, `acde:display`, `acde:audio`, `acde:network`, `acde:power` … typed in `@acde/api`, gated per app by the manifest. |
-| 🪟👑 **A first-class window model** | Window table, modes and states, focus, modal dialogs, grabs and global shortcuts are defined here, once, for every front end ([docs/runtime/window-model.md](docs/runtime/window-model.md)). |
+| 🪟👑 **A first-class window model** | Window table, modes and states, focus, modal dialogs, grabs and global shortcuts are defined here, once, for every front end ([docs/agents/runtime/window-model.md](docs/agents/runtime/window-model.md)). |
 | 📦📜 **Contract-grade packages** | A package's `package.json` declares desktops, apps, assets and background services; one set of manifest rules (`manifest/`) is shared by the runtime and the CLI. |
 | 🔒🧬 **One versioned contract level to rule them all** | A single source of truth, `acde-api/api-level`, read at compile time; manifests state the level they need. |
 | 🛠️🔬 **DevTools, built right in** | In dev mode (`ACDE_DEV`) a CDP endpoint opens on `127.0.0.1` only; production runs have no remote debugging port. |
@@ -87,7 +87,7 @@ import self from 'acde:window'
 - ✨ **apps**: each with an entry and the `capabilities` it asks for.
 - ⚡ **services**: ES modules that run alongside the desktop and start and stop with it; apps must name a service to call it.
 
-The full rules are in [docs/runtime/packages.md](docs/runtime/packages.md) and [docs/runtime/desktop.md](docs/runtime/desktop.md).
+The full rules are in [docs/agents/runtime/packages.md](docs/agents/runtime/packages.md) and [docs/agents/runtime/desktop.md](docs/agents/runtime/desktop.md).
 
 ## 🧱🗺️ Layout
 
@@ -102,7 +102,7 @@ The full rules are in [docs/runtime/packages.md](docs/runtime/packages.md) and [
 | 📜 `manifest/` | Manifest rules, shared by the runtime and the CLI |
 | 🌊 `protocol/` | Wayland protocols |
 | ⚙️ `vendor/blitz` | Our Blitz fork (git submodule) |
-| 📚 `docs/` | Design notes per area (in Chinese) |
+| 📚 `docs/agents/` | Design notes per area (in Chinese) |
 
 ## 🚀🛫 Getting started
 
@@ -117,22 +117,22 @@ git clone --recursive https://github.com/0x00-Community/libacde.git
 What you can read and use today:
 
 - 🔥 `acde-api/`: the SDK types for writing desktops and apps against acde.
-- 💎 `docs/runtime/architecture.md`: how the runtime, the front ends and the processes and threads fit together.
-- 🚀 `docs/runtime/ffi.md`: the C interface and `include/acde.h`.
+- 💎 `docs/agents/runtime/architecture.md`: how the runtime, the front ends and the processes and threads fit together.
+- 🚀 `docs/agents/runtime/ffi.md`: the C interface and `include/acde.h`.
 
 ## 📚🧭 Docs
 
 | Read this | When |
 | --- | --- |
-| 🏛️ [docs/runtime/architecture.md](docs/runtime/architecture.md) | First time here: front ends, how it runs, processes and threads |
-| 🗺️ [docs/runtime/layout.md](docs/runtime/layout.md) | Which module or directory owns what |
-| 📦 [docs/runtime/packages.md](docs/runtime/packages.md) | The `acde` manifest field, desktop services, contract level |
-| 🖥️ [docs/runtime/desktop.md](docs/runtime/desktop.md) | Writing a desktop: windows, panels, lock screen, drag and drop, shortcuts |
-| 🕸️ [docs/runtime/webs.md](docs/runtime/webs.md) | Frames, `acde:` module injection, capabilities, sandboxing, web lifecycle |
-| 📘 [docs/acde-api.md](docs/acde-api.md) | The SDK `@acde/api` and the manifest rules |
-| 🎮 [docs/graphics/render-gpu.md](docs/graphics/render-gpu.md) | `src/render`, canvas 2D, blur, GPU devices |
-| 🌐 [docs/web/](docs/web) | Storage, fs, backends, default apps, accessibility tree (`acde:inspect`) |
-| 🔬 [docs/dev/devtools.md](docs/dev/devtools.md) | The DevTools endpoint and CDP domains |
+| 🏛️ [docs/agents/runtime/architecture.md](docs/agents/runtime/architecture.md) | First time here: front ends, how it runs, processes and threads |
+| 🗺️ [docs/agents/runtime/layout.md](docs/agents/runtime/layout.md) | Which module or directory owns what |
+| 📦 [docs/agents/runtime/packages.md](docs/agents/runtime/packages.md) | The `acde` manifest field, desktop services, contract level |
+| 🖥️ [docs/agents/runtime/desktop.md](docs/agents/runtime/desktop.md) | Writing a desktop: windows, panels, lock screen, drag and drop, shortcuts |
+| 🕸️ [docs/agents/runtime/webs.md](docs/agents/runtime/webs.md) | Frames, `acde:` module injection, capabilities, sandboxing, web lifecycle |
+| 📘 [docs/agents/acde-api.md](docs/agents/acde-api.md) | The SDK `@acde/api` and the manifest rules |
+| 🎮 [docs/agents/graphics/render-gpu.md](docs/agents/graphics/render-gpu.md) | `src/render`, canvas 2D, blur, GPU devices |
+| 🌐 [docs/agents/web/](docs/agents/web) | Storage, fs, backends, default apps, accessibility tree (`acde:inspect`) |
+| 🔬 [docs/agents/dev/devtools.md](docs/agents/dev/devtools.md) | The DevTools endpoint and CDP domains |
 
 ## 📄⚖️ License
 

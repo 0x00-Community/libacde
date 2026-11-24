@@ -63,7 +63,7 @@ import self from 'acde:window'
 | 🌐🖥️ **桌面本身就是页面** | 桌面是一个包, 入口是一张 HTML, 满屏铺在所有窗口后面. 任何桌面包都能当桌面, 运行时不认识任何一个具体的桌面. |
 | 🦀🚫 **零浏览器. 零 Chromium. 零 Electron.** | 没有 Chromium, 没有 Electron, 没有 Node. JS 在 libacde 自己内嵌的 V8 里; 排版和绘制是 Blitz 的 fork 画进 `acde-scene`, 由 vello 在 wgpu 上渲染. |
 | 🔌⚡ **原生系统超能力** | `acde:fs`、`acde:terminal`、`acde:window`、`acde:display`、`acde:audio`、`acde:network`、`acde:power` …, 类型在 `@acde/api`, 每个应用按清单授权. |
-| 🪟👑 **一等公民的窗口模型** | 窗口表、模式与状态、焦点、模态对话框、grab 和全局快捷键都在这里定义一次, 所有前端共用 ([docs/runtime/window-model.md](docs/runtime/window-model.md)). |
+| 🪟👑 **一等公民的窗口模型** | 窗口表、模式与状态、焦点、模态对话框、grab 和全局快捷键都在这里定义一次, 所有前端共用 ([docs/agents/runtime/window-model.md](docs/agents/runtime/window-model.md)). |
 | 📦📜 **契约级的包** | 包的 `package.json` 声明桌面、应用、资源和后台服务; 运行时和命令行共用同一套清单规则 (`manifest/`). |
 | 🔒🧬 **一个版本化契约级别, 统领一切** | 只有一个来源 `acde-api/api-level`, 编译时读入; 清单写明自己需要的级别. |
 | 🛠️🔬 **DevTools 开箱即用** | 开发模式 (`ACDE_DEV`) 下只在 `127.0.0.1` 开 CDP 端点; 正式运行没有远程调试端口. |
@@ -83,7 +83,7 @@ import self from 'acde:window'
 - ✨ **apps**: 每个应用有入口和它要的 `capabilities`.
 - ⚡ **services**: 随桌面起停的 ES 模块; 应用要写明服务名才能调用.
 
-完整规则见 [docs/runtime/packages.md](docs/runtime/packages.md) 和 [docs/runtime/desktop.md](docs/runtime/desktop.md).
+完整规则见 [docs/agents/runtime/packages.md](docs/agents/runtime/packages.md) 和 [docs/agents/runtime/desktop.md](docs/agents/runtime/desktop.md).
 
 ## 🧱🗺️ 目录
 
@@ -98,7 +98,7 @@ import self from 'acde:window'
 | 📜 `manifest/` | 清单规则, 运行时和命令行共用 |
 | 🌊 `protocol/` | Wayland 协议 |
 | ⚙️ `vendor/blitz` | 我们的 Blitz fork (git 子模块) |
-| 📚 `docs/` | 各部分的设计说明 (中文) |
+| 📚 `docs/agents/` | 各部分的设计说明 (中文) |
 
 ## 🚀🛫 开始
 
@@ -112,22 +112,22 @@ git clone --recursive https://github.com/0x00-Community/libacde.git
 现在就能读、能用的:
 
 - 🔥 `acde-api/`: 写 acde 桌面和应用用的 SDK 类型.
-- 💎 `docs/runtime/architecture.md`: 运行时、前端、进程与线程怎么分.
-- 🚀 `docs/runtime/ffi.md`: C 接口和 `include/acde.h`.
+- 💎 `docs/agents/runtime/architecture.md`: 运行时、前端、进程与线程怎么分.
+- 🚀 `docs/agents/runtime/ffi.md`: C 接口和 `include/acde.h`.
 
 ## 📚🧭 文档
 
 | 读这个 | 什么时候 |
 | --- | --- |
-| 🏛️ [docs/runtime/architecture.md](docs/runtime/architecture.md) | 第一次来: 前端、跑法、进程与线程 |
-| 🗺️ [docs/runtime/layout.md](docs/runtime/layout.md) | 哪个模块或目录归谁 |
-| 📦 [docs/runtime/packages.md](docs/runtime/packages.md) | 清单的 `acde` 字段、桌面服务、契约级别 |
-| 🖥️ [docs/runtime/desktop.md](docs/runtime/desktop.md) | 写一个桌面: 窗口、面板、锁屏页、拖放、快捷键 |
-| 🕸️ [docs/runtime/webs.md](docs/runtime/webs.md) | 出帧、`acde:` 模块注入、能力、沙箱、web 生命周期 |
-| 📘 [docs/acde-api.md](docs/acde-api.md) | SDK `@acde/api` 和清单规则 |
-| 🎮 [docs/graphics/render-gpu.md](docs/graphics/render-gpu.md) | `src/render`、canvas 2D、模糊、GPU 设备 |
-| 🌐 [docs/web/](docs/web) | 存储、fs、后端、默认应用、语义树 (`acde:inspect`) |
-| 🔬 [docs/dev/devtools.md](docs/dev/devtools.md) | DevTools 端点和 CDP 域 |
+| 🏛️ [docs/agents/runtime/architecture.md](docs/agents/runtime/architecture.md) | 第一次来: 前端、跑法、进程与线程 |
+| 🗺️ [docs/agents/runtime/layout.md](docs/agents/runtime/layout.md) | 哪个模块或目录归谁 |
+| 📦 [docs/agents/runtime/packages.md](docs/agents/runtime/packages.md) | 清单的 `acde` 字段、桌面服务、契约级别 |
+| 🖥️ [docs/agents/runtime/desktop.md](docs/agents/runtime/desktop.md) | 写一个桌面: 窗口、面板、锁屏页、拖放、快捷键 |
+| 🕸️ [docs/agents/runtime/webs.md](docs/agents/runtime/webs.md) | 出帧、`acde:` 模块注入、能力、沙箱、web 生命周期 |
+| 📘 [docs/agents/acde-api.md](docs/agents/acde-api.md) | SDK `@acde/api` 和清单规则 |
+| 🎮 [docs/agents/graphics/render-gpu.md](docs/agents/graphics/render-gpu.md) | `src/render`、canvas 2D、模糊、GPU 设备 |
+| 🌐 [docs/agents/web/](docs/agents/web) | 存储、fs、后端、默认应用、语义树 (`acde:inspect`) |
+| 🔬 [docs/agents/dev/devtools.md](docs/agents/dev/devtools.md) | DevTools 端点和 CDP 域 |
 
 ## 📄⚖️ 许可证
 

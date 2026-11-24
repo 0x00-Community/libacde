@@ -45,7 +45,7 @@
   `Shell.place` (`Launcher.place` 读回新矩形), 回 `w1 is at X,Y WxH`; 应用迟交新尺寸时最多轮询窗口表 2 秒, 还没到就照实说"还没接受这个尺寸". 拒绝 (回 `ok: false`
   并说原因): 桌面、铺满宿主窗口的单应用窗口、钉住的面板、最小化的窗口、状态不是 `normal` 的窗口 (提示先 `act <窗口> restore`), `resize` 另拒固定大小的窗口.
   `raise` 就是给焦点提到最前, 不改状态; 桌面和最小化的窗口不行. 客户机会话里 (窗口表来自管家) 启动器不摆放, acdev 的驱动直接经管家开发连接发
-  `{op: "window", window: <acompositor 窗口号>, change: {place | focus}}` (acdes docs/manager.md 开发通道).
+  `{op: "window", window: <acompositor 窗口号>, change: {place | focus}}` (acdes docs/agents/manager.md 开发通道).
   客户机里锁屏页和系统确认页是管家插进窗口表的伪窗口 (行带 `lock: true` 或 `confirm: true`), 快照里它们的 `mode` 是 `lock`、`confirm` (窗口行显示 `[lock]`、`[confirm]`),
   叠在所有窗口之上; 系统确认页的开发名是 `confirm` (锁屏页是 `lock`), 启动器按欢迎消息里有没有 `confirm` 区分. 这两种窗口只由管家显示和收起, 对它们的
   `fill`、`fullscreen`、`minimize`、`move`、`resize`、`raise`、`close` 一律回 `ok: false` 并说明; 确认页的允许、拒绝、输密码用 act 点它自己的按钮.
@@ -62,13 +62,13 @@
   下面的窗口, 还回 `clicked …`. focus / type / settext / key 先给窗口焦点, 运行时给最小化的窗口焦点就是让它回到之前的状态. `restore` (和窗口的 `focus`)
   先取消隐藏再给焦点, 两条路离开屏幕的窗口都回来.
 - **像素** (`shot`、`input`, 2026-11-23): 没有元素树的窗口 (游戏、OpenGL / Vulkan 程序、不报 AT-SPI 的原生程序) 按像素看和操作. 只在 acdes 会话里有,
-  由管家自己答 (不经页面, 见 acdes `docs/manager.md` 的 `inspect.shot`): `shot(window, {max?})` 回那扇窗自己画面的 PNG (base64, 长边缩到 `max`, 默认 1280)
+  由管家自己答 (不经页面, 见 acdes `docs/agents/manager.md` 的 `inspect.shot`): `shot(window, {max?})` 回那扇窗自己画面的 PNG (base64, 长边缩到 `max`, 默认 1280)
   和窗口的逻辑矩形; `input(window, events)` 按窗口逻辑坐标发 move / down / up / wheel、相对移动 `motion {dx, dy}` (游戏锁住指针时转视角)、
   按住与松开键 (`keydown` / `keyup`)、`text`、`wait`. 类型 `InspectPixelInput`、`InspectShot`.
 - **Agent 的 stage** (acdes, 2026-11-23): `open(name)` 开的原生程序 (不是 acde 应用的) 落在 Agent 自己的 stage 上, 回答带 `stage: true`: 它的窗口不画到屏上、
   不抢人的键盘, 对程序自己照常可见. 快照的窗口 (`InspectWindow`) 带 `stage: true`, 文本行多一个 `[stage]` 标记; `shot`、`input` 的回答带 `stage`.
   stage 上的窗口 `input` 不等人让开、不管它是否最小化; 人在桌面上激活它 (`acde:windows.focus`) 就是人接手, 之后 `stage` 为 false, 照人桌面的规则.
-  细节见 acdes `docs/manager.md`「Agent 的 stage」.
+  细节见 acdes `docs/agents/manager.md`「Agent 的 stage」.
 - **原生窗口** (runtime `atspi.rs`, napi `Accessibility`, Linux 会话): 读 AT-SPI2. 起服务时把 `org.a11y.Status.IsEnabled` 设成 true; GTK3 总上报,
   Qt 要开关为 true 且在真的显示平台上. `tree(pid, title, limit)` 按 pid 找应用、按标题挑顶层窗口, 角色规范成 ARIA 风格; act 先试 AT-SPI 的
   Action / EditableText / GrabFocus, 不行按坐标. 检查 `src/runtime/tests/atspi-check.sh`.

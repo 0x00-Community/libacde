@@ -6,7 +6,7 @@
 桌面是一个普通的 acde 包, 用任何 web 前端写都行 (dopame 只是一个例子). 运行时不认识任何具体的桌面; 桌面能依赖的**只有三样**:
 
 1. 包清单 `package.json` 的 `acde` 字段 (类型 SDK `PackageManifest`, 规则 `manifest/`);
-2. `acde:` 模块, 类型在 SDK `@acde/api` (桌面用 `@acde/api/shell` 这个入口, 见 `docs/acde-api.md`);
+2. `acde:` 模块, 类型在 SDK `@acde/api` (桌面用 `@acde/api/shell` 这个入口, 见 `docs/agents/acde-api.md`);
 3. 标准 web 接口 (DOM、事件、拖放、`localStorage` …), 和浏览器一样.
 
 合成器的私有 Wayland 协议、acdes 的进程和通道、别的桌面的做法都不是契约, 会变, 不许依赖. SDK 里带 `?` 的方法和事件是**可选的**: 某个运行时
@@ -15,7 +15,7 @@
 
 ## 桌面包声明什么
 
-`acde.desktops[]` 每项一个桌面 (SDK `DesktopManifest`, 校验和找包顺序见 `docs/runtime/packages.md`):
+`acde.desktops[]` 每项一个桌面 (SDK `DesktopManifest`, 校验和找包顺序见 `docs/agents/runtime/packages.md`):
 
 | 字段 | 必填 | 意思 |
 | --- | --- | --- |
@@ -29,11 +29,11 @@
 同一个包里还要有 `apiLevel` (和运行时的契约级别相同, 否则整个包不加载), 可以有 `apps` (和桌面同包的应用是**系统应用**, 可以声明外壳模块; 不带桌面的包里应用全是 `SYSTEM_APPS` (`manifest/index.ts`, 现在只有社区商店 `community-store`, 同 acdes 的 `registry.rs`) 时也是, acdes 另要求这个包归 root)、
 `assets` (同源 URL 前缀 → 包里的目录)、`services` (服务名 → 模块文件). 桌面自己不需要声明 capabilities: 桌面页拿到全部模块.
 系统应用的条目可以写 `"sensitive": true` (SDK `AppManifest.sensitive`, 2026-11-21, F7): 标成敏感应用, 只对带桌面的系统包有效, 第三方包不能自标
-(写了的话 acdes 拒收这个应用); 敏感应用怎么对待由 acdes 认定 (见 acdes `docs/manager.md`「敏感应用」), libacde 不看这个字段.
+(写了的话 acdes 拒收这个应用); 敏感应用怎么对待由 acdes 认定 (见 acdes `docs/agents/manager.md`「敏感应用」), libacde 不看这个字段.
 
 ## 谁能拿到哪些模块
 
-按调用者分层注入 (机制见 `docs/runtime/webs.md`「按调用者层级注入」), 没给的模块 `import` 时报 `AcdeError` `forbidden`:
+按调用者分层注入 (机制见 `docs/agents/runtime/webs.md`「按调用者层级注入」), 没给的模块 `import` 时报 `AcdeError` `forbidden`:
 
 | 调用者 | 拿到 |
 | --- | --- |
@@ -41,10 +41,10 @@
 | 系统应用 (与桌面同包) | 应用模块 + 清单 capabilities 里声明的外壳模块和能力 |
 | 第三方应用 | 应用模块 + 声明的能力和服务; 声明外壳模块的启动时拒绝 (403 `shell_module`) |
 | 锁屏页 | 只有 `acde:lock` (和 `acde:services`) |
-| 桌面服务 | `ctx.import` 只能拿 `services[].modules` 列出的外壳模块, 形状是 SDK `ServiceModuleTypes` (见 `docs/runtime/packages.md`) |
+| 桌面服务 | `ctx.import` 只能拿 `services[].modules` 列出的外壳模块, 形状是 SDK `ServiceModuleTypes` (见 `docs/agents/runtime/packages.md`) |
 
 - **外壳模块** (`ShellModule`, 只给桌面一侧): `acde:windows` (所有窗口)、`acde:desktop` (钉面板、窗框主题、桌面事件)、`acde:packages` (重扫包、原生程序)、
-  `acde:session` (锁屏、注销、重启、关机、语言)、`acde:desktops` (列出、换桌面)、`acde:permissions` (回答权限询问)、`acde:setDefault`、`acde:inspect`、`acde:software` (系统的 pacman 包: 列出、刷新、装卸社区商店的包、全量更新, 经 acdes 管家交系统总管执行, 见 acdes `docs/manager.md`「软件包」).
+  `acde:session` (锁屏、注销、重启、关机、语言)、`acde:desktops` (列出、换桌面)、`acde:permissions` (回答权限询问)、`acde:setDefault`、`acde:inspect`、`acde:software` (系统的 pacman 包: 列出、刷新、装卸社区商店的包、全量更新, 经 acdes 管家交系统总管执行, 见 acdes `docs/agents/manager.md`「软件包」).
 - **应用模块** (`AppModules`, 谁都有): `acde:apps` (list / open)、`acde:open`、`acde:window`、`acde:services`、`acde:capabilities`; 要声明的: `acde:launch`、
   `acde:openPath` / `acde:handlers` (`openFiles`) 和各系统能力.
 
@@ -63,7 +63,7 @@
 ## 窗口模型
 
 窗口归合成器管, 不在桌面页的 DOM 里. 桌面看到的是一张表和一串事件, 能请求的只有下面这些; 摆放、叠放、焦点的最终裁决都在合成器.
-规则细节见 `docs/runtime/window-model.md`.
+规则细节见 `docs/agents/runtime/window-model.md`.
 
 - **身份**: `id` 是数字窗口号, 本次运行内唯一, 不复用 (acdes 里桌面页重载后换号); `key` (可选) 是合成器给的稳定身份, 重载后不变, 合成器重起后失效.
   应用窗口带 `appId` (acde 应用是它的 id, 原生程序是它自报的 app id, 可能为空)、`instance` (同一应用的第几个实例)、`pid`; `web: true` 是 acde 应用.
@@ -73,7 +73,7 @@
   且可能先后都到)、`menus`、`currentdesk`. `open`、`title`、`state`、`activate`、`parent`、`desk`、`geometry` 已过时 (由快照推出, 照旧发), 新桌面只听 `window`.
 - **Agent 的 stage** (acdes, 2026-11-23): 快照与 `list()` 的行可带 `stage: true` (变化时 `changed` 里是 `stage`): Agent 起的原生程序的窗口, 不画到任何屏上、
   不拿人的键盘, 也不占虚拟桌面的编号. 桌面可以在任务栏里单独显示或不显示它; `focus(window)` 就是人接手: 窗口移到当前桌面、照常显示并拿键盘,
-  之后 `stage` 为 false. 见 acdes `docs/acompositor/desktop.md`「Agent 的 stage」.
+  之后 `stage` 为 false. 见 acdes `docs/agents/acompositor/desktop.md`「Agent 的 stage」.
   `ready`、`show`、`attention`、`hang`、`responsive` 不保证发 (今天 acdes 都不发).
 - **打开应用**: `acde:apps.open(id, request?, {parent, modal, newWindow, root, size})` → `{window, instance?, running?}`. 回答里的 `window` 可能是 0
   (窗口还没出来, acdes 总是这样): 桌面按随后 `first` 快照的 `appId` (有 `instance` 时再对 `instance`) 认领, 认领要能在回答之前或之后发生.
@@ -119,7 +119,7 @@
 
 ## 面板与占边
 
-`acde:desktop.pin(element, {margin?, reserve?, keyboard?, anchor?, userOnly?})` → `PinnedPanel` (机制见 `docs/runtime/webs.md`「钉住的面板」):
+`acde:desktop.pin(element, {margin?, reserve?, keyboard?, anchor?, userOnly?})` → `PinnedPanel` (机制见 `docs/agents/runtime/webs.md`「钉住的面板」):
 
 - 元素变成单独的面板, 盖在所有应用窗口上面, 但状态和 DOM 还在桌面页这一个文档里 (同一棵组件树, 同一份事件). 元素要是 stacking context,
   不带祖先的裁剪和透明度; 输入区域就是元素的盒子 (`pointer-events: none` 或不可见时为空), 元素变了运行时自动重量, `update()` 立即重量,
@@ -132,9 +132,9 @@
   用键盘打开、要马上接按键的). 面板拿到键盘之后, 按键交给桌面页的焦点元素: 面板打开时要把页面焦点放进面板.
 - 桌面页本身和 `on-demand` 面板一样: 点到才拿键盘.
 - `userOnly: true` (2026-11-23): 这个面板是只有用户本人能答的卡片 (确认、权限询问; 一般同给 `keyboard: 'exclusive'`), 缺省 false, 不是布尔值抛
-  `TypeError`. 运行时把它一路交给窗口系统; acdes 的会话管家只在这类面板显示期间拒绝 Agent 注入的按键和落在面板上的指针 (acdes `docs/manager.md`).
+  `TypeError`. 运行时把它一路交给窗口系统; acdes 的会话管家只在这类面板显示期间拒绝 Agent 注入的按键和落在面板上的指针 (acdes `docs/agents/manager.md`).
   弹出菜单、启动台、聊天浮层这类普通的 `exclusive` 面板不要给: Agent 要能在它们开着时照常操作 (包括点掉它们). 面板里个别元素只许用户点的, 照旧由
-  管家的 `guard` 逐步核对 (`docs/dev/dev-ipc.md`), 不靠这个标记.
+  管家的 `guard` 逐步核对 (`docs/agents/dev/dev-ipc.md`), 不靠这个标记.
 - **锚定弹出** (`anchor: {window, x, y, width?, height?, edge?, align?, adjust?}`, 2026-11-21, 总仓 `.scratch/system/anchored-popup.md`): 菜单、提示气泡、
   下拉框这类跟着某扇窗里某个位置的面板, 不给屏幕坐标, 只说锚在窗口 `window` (`windows.list()` 的窗口号) 内容区的矩形 `(x, y, width, height)` 上
   (那扇窗页面的 CSS 像素, 宽高缺省 0 即一个点); 合成器按真实窗框和缩放把面板放在它的 `edge` 边 (缺省 `bottom`), 沿边 `align` 对齐 (`start` /
@@ -161,11 +161,11 @@
   `frame: false` 的应用自己画标题栏, 由 `acde:window.hostControls` 决定要不要画窗口按钮.
 - 桌面只能**声明**样子和行为: `acde:desktop.setFrameTheme(theme | null)` (SDK `FrameTheme`: 活动 / 非活动的颜色、`buttonStyle`、`buttonSide`、
   `titleAlign`、给不支持深色的页面用的 `light`; 每次给整个主题, `null` 回到默认) 和 `setDoubleClick('fill' | 'minimize' | 'none')`.
-  未知的键忽略并记 warn, 坏颜色抛 TypeError. 规则见 `docs/runtime/webs.md`「窗框」.
+  未知的键忽略并记 warn, 坏颜色抛 TypeError. 规则见 `docs/agents/runtime/webs.md`「窗框」.
 - 窗口的外圆角与阴影也只能声明: `acde:desktop.setWindowLook(look | null)` (SDK `WindowLook`: 圆角半径与 CSS 角形 (`round`、`squircle`、`superellipse(k)`), 聚焦 / 不聚焦两档 CSS 外阴影层),
-  由合成器画, 窗口页面自己不再画外阴影和外圆角. 规则见 `docs/runtime/webs.md`「窗框」.
+  由合成器画, 窗口页面自己不再画外阴影和外圆角. 规则见 `docs/agents/runtime/webs.md`「窗框」.
   各键都可省: 只改给了的键, 没给的保持上一次的 (起初是方角、无阴影、`standard`; `setWindowLook(null)` 回到这个状态), 所以可以单独 `setWindowLook({motion})`.
-  `look.motion` 选窗口动画的档 (`'standard'` 缺省、`'reduced'`), 只能选档不能给数值; 档的定义只在 `acde_scene::motion` (见 `docs/graphics/render-gpu.md`「动画曲线」),
+  `look.motion` 选窗口动画的档 (`'standard'` 缺省、`'reduced'`), 只能选档不能给数值; 档的定义只在 `acde_scene::motion` (见 `docs/agents/graphics/render-gpu.md`「动画曲线」),
   经 `WindowLook.motion` (Rust `acde_scene::motion::Preset`, 页面交出的数列里紧跟阴影层的那个数是它的线上编号) 交给合成器.
   `look.titlebarHeight` (2026-11-24) 是运行时画的窗框标题栏高度, CSS px, 24 到 64 的整数 (小数四舍五入), 由桌面声明 (Dopame 取 uikit 令牌 `--dp-titlebar-h`, 40);
   没给过时用运行时缺省 `Frame.HEIGHT` (32). 它是数列的最后一个数 (可省; Rust `WindowLook.titlebar`, `None` 是没给), 经合成器交给各应用进程的窗口一侧,
@@ -199,13 +199,13 @@
   (不是在锁屏时打开的) 页面应禁用输入并说明. 锁屏页不能关机、重启、注销.
 - 锁定期间键盘全给锁屏页, 快捷键不生效; 睡前运行时等锁屏页出第一帧才放行睡眠, 所以锁屏页要尽快出第一帧, 不要等网络或大资源.
   锁屏页崩了屏幕保持锁定 (黑底), 运行时限次重起它.
-- 调试: `acdev dev --lock` 用假的 `acde:lock` 预览 (见 `docs/runtime/layout.md`「锁屏页预览」).
+- 调试: `acdev dev --lock` 用假的 `acde:lock` 预览 (见 `docs/agents/runtime/layout.md`「锁屏页预览」).
 
 ## 拖放
 
 - 全是标准 HTML 拖放. 从别的窗口 (acde 应用、原生文件管理器) 拖进桌面页或面板的文件, `drop` 时在 `dataTransfer` 里是 `File` (不超过 64 MiB 的普通文件)
   和只读的 `FileSystemHandle` (`items[i].getAsFileSystemHandle()`), **拿不到路径**: 本地文件的 `text/uri-list`、`text/plain` 被去掉. 要在 `drop` 里同步取
-  `items`. 桌面要把拖来的东西放到哪里, 读内容后自己写 (见 `docs/web/fs.md`「拖放和打开请求的句柄」「拖放不再授权」).
+  `items`. 桌面要把拖来的东西放到哪里, 读内容后自己写 (见 `docs/agents/web/fs.md`「拖放和打开请求的句柄」「拖放不再授权」).
 - 从桌面页拖出去: `draggable="true"` 的元素照标准开始拖动, `dataTransfer` 里的字符串类型交给系统拖放, 别的窗口照常收.
   上一次拖动的 `dragend` (窗口系统的拖放结束) 还没到时又按下鼠标, 页面先把上一次拖动当作没放成结束掉 (源上照发 `dragend`, `dropEffect` 为 `none`),
   再照常开始新的; 之后才到的那条结束在新拖动开始前到达时不起作用, 开始后才到会提前结束页面里的新拖动, 系统拖放不受影响 (js/page `host.ts`; 第二十一轮 11-work-folder 第二次拖动没开始, 就是旧拖动挡住了新的).
@@ -220,7 +220,7 @@
   (整屏照截, 截到的是锁屏), 写不进 `path` 400. 桌面页、声明了 `windows` 的系统应用和 `modules` 列了 `windows` 的服务能调; 单个窗口只有桌面页能截
   (只有它的 `list()` 有窗口号). 不发 `on('screenshot')` 事件 (那个只属于 PrintScreen), 提示由调用方自己做.
 - acdes 里截图在会话主进程里做 (经管家交给合成器线程, 不经桌面的 Wayland 连接); acdev 宿主窗口只截整个宿主窗口: 给 `window` 或非 0 的 `screen` 回 501.
-- 会话外 (如 ssh 进来) 用 acdes 的命令 `acdes screenshot`, 不归桌面管 (见 acdes `docs/architecture.md`「截图」).
+- 会话外 (如 ssh 进来) 用 acdes 的命令 `acdes screenshot`, 不归桌面管 (见 acdes `docs/agents/architecture.md`「截图」).
 
 ## 通知、下载和权限询问
 
@@ -236,8 +236,8 @@
 - 服务只用 `ServiceContext` 和标准接口, 外壳模块按清单的 `modules` 给. 服务的 `api` 是一组命名空间, 页面以 `acde:<命名空间>` 导入; 应用要在自己清单的
   `services` 里写服务名才能用.
 - 页面和服务的起停互不等待: 页面用 `acde:services` 跟上服务的出现和消失.
-- 页面传给服务的回调 (订阅等) 在页面释放或关掉时作废; 服务用 `ctx.releaseSignal(回调)` 拿一个 `AbortSignal`, 在它 `abort` 时清掉为这个回调留下的东西 (细节见 `docs/runtime/layout.md`「服务模式」).
-- 有角色的服务经 `ctx.backend.connect()` 连桌面后台, 连接由管家代办, 服务不碰后台的套接字和令牌; 后台在不在看 `ctx.backend.up` 和 `onChange` (细节见 `docs/runtime/layout.md`「连桌面后台」).
+- 页面传给服务的回调 (订阅等) 在页面释放或关掉时作废; 服务用 `ctx.releaseSignal(回调)` 拿一个 `AbortSignal`, 在它 `abort` 时清掉为这个回调留下的东西 (细节见 `docs/agents/runtime/layout.md`「服务模式」).
+- 有角色的服务经 `ctx.backend.connect()` 连桌面后台, 连接由管家代办, 服务不碰后台的套接字和令牌; 后台在不在看 `ctx.backend.up` 和 `onChange` (细节见 `docs/agents/runtime/layout.md`「连桌面后台」).
 
 ## 必须和可以
 
@@ -258,8 +258,8 @@
 
 ## 各运行时的现状
 
-acdes 一列按 acdes 的代码核对过; 宿主窗口一列取自 `docs/runtime/webs.md`、`docs/runtime/window-model.md` 的记载, 没有逐项实测, 只有标了
-「(实测)」的几行在 2026-11-24 用 `acdev dev` 的本地会话 (`docs/runtime/layout.md`「本地会话」) 在 macOS 上试过.
+acdes 一列按 acdes 的代码核对过; 宿主窗口一列取自 `docs/agents/runtime/webs.md`、`docs/agents/runtime/window-model.md` 的记载, 没有逐项实测, 只有标了
+「(实测)」的几行在 2026-11-24 用 `acdev dev` 的本地会话 (`docs/agents/runtime/layout.md`「本地会话」) 在 macOS 上试过.
 
 | 能力 | acdes 会话 | acdev 宿主窗口 |
 | --- | --- | --- |
