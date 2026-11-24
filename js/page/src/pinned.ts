@@ -122,7 +122,9 @@ export class Pinned {
     })
     for (let at: Element | null = element; at; at = at.parentElement) changed.observe(at, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] })
     panel.stops.push(() => resized.disconnect(), () => changed.disconnect(), () => settle !== null && hostTime.clearTimeout(settle), () => this.#due.delete(panel))
-    const ended = () => this.#place(panel)
+    const ended = (event: Event) => {
+      if (event.target === element) this.#place(panel)
+    }
     for (const type of Pinned.#SETTLED) element.addEventListener(type, ended)
     panel.stops.push(() => {
       for (const type of Pinned.#SETTLED) element.removeEventListener(type, ended)

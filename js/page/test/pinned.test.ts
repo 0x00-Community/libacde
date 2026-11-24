@@ -7,14 +7,14 @@ type Call = readonly [string, ...unknown[]]
 
 function harness(opacity = '1', anchors = false, popped: boolean | undefined = undefined) {
   const calls: Call[] = []
-  const listeners = new Map<string, () => void>()
+  const listeners = new Map<string, (event: { target: unknown }) => void>()
   let answer: { resolve: (value: unknown) => void; reject: (error: Error) => void } | null = null
   const style = { pointerEvents: 'auto', visibility: 'visible', opacity }
   const element = {
     isConnected: true,
     parentElement: null,
     getBoundingClientRect: () => ({ left: 10, top: 20, right: 110, bottom: 70, width: 100, height: 50 }),
-    addEventListener: (type: string, fn: () => void) => listeners.set(type, fn),
+    addEventListener: (type: string, fn: (event: { target: unknown }) => void) => listeners.set(type, fn),
     removeEventListener: (type: string) => listeners.delete(type),
   }
   class Observer {
@@ -89,7 +89,9 @@ test('the end of a fade-in places the panel again, so its input box is not left 
   await Promise.resolve()
   assert.deepEqual(calls.filter((c) => c[0] === 'placePanel').at(-1), ['placePanel', 7, 10, 20, 100, 50, 0, 0, 0, 0])
   style.opacity = '1'
-  listeners.get('animationend')!()
+  listeners.get('animationend')!({ target: {} })
+  assert.deepEqual(calls.filter((c) => c[0] === 'placePanel').at(-1), ['placePanel', 7, 10, 20, 100, 50, 0, 0, 0, 0], 'a child\'s animation ending does not place it')
+  listeners.get('animationend')!({ target: element })
   assert.deepEqual(calls.filter((c) => c[0] === 'placePanel').at(-1), ['placePanel', 7, 10, 20, 100, 50, 0, 0, 100, 50])
 })
 
@@ -237,4 +239,15 @@ test('a dismissed popup ends as dismissed and is closed like an unpin, and its c
   assert.deepEqual(calls.filter((c) => c[0] === 'closePanel'), [['closePanel', 9], ['closePanel', 7]])
   assert.ok(calls.some((c) => c[0] === 'rpc panel.close' && c[1] === 1048577))
   assert.deepEqual(calls.filter((c) => c[0] === 'setPanel').slice(-2), [['setPanel', 7, 0, 0, 0, 0], ['setPanel', 9, 0, 0, 0, 0]])
+})
+
+test('placing a panel that has not moved sends nothing to the window system', async () => {
+  const { calls, element, pinned, answer } = harness()
+  const handle = pinned.pin(element as unknown as Element)
+  answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  const sent = calls.length
+  handle.update()
+  pinned.update()
+  assert.deepEqual(calls.slice(sent), [])
 })
