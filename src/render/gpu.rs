@@ -120,6 +120,7 @@ pub fn draw(scene: Scene, size: (u32, u32), place: Affine) -> Option<Arc<GpuImag
 /// Reads `image` back; an image of a replaced device has nothing to read (None).
 pub fn read(image: &GpuImage, rect: [u32; 4]) -> Option<Vec<u8>> {
     let gpu = Gpu::shared().filter(|gpu| gpu.owns(image))?;
+    image.settle();
     gpu.read(&image.texture, rect).inspect_err(|e| log::warn!("render: {e}")).ok()
 }
 

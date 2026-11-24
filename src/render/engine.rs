@@ -161,7 +161,10 @@ impl Engine {
                 picture.commands.iter().find_map(|c| match c {
                     crate::gpu::RenderCommand::Fill(f) => match &f.brush {
                         crate::gpu::Paint::Image(brush) => match crate::gpu::Gpu::shared().and_then(|g| g.images.find(brush.image.data.id())) {
-                            Some(image) => Some(crate::render::Pixels::Gpu(image)),
+                            Some(image) => {
+                                image.settle();
+                                Some(crate::render::Pixels::Gpu(image))
+                            }
                             None => Some(crate::render::Pixels::Cpu {
                                 width: brush.image.width,
                                 height: brush.image.height,

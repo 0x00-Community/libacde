@@ -154,7 +154,10 @@ pub struct GpuImage {
     generation: AtomicU64,
     copied: AtomicU64,
     opaque: AtomicBool,
+    unsettled: Mutex<Option<Settle>>,
 }
+
+type Settle = Box<dyn FnOnce() + Send>;
 
 impl AsRef<[u8]> for GpuImage {
     fn as_ref(&self) -> &[u8] {
@@ -181,6 +184,7 @@ impl GpuImage {
             generation: AtomicU64::new(0),
             copied: AtomicU64::new(0),
             opaque: AtomicBool::new(false),
+            unsettled: Mutex::new(None),
         });
         set.0.lock().unwrap_or_else(|e| e.into_inner()).insert(id, Arc::downgrade(&image));
         image
@@ -230,6 +234,17 @@ impl GpuImage {
 
     pub fn set_opaque(&self, opaque: bool) {
         self.opaque.store(opaque, Ordering::Release);
+    }
+
+    pub fn defer(&self, settle: Option<Settle>) {
+        *self.unsettled.lock().unwrap_or_else(|e| e.into_inner()) = settle;
+    }
+
+    pub fn settle(&self) {
+        let settle = self.unsettled.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(settle) = settle {
+            settle();
+        }
     }
 }
 
@@ -288,6 +303,7 @@ impl Overrides {
             let Paint::Image(brush) = brush else { continue };
             let id = brush.image.data.id();
             let Some(image) = self.set.find(id) else { continue };
+            image.settle();
             let generation = image.generation();
             match self.seen.get_mut(&id) {
                 Some((seen, ..)) if *seen == generation => {}

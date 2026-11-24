@@ -33,6 +33,9 @@ impl Hole {
             }
             found = Some(candidate?);
         }
+        if let Some(hole) = &found {
+            hole.image.settle();
+        }
         found
     }
 

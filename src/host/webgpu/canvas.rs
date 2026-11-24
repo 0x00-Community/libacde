@@ -301,7 +301,12 @@ super::natives! {
             }
             let image = match current.image {
                 Some(image) => {
-                    pass(&mut encoder, &image.texture, true, Some((&passes.opaque, None)));
+                    let (gpu, pipeline, texture) = (gpu.clone(), passes.opaque.clone(), image.texture.clone());
+                    image.defer(Some(Box::new(move || {
+                        let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("acde canvas opaque") });
+                        pass(&mut encoder, &texture, true, Some((&pipeline, None)));
+                        gpu.submit([encoder.finish()]);
+                    })));
                     image
                 }
                 None => {
@@ -353,6 +358,7 @@ super::natives! {
                 encode_then_resolve(tx, token, None, (width, height), || None);
                 return Ok(());
             };
+            image.settle();
             let read = Readback::copy(&gpu, &image.texture);
             let buffer = read.buffer.clone();
             let device = super::current_device();
@@ -373,6 +379,7 @@ fn front_pixels(node: Id) -> Result<Option<(u32, u32, Vec<u8>)>, Throw> {
     with_state(|s| {
         let gpu = s.gpu()?;
         let Some(image) = s.canvases.get(&node).and_then(|c| c.front.clone()) else { return Ok(None) };
+        image.settle();
         Ok(read_back(&gpu, &image.texture))
     })
 }
