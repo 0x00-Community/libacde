@@ -68,7 +68,7 @@
 - **Agent 的 stage** (acdes): `open(name)` 开的原生程序 (不是 acde 应用的) 落在 Agent 自己的 stage 上, 回答带 `stage: true`: 它的窗口不画到屏上、
   不抢人的键盘, 对程序自己照常可见. 快照的窗口 (`InspectWindow`) 带 `stage: true`, 文本行多一个 `[stage]` 标记; `shot`、`input` 的回答带 `stage`.
   stage 上的窗口 `input` 不等人让开、不管它是否最小化; 人在桌面上激活它 (`acde:windows.focus`) 就是人接手, 之后 `stage` 为 false, 照人桌面的规则.
-  细节见 acdes `docs/agents/manager.md`「Agent 的 stage」.
+  细节见 acdes `docs/agents/manager/agents.md`「Agent 的 stage」.
 - **原生窗口** (runtime `atspi.rs`, napi `Accessibility`, Linux 会话): 读 AT-SPI2. 起服务时把 `org.a11y.Status.IsEnabled` 设成 true; GTK3 总上报,
   Qt 要开关为 true 且在真的显示平台上. `tree(pid, title, limit)` 按 pid 找应用、按标题挑顶层窗口, 角色规范成 ARIA 风格; act 先试 AT-SPI 的
   Action / EditableText / GrabFocus, 不行按坐标. 检查 `src/runtime/tests/atspi-check.sh`.

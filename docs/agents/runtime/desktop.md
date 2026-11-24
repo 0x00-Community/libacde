@@ -29,7 +29,7 @@
 同一个包里还要有 `apiLevel` (和运行时的契约级别相同, 否则整个包不加载), 可以有 `apps` (和桌面同包的应用是**系统应用**, 可以声明外壳模块; 不带桌面的包里应用全是 `SYSTEM_APPS` (`manifest/index.ts`, 现在只有社区商店 `community-store`, 同 acdes 的 `registry.rs`) 时也是, acdes 另要求这个包归 root)、
 `assets` (同源 URL 前缀 → 包里的目录)、`services` (服务名 → 模块文件). 桌面自己不需要声明 capabilities: 桌面页拿到全部模块.
 系统应用的条目可以写 `"sensitive": true` (SDK `AppManifest.sensitive`, F7): 标成敏感应用, 只对带桌面的系统包有效, 第三方包不能自标
-(写了的话 acdes 拒收这个应用); 敏感应用怎么对待由 acdes 认定 (见 acdes `docs/agents/manager.md`「敏感应用」), libacde 不看这个字段.
+(写了的话 acdes 拒收这个应用); 敏感应用怎么对待由 acdes 认定 (见 acdes `docs/agents/manager/agents.md`「敏感应用」), libacde 不看这个字段.
 
 ## 谁能拿到哪些模块
 
@@ -44,7 +44,7 @@
 | 桌面服务 | `ctx.import` 只能拿 `services[].modules` 列出的外壳模块, 形状是 SDK `ServiceModuleTypes` (见 `docs/agents/runtime/packages.md`) |
 
 - **外壳模块** (`ShellModule`, 只给桌面一侧): `acde:windows` (所有窗口)、`acde:desktop` (钉面板、窗框主题、桌面事件)、`acde:packages` (重扫包、原生程序)、
-  `acde:session` (锁屏、注销、重启、关机、语言)、`acde:desktops` (列出、换桌面)、`acde:permissions` (回答权限询问)、`acde:setDefault`、`acde:inspect`、`acde:software` (系统的 pacman 包: 列出、刷新、装卸社区商店的包、全量更新, 经 acdes 管家交系统总管执行, 见 acdes `docs/agents/manager.md`「软件包」).
+  `acde:session` (锁屏、注销、重启、关机、语言)、`acde:desktops` (列出、换桌面)、`acde:permissions` (回答权限询问)、`acde:setDefault`、`acde:inspect`、`acde:software` (系统的 pacman 包: 列出、刷新、装卸社区商店的包、全量更新, 经 acdes 管家交系统总管执行, 见 acdes `docs/agents/manager/system.md`「软件包」).
 - **应用模块** (`AppModules`, 谁都有): `acde:apps` (list / open)、`acde:open`、`acde:window`、`acde:services`、`acde:capabilities`; 要声明的: `acde:launch`、
   `acde:openPath` / `acde:handlers` (`openFiles`) 和各系统能力.
 

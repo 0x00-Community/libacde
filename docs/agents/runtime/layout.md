@@ -139,7 +139,7 @@
   `{desktops: DesktopInfo[], current}`)、`desktops.choose(id, remember?)` 经 rpc 转出, 有管家时原样 `manager.call`. 同步的
   `session.lock()` 同样经 rpc 转出 (管家调 logind 的 Lock). `session.own()` 取 `WebInit.session.own`: 启动器把 welcome 顶层的 `session: {own}` 带进去, 没有这一项或没有管家时为 false. `session.others()`  回别的用户还开着的会话 `[{user, uid, place, remote}]` (SDK 类型 `SessionOther`, `place` 是座位或终端, 可为 null), 关机、重启前先问它; `session.switchUser()` 锁定本会话并切到登录页去换人 (登录页在别的终端上按需起, 原会话留在后台可切回). 两者都由管家 (acdes) 实现, 页面胶水原样转发; 旧版管家以 RPC 错误拒绝, 页面要 catch.
   管家 (acdes) 推来的服务里若也有 `session` / `desktops`, 会盖掉这两个模块; acdes 在本工单后去掉登录模式里的这条绕法.
-- **锁屏页** (`acde:lock`; 管家一侧见 acdes `docs/agents/manager.md`「锁屏」): 管家以锁屏模式起的进程收到的 welcome 是桌面的形状
+- **锁屏页** (`acde:lock`; 管家一侧见 acdes `docs/agents/manager/screens.md`「锁屏」): 管家以锁屏模式起的进程收到的 welcome 是桌面的形状
   (`kind: 'desktop'`) 加顶层 `lock: true`, 启动器打开 `join(dir, desktop.lock ?? desktop.entry)` (桌面没写 `lock` 时管家给 acdes 自带的锁屏包),
   页面初始化数据带 `lock: true`. 页面胶水对锁屏页只定义 `acde:lock` 和 `acde:services`, 不给外壳模块; 锁屏页的电源菜单用的 `acde:session` 来自管家在 welcome 的 `services` 里给的 `session` 服务 (acdes 只列 `poweroff`、`reboot`、`suspend`, 系统确认页不给), 同登录页的做法.
   `lock.user()` 回 `{name, fullName, avatar}` (`avatar` 是 `data:` URL 或 null), `lock.unlock(password)` 失败时的错误带 `code`: `auth` (403,

@@ -42,7 +42,7 @@
   `acde.window.requestGrab` / `releaseGrab` 同一条路: 经桌面页面自己的 surface 的 `request_grab`, 由会话 (acdes 转给 acompositor) 决定给不给; Dopame 的确认卡片用它抢键盘.
   `acde.desktop.setDoubleClick('fill' | 'minimize' | 'none')` (SDK `DoubleClickAction`) 声明双击标题栏做什么, 随时可以再设, 下一次双击就按新的;
   不认识的值抛 TypeError. 桌面页面和声明了 `acde:desktop` 的系统应用窗口都有 (经自己的 surface 的 `setDoubleClick`, 整个宿主一份), 服务没有;
-  会话里 (acdes) 桌面页设的经管家传到每个应用进程, 系统应用设的只管它自己的进程 (acdes `docs/agents/manager.md`「窗框设置」).
+  会话里 (acdes) 桌面页设的经管家传到每个应用进程, 系统应用设的只管它自己的进程 (acdes `docs/agents/manager/apps.md`「窗框设置」).
   `acde.desktop.setFrameTheme(theme | null)` (SDK `FrameTheme`: `active` / `inactive` 各 `{background?, title?, line?, buttons?}`, 颜色是
   `#rgb` / `#rgba` / `#rrggbb` / `#rrggbbaa` / `rgb()` / `rgba()`; `buttonStyle: 'dots' | 'glyphs'`, `buttonSide: 'left' | 'right'`,
   `titleAlign: 'center' | 'start'`, `light: {active?, inactive?}`; 每次给的是整个主题, 不和上次的合并) 声明运行时画的标题栏的样子, 运行时照旧画、命中、拖动和双击.
@@ -125,7 +125,7 @@
   - **按调用者层级注入** (外壳模块名单是清单规则 `@acde/api/manifest` 的 `SHELL_MODULES`; 会话里按管家 welcome 的 `tier` 给, 宿主窗口的单应用会话见 `js/launcher/src/local/session.ts`): 外壳模块 (`SHELL_MODULES`: `windows`、`packages`、`session`、`desktops`、`inspect`、
     `desktop`、`setDefault`) 只给桌面页面、声明了它的桌面服务和声明了它的系统应用 (与某个已安装桌面同包的应用); 应用模块 (`APP_MODULES`: `launch`、
     `apps` 只有 list / open、`open`、`openPath`、`handlers`、`window`, 以及管家自己给每个应用页面的 `icons`、`sounds` (按名查图标和声音, acdes
-    `docs/agents/manager.md`「主题」, 2026-11-23 起; 这两个名字也因此不许桌面服务占用, 和管家的保留名单一致)) 给所有应用, 不用声明, 也不用列服务. 声明外壳模块的第三方应用启动时拒绝 (403, `shell_module`).
+    `docs/agents/manager/system.md`「主题」, 2026-11-23 起; 这两个名字也因此不许桌面服务占用, 和管家的保留名单一致)) 给所有应用, 不用声明, 也不用列服务. 声明外壳模块的第三方应用启动时拒绝 (403, `shell_module`).
     没给的模块经 `host.refuseModule` 记下原因, import 时报模块名和缺的声明. 哪个模块要哪条声明只在 SDK `Manifest.importRule(name, app, origin)`
     (`{allowed, missing, reason, unverified}`, app 为 null 是桌面; acde-host 的 `Tiers` / `CapabilityCheck` 和 acdev 的检查都用它).
     **服务的命名空间** (不是系统模块的名字): 运行时按服务名授权, 应用列了 `clock` 就拿到这个服务 `api` 的每个键 (`DesktopServices.start` 把每个键记到服务名上,

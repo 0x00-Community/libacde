@@ -100,7 +100,7 @@ root 本身不能替换或删. Finder 的根: 桌面文件夹、下载 (`XDG_DOW
   句柄只读时带 `writable: false` (只能由可写变只读), 可写时不带 (沿用). 请求的 `kind` 照应用给的原样转发, 条目的类型由管家按 `path` 打开后的实际类型定.
   `acde:office` 的 `state(handle)` 只认整个借出的文件 (`PageCalls.lentFile`).
   页面自己给的 `lend` / `entry` / `handed` 丢掉, 不再有按路径的 `held`. 会话里请求经启动器原样交给管家 `apps.open`: 管家核对名字确实借给了发起的进程,
-  按自己记的路径 (带 `path` 时在那个根下用 openat2 `RESOLVE_BENEATH` 打开子项, `label` 是子项自己的名字) 重新打开, 以目标应用自己的名字交过去 (见 acdes `docs/agents/manager.md`「转交借来的东西」). 目标收到的请求带 `lend: [{name}]`, 条目和描述符在
+  按自己记的路径 (带 `path` 时在那个根下用 openat2 `RESOLVE_BENEATH` 打开子项, `label` 是子项自己的名字) 重新打开, 以目标应用自己的名字交过去 (见 acdes `docs/agents/manager/calls.md`「转交借来的东西」). 目标收到的请求带 `lend: [{name}]`, 条目和描述符在
   welcome 或 `request` 事件的 `lent` 里; 启动器 (`Lending.entered`) 取第一个名字, 和 openPath 交来的一样换成 `entry` 交给页面, 页面造出句柄.
   宿主窗口里没有管家, 单应用启动器不支持 `apps.open` (501), 也就没有转交.
   借出的文件 (`lent-file:`) 也能交给 `acde:office` 的 `state` (原生 `office.openLent(name)`, 见 `docs/agents/runtime/architecture.md` 的 office 一段).

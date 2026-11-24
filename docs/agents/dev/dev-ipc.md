@@ -163,7 +163,7 @@ HTML 去掉样式和脚本引用后一样时发 `hot: true`. Broker 给那个应
   宿主上 `acdev dev --lock` 的预览没有管家, 页面名仍是 `desktop`, 也带 `lock: true`.
 - 登录页 (桌面的 welcome 顶层 `greeter: true`, acdes 的 `acdes --greeter` 会话只给登录页这样标; 锁屏页的 welcome 带了也不算): 页面名固定为 `greeter`
   (`Session.greeter`, `DevChannel.GREETER`), `web: "greeter"` 找到它; 它也是登录页会话里的桌面, 所以 `desktop` 仍指它 (不带 `web` 的请求在那个会话里默认给桌面).
-  `webs` 里 kind 仍是 desktop, 不另加标记. 管家那一侧 (开发客户机里登录页会话也开调试通道) 见 acdes `docs/manager.md`「客户机调试通道」.
+  `webs` 里 kind 仍是 desktop, 不另加标记. 管家那一侧 (开发客户机里登录页会话也开调试通道) 见 acdes `docs/manager/dev.md`「客户机调试通道」.
 - 开发模式 (`runtime::dev_mode()`, `src/runtime/devtools/mode.rs`, 进程里定一次): 有管家的进程 (环境里有 `ACDE_MANAGER_FD`: 会话里的桌面、应用、
   服务进程) 只看 acdev 客户机的固件配置项 `/sys/firmware/qemu_fw_cfg/by_name/opt/acdev/key/raw` 在不在 (和 acdes 管家的 `Developer` 判断
   同一个, 用户定 C), 不看环境里的 `ACDE_DEV`: 正式会话的环境经 greetd 读用户的 `~/.profile`, Agent 能往里写 `ACDE_DEV=1`, 以前这就让
