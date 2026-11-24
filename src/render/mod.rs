@@ -32,8 +32,8 @@ pub use error::{Error, Result};
 pub use geometry::Metrics;
 pub use hud::{Hud, HudStats};
 pub use layers::{Backdrop, Drawing, Layer, LayerFilter};
-pub(crate) use net::{resource_file, system_file};
 pub use net::{Load, Loader};
+pub(crate) use net::{resource_file, system_file};
 pub use surface::{ClipboardEntry, ClipboardReadReply, ClipboardTypesReply, DragImage, SurfaceCommand, WindowLook, WindowMaterial, WindowShadow};
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -166,7 +166,23 @@ pub struct Frame {
     pub panels: Vec<Panel>,
 }
 
+#[derive(PartialEq)]
+pub(crate) struct Shown {
+    size: (u32, u32),
+    scale: u64,
+    commit: u64,
+    panels: Vec<(u32, (u32, u32))>,
+}
+
 impl Frame {
+    pub(crate) fn shown(&self) -> Shown {
+        Shown { size: self.size, scale: self.scale.to_bits(), commit: self.commit, panels: self.panels.iter().map(|p| (p.id, p.size)).collect() }
+    }
+
+    fn still(&self) -> bool {
+        !self.animating && self.plane.undamaged() && self.panels.iter().all(|p| p.plane.undamaged())
+    }
+
     pub fn absorb(&mut self, old: Frame) {
         self.plane.absorb(old.plane);
         for old in old.panels {
@@ -205,6 +221,10 @@ pub struct Plane {
 }
 
 impl Plane {
+    fn undamaged(&self) -> bool {
+        (self.damage.width <= 0.0 || self.damage.height <= 0.0) && self.damage_rects.is_empty()
+    }
+
     fn damaged(&mut self, area: Rect) {
         self.damage = self.damage.union(area);
         self.damage_rects.push(area);
@@ -568,6 +588,12 @@ fn present_frame(shared: &Shared, engine: &mut parking_lot::MutexGuard<'_, Engin
     let Ok(mut slot) = shared.slot.lock() else {
         return again;
     };
+    let shown = frame.shown();
+    if frame.still() && !slot.wanted && engine.shown.as_ref() == Some(&shown) {
+        log::debug!(target: "perf::frame", "{}: nothing changed, the frame is not shown", engine.name);
+        return again;
+    }
+    engine.shown = Some(shown);
     if let Some(old) = slot.frame.take() {
         frame.absorb(old);
     }
