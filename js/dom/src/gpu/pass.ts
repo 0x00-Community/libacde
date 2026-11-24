@@ -117,9 +117,15 @@ abstract class RenderEncoding extends Encoding {
   }
 }
 
+function header(encoding: Encoding, label: string, descriptor: readonly number[]): void {
+  const r = recording(encoding)!
+  r.op(label ? r.string(label) : -1, ...descriptor)
+}
+
 export class GPURenderPassEncoder extends RenderEncoding {
-  constructor(gpu: GpuNative, device: number, encoder: number, descriptor: string, label: string) {
-    super(label, (r) => gpu.renderPass(device, encoder, descriptor, r.data, r.length, r.strings))
+  constructor(gpu: GpuNative, device: number, encoder: number, descriptor: readonly number[], label: string) {
+    super(label, (r) => gpu.renderPass(device, encoder, r.data, r.length, r.strings))
+    header(this, label, descriptor)
   }
 
   setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void {
@@ -159,8 +165,9 @@ export class GPURenderPassEncoder extends RenderEncoding {
 tag(GPURenderPassEncoder)
 
 export class GPUComputePassEncoder extends Encoding {
-  constructor(gpu: GpuNative, device: number, encoder: number, descriptor: string, label: string) {
-    super(label, (r) => gpu.computePass(device, encoder, descriptor, r.data, r.length, r.strings))
+  constructor(gpu: GpuNative, device: number, encoder: number, descriptor: readonly number[], label: string) {
+    super(label, (r) => gpu.computePass(device, encoder, r.data, r.length, r.strings))
+    header(this, label, descriptor)
   }
 
   setPipeline(pipeline: unknown): void {

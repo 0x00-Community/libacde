@@ -75,7 +75,7 @@ fn d2() -> TextureDimension {
     TextureDimension::D2
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewDesc {
     pub label: Option<String>,

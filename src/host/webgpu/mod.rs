@@ -839,7 +839,7 @@ natives! {
 
     "createView" => fn create_view(scope, args) {
         let (device, texture) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1));
-        let desc: desc::ViewDesc = json(scope, &args, 2)?;
+        let desc: desc::ViewDesc = if args.get(2).is_undefined() { desc::ViewDesc::default() } else { json(scope, &args, 2)? };
         if !enter(device) {
             return Ok(0.into());
         }
@@ -1146,19 +1146,19 @@ natives! {
 
     "renderPass" => fn render_pass(scope, args) {
         let (device, encoder) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1));
-        let desc: desc::RenderPassDesc = json(scope, &args, 2)?;
-        let commands = pass::commands(&args, 3, bind::arg_u32(scope, &args, 4));
-        let strings = pass::strings(scope, &args, 5);
-        encode(device, encoder, |s, e| pass::render(s, e, device, &desc, &commands, &strings));
+        let commands = pass::commands(&args, 2, bind::arg_u32(scope, &args, 3));
+        let strings = pass::strings(scope, &args, 4);
+        let (desc, at) = pass::render_desc(&commands, &strings);
+        encode(device, encoder, |s, e| pass::render(s, e, device, &desc, &commands[at..], &strings));
         Ok(().into())
     }
 
     "computePass" => fn compute_pass(scope, args) {
         let (device, encoder) = (bind::arg_u32(scope, &args, 0), bind::arg_u32(scope, &args, 1));
-        let desc: desc::ComputePassDesc = json(scope, &args, 2)?;
-        let commands = pass::commands(&args, 3, bind::arg_u32(scope, &args, 4));
-        let strings = pass::strings(scope, &args, 5);
-        encode(device, encoder, |s, e| pass::compute(s, e, device, &desc, &commands, &strings));
+        let commands = pass::commands(&args, 2, bind::arg_u32(scope, &args, 3));
+        let strings = pass::strings(scope, &args, 4);
+        let (desc, at) = pass::compute_desc(&commands, &strings);
+        encode(device, encoder, |s, e| pass::compute(s, e, device, &desc, &commands[at..], &strings));
         Ok(().into())
     }
 

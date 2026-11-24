@@ -313,7 +313,7 @@ export interface GpuNative {
   unmap(device: number, buffer: number, written: (number | ArrayBuffer)[]): void
   createTexture(device: number, descriptor: string): number
   destroyTexture(device: number, texture: number): void
-  createView(device: number, texture: number, descriptor: string): number
+  createView(device: number, texture: number, descriptor?: string): number
   createSampler(device: number, descriptor: string): number
   createBindGroupLayout(device: number, descriptor: string): number
   createPipelineLayout(device: number, descriptor: string): number
@@ -334,8 +334,8 @@ export interface GpuNative {
   clearBuffer(device: number, encoder: number, buffer: number, offset: number, size: number): void
   resolveQuerySet(device: number, encoder: number, querySet: number, first: number, count: number, destination: number, offset: number): void
   encoderDebug(device: number, encoder: number, op: number, label: string): void
-  renderPass(device: number, encoder: number, descriptor: string, commands: Float64Array, length: number, strings: string[]): void
-  computePass(device: number, encoder: number, descriptor: string, commands: Float64Array, length: number, strings: string[]): void
+  renderPass(device: number, encoder: number, commands: Float64Array, length: number, strings: string[]): void
+  computePass(device: number, encoder: number, commands: Float64Array, length: number, strings: string[]): void
   finishEncoder(device: number, encoder: number, label: string): number
   createRenderBundle(device: number, descriptor: string, commands: Float64Array, length: number, strings: string[]): number
 

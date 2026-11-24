@@ -41,6 +41,46 @@ impl Reader<'_> {
         self.next().unwrap_or(0.0) as f32
     }
 
+    fn index(&mut self) -> Option<u32> {
+        self.next().filter(|n| *n >= 0.0).map(|n| n as u32)
+    }
+
+    fn id(&mut self) -> Option<u32> {
+        Some(self.u32()).filter(|id| *id != 0)
+    }
+
+    fn count(&mut self) -> usize {
+        (self.u32() as usize).min(self.commands.len().saturating_sub(self.at))
+    }
+
+    fn load(&mut self) -> Option<desc::LoadOp> {
+        match self.next()? as i32 {
+            0 => Some(desc::LoadOp::Clear),
+            1 => Some(desc::LoadOp::Load),
+            _ => None,
+        }
+    }
+
+    fn store(&mut self) -> Option<desc::StoreOp> {
+        match self.next()? as i32 {
+            0 => Some(desc::StoreOp::Store),
+            1 => Some(desc::StoreOp::Discard),
+            _ => None,
+        }
+    }
+
+    fn label(&mut self, strings: &[String]) -> Option<String> {
+        self.index().and_then(|i| strings.get(i as usize)).cloned()
+    }
+
+    fn timestamps(&mut self) -> Option<desc::TimestampWritesDesc> {
+        (self.u32() == 1).then(|| desc::TimestampWritesDesc {
+            query_set: self.u32(),
+            beginning_of_pass_write_index: self.index(),
+            end_of_pass_write_index: self.index(),
+        })
+    }
+
     fn size(&mut self) -> Option<wgpu::BufferSize> {
         self.next().filter(|n| *n >= 0.0).and_then(|n| wgpu::BufferSize::new(n as u64))
     }
@@ -48,6 +88,47 @@ impl Reader<'_> {
     fn done(&self) -> bool {
         self.at >= self.commands.len()
     }
+}
+
+pub fn render_desc(commands: &[f64], strings: &[String]) -> (desc::RenderPassDesc, usize) {
+    let mut r = Reader { commands, at: 0 };
+    let label = r.label(strings);
+    let colors = r.count();
+    let color_attachments = (0..colors)
+        .map(|_| {
+            (r.u32() == 1).then(|| desc::ColorAttachmentDesc {
+                view: r.u32(),
+                depth_slice: r.index(),
+                resolve_target: r.id(),
+                clear_value: [r.next().unwrap_or(0.0), r.next().unwrap_or(0.0), r.next().unwrap_or(0.0), r.next().unwrap_or(0.0)],
+                load_op: r.load().unwrap_or(desc::LoadOp::Load),
+                store_op: r.store().unwrap_or(desc::StoreOp::Store),
+            })
+        })
+        .collect();
+    let depth_stencil_attachment = (r.u32() == 1).then(|| desc::DepthStencilAttachmentDesc {
+        view: r.u32(),
+        depth_clear_value: r.next().filter(|n| !n.is_nan()).map(|n| n as f32),
+        depth_load_op: r.load(),
+        depth_store_op: r.store(),
+        depth_read_only: r.u32() == 1,
+        stencil_clear_value: r.u32(),
+        stencil_load_op: r.load(),
+        stencil_store_op: r.store(),
+        stencil_read_only: r.u32() == 1,
+    });
+    let occlusion_query_set = r.id();
+    let timestamp_writes = r.timestamps();
+    let at = r.at.min(commands.len());
+    (desc::RenderPassDesc { label, color_attachments, depth_stencil_attachment, occlusion_query_set, timestamp_writes }, at)
+}
+
+pub fn compute_desc(commands: &[f64], strings: &[String]) -> (desc::ComputePassDesc, usize) {
+    let mut r = Reader { commands, at: 0 };
+    let label = r.label(strings);
+    let timestamp_writes = r.timestamps();
+    let at = r.at.min(commands.len());
+    (desc::ComputePassDesc { label, timestamp_writes }, at)
 }
 
 trait Pass {
@@ -350,4 +431,73 @@ pub fn bundle(s: &State, gpu: &crate::gpu::Gpu, device: Id, d: &desc::RenderBund
         }
     }
     Some(encoder.finish(&wgpu::RenderBundleDescriptor { label: desc::label(&d.label) }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_render_pass_descriptor_comes_ahead_of_the_commands() {
+        let strings = vec!["sky".to_owned()];
+        let commands = [
+            0.0,
+            2.0,
+            1.0,
+            11.0,
+            -1.0,
+            0.0,
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            12.0,
+            f64::NAN,
+            1.0,
+            -1.0,
+            1.0,
+            3.0,
+            -1.0,
+            0.0,
+            0.0,
+            7.0,
+            1.0,
+            9.0,
+            0.0,
+            -1.0,
+            5.0,
+            3.0,
+            1.0,
+            0.0,
+            0.0,
+        ];
+        let (d, at) = render_desc(&commands, &strings);
+        assert_eq!(d.label.as_deref(), Some("sky"));
+        assert_eq!(d.color_attachments.len(), 2);
+        let color = d.color_attachments[0].as_ref().unwrap();
+        assert_eq!((color.view, color.depth_slice, color.resolve_target, color.clear_value), (11, None, None, [0.25, 0.5, 0.75, 1.0]));
+        assert!(color.load_op == desc::LoadOp::Clear && matches!(color.store_op, desc::StoreOp::Discard));
+        assert!(d.color_attachments[1].is_none());
+        let depth = d.depth_stencil_attachment.as_ref().unwrap();
+        assert_eq!((depth.view, depth.depth_clear_value, depth.depth_read_only, depth.stencil_clear_value), (12, None, true, 3));
+        assert!(depth.depth_load_op == Some(desc::LoadOp::Load) && depth.depth_store_op.is_none() && depth.stencil_load_op.is_none());
+        assert_eq!(d.occlusion_query_set, Some(7));
+        let t = d.timestamp_writes.as_ref().unwrap();
+        assert_eq!((t.query_set, t.beginning_of_pass_write_index, t.end_of_pass_write_index), (9, Some(0), None));
+        assert_eq!(&commands[at..], &[5.0, 3.0, 1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn a_short_descriptor_reads_as_defaults_and_does_not_run_past_the_end() {
+        let (d, at) = render_desc(&[-1.0, 1e9], &[]);
+        assert!(d.label.is_none() && d.color_attachments.is_empty() && d.depth_stencil_attachment.is_none());
+        assert_eq!(at, 2);
+        let (c, at) = compute_desc(&[-1.0, 0.0, 19.0, 1.0, 1.0, 1.0], &[]);
+        assert!(c.label.is_none() && c.timestamp_writes.is_none());
+        assert_eq!(at, 2);
+    }
 }

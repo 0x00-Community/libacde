@@ -35,6 +35,20 @@ const texelTexture = (d: Dict): Dict => ({ texture: idOf(d.texture), mipLevel: d
 const texelBuffer = (d: Dict): Dict => ({ buffer: idOf(d.buffer), offset: d.offset, bytesPerRow: d.bytesPerRow, rowsPerImage: d.rowsPerImage })
 const stage = (d: Dict): Dict => ({ module: idOf(d.module), entryPoint: d.entryPoint, constants: d.constants ?? {} })
 const viewOf = (v: unknown): number => (v instanceof GPUTexture ? idOf(v.createView()) : idOf(v))
+const LOAD = new Map([['clear', 0], ['load', 1]])
+const STORE = new Map([['store', 0], ['discard', 1]])
+
+function opOf(table: Map<string, number>, value: unknown, optional = false): number {
+  if (value === undefined && optional) return -1
+  const op = table.get(value as string)
+  if (op === undefined) throw new TypeError(`'${String(value)}' is not a valid ${table === LOAD ? 'GPULoadOp' : 'GPUStoreOp'}`)
+  return op
+}
+
+function timestampsOf(h: number[], t: Dict | undefined): void {
+  if (!t) return void h.push(0)
+  h.push(1, idOf(t.querySet), t.beginningOfPassWriteIndex ?? -1, t.endOfPassWriteIndex ?? -1)
+}
 
 class GPUSupportedFeatures {
   readonly #set: Set<string>
@@ -244,9 +258,9 @@ class GPUTexture extends Base {
     this.usage = d.usage
   }
 
-  createView(d: Dict = {}): GPUTextureView {
-    const json = JSON.stringify({ ...d, label: d.label, usage: d.usage || undefined })
-    return new GPUTextureView(this[DEVICE], guard(() => native.createView(this[DEVICE][ID], this[ID], json)), d.label)
+  createView(d?: Dict): GPUTextureView {
+    const json = d === undefined ? undefined : JSON.stringify({ ...d, label: d.label, usage: d.usage || undefined })
+    return new GPUTextureView(this[DEVICE], guard(() => native.createView(this[DEVICE][ID], this[ID], json)), d?.label)
   }
 
   destroy(): void {
@@ -306,21 +320,31 @@ tag(GPUQuerySet)
 
 class GPUCommandEncoder extends Base {
   beginRenderPass(d: Dict): GPURenderPassEncoder {
-    const json = JSON.stringify({
-      label: d.label,
-      colorAttachments: Array.from((d.colorAttachments ?? []) as Iterable<Dict | null>, (a) =>
-        a ? { view: viewOf(a.view), depthSlice: a.depthSlice, resolveTarget: a.resolveTarget ? viewOf(a.resolveTarget) : undefined, clearValue: a.clearValue === undefined ? undefined : colorOf(a.clearValue), loadOp: a.loadOp, storeOp: a.storeOp } : null,
-      ),
-      depthStencilAttachment: d.depthStencilAttachment ? { ...d.depthStencilAttachment, view: viewOf(d.depthStencilAttachment.view) } : undefined,
-      occlusionQuerySet: d.occlusionQuerySet ? idOf(d.occlusionQuerySet) : undefined,
-      timestampWrites: d.timestampWrites ? { ...d.timestampWrites, querySet: idOf(d.timestampWrites.querySet) } : undefined,
-    })
-    return new GPURenderPassEncoder(native, this[DEVICE][ID], this[ID], json, d.label ?? '')
+    const h: number[] = []
+    const colors = Array.from((d.colorAttachments ?? []) as Iterable<Dict | null>)
+    h.push(colors.length)
+    for (const a of colors) {
+      if (!a) {
+        h.push(0)
+        continue
+      }
+      const [r, g, b, alpha] = a.clearValue === undefined ? [0, 0, 0, 0] : colorOf(a.clearValue)
+      h.push(1, viewOf(a.view), a.depthSlice ?? -1, a.resolveTarget ? viewOf(a.resolveTarget) : 0, r, g, b, alpha, opOf(LOAD, a.loadOp), opOf(STORE, a.storeOp))
+    }
+    const ds = d.depthStencilAttachment as Dict | undefined
+    if (ds) {
+      h.push(1, viewOf(ds.view), ds.depthClearValue ?? NaN, opOf(LOAD, ds.depthLoadOp, true), opOf(STORE, ds.depthStoreOp, true), ds.depthReadOnly ? 1 : 0)
+      h.push(ds.stencilClearValue ?? 0, opOf(LOAD, ds.stencilLoadOp, true), opOf(STORE, ds.stencilStoreOp, true), ds.stencilReadOnly ? 1 : 0)
+    } else h.push(0)
+    h.push(d.occlusionQuerySet ? idOf(d.occlusionQuerySet) : 0)
+    timestampsOf(h, d.timestampWrites)
+    return new GPURenderPassEncoder(native, this[DEVICE][ID], this[ID], h, d.label ?? '')
   }
 
   beginComputePass(d: Dict = {}): GPUComputePassEncoder {
-    const json = JSON.stringify({ label: d.label, timestampWrites: d.timestampWrites ? { ...d.timestampWrites, querySet: idOf(d.timestampWrites.querySet) } : undefined })
-    return new GPUComputePassEncoder(native, this[DEVICE][ID], this[ID], json, d.label ?? '')
+    const h: number[] = []
+    timestampsOf(h, d.timestampWrites)
+    return new GPUComputePassEncoder(native, this[DEVICE][ID], this[ID], h, d.label ?? '')
   }
 
   copyBufferToBuffer(source: unknown, a: number, b?: unknown, c?: number, d?: number): void {
