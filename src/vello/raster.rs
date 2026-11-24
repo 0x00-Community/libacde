@@ -282,6 +282,7 @@ impl Raster {
         let bound = (bound.0.min(most), bound.1.min(most));
         self.spent.bound = bound;
         let mut steps = Vec::new();
+        let timed = log::log_enabled!(target: "perf::raster", log::Level::Debug);
         for pass in passes {
             let canvas = self.canvases.get(&pass.plane).and_then(|c| c.get(pass.next)?.clone()).ok_or("the canvas is not imported yet")?.1;
             let full = Px::sized(pass.size);
@@ -308,9 +309,9 @@ impl Raster {
                         self.hole_steps(&mut steps, &mut plan, &canvas, part, (drawn, clip, key), blit, None);
                         continue;
                     }
-                    let built = Instant::now();
+                    let built = timed.then(Instant::now);
                     let scene = part.content.scene_for(drawn);
-                    self.spent.scenes += built.elapsed();
+                    self.spent.scenes += built.map_or(Duration::ZERO, |b| b.elapsed());
                     if scene.commands.is_empty() {
                         continue;
                     }
