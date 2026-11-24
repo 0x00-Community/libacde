@@ -7,7 +7,7 @@
 - `Document::new(width, height, scale, &Options {base_url, resources: [Resource {prefix, dirs}], default_lang, verify_paint, svg_text_path,
   dark, name})`: 尺寸是物理像素. 同源资源按最长前缀在 dirs 里找 (`render/net.rs` `LocalNet::path`): 路径先百分号解码, 只许普通的段 (挡 `..`), 也不给以 `.` 开头的段 (`.env`、`.git` 这类); 页面 fetch / XHR / 模块走的 `Assets::file` 用同一个 `resource_file`, 再把文件和借出的目录都解开符号链接 (`canonicalize`), 解开后的文件不在那个目录里就当没有 (2026-11-22: 借出的文件夹里指向外面的链接, 如 `~/Pictures/x` → `~/.ssh/id`, 原来照读); 系统图标走内置前缀 `/acde-icons/`: 地址是 `/acde-icons` 加图标的绝对路径 (acde:icons 的 `icons.lookup` 返回的就是它), 只认解开符号链接后落在图标目录里的文件 (`$XDG_DATA_HOME` 与 `$XDG_DATA_DIRS` 下的 `icons`、`pixmaps`、`swcatalog/icons` (AppStream 的应用图标, 商店用), 加 `~/.icons`; 路径先按百分号解码再核对; 清单只在 `net.rs` 的 `icon_dirs`, acdes 应用沙箱把这几处只读绑进去); 前缀不叫 `/icons/`, 免得和应用自己的资源前缀撞名. 系统声音同法走 `/acde-sounds/` (给 acde:sounds 的 `sounds.lookup` 返回的路径用): 只认 `$XDG_DATA_HOME` 与 `$XDG_DATA_DIRS` 下的 `sounds`; 两个前缀共用 `net.rs` 的 `system_file` 一处核对 (同一套数据目录、同样先解码再解开符号链接), 页面的 `<img>`、CSS 经渲染的取资源走它, fetch、XHR 和媒体 (`<audio>` 等, 经 `Assets::file`) 也走它. `file:` 只在开发模式 (`dev_mode`) 读借出的目录, 平时一律当没有, 和浏览器一样 (用户定: 原来任何页面写 `<img src="file:///…">`、CSS `url(file:…)` 都能读到本机任意文件; 中间一版放行过图标目录); 不联网, 读不到回空. `Document` 发句柄:
   `dom()` (JS 线程)、`handle()` (出帧方).
-- 线程: 文档由 JS 线程和 `acde-render` 线程共用 (一把锁).
+- 线程: 文档由 JS 线程和 `acde-render` 线程共用 (一把锁). 出帧时损伤、切段和面板 (`Finish::run`) 在这把锁外做, 用的绘制缓存和损伤状态在另一把锁 (`Framer`) 里; JS 线程上要清它们的调用 (钉面板、换玻璃偏好、`recover`) 等这一段做完.
 - DOM: `Dom` 实现 acde-dom 的 `DomNative` (契约 `js/dom/src/native.ts`, 同名 snake_case). 节点 id 是 u32 不复用, `<html>` 是 0;
   查询是 CSS 像素; 错误说明以 DOMException 名字开头. 改了文档还没 `Dom::commit` 时 render 不出帧, 期间的指针和滚动在 commit 时按顺序放回.
   连在文档上的节点一直活着, 断开的子树有 JS 包装 (pin) 才活; 包装对象连着时强引用, 断开变 WeakRef, 回收时 unpin (acde-dom `realm.ts`).

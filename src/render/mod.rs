@@ -581,10 +581,13 @@ fn present_frame(shared: &Shared, engine: &mut parking_lot::MutexGuard<'_, Engin
     let locked = crate::log::since_ms(paint_started);
     again |= yield_lock(shared, engine);
     let finish_started = std::time::Instant::now();
-    let Ok(mut frame) = catch_unwind(AssertUnwindSafe(|| engine.finish_frame(painted))) else {
+    let job = engine.finish_job(painted);
+    let Ok(finished) = catch_unwind(AssertUnwindSafe(|| parking_lot::MutexGuard::unlocked(engine, || job.run()))) else {
         failed(engine);
         return false;
     };
+    let mut frame = engine.finished(finished);
+    again |= shared.drain(engine);
     let finished = crate::log::since_ms(finish_started);
     engine.frame_timed(locked, resolved + locked + finished);
     log::debug!(target: "perf::frame", "{} commit={} resolve={resolved:.3} paint={locked:.3} finish={finished:.3} ms={:.3}", engine.name, frame.commit, resolved + locked + finished);

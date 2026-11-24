@@ -40,12 +40,9 @@ pub(crate) struct Engine {
     pub(crate) stale: bool,
     pub(crate) dirty: bool,
     stats: Stats,
-    damage: Damage,
+    framer: Arc<parking_lot::Mutex<Framer>>,
     glass: acde_scene::glass::Preference,
-    paint_cache: PaintCache,
     panels: Vec<(NodeId, u32, kurbo::Rect)>,
-    panel_damage: std::collections::HashMap<u32, Damage>,
-    glass_motion: std::collections::HashMap<Option<u32>, (acde_scene::glass::Appearance, Option<kurbo::Rect>)>,
     glass_moving: bool,
     verify: bool,
     from_cache: bool,
@@ -61,10 +58,27 @@ pub(crate) struct Engine {
     pub(crate) input: Option<crate::log::Trace>,
     pub(crate) held: Vec<crate::render::Cmd>,
     pub(crate) cursor: &'static str,
-    backdrops: Vec<report::BackdropFact>,
 }
 
 unsafe impl Send for Engine {}
+
+#[derive(Default)]
+pub(crate) struct Framer {
+    damage: Damage,
+    paint_cache: PaintCache,
+    panel_damage: std::collections::HashMap<u32, Damage>,
+    glass_motion: std::collections::HashMap<Option<u32>, (acde_scene::glass::Appearance, Option<kurbo::Rect>)>,
+    backdrops: Vec<report::BackdropFact>,
+}
+
+unsafe impl Send for Framer {}
+
+impl Framer {
+    fn reset(&mut self) {
+        self.paint_cache.clear();
+        self.damage = Damage::default();
+    }
+}
 
 impl Engine {
     pub(crate) fn new(width: u32, height: u32, scale: f32, options: &Options, wake: Weak<Sender<()>>) -> Result<Self> {
@@ -93,12 +107,9 @@ impl Engine {
             stale: true,
             dirty: true,
             stats: Stats::default(),
-            damage: Damage::default(),
+            framer: Arc::default(),
             glass: acde_scene::glass::Preference { dark: options.dark, ..acde_scene::glass::preference() },
-            paint_cache: PaintCache::default(),
             panels: Vec::new(),
-            panel_damage: Default::default(),
-            glass_motion: Default::default(),
             glass_moving: false,
             verify: options.verify_paint.unwrap_or_else(|| std::env::var("ACDE_PAINT_VERIFY").is_ok_and(|v| v == "1")),
             from_cache: false,
@@ -114,7 +125,6 @@ impl Engine {
             input: None,
             held: Vec::new(),
             cursor: "default",
-            backdrops: Vec::new(),
         };
         let document = this.doc.root_node().id;
         {
@@ -132,13 +142,13 @@ impl Engine {
         match rect {
             Some([x, y, w, h]) => self.panels.push((node, id, kurbo::Rect::new(x * scale, y * scale, (x + w) * scale, (y + h) * scale))),
             None => {
-                self.panel_damage.remove(&id);
-                self.glass_motion.remove(&Some(id));
+                let mut framer = self.framer.lock();
+                framer.panel_damage.remove(&id);
+                framer.glass_motion.remove(&Some(id));
             }
         }
         if had != rect.is_some() {
-            self.paint_cache.clear();
-            self.damage = Damage::default();
+            self.framer.lock().reset();
         }
     }
 
@@ -218,8 +228,7 @@ impl Engine {
             return;
         }
         self.glass = preference;
-        self.paint_cache.clear();
-        self.damage = Damage::default();
+        self.framer.lock().reset();
         self.touch();
     }
 
@@ -308,7 +317,9 @@ impl Engine {
         let mut loose = crate::gpu::Scene::new();
         let mut pieces = Vec::new();
         let pinned: std::collections::HashSet<NodeId> = self.panels.iter().map(|p| p.0).collect();
-        let painted = blitz_paint::paint_scene_cached(&mut loose, &mut pieces, &mut self.doc, (scale, width, height), &mut self.paint_cache, true, &pinned);
+        let framer = self.framer.clone();
+        let mut framer = framer.lock();
+        let painted = blitz_paint::paint_scene_cached(&mut loose, &mut pieces, &mut self.doc, (scale, width, height), &mut framer.paint_cache, true, &pinned);
         let mut commands = Commands::new(loose.commands, pieces);
         let mut picker = self.overlay(scale);
         if let Some(picker) = &mut picker {
@@ -330,7 +341,7 @@ impl Engine {
                 (id, rect, Commands::new(Vec::new(), pieces.collect()))
             })
             .collect();
-        let cache = self.paint_cache.stats;
+        let cache = framer.paint_cache.stats;
         self.stats.fragments_recorded = cache.recorded;
         self.stats.fragments_reused = cache.reused;
         self.stats.paint_ms = crate::log::since_ms(start);
@@ -342,7 +353,7 @@ impl Engine {
                 reference.commands.extend(picker);
             }
             let scene = commands.to_scene(reference.tolerance);
-            if let Some(m) = Mismatch::find(&scene, &reference, &self.paint_cache) {
+            if let Some(m) = Mismatch::find(&scene, &reference, &framer.paint_cache) {
                 self.stats.paint_mismatches += 1;
                 let node = m.node.map(|n| (n, self.ids.handle(n)));
                 log::warn!(
@@ -367,8 +378,7 @@ impl Engine {
         if catch_unwind(AssertUnwindSafe(|| self.doc.repair_after_panic())).is_err() {
             log::error!("panicked while repairing the document after a panic");
         }
-        self.paint_cache.clear();
-        self.damage = Damage::default();
+        self.framer.lock().reset();
         self.from_cache = false;
         self.stale = true;
         self.dirty = true;
@@ -379,7 +389,7 @@ impl Engine {
     }
 
     pub(crate) fn invalidate(&mut self) {
-        self.damage = Damage::default();
+        self.framer.lock().damage = Damage::default();
         self.touch();
     }
 
@@ -433,89 +443,29 @@ impl Engine {
         self.cursor = crate::render::cursor::of(&self.doc);
     }
 
-    fn plane(&mut self, commands: Commands, scale: f64, viewport: kurbo::Rect) -> Plane {
-        let start = Instant::now();
-        let (rects, by_fragment, missed) =
-            self.damage.update(&commands, crate::gpu::Scene::TOLERANCE, viewport, self.from_cache.then_some(&self.paint_cache), self.verify);
-        self.stats.damage_mismatches += u32::from(missed);
-        self.stats.damage_by_fragment += u32::from(by_fragment);
-        self.stats.damage_ms = crate::log::since_ms(start);
-        let start = Instant::now();
-        let plane = self.damage.plane(commands, rects, scale, viewport);
-        self.stats.layers_ms = crate::log::since_ms(start);
-        plane
-    }
-
-    fn animate_glass(&mut self, key: Option<u32>, plane: &mut Plane, now: f64) -> bool {
-        let (appearance, last) = self.glass_motion.entry(key).or_default();
-        let area = crate::render::layers::animate_glass(&mut plane.layers, appearance, now);
-        let drawn = match (area, std::mem::replace(last, area)) {
-            (Some(a), Some(b)) => Some(a.union(b)),
-            (a, b) => a.or(b),
-        };
-        if let Some(drawn) = drawn {
-            plane.damaged(drawn.into());
-        }
-        area.is_some()
-    }
-
-    fn panel(&mut self, (id, rect, commands): (u32, kurbo::Rect, Commands), scale: f64) -> Panel {
-        let size = (rect.width().round().max(1.0) as u32, rect.height().round().max(1.0) as u32);
-        let viewport = kurbo::Rect::new(0.0, 0.0, size.0.into(), size.1.into());
-        let damage = self.panel_damage.entry(id).or_default();
-        let started = std::time::Instant::now();
-        let (rects, _, _) = damage.update(&commands, crate::gpu::Scene::TOLERANCE, viewport, None, true);
-        log::debug!(target: "perf::frame", "panel {id} commands={} damage ms={:.3}", commands.len(), crate::log::since_ms(started));
-        let extent = damage
-            .kinds()
-            .iter()
-            .zip(damage.draw())
-            .filter(|(k, r)| **k == crate::render::damage::Kind::Draw && r.area() > 0.0)
-            .map(|(_, r)| *r)
-            .reduce(|a, b| a.union(b))
-            .map(Rect::from);
-        let reach = extent.map(|e| Rect { x: (rect.x0 + e.x) / scale, y: (rect.y0 + e.y) / scale, width: e.width / scale, height: e.height / scale });
-        Panel { id, size, plane: damage.plane(commands, rects, scale, viewport), extent, reach }
-    }
-
     pub(crate) fn paint_frame(&mut self) -> Painted {
         self.resolved();
         let (commands, panels) = self.paint();
         let scale = self.doc.viewport().scale_f64();
-        Painted { commands, panels, scale, size: self.doc.viewport().window_size, animating: self.doc.is_animating(), commit: self.committed }
+        let sequence = self.framer.lock().paint_cache.sequence();
+        Painted { commands, panels, scale, size: self.doc.viewport().window_size, animating: self.doc.is_animating(), commit: self.committed, sequence }
     }
 
-    pub(crate) fn finish_frame(&mut self, painted: Painted) -> Frame {
-        let Painted { commands, panels, scale, size: (width, height), animating, commit } = painted;
-        let viewport = kurbo::Rect::new(0.0, 0.0, width.into(), height.into());
-        let now = self.clock.now();
-        let mut plane = self.plane(commands, scale, viewport);
-        let mut moving = self.animate_glass(None, &mut plane, now);
-        let panels = panels
-            .into_iter()
-            .map(|p| {
-                let mut panel = self.panel(p, scale);
-                moving |= self.animate_glass(Some(panel.id), &mut panel.plane, now);
-                panel
-            })
-            .collect();
-        self.glass_moving = moving;
-        let framed = crate::log::now_ms();
-        let frame = Frame {
-            plane,
-            panels,
-            size: (width, height),
-            scale,
-            animating: animating || moving,
-            commit,
-            trace: self.trace.take().map(|t| crate::log::Trace { framed, ..t }),
-        };
-        self.backdrops = report::BackdropFact::of_frame(&frame);
-        frame
+    pub(crate) fn finish_job(&mut self, painted: Painted) -> Finish {
+        Finish { painted, now: self.clock.now(), from_cache: self.from_cache, verify: self.verify, trace: self.trace.take(), framer: self.framer.clone() }
+    }
+
+    pub(crate) fn finished(&mut self, finished: Finished) -> Frame {
+        self.glass_moving = finished.moving;
+        self.stats.damage_mismatches += u32::from(finished.missed);
+        self.stats.damage_by_fragment += u32::from(finished.by_fragment);
+        self.stats.damage_ms = finished.damage_ms;
+        self.stats.layers_ms = finished.layers_ms;
+        finished.frame
     }
 
     pub(crate) fn render_report(&self) -> String {
-        report::report(&self.backdrops)
+        report::report(&self.framer.lock().backdrops)
     }
 
     pub(crate) fn tree(&mut self) -> Tree<'_> {
@@ -596,6 +546,100 @@ pub(crate) struct Painted {
     size: (u32, u32),
     animating: bool,
     commit: u64,
+    sequence: u64,
+}
+
+pub(crate) struct Finish {
+    painted: Painted,
+    now: f64,
+    from_cache: bool,
+    verify: bool,
+    trace: Option<crate::log::Trace>,
+    framer: Arc<parking_lot::Mutex<Framer>>,
+}
+
+pub(crate) struct Finished {
+    frame: Frame,
+    moving: bool,
+    missed: bool,
+    by_fragment: bool,
+    damage_ms: f64,
+    layers_ms: f64,
+}
+
+impl Finish {
+    pub(crate) fn run(self) -> Finished {
+        let Painted { commands, panels, scale, size: (width, height), animating, commit, sequence } = self.painted;
+        let viewport = kurbo::Rect::new(0.0, 0.0, width.into(), height.into());
+        let framer = self.framer.clone();
+        let mut framer = framer.lock();
+        let framer = &mut *framer;
+        let start = Instant::now();
+        let cache = Some(&framer.paint_cache).filter(|c| self.from_cache && c.sequence() == sequence);
+        let (rects, by_fragment, missed) = framer.damage.update(&commands, crate::gpu::Scene::TOLERANCE, viewport, cache, self.verify);
+        let damage_ms = crate::log::since_ms(start);
+        let start = Instant::now();
+        let mut plane = framer.damage.plane(commands, rects, scale, viewport);
+        let layers_ms = crate::log::since_ms(start);
+        let mut moving = Self::animate_glass(&mut framer.glass_motion, None, &mut plane, self.now);
+        let panels = panels
+            .into_iter()
+            .map(|p| {
+                let mut panel = Self::panel(&mut framer.panel_damage, p, scale);
+                moving |= Self::animate_glass(&mut framer.glass_motion, Some(panel.id), &mut panel.plane, self.now);
+                panel
+            })
+            .collect();
+        let framed = crate::log::now_ms();
+        let frame = Frame {
+            plane,
+            panels,
+            size: (width, height),
+            scale,
+            animating: animating || moving,
+            commit,
+            trace: self.trace.map(|t| crate::log::Trace { framed, ..t }),
+        };
+        framer.backdrops = report::BackdropFact::of_frame(&frame);
+        Finished { frame, moving, missed, by_fragment, damage_ms, layers_ms }
+    }
+
+    fn animate_glass(
+        motion: &mut std::collections::HashMap<Option<u32>, (acde_scene::glass::Appearance, Option<kurbo::Rect>)>,
+        key: Option<u32>,
+        plane: &mut Plane,
+        now: f64,
+    ) -> bool {
+        let (appearance, last) = motion.entry(key).or_default();
+        let area = crate::render::layers::animate_glass(&mut plane.layers, appearance, now);
+        let drawn = match (area, std::mem::replace(last, area)) {
+            (Some(a), Some(b)) => Some(a.union(b)),
+            (a, b) => a.or(b),
+        };
+        if let Some(drawn) = drawn {
+            plane.damaged(drawn.into());
+        }
+        area.is_some()
+    }
+
+    fn panel(panels: &mut std::collections::HashMap<u32, Damage>, (id, rect, commands): (u32, kurbo::Rect, Commands), scale: f64) -> Panel {
+        let size = (rect.width().round().max(1.0) as u32, rect.height().round().max(1.0) as u32);
+        let viewport = kurbo::Rect::new(0.0, 0.0, size.0.into(), size.1.into());
+        let damage = panels.entry(id).or_default();
+        let started = std::time::Instant::now();
+        let (rects, _, _) = damage.update(&commands, crate::gpu::Scene::TOLERANCE, viewport, None, true);
+        log::debug!(target: "perf::frame", "panel {id} commands={} damage ms={:.3}", commands.len(), crate::log::since_ms(started));
+        let extent = damage
+            .kinds()
+            .iter()
+            .zip(damage.draw())
+            .filter(|(k, r)| **k == crate::render::damage::Kind::Draw && r.area() > 0.0)
+            .map(|(_, r)| *r)
+            .reduce(|a, b| a.union(b))
+            .map(Rect::from);
+        let reach = extent.map(|e| Rect { x: (rect.x0 + e.x) / scale, y: (rect.y0 + e.y) / scale, width: e.width / scale, height: e.height / scale });
+        Panel { id, size, plane: damage.plane(commands, rects, scale, viewport), extent, reach }
+    }
 }
 
 struct Clock {
