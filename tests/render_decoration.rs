@@ -24,6 +24,13 @@ fn windows(title: &str, width: f64, scale: f64) -> Bar {
     Bar { style: FrameStyle::Windows, ..bar(title, width, scale) }
 }
 
+fn hit(bar: &Bar, x: f64, y: f64) -> Option<FrameButton> {
+    thread_local! {
+        static PAINTER: std::cell::RefCell<Decoration> = std::cell::RefCell::new(Decoration::new());
+    }
+    PAINTER.with(|painter| painter.borrow().button_at(bar, x, y))
+}
+
 fn pixels(bar: &Bar) -> (Vec<u8>, u32) {
     let (w, h) = bar.pixels();
     (common::rasterize(Decoration::new().scene(bar), (w, h)), w)
@@ -87,14 +94,14 @@ fn a_long_title_ends_in_an_ellipsis_within_the_buttons_margins() {
 #[test]
 fn buttons_are_hit_in_their_slots_only() {
     let b = bar("x", 300.0, 2.0);
-    assert_eq!(b.button_at(18.0, 16.0), Some(FrameButton::Close));
-    assert_eq!(b.button_at(9.0, 3.0), Some(FrameButton::Close));
-    assert_eq!(b.button_at(38.0, 16.0), Some(FrameButton::Minimize));
-    assert_eq!(b.button_at(58.0, 30.0), Some(FrameButton::Fullscreen));
-    assert_eq!(b.button_at(70.0, 16.0), None);
-    assert_eq!(b.button_at(150.0, 16.0), None);
-    assert_eq!(b.button_at(18.0, 32.0), None);
-    assert_eq!(b.button_at(18.0, -1.0), None);
+    assert_eq!(hit(&b, 18.0, 16.0), Some(FrameButton::Close));
+    assert_eq!(hit(&b, 9.0, 3.0), Some(FrameButton::Close));
+    assert_eq!(hit(&b, 38.0, 16.0), Some(FrameButton::Minimize));
+    assert_eq!(hit(&b, 58.0, 30.0), Some(FrameButton::Fullscreen));
+    assert_eq!(hit(&b, 70.0, 16.0), None);
+    assert_eq!(hit(&b, 150.0, 16.0), None);
+    assert_eq!(hit(&b, 18.0, 32.0), None);
+    assert_eq!(hit(&b, 18.0, -1.0), None);
 }
 
 #[test]
@@ -117,14 +124,14 @@ fn a_full_desktop_draws_the_session_style_on_every_platform() {
 #[test]
 fn windows_buttons_sit_on_the_right_as_minimize_maximize_close() {
     let b = windows("x", 400.0, 2.0);
-    assert_eq!(b.button_at(400.0 - 138.0, 16.0), Some(FrameButton::Minimize));
-    assert_eq!(b.button_at(400.0 - 93.0, 1.0), Some(FrameButton::Minimize));
-    assert_eq!(b.button_at(400.0 - 92.0, 16.0), Some(FrameButton::Fullscreen));
-    assert_eq!(b.button_at(400.0 - 46.0, 31.0), Some(FrameButton::Close));
-    assert_eq!(b.button_at(399.0, 16.0), Some(FrameButton::Close));
-    assert_eq!(b.button_at(400.0 - 139.0, 16.0), None);
-    assert_eq!(b.button_at(18.0, 16.0), None);
-    assert_eq!(b.button_at(399.0, 32.0), None);
+    assert_eq!(hit(&b, 400.0 - 138.0, 16.0), Some(FrameButton::Minimize));
+    assert_eq!(hit(&b, 400.0 - 93.0, 1.0), Some(FrameButton::Minimize));
+    assert_eq!(hit(&b, 400.0 - 92.0, 16.0), Some(FrameButton::Fullscreen));
+    assert_eq!(hit(&b, 400.0 - 46.0, 31.0), Some(FrameButton::Close));
+    assert_eq!(hit(&b, 399.0, 16.0), Some(FrameButton::Close));
+    assert_eq!(hit(&b, 400.0 - 139.0, 16.0), None);
+    assert_eq!(hit(&b, 18.0, 16.0), None);
+    assert_eq!(hit(&b, 399.0, 32.0), None);
 }
 
 #[test]
@@ -188,16 +195,16 @@ fn a_theme_colours_the_bar_for_active_and_inactive_windows() {
 fn the_theme_moves_the_buttons_and_their_hits() {
     let right = FrameTheme { style: Some(FrameStyle::Mac), side: Some(ButtonSide::Right), ..FrameTheme::default() };
     let b = themed(FrameStyle::Windows, right, true);
-    assert_eq!(b.button_at(300.0 - 76.0 + 18.0, 16.0), Some(FrameButton::Close));
-    assert_eq!(b.button_at(300.0 - 76.0 + 58.0, 16.0), Some(FrameButton::Fullscreen));
-    assert_eq!(b.button_at(18.0, 16.0), None);
+    assert_eq!(hit(&b, 300.0 - 76.0 + 18.0, 16.0), Some(FrameButton::Close));
+    assert_eq!(hit(&b, 300.0 - 76.0 + 58.0, 16.0), Some(FrameButton::Fullscreen));
+    assert_eq!(hit(&b, 18.0, 16.0), None);
     assert_eq!(rgb(&pixels(&b), 300.0 - 76.0 + 18.0, 16.0), [0xff, 0x5f, 0x57], "the close dot is drawn where it is hit");
     assert_eq!(right.grab_hints(640.0, 480.0, 32.0)[0], ([0.0, 0.0, 640.0 - 76.0, 32.0], 0));
     let left = FrameTheme { style: Some(FrameStyle::Windows), side: Some(ButtonSide::Left), ..FrameTheme::default() };
     let b = themed(FrameStyle::Mac, left, true);
-    assert_eq!(b.button_at(10.0, 16.0), Some(FrameButton::Minimize));
-    assert_eq!(b.button_at(100.0, 16.0), Some(FrameButton::Close));
-    assert_eq!(b.button_at(299.0, 16.0), None);
+    assert_eq!(hit(&b, 10.0, 16.0), Some(FrameButton::Minimize));
+    assert_eq!(hit(&b, 100.0, 16.0), Some(FrameButton::Close));
+    assert_eq!(hit(&b, 299.0, 16.0), None);
     assert_eq!(left.grab_hints(640.0, 480.0, 32.0)[0], ([138.0, 0.0, 640.0 - 138.0, 32.0], 0));
 }
 
@@ -214,12 +221,12 @@ fn the_theme_aligns_the_title() {
 #[test]
 fn a_disabled_minimize_button_is_dimmed_and_not_hit() {
     let off = Bar { minimize: false, ..bar("", 300.0, 1.0) };
-    assert_eq!(off.button_at(38.0, 16.0), None);
-    assert_eq!(off.button_at(18.0, 16.0), Some(FrameButton::Close));
+    assert_eq!(hit(&off, 38.0, 16.0), None);
+    assert_eq!(hit(&off, 18.0, 16.0), Some(FrameButton::Close));
     assert_ne!(rgb(&pixels(&off), 38.0, 16.0), [0xfe, 0xbc, 0x2e], "not the live yellow");
     let glyphs = Bar { minimize: false, ..windows("", 400.0, 1.0) };
-    assert_eq!(glyphs.button_at(400.0 - 138.0, 16.0), None);
-    assert_eq!(glyphs.button_at(399.0, 16.0), Some(FrameButton::Close));
+    assert_eq!(hit(&glyphs, 400.0 - 138.0, 16.0), None);
+    assert_eq!(hit(&glyphs, 399.0, 16.0), Some(FrameButton::Close));
 }
 
 #[test]
@@ -305,14 +312,14 @@ fn shortcuts_are_written_the_way_the_frame_style_writes_them() {
 #[test]
 fn the_dots_say_where_the_mac_buttons_are_and_their_colour() {
     let b = bar("", 300.0, 1.0);
-    let dots = b.dots();
+    let dots = Decoration::new().dots(&b);
     let centres: Vec<(f64, f64)> = dots.iter().map(|d| d.centre).collect();
     assert_eq!(centres, [(18.0, 16.0), (38.0, 16.0), (58.0, 16.0)], "inset + dot / 2 + i (dot + gap), at half height");
     assert_eq!(dots.iter().map(|d| d.button).collect::<Vec<_>>(), FrameButton::ALL);
     assert_eq!((dots[0].radius, dots[0].color), (6.0, [0xff, 0x5f, 0x57, 0xff]));
-    let off = Bar { minimize: false, ..b.clone() }.dots();
+    let off = Decoration::new().dots(&Bar { minimize: false, ..b.clone() });
     assert!(off[1].color[3] < 0x40, "a minimize that cannot be used is faint: {:?}", off[1].color);
-    assert!(windows("", 300.0, 1.0).dots().is_empty(), "Windows style buttons are glyphs");
+    assert!(Decoration::new().dots(&windows("", 300.0, 1.0)).is_empty(), "Windows style buttons are glyphs");
 }
 
 #[test]

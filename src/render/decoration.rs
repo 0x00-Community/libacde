@@ -93,10 +93,10 @@ impl FrameStyle {
         }
     }
 
-    pub fn reserved(self) -> f64 {
+    pub fn reserved(self, m: &FrameMetrics) -> f64 {
         match self {
-            FrameStyle::Mac => FrameMetrics::current().buttons(),
-            FrameStyle::Windows => 3.0 * FrameMetrics::current().caption,
+            FrameStyle::Mac => m.buttons(),
+            FrameStyle::Windows => 3.0 * m.caption,
         }
     }
 
@@ -185,8 +185,12 @@ impl FrameTheme {
     }
 
     pub fn grab_hints(&self, w: f64, h: f64, top: f64) -> [([f64; 4], u32); 9] {
+        self.grab_hints_by(&FrameMetrics::current(), w, h, top)
+    }
+
+    pub fn grab_hints_by(&self, m: &FrameMetrics, w: f64, h: f64, top: f64) -> [([f64; 4], u32); 9] {
         let (e, c) = (Bar::EDGE, Bar::CORNER);
-        let reserved = self.style().reserved();
+        let reserved = self.style().reserved(m);
         let bar = match self.side() {
             ButtonSide::Left => [reserved, 0.0, w - reserved, top],
             ButtonSide::Right => [0.0, 0.0, w - reserved, top],
@@ -244,16 +248,15 @@ impl FrameButton {
         m.inset + m.dot / 2.0 + self.index() as f64 * (m.dot + m.gap)
     }
 
-    fn slot(self, style: FrameStyle, side: ButtonSide, width: f64) -> (f64, f64) {
+    fn slot(self, style: FrameStyle, side: ButtonSide, width: f64, m: &FrameMetrics) -> (f64, f64) {
         let start = match side {
             ButtonSide::Left => 0.0,
-            ButtonSide::Right => width - style.reserved(),
+            ButtonSide::Right => width - style.reserved(m),
         };
-        let m = FrameMetrics::current();
         match style {
             FrameStyle::Mac => {
                 let reach = (m.dot + m.gap) / 2.0;
-                (start + self.centre(&m) - reach, start + self.centre(&m) + reach)
+                (start + self.centre(m) - reach, start + self.centre(m) + reach)
             }
             FrameStyle::Windows => {
                 let x = start + self.caption() as f64 * m.caption;
@@ -320,10 +323,6 @@ impl Bar {
     const EDGE: f64 = 4.0;
     const CORNER: f64 = 10.0;
 
-    pub fn grab_hints(w: f64, h: f64, top: f64) -> [([f64; 4], u32); 9] {
-        FrameStyle::current().grab_hints(w, h, top)
-    }
-
     fn style(&self) -> FrameStyle {
         self.theme.style.unwrap_or(self.style)
     }
@@ -340,10 +339,10 @@ impl Bar {
         ((self.width * self.scale).round().max(1.0) as u32, (self.height * self.scale).round().max(1.0) as u32)
     }
 
-    pub fn menus_start(&self) -> f64 {
+    fn menus_start(&self, m: &FrameMetrics) -> f64 {
         match self.side() {
-            ButtonSide::Left => self.style().reserved() + Decoration::MENU_LEAD,
-            ButtonSide::Right => FrameMetrics::current().inset - Decoration::MENU_PAD,
+            ButtonSide::Left => self.style().reserved(m) + Decoration::MENU_LEAD,
+            ButtonSide::Right => m.inset - Decoration::MENU_PAD,
         }
     }
 
@@ -387,28 +386,27 @@ impl Bar {
         }
     }
 
-    pub fn dots(&self) -> Vec<Dot> {
+    fn dots(&self, m: &FrameMetrics) -> Vec<Dot> {
         if self.style() != FrameStyle::Mac {
             return Vec::new();
         }
         let colors = self.theme.colors(self.active, self.dark_page);
         let off = colors.title.map_or([0; 4], |[r, g, b, a]| [r, g, b, (f32::from(a) * Decoration::OFF_ALPHA).round() as u8]);
-        let radius = FrameMetrics::current().dot / 2.0;
         let dot = |button: FrameButton| {
-            let (from, to) = button.slot(FrameStyle::Mac, self.side(), self.width);
+            let (from, to) = button.slot(FrameStyle::Mac, self.side(), self.width, m);
             let lit = self.minimize || button != FrameButton::Minimize;
             let color = if lit { colors.buttons.unwrap_or_else(|| button.rgba()) } else { off };
-            Dot { button, centre: ((from + to) / 2.0, self.height / 2.0), radius, color }
+            Dot { button, centre: ((from + to) / 2.0, self.height / 2.0), radius: m.dot / 2.0, color }
         };
         FrameButton::ALL.into_iter().map(dot).collect()
     }
 
-    pub fn button_at(&self, x: f64, y: f64) -> Option<FrameButton> {
+    fn button_at(&self, m: &FrameMetrics, x: f64, y: f64) -> Option<FrameButton> {
         if y < 0.0 || y >= self.height {
             return None;
         }
         FrameButton::ALL.into_iter().filter(|b| self.minimize || *b != FrameButton::Minimize).find(|b| {
-            let (from, to) = b.slot(self.style(), self.side(), self.width);
+            let (from, to) = b.slot(self.style(), self.side(), self.width, m);
             x >= from && x < to
         })
     }
@@ -419,6 +417,7 @@ pub struct Decoration {
     layouts: LayoutContext<()>,
     widths: Option<(Vec<String>, Vec<f64>)>,
     glass_dots: bool,
+    metrics: FrameMetrics,
 }
 
 impl Default for Decoration {
@@ -449,11 +448,23 @@ impl Decoration {
     pub fn new() -> Self {
         let fonts =
             FontContext { source_cache: SourceCache::new_shared(), collection: Collection::new(CollectionOptions { shared: false, system_fonts: true }) };
-        Self { fonts, layouts: LayoutContext::new(), widths: None, glass_dots: false }
+        Self { fonts, layouts: LayoutContext::new(), widths: None, glass_dots: false, metrics: FrameMetrics::current() }
     }
 
     pub fn glass_dots(&mut self, on: bool) {
         self.glass_dots = on;
+    }
+
+    pub fn dots(&self, bar: &Bar) -> Vec<Dot> {
+        bar.dots(&self.metrics)
+    }
+
+    pub fn button_at(&self, bar: &Bar, x: f64, y: f64) -> Option<FrameButton> {
+        bar.button_at(&self.metrics, x, y)
+    }
+
+    pub fn grab_hints(&self, theme: &FrameTheme, w: f64, h: f64, top: f64) -> [([f64; 4], u32); 9] {
+        theme.grab_hints_by(&self.metrics, w, h, top)
     }
 
     pub fn scene(&mut self, bar: &Bar) -> Scene {
@@ -467,12 +478,12 @@ impl Decoration {
         scene.fill(Fill::NonZero, scale, colors.background.map_or(Color::TRANSPARENT, paint), None, &Rect::new(0.0, 0.0, w, h));
         scene.fill(Fill::NonZero, scale, colors.line.map_or(Color::TRANSPARENT, paint), None, &Rect::new(0.0, h - 1.0, w, h));
         let (style, side) = (bar.style(), bar.side());
-        for dot in bar.dots().into_iter().filter(|_| !self.glass_dots) {
+        for dot in self.dots(bar).into_iter().filter(|_| !self.glass_dots) {
             scene.fill(Fill::NonZero, scale, paint(dot.color), None, &Circle::new(dot.centre, dot.radius));
             scene.stroke(&Stroke::new(0.5), scale, Self::RING, None, &Circle::new(dot.centre, dot.radius - 0.25));
         }
         for button in FrameButton::ALL.into_iter().filter(|_| style == FrameStyle::Windows) {
-            let (from, to) = button.slot(style, side, w);
+            let (from, to) = button.slot(style, side, w, &self.metrics);
             let glyph = Self::glyph(button, bar.fullscreen, ((from + to) / 2.0 - Self::GLYPH / 2.0).round(), ((h - Self::GLYPH) / 2.0).round());
             let ink = if bar.minimize || button != FrameButton::Minimize { colors.buttons.map_or(text, paint) } else { off };
             scene.stroke(&Stroke::new(1.0), scale, ink, None, &glyph);
@@ -519,7 +530,7 @@ impl Decoration {
             self.widths = Some((bar.menus.clone(), widths));
         }
         let widths = self.widths.as_ref().map(|(_, w)| w.as_slice()).unwrap_or_default();
-        let mut x = bar.menus_start();
+        let mut x = bar.menus_start(&self.metrics);
         widths
             .iter()
             .map(|&w| {
@@ -600,14 +611,14 @@ impl Decoration {
     }
 
     fn title(&mut self, scene: &mut Scene, bar: &Bar, color: Color, lead: Option<f64>) {
-        let reserved = bar.style().reserved();
+        let (reserved, inset) = (bar.style().reserved(&self.metrics), self.metrics.inset);
         let (mut left, right) = match (bar.align(), bar.side()) {
             (TitleAlign::Center, _) => (reserved, reserved),
-            (TitleAlign::Start, ButtonSide::Right) => (FrameMetrics::current().inset, reserved + FrameMetrics::current().inset),
-            (TitleAlign::Start, ButtonSide::Left) => (reserved + FrameMetrics::current().inset, FrameMetrics::current().inset),
+            (TitleAlign::Start, ButtonSide::Right) => (inset, reserved + inset),
+            (TitleAlign::Start, ButtonSide::Left) => (reserved + inset, inset),
         };
         if let Some(lead) = lead {
-            left = left.max(lead + FrameMetrics::current().inset);
+            left = left.max(lead + inset);
         }
         let room = (bar.width - left - right) * bar.scale;
         if bar.title.is_empty() || room <= 0.0 {
@@ -644,13 +655,13 @@ impl Decoration {
     }
 
     fn layout(&mut self, text: &str, scale: f64) -> Layout<()> {
-        self.styled(text, FrameMetrics::current().title_weight, scale)
+        self.styled(text, self.metrics.title_weight, scale)
     }
 
     fn styled(&mut self, text: &str, weight: f32, scale: f64) -> Layout<()> {
         let mut builder = self.layouts.ranged_builder(&mut self.fonts, text, scale as f32, true);
         builder.push_default(StyleProperty::FontFamily(FontFamily::from(Self::FAMILY)));
-        builder.push_default(StyleProperty::FontSize(FrameMetrics::current().title_size));
+        builder.push_default(StyleProperty::FontSize(self.metrics.title_size));
         builder.push_default(StyleProperty::FontWeight(FontWeight::new(weight)));
         builder.push_default(StyleProperty::LineHeight(LineHeight::FontSizeRelative(1.0)));
         builder.push_default(StyleProperty::Locale(blitz_dom::parley::Language::parse("zh-Hans").ok()));
@@ -667,5 +678,40 @@ pub(crate) fn draw_line(scene: &mut Scene, line: &blitz_dom::parley::Line<'_, ()
         let r = run.run();
         let coords: &[i16] = bytemuck::cast_slice(r.normalized_coords());
         scene.draw_glyphs(r.font(), r.font_size(), false, coords, Vec2::ZERO, Fill::NonZero, color, 1.0, transform, None, glyphs);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bar() -> Bar {
+        Bar {
+            title: String::new(),
+            width: 300.0,
+            height: 32.0,
+            scale: 1.0,
+            style: FrameStyle::Mac,
+            fullscreen: false,
+            theme: FrameTheme::default(),
+            active: true,
+            dark_page: false,
+            minimize: true,
+            menus: Vec::new(),
+            open: None,
+        }
+    }
+
+    #[test]
+    fn a_frame_keeps_the_metrics_it_was_made_with() {
+        let open = Decoration::new();
+        FrameMetrics::set(Some(FrameMetrics { inset: 20.0, ..FrameMetrics::default() }));
+        let later = Decoration::new();
+        FrameMetrics::set(None);
+        assert_eq!(open.dots(&bar())[0].centre.0, 18.0, "a window open before keeps its buttons where they were");
+        assert_eq!(later.dots(&bar())[0].centre.0, 26.0, "a window opened after takes the new measures");
+        let theme = FrameTheme { style: Some(FrameStyle::Mac), ..FrameTheme::default() };
+        assert_eq!(open.grab_hints(&theme, 640.0, 480.0, 32.0)[0].0[0], FrameMetrics::default().buttons());
+        assert_eq!(later.grab_hints(&theme, 640.0, 480.0, 32.0)[0].0[0], FrameMetrics::default().buttons() + 16.0);
     }
 }
