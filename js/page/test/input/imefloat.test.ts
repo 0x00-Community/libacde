@@ -15,6 +15,8 @@ const EVENT: ImePanelEvent = {
   highlight: 0, layout: 'horizontal', hasPrev: false, hasNext: false,
 }
 const CARET = { x: 50, y: 40, width: 1, height: 18 }
+const REACH = ImePanel.SHADOW_REACH
+const SHOWN = [BOX.x - REACH.left, BOX.y - REACH.top, BOX.width + REACH.left + REACH.right, BOX.height + REACH.top + REACH.bottom]
 
 async function floating(imeFloat = true) {
   const web = await page('<!doctype html><html><body><input id="field"></body></html>')
@@ -52,9 +54,9 @@ test('a floating host gets the box of the float, once per change, and none when 
   assert.equal(web.run(`document.querySelector('[data-acde-ime-panel]').parentNode.hasAttribute('data-acde-ime-float')`), true)
   assert.match(web.run(`document.querySelector('[data-acde-ime-panel]').getAttribute('style')`), /^position:absolute;/)
   panel.hide()
-  assert.deepEqual(shell, [[40, 60, 120, 30], [0, 0, 0, 0]])
+  assert.deepEqual(shell, [SHOWN, [0, 0, 0, 0]], 'the float reaches as far as the shadow of the candidate box')
   const root = web.internals.idOf(web.run('document.querySelector("[data-acde-ime-float]")'))
-  assert.deepEqual(dom, [[root, 40, 60, 120, 30], [root, 0, 0, 0, 0]], "the float's own subtree is drawn as the float panel")
+  assert.deepEqual(dom, [[root, ...SHOWN], [root, 0, 0, 0, 0]], "the float's own subtree is drawn as the float panel")
 })
 
 function entry(native: object, surface: object, web: Awaited<ReturnType<typeof page>>) {
@@ -91,7 +93,7 @@ test('the float is dropped when the field loses focus or the window goes inactiv
   web.run(`document.getElementById('field').focus()`)
   text.report()
   text.panel(EVENT)
-  assert.deepEqual(shell.at(-1), [40, 60, 120, 30])
+  assert.deepEqual(shell.at(-1), SHOWN)
   text.surfaceActive = false
   assert.deepEqual(shell.at(-1), [0, 0, 0, 0])
 })
@@ -160,5 +162,6 @@ test('the float the host gets stays inside the page, with its content where the 
   panel.show(EVENT, { x: width - 60, y: 40, width: 1, height: 18 })
   const [x, , w] = shell.at(-1)!
   assert.ok(x + w <= width, `the float ends inside the page: ${shell.at(-1)} in ${width}`)
-  assert.equal(web.run(`document.querySelector('[data-acde-ime-panel]').getAttribute('style').match(/left:([\\d.]+)px/)[1]`), String(x))
+  assert.equal(x + w, width, 'the shadow past the right edge is cut at the page edge')
+  assert.equal(web.run(`document.querySelector('[data-acde-ime-panel]').getAttribute('style').match(/left:([\\d.]+)px/)[1]`), String(x + REACH.left))
 })

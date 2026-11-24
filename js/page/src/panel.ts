@@ -64,13 +64,22 @@ export class ImeLayer {
   }
 
   #box(): Box | null {
-    const boxes = [...this.#root!.children].map((child) => child.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0)
+    const boxes = [...this.#root!.children].map(ImeLayer.#reach).filter((r) => r !== null)
     if (!boxes.length) return null
-    const left = Math.floor(Math.min(...boxes.map((r) => r.left)))
-    const top = Math.floor(Math.min(...boxes.map((r) => r.top)))
-    const right = Math.ceil(Math.max(...boxes.map((r) => r.right)))
-    const bottom = Math.ceil(Math.max(...boxes.map((r) => r.bottom)))
-    return [left, top, right - left, bottom - top]
+    const view = this.#document.defaultView
+    const [width, height] = [view?.innerWidth ?? Infinity, view?.innerHeight ?? Infinity]
+    const left = Math.max(0, Math.floor(Math.min(...boxes.map((r) => r.left))))
+    const top = Math.max(0, Math.floor(Math.min(...boxes.map((r) => r.top))))
+    const right = Math.min(width, Math.ceil(Math.max(...boxes.map((r) => r.right))))
+    const bottom = Math.min(height, Math.ceil(Math.max(...boxes.map((r) => r.bottom))))
+    return right > left && bottom > top ? [left, top, right - left, bottom - top] : null
+  }
+
+  static #reach(child: Element): { left: number; top: number; right: number; bottom: number } | null {
+    const r = child.getBoundingClientRect()
+    if (!(r.width > 0 && r.height > 0)) return null
+    const shadow = child.hasAttribute('data-acde-ime-panel') ? ImePanel.SHADOW_REACH : { top: 0, right: 0, bottom: 0, left: 0 }
+    return { left: r.left - shadow.left, top: r.top - shadow.top, right: r.right + shadow.right, bottom: r.bottom + shadow.bottom }
   }
 }
 
@@ -80,10 +89,18 @@ interface ImePanelActions {
 }
 
 export class ImePanel {
+  static readonly #SHADOW = { y: 10, blur: 30, spread: -8 }
+  static readonly SHADOW_REACH = {
+    top: Math.max(1, ImePanel.#SHADOW.blur + ImePanel.#SHADOW.spread - ImePanel.#SHADOW.y),
+    right: Math.max(1, ImePanel.#SHADOW.blur + ImePanel.#SHADOW.spread),
+    bottom: Math.max(1, ImePanel.#SHADOW.blur + ImePanel.#SHADOW.spread + ImePanel.#SHADOW.y),
+    left: Math.max(1, ImePanel.#SHADOW.blur + ImePanel.#SHADOW.spread),
+  }
   static readonly #STYLE = [
     'z-index:2147483647', 'display:flex', 'flex-direction:column', 'gap:4px', 'padding:6px 8px',
     'border-radius:12px', 'background:var(--acde-ime-bg, rgba(255, 255, 255, .94))', 'color:var(--acde-ime-fg, #1D1D1F)',
-    'box-shadow:0 0 0 .5px rgba(0, 0, 0, .12), 0 10px 30px -8px rgba(40, 20, 70, .35)', 'font:15px/1.4 "Noto Sans CJK SC", sans-serif',
+    `box-shadow:0 0 0 .5px rgba(0, 0, 0, .12), 0 ${ImePanel.#SHADOW.y}px ${ImePanel.#SHADOW.blur}px ${ImePanel.#SHADOW.spread}px rgba(40, 20, 70, .35)`,
+    'font:15px/1.4 "Noto Sans CJK SC", sans-serif',
     'white-space:nowrap', 'pointer-events:auto', 'user-select:none',
   ].join(';')
   readonly #document: Document
