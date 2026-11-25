@@ -84,6 +84,7 @@ export interface InspectHost {
   accessibility(): Promise<NativeAccessibility | null>
   records(): readonly number[]
   ref?(window: number): string | null
+  elsewhere?(window: number): boolean
 }
 
 export interface NativeNode {

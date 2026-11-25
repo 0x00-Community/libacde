@@ -50,7 +50,7 @@ export class Hit {
     const base = { x, y, window: Hit.#named(window), local }
     if (window.kind === 'native') return { ...base, surface: 'native' }
     const rpc = this.host.web(window.id)
-    if (!rpc) return { ...base, surface: 'page', note: 'the page is not running' }
+    if (!rpc) return { ...base, surface: 'page', note: this.host.elsewhere?.(window.id) ? 'its page runs in another process' : 'the page is not running' }
     let answer: PageHit
     try {
       answer = (await rpc.call('inspect', 'hit', [...local])) as PageHit

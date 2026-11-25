@@ -47,6 +47,10 @@
   `raise` 就是给焦点提到最前, 不改状态; 桌面和最小化的窗口不行. `topmost` (2026-11-24, z 轴分段) 让窗口置顶, arg 是 `off` / `false` / `0` 时取消, 别的 (含不给) 都是置顶;
   经宿主的 `setTopmost` (acdes 的 napi, 发 `acompositor_window_v1.set_topmost`), 宿主没有或合成器太旧时回 `ok: false`; 客户机会话里应用进程没绑 `acompositor_desktop_v1`, 别的进程的窗口改经管家开发连接发 `change: {topmost: true | false}` (和 state、focus、close 同一条路). 审批不在这里: Agent 代用户置顶由 dopame 后台调之前先请系统总管审批. 客户机会话里 (窗口表来自管家) 启动器不摆放, acdev 的驱动直接经管家开发连接发
   `{op: "window", window: <acompositor 窗口号>, change: {place | focus}}` (acdes docs/agents/manager.md 开发通道).
+  客户机会话 (真机会话也是, 窗口表来自管家, `dev/guest.ts` 的 `GuestWindows`) 里一次快照或 act 只交给一个页面进程答 (管家按 ref 或 `window` 找主人, 都没给时是前台窗口的页面), 它只拿得到自己的页面.
+  别的进程的窗口: 管家在行上标 `page: true` 的是页面 (`kind: 'web'`), 不再一律当 `native`; 没标的才是原生程序. 别的进程的页面和不归自己的桌面 `w0` 树里写
+  `(the page of wN runs in another process: look at wN or act on its refs by themselves)` (`host.elsewhere`), `find` 末尾列出没搜到的这些窗口, act / input / query 的错也是这句;
+  只有真没连上的才写 `the page of wN is not running`. 以前一律当原生、桌面写 not running, Agent 以为桌面挂了 (dopame 总管, AC, 2026-11-25).
   客户机里锁屏页和系统确认页是管家插进窗口表的伪窗口 (行带 `lock: true` 或 `confirm: true`), 快照里它们的 `mode` 是 `lock`、`confirm` (窗口行显示 `[lock]`、`[confirm]`),
   叠在所有窗口之上; 系统确认页的开发名是 `confirm` (锁屏页是 `lock`), 启动器按欢迎消息里有没有 `confirm` 区分 (登录页会话里的登录页不是伪窗口, 是那个会话的桌面 `w0`, 开发名 `greeter`, 见 `docs/dev/dev-ipc.md`). 这两种窗口只由管家显示和收起, 对它们的
   `fill`、`fullscreen`、`minimize`、`move`、`resize`、`raise`、`topmost`、`close` 一律回 `ok: false` 并说明; 确认页的允许、拒绝、输密码用 act 点它自己的按钮.

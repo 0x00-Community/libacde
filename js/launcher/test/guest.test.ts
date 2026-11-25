@@ -61,6 +61,23 @@ describe('the window table the session manager sends along', () => {
   })
 })
 
+describe('windows of other page processes', () => {
+  test('are pages, not native, and look says to look at them by themselves', async () => {
+    const guest = new GuestWindows(42, 'app')
+    const inspect = new Inspect(guest.host(base(1, []), () => 1))
+    const desktop = { id: 0, desktop: true, app_id: null, pid: 10, title: 'desktop', activated: false, hidden: false }
+    guest.place([row(7, 42, { activated: true }), row(8, 51, { page: true }), row(9, 50), desktop])
+    assert.deepEqual(inspect.windows().map((w) => [w.ref, w.kind]), [['w7', 'web'], ['w8', 'web'], ['w9', 'native'], ['w0', 'desktop']])
+    const seen = await inspect.snapshot({ window: 'w8' })
+    assert.match(seen.text, /the page of w8 runs in another process: look at w8/)
+    assert.doesNotMatch(seen.text, /not running/)
+    const desk = await inspect.snapshot({ window: 'w0' })
+    assert.match(desk.text, /the page of w0 runs in another process/)
+    const found = await inspect.snapshot({ find: 'nothing here' })
+    assert.match(found.text, /not searched, their pages run in other processes: w8, w0/)
+  })
+})
+
 describe('pointer and keys in the guest', () => {
   test('go to the manager once a window table came, before that to the local shell', () => {
     const local: object[] = []

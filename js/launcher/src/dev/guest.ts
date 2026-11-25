@@ -17,6 +17,7 @@ export interface GuestRow {
   readonly confirm: boolean
   readonly stage?: boolean
   readonly topmost?: boolean
+  readonly page?: boolean
 }
 
 export type GuestRole = 'app' | 'desktop' | 'lock' | 'confirm'
@@ -147,8 +148,9 @@ export class GuestWindows {
       record: (id) => {
         if (!this.placed || own(id)) return base.record(to(id))
         const row = this.row(id)
-        return row && !row.desktop ? { kind: 'native', app: row.app_id, title: row.title } : null
+        return row && !row.desktop ? { kind: row.page ? 'web' : 'native', app: row.app_id, title: row.title } : null
       },
+      elsewhere: (id) => this.placed && !own(id) && (id === 0 || this.row(id)?.page === true),
       panel: (id) => base.panel(to(id)),
       close,
       hide: (id, hidden) => {
@@ -183,6 +185,7 @@ export class GuestWindows {
       lock: given.lock === true,
       confirm: given.confirm === true,
       stage: given.stage === true,
+      page: given.page === true,
     }
   }
 }

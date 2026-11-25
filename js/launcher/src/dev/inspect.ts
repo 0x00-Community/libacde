@@ -129,6 +129,8 @@ export class Inspect {
     const lines = outline(windows, headers, bodies, same === true)
     const hint = options.offscreen ? '' : '; elements outside the visible area are left out: scroll, add offscreen, or try another window'
     if (find && !Object.keys(trees).length) lines.push(`(no element contains ${JSON.stringify(options.find!.trim())}${hint})`)
+    const unsearched = find ? targets.filter((w) => w.kind !== 'native' && this.#elsewhere(w)).map((w) => w.ref) : []
+    if (unsearched.length) lines.push(`(not searched, their pages run in other processes: ${unsearched.join(', ')}; find in each with window set)`)
     return { text: lines.join('\n'), windows, trees }
   }
 
@@ -316,7 +318,7 @@ export class Inspect {
 
   async #webAct(window: InspectWindow, node: number, action: InspectAction, arg: InspectArg): Promise<ActResult> {
     const rpc = this.#host.web(window.id)
-    if (!rpc) return { ok: false, text: `the page of ${window.ref} is not running` }
+    if (!rpc) return { ok: false, text: this.#absent(window) }
     switch (action) {
       case 'type':
       case 'settext': {
@@ -469,7 +471,7 @@ export class Inspect {
       return this.#uncovered(window, wx + rect[0] + rect[2] / 2, wy + rect[1] + rect[3] / 2)
     }
     const rpc = this.#host.web(window.id)
-    if (!rpc) return { error: `the page of ${window.ref} is not running` }
+    if (!rpc) return { error: this.#absent(window) }
     const point = await this.#measure(window, rpc, parsed.node)
     return 'error' in point ? point : this.#uncovered(window, wx + point.x, wy + point.y)
   }
@@ -537,7 +539,7 @@ export class Inspect {
     const window = this.windows().find((w) => w.id === id)
     if (!window) return { ok: false, text: `window ${id} is gone` }
     const rpc = this.#host.web(window.id)
-    if (!rpc) return { ok: false, text: `the page of ${window.ref} is not running` }
+    if (!rpc) return { ok: false, text: this.#absent(window) }
     if (!Array.isArray(events) || !events.length) return { ok: false, text: 'input needs a list of events' }
     const [ox, oy] = (await rpc.call('inspect', 'offset', [])) as [number, number]
     const at = (e: { x: number; y: number }) => {
@@ -637,7 +639,7 @@ export class Inspect {
     if (!window) throw Object.assign(new Error(wanted ? `no window ${wanted}` : 'no window'), { status: 404 })
     if (window.kind === 'native') throw Object.assign(new Error(`${window.ref} is a native window; CSS selectors work only in pages`), { status: 400 })
     const rpc = this.#host.web(window.id)
-    if (!rpc) throw Object.assign(new Error(`the page of ${window.ref} is not running`), { status: 409 })
+    if (!rpc) throw Object.assign(new Error(this.#absent(window)), { status: 409 })
     const limit = Math.max(1, Math.min(Number(options.limit) || Inspect.LIMIT, Inspect.FIND_LIMIT))
     const attributes = Array.isArray(options.attributes) ? options.attributes.filter((a): a is string => typeof a === 'string' && !!a).slice(0, 20) : []
     const found = (await rpc.call('inspect', 'query', [selector, parsed?.node ?? -1, limit, attributes])) as PageQuery
@@ -652,7 +654,7 @@ export class Inspect {
     if (window.hidden) return { nodes: [], notes: ['(minimized; act restore on it to see its elements)'] }
     if (window.kind === 'native') return this.#nativeTree(window, limit)
     const rpc = this.#host.web(window.id)
-    if (!rpc) return { nodes: [], notes: ['(the page is not running)'] }
+    if (!rpc) return { nodes: [], notes: [`(${this.#absent(window)})`] }
     const tree = (await rpc.call('inspect', 'tree', [node ?? -1, limit, offscreen, invisible])) as PageTree
     const convert = (n: PageNode): InspectNode => Inspect.#node(window, n.id, n, n.states, n.rect, (n.children ?? []).map(convert))
     const notes: string[] = []
@@ -660,6 +662,16 @@ export class Inspect {
     if (tree.truncated) notes.push(`(too many elements, listed ${limit}; snapshot a ref to see what is under it)`)
     const menus = node === null ? this.#menus(window) : null
     return { nodes: [...(menus ? [menubar(window, menus)] : []), ...tree.nodes.map(convert)], notes }
+  }
+
+  #elsewhere(window: InspectWindow): boolean {
+    return this.#host.elsewhere?.(window.id) === true
+  }
+
+  #absent(window: InspectWindow): string {
+    return this.#elsewhere(window)
+      ? `the page of ${window.ref} runs in another process: look at ${window.ref} or act on its refs by themselves`
+      : `the page of ${window.ref} is not running`
   }
 
   #menus(window: InspectWindow): MenuGeometry | null {
