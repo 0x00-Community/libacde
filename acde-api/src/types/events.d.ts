@@ -168,9 +168,22 @@ export interface ScreenEdgeEvent {
   readonly output: string
 }
 
+export type GestureAction = 'desktops' | 'overview' | 'app-windows' | 'launcher' | 'show-desktop' | 'notifications'
+
+export interface GestureEvent {
+  readonly type: 'gesture'
+  readonly action: GestureAction
+  readonly phase: 'begin' | 'update' | 'end' | 'cancel'
+  readonly fingers: number
+  readonly dx: number
+  readonly dy: number
+  readonly scale: number
+}
+
 export interface DesktopEventMap {
   readonly download: DownloadEvent
   readonly edge: ScreenEdgeEvent
+  readonly gesture: GestureEvent
   readonly notification: NotificationEvent
   readonly screenshot: ScreenshotEvent
   readonly shortcut: ShortcutEvent

@@ -433,7 +433,7 @@ export class RemoteBridge {
     } else if (init.kind === 'desktop') {
       const unlend = Rpc.calls(() => rpc, 'apps', 'unlend')
       this.value['apps'] = { ...apps, ...files, ...unlend, on: windows.notices.for('apps', ['changed']) }
-      const events = ['download', 'notification', 'screenshot', 'shortcut', 'edge']
+      const events = ['download', 'notification', 'screenshot', 'shortcut', 'edge', 'gesture']
       this.value['desktop'] = { apps: async () => ({ apps: await apps.list() }), on: windows.notices.for('desktop', events) }
       this.value['windows'] = { ...globalWindows(), ...Rpc.calls(() => rpc, 'windows', 'setAside', 'setTopmost') }
       Object.assign(this.value, { packages: tier.packages(), launch: tier.launch(), session: tier.session(), desktops: tier.desktops(), software: tier.software() })

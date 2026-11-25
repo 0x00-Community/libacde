@@ -11,7 +11,7 @@
     background use wlr-layer-shell.
   </description>
 
-  <interface name="acompositor_desktop_v1" version="20">
+  <interface name="acompositor_desktop_v1" version="21">
     <description summary="the desktop's handle on acompositor">
       On bind acompositor sends a window event for every toplevel already shown, then
       work_area, then done. Later windows come as they are shown. From version 2 the
@@ -43,6 +43,8 @@
       version 19 a dev-level client lists every surface's layer (layers). From version 20 the
       dev-level client also hears window state changes, configures and their acks, keep-on-top
       changes and activations, each with who asked for it and whether acompositor took it.
+      From version 21 the desktop sets which touchpad gestures acompositor keeps for itself
+      (set_touchpad_gestures) and hears them as they happen (gesture).
     </description>
 
     <enum name="error">
@@ -212,6 +214,82 @@
       <arg name="tap_to_click" type="uint"/>
       <arg name="disable_while_typing" type="uint"/>
     </request>
+
+    <enum name="secondary_click" since="21">
+      <entry name="off" value="0" summary="every click and tap is a left click"/>
+      <entry name="two_fingers" value="1" summary="clicking or tapping with two fingers"/>
+      <entry name="bottom_right" value="2" summary="clicking in the bottom right corner"/>
+      <entry name="bottom_left" value="3" summary="clicking in the bottom left corner"/>
+    </enum>
+
+    <enum name="gesture_flag" bitfield="true" since="21">
+      <entry name="three_finger_drag" value="1" summary="three fingers moving drag with the left button held"/>
+      <entry name="zoom" value="2" summary="two fingers pinching zoom the app under the pointer"/>
+      <entry name="smart_zoom" value="4" summary="two fingers tapping twice zoom in or back"/>
+      <entry name="rotate" value="8" summary="two fingers turning rotate in the app under the pointer"/>
+      <entry name="launcher" value="16" summary="the thumb and three fingers pinching together open the launcher"/>
+      <entry name="show_desktop" value="32" summary="the thumb and three fingers spreading apart show the desktop"/>
+      <entry name="notifications" value="64" summary="two fingers swiping in from the right edge open notifications"/>
+    </enum>
+
+    <enum name="fingers" bitfield="true" since="21">
+      <description summary="with how many fingers a gesture is made; no bit set turns it off"/>
+      <entry name="three" value="8" summary="three fingers"/>
+      <entry name="four" value="16" summary="four fingers (also five)"/>
+    </enum>
+
+    <request name="set_touchpad_gestures" since="21">
+      <description summary="which touchpad gestures there are and which the desktop gets">
+        Settings as in macOS's trackpad preferences. secondary_click picks how a right click is
+        made. flags turns the gestures in gesture_flag on; zoom and rotate also decide whether
+        two fingers can pinch at all (with both off they only scroll). desktops, overview and
+        app_windows say with how many fingers a swipe left or right, up, or down is the
+        desktop's (gesture event); a swipe down with the overview's fingers is the overview's
+        too (dy tells it to go back) when app_windows does not take it. Swipes no setting takes
+        go to the app under the pointer (zwp_pointer_gestures_v1). By default secondary_click is two_fingers, flags are zoom,
+        smart_zoom, rotate, launcher, show_desktop and notifications, desktops and overview are
+        three and app_windows is 0. Three-finger drag takes three-finger swipes away from
+        both the desktop and the apps.
+      </description>
+      <arg name="secondary_click" type="uint" enum="secondary_click"/>
+      <arg name="flags" type="uint" enum="gesture_flag"/>
+      <arg name="desktops" type="uint" enum="fingers"/>
+      <arg name="overview" type="uint" enum="fingers"/>
+      <arg name="app_windows" type="uint" enum="fingers"/>
+    </request>
+
+    <enum name="gesture_action" since="21">
+      <entry name="desktops" value="0" summary="fingers swiping left or right: to the next or previous desktop"/>
+      <entry name="overview" value="1" summary="fingers swiping up: every window at a glance; down with the same fingers goes back unless app_windows takes it"/>
+      <entry name="app_windows" value="2" summary="fingers swiping down: the windows of the app in front"/>
+      <entry name="launcher" value="3" summary="the thumb and three fingers pinching together"/>
+      <entry name="show_desktop" value="4" summary="the thumb and three fingers spreading apart"/>
+      <entry name="notifications" value="5" summary="two fingers swiping in from the right edge"/>
+    </enum>
+
+    <enum name="gesture_phase" since="21">
+      <entry name="begin" value="0"/>
+      <entry name="update" value="1"/>
+      <entry name="end" value="2" summary="the fingers left the touchpad: the desktop finishes or goes back by how far they went"/>
+      <entry name="cancel" value="3" summary="more fingers landed or the session locked: go back"/>
+    </enum>
+
+    <event name="gesture" since="21">
+      <description summary="a touchpad gesture the desktop keeps for itself">
+        Sent to every desktop object while a gesture set by set_touchpad_gestures happens, so the
+        desktop can follow the fingers. A gesture is one begin, any number of updates and one end
+        or cancel, all with the same action and fingers. dx and dy are how far the fingers have
+        moved since begin, in logical pixels and the direction the fingers moved (not turned by
+        natural scrolling); scale is how far a pinch has spread relative to begin (below 1 pinching
+        in), 1 for swipes. The begin already carries the first movement.
+      </description>
+      <arg name="action" type="uint" enum="gesture_action"/>
+      <arg name="phase" type="uint" enum="gesture_phase"/>
+      <arg name="fingers" type="uint"/>
+      <arg name="dx" type="fixed"/>
+      <arg name="dy" type="fixed"/>
+      <arg name="scale" type="fixed"/>
+    </event>
 
     <enum name="input_kind" since="5">
       <entry name="keyboard" value="0"/>

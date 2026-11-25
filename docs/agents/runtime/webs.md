@@ -80,6 +80,13 @@
   `ScreenEdge::touched` (离边不到 1 个逻辑像素, 且那一侧外面没有别的输出; 边的变化 `ScreenEdge::changes`). 会话里 acompositor 不报屏幕边 (旧合成器的 `screen_edge` 随 repo-split 删掉, Dopame 没有用它); 宿主窗口 (hostwin `App::moved`) 按宿主内容区算, 指针离开宿主窗口时离开所有边, `output` 是 `host`, 宿主窗口不论是否全屏都发
   (运行时不抓窗口外的输入). 宿主窗口给 Broker 推 `edgeenter` / `edgeleave` (`key` 是边, `title` 是输出), Broker 转给桌面和声明了 `acde:desktop` 的系统应用.
   调试端点 `pointer {x, y}` 把指针移到屏幕坐标 (经 `Shell.inject` 的 `move`, 和真的移动走同一段), 用来模拟指针到边.
+  `acde.desktop.on('gesture', fn)` (SDK `GestureEvent` `{type: 'gesture', action, phase, fingers, dx, dy, scale}`, 只给桌面): 触控板上系统留给桌面的手势,
+  照 macOS 的触控板手势: `action` 是 `desktops` (三或四指左右轻扫, 切虚拟桌面)、`overview` (向上, 调度中心)、`app-windows` (向下, App Exposé)、`launcher`
+  (拇指加三指捏合, 启动台)、`show-desktop` (拇指加三指张开)、`notifications` (两指从右边缘向左, 通知中心). 一次手势是一个 `begin`、若干 `update`、一个 `end`
+  (手指离开: 桌面按走了多远决定做完还是退回) 或 `cancel` (又落下手指或锁屏: 退回); `dx` / `dy` 是从开始到现在手指走的逻辑像素 (手指的方向, 不受自然滚动影响),
+  `scale` 是捏合相对开始时张开的倍数 (小于 1 是捏拢), 轻扫恒为 1, 桌面据此让动画跟手. 哪些手势归桌面、几根手指由 `acde:input` 的触控板设置定 (`swipeDesktops`、
+  `swipeOverview`、`swipeAppWindows`、`pinchLauncher`、`spreadDesktop`、`swipeNotifications`), 没归桌面的手势交给指针下的应用 (`zwp_pointer_gestures_v1`).
+  会话里来自 acompositor 的 `acompositor_desktop_v1.gesture` (版本 21), 由 acdes 的窗口客户端转成 `gesture` 通知; 宿主窗口没有.
 - **帧**: `requestFrame` 之后, 上一帧交出去就给下一帧, 两帧之间至少隔最快输出刷新周期的 0.9 倍; 页面没出新帧时退回 wl_surface 的
   frame 回调. `ACDE_WEB_FPS` 指定帧率. 节奏由 `model::Pacer` 管: 默认按定时器 (`wait` / `tick`); 前端有显示器 vsync 时
   `set_synced(true)`, 由 `vsync` 在每个 vsync 出帧 (`wants`: 页面要帧或有动画), 定时器只在停了一阵后的第一帧和 vsync 4 个周期没来时出帧;

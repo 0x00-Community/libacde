@@ -283,6 +283,9 @@ export interface InputKeyboard {
 
 export type InputScroll = 'two-finger' | 'edge' | 'button' | 'none'
 export type InputClick = 'areas' | 'fingers'
+export type InputSecondaryClick = 'two-fingers' | 'bottom-right' | 'bottom-left' | 'off'
+export type InputPageSwipe = 'two' | 'three' | 'two-or-three' | 'off'
+export type InputSwipeFingers = 'three' | 'four' | 'off'
 
 export interface InputPointer {
   readonly present: boolean
@@ -304,6 +307,18 @@ export interface InputTouchpad extends InputPointer {
   readonly click?: InputClick
   readonly scrollMethods: readonly InputScroll[]
   readonly clickMethods: readonly InputClick[]
+  readonly secondaryClick?: InputSecondaryClick
+  readonly threeFingerDrag?: boolean
+  readonly pinchZoom?: boolean
+  readonly smartZoom?: boolean
+  readonly rotate?: boolean
+  readonly swipePages?: InputPageSwipe
+  readonly swipeDesktops?: InputSwipeFingers
+  readonly swipeOverview?: InputSwipeFingers
+  readonly swipeAppWindows?: InputSwipeFingers
+  readonly pinchLauncher?: boolean
+  readonly spreadDesktop?: boolean
+  readonly swipeNotifications?: boolean
 }
 
 export interface InputMethodItem {

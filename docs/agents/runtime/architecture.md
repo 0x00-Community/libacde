@@ -114,7 +114,7 @@ C 接口见 `docs/agents/runtime/ffi.md`; 发布到 cargo 源 ac 见 `docs/agent
   会话总管跑策略时写标记 `$XDG_RUNTIME_DIR/acde/power-policy` (`shared::PolicyMark`, 内容是 pid, 停时删); 页面的
   `PowerState.policy` 是标记里的进程还活着.
   `acde:input` (能力 `input`, src/host `input.rs`): 合成器的 xkb 布局 / 型号 / 选项、按键重复、NumLock 和鼠标 / 触控板的 libinput 设置;
-  `state()` / `set(patch)` / `on('changed')` 走前端 `Platform::input()` 给的 `Input` (acdes 会话里由窗口客户端经 acompositor `acompositor_desktop_v1` v5 的输入设置提供, repo-split 第一阶段接上;
+  `state()` / `set(patch)` / `on('changed')` 走前端 `Platform::input()` 给的 `Input` (acdes 会话里由窗口客户端经 acompositor `acompositor_desktop_v1` v5 的输入设置提供, repo-split 第一阶段接上; 触控板手势的设置 (`secondaryClick`、`threeFingerDrag`、`pinchZoom`、`smartZoom`、`rotate`、`swipePages`、`swipeDesktops`、`swipeOverview`、`swipeAppWindows`、`pinchLauncher`、`spreadDesktop`、`swipeNotifications`, 照 macOS 触控板设置, 前端没有的不报) 经 v21 的 `set_touchpad_gestures`;
   acdev runtime 没有, 调用就抛), `catalog()` 读 xkeyboard-config 的 `rules/evdev.xml` (runtime `XkbCatalog`).
   输入法 (`ime`, runtime `fcitx.rs`, 和 `ime.rs` 同一条会话 D-Bus): `state()` 多一项 `ime {running, current, group}`, `set({ime: {current?, group?}})`、
   `catalog()` 多一项 `imes`, 都经 fcitx5 的 `org.fcitx.Fcitx5` `/controller` `org.fcitx.Fcitx.Controller1`: 当前输入法 `CurrentInputMethod` /

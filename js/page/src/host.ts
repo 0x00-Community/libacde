@@ -20,6 +20,7 @@ export class Host {
     ['download', ['desktop:download']],
     ['notification', ['desktop:notification']],
     ['screenedge', ['desktop:edge']],
+    ['gesture', ['desktop:gesture']],
     ['shortcut', ['desktop:shortcut', 'window:shortcut']],
     ['permissionprompt', ['permissions:prompt']],
     ['permissionanswered', ['permissions:answered']],
