@@ -32,7 +32,9 @@
   别的值在页面里抛 TypeError. 它经 surface 的 `openPanel(…, exclusive, userOnly, popup, parent)` 进 `SurfaceCommand::OpenPanel { exclusive, user_only, popup, parent }` (弹出窗口见 `docs/agents/runtime/desktop.md`) (C 接口是
   `OPEN_PANEL` 的 `flag` 和 `number`), 由前端决定怎么做 (acdes 的 layer 面: Exclusive / OnDemand; `user_only` 的面板报给会话管家, 见 `docs/agents/runtime/desktop.md`「面板与占边」).
   `pin(element, {reserve: {edge, thickness?}})` 让面板在输出的一条边上占一条 (像 layer-shell 的 exclusive zone; 不给 thickness 时是从那条边到面板远端的距离,
-  跟着量的结果变), 经 surface 的 `reservePanel(id, edge, thickness)` 交给运行时. 宿主窗口 (`State::work_area`) 用输出减去显示着的面板占的边得到工作区,
+  跟着量的结果变), 经 surface 的 `reservePanel(id, edge, thickness)` 交给运行时. 占边的面板沿那条边的矩形补成关于视口中线对称 (`#measure`: 窄的一侧补到和另一侧一样宽,
+  输入区域仍是元素的盒子): acdes 的 layer 面只锚在那条边上、由合成器沿边居中 (矩形从 0 起时当成占满整条边), 绘制范围只往一侧多出去时不补,
+  元素在屏幕上就整个偏到另一侧. `reserve(r)` 改了边就按新的边重量一次. 宿主窗口 (`State::work_area`) 用输出减去显示着的面板占的边得到工作区,
   面板隐藏、挪动、改尺寸、取消钉住或输出变了时重算 (`refill`): `filled` 的窗口跟着改 rect, 全屏不管工作区; 工作区变了给 Broker 发
   `workarea {x, y, width, height}`, 启动器把它放进发给每个 web 的 `screen` 消息和 `WebInit.screen.workArea`
   (`acde:window.output.workArea`). 不写 reserve 的面板什么都不占. 钉住后用句柄的 `reserve({edge, thickness?} | null)` 就地换占的边或厚度 (不用 unpin 再钉,

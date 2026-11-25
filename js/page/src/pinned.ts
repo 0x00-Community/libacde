@@ -272,7 +272,9 @@ export class Pinned {
     }
     if (this.#panels.get(panel.element) !== panel) return
     panel.reserve = reserve
-    if (panel.rect) this.#reserve(panel, panel.rect)  }
+    if (panel.window !== null) this.#place(panel)
+    if (panel.rect) this.#reserve(panel, panel.rect)
+  }
 
   #unpin(panel: Panel, why: PinClosed): void {
     if (this.#panels.get(panel.element) !== panel) return
@@ -291,14 +293,17 @@ export class Pinned {
     if (!panel.element.isConnected || box.width <= 0 || box.height <= 0) return null
     const { innerWidth, innerHeight } = this.#page.window
     const e = this.#extent(panel)
-    const x = Math.max(0, Math.floor(Math.min(box.left - panel.margin, e?.[0] ?? Infinity)))
-    const y = Math.max(0, Math.floor(Math.min(box.top - panel.margin, e?.[1] ?? Infinity)))
-    const right = Math.min(innerWidth, Math.ceil(Math.max(box.right + panel.margin, e ? e[0] + e[2] : -Infinity)))
-    const bottom = Math.min(innerHeight, Math.ceil(Math.max(box.bottom + panel.margin, e ? e[1] + e[3] : -Infinity)))
+    let x = Math.max(0, Math.floor(Math.min(box.left - panel.margin, e?.[0] ?? Infinity)))
+    let y = Math.max(0, Math.floor(Math.min(box.top - panel.margin, e?.[1] ?? Infinity)))
+    let right = Math.min(innerWidth, Math.ceil(Math.max(box.right + panel.margin, e ? e[0] + e[2] : -Infinity)))
+    let bottom = Math.min(innerHeight, Math.ceil(Math.max(box.bottom + panel.margin, e ? e[1] + e[3] : -Infinity)))
     if (right <= x || bottom <= y) {
       const [left, top] = [Math.floor(box.left - panel.margin), Math.floor(box.top - panel.margin)]
       return { rect: [left, top, Math.ceil(box.right + panel.margin) - left, Math.ceil(box.bottom + panel.margin) - top], input: [0, 0, 0, 0] }
     }
+    const edge = panel.reserve?.edge
+    if (edge === 'top' || edge === 'bottom') [x, right] = [Math.min(x, innerWidth - right), Math.max(right, innerWidth - x)]
+    else if (edge) [y, bottom] = [Math.min(y, innerHeight - bottom), Math.max(bottom, innerHeight - y)]
     const style = this.#page.window.getComputedStyle(panel.element)
     const inert = style.pointerEvents === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0
     const input: Box = inert ? [0, 0, 0, 0] : [Math.floor(box.left) - x, Math.floor(box.top) - y, Math.ceil(box.width), Math.ceil(box.height)]

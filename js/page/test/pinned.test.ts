@@ -261,3 +261,44 @@ test('pin hands the panel kind to the runtime, floating by default, and refuses 
   const other = harness()
   assert.throws(() => other.pinned.pin(other.element as unknown as Element, { kind: 'banner' as never }), /kind is one of dock, floating, notice, confirm/)
 })
+
+test('a panel reserving the bottom edge stays symmetric about the middle when it draws further to one side', async () => {
+  const { calls, element, pinned, answer, page } = harness()
+  page.window.innerWidth = 1280
+  page.window.innerHeight = 800
+  element.getBoundingClientRect = () => ({ left: 319, top: 708, right: 961, bottom: 784, width: 642, height: 76 })
+  pinned.pin(element as unknown as Element, { margin: 16, reserve: { edge: 'bottom', thickness: 92 } })
+  answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  const placed = () => calls.filter((c) => c[0] === 'placePanel').at(-1)?.slice(1)
+  assert.deepEqual(placed(), [7, 303, 692, 674, 108, 16, 16, 642, 76])
+  pinned.extend(7, [185, 612, 911, 188])
+  assert.deepEqual(placed(), [7, 184, 612, 912, 188, 135, 96, 642, 76])
+  pinned.extend(7, [-1, 640, 642, 100])
+  assert.deepEqual(placed(), [7, 0, 612, 1280, 188, 319, 96, 642, 76])
+})
+
+test('a panel reserving the left edge stays symmetric about the middle along it; a free panel stays where it draws', async () => {
+  const side = harness()
+  side.element.getBoundingClientRect = () => ({ left: 0, top: 100, right: 60, bottom: 300, width: 60, height: 200 })
+  side.pinned.pin(side.element as unknown as Element, { reserve: { edge: 'left' } })
+  side.answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  assert.deepEqual(side.calls.filter((c) => c[0] === 'placePanel').at(-1)?.slice(1, 6), [7, 0, 100, 60, 400])
+  const free = harness()
+  free.pinned.pin(free.element as unknown as Element)
+  free.answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  free.pinned.extend(7, [0, 20, 300, 50])
+  assert.deepEqual(free.calls.filter((c) => c[0] === 'placePanel').at(-1)?.slice(1, 6), [7, 0, 20, 300, 50])
+})
+
+test('reserving an edge after the panel opened places it again, symmetric along that edge', async () => {
+  const { calls, element, pinned, answer } = harness()
+  const handle = pinned.pin(element as unknown as Element)
+  answer().resolve({ window: 1048577, token: 5n })
+  await Promise.resolve()
+  handle.reserve({ edge: 'bottom', thickness: 50 })
+  assert.deepEqual(calls.filter((c) => c[0] === 'placePanel').at(-1)?.slice(1, 6), [7, 10, 20, 780, 50])
+  assert.deepEqual(calls.at(-1), ['reservePanel', 7, 2, 50])
+})
