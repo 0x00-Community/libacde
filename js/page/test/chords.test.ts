@@ -53,3 +53,16 @@ test('a pen keeps its state on pointer events and the eraser tip presses button 
   assert.deepEqual(pressed({ type: 'pointerup', x: 1, y: 2, button: 273, pen: eraser }), [2, eraser])
   assert.deepEqual(pressed({ type: 'pointerdown', x: 1, y: 2, button: 272 }), [0, undefined])
 })
+
+test('a touchpad pinch is a wheel with Ctrl held, as in Chrome', () => {
+  const input = new ShellInput(() => 7, 1)
+  const wheel = input.normalize({ type: 'wheel', x: 4, y: 5, scale: Math.exp(0.5) })
+  assert.ok(wheel?.type === 'wheel')
+  assert.equal(wheel.modifiers?.ctrl, true)
+  assert.ok(Math.abs(wheel.deltaY + 50) < 1e-9)
+  assert.equal(wheel.deltaX, 0)
+  const plain = input.normalize({ type: 'wheel', x: 4, y: 5, deltaY: 12 })
+  assert.ok(plain?.type === 'wheel')
+  assert.equal(plain.modifiers?.ctrl, false)
+  assert.equal(plain.deltaY, 12)
+})

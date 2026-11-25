@@ -110,6 +110,9 @@ export class ShellInput {
       case 'wheel': {
         const x = raw.x ?? 0, y = raw.y ?? 0
         const modifiers = { ...this.#mods }
+        if (raw.type === 'wheel' && raw.scale !== undefined && raw.scale > 0) {
+          return { type: 'wheel', target: this.#hitTest(x, y), x, y, deltaX: 0, deltaY: -100 * Math.log(raw.scale), modifiers: { ...modifiers, ctrl: true } }
+        }
         if (raw.type === 'wheel') return { type: 'wheel', target: this.#hitTest(x, y), x, y, deltaX: raw.deltaX ?? 0, deltaY: raw.deltaY ?? 0, modifiers }
         const target = raw.type === 'pointermove' ? undefined : this.#hitTest(x, y)
         const movement = raw.type === 'pointermove' && raw.deltaX !== undefined ? ([raw.deltaX, raw.deltaY ?? 0] as const) : undefined
