@@ -33,6 +33,8 @@ export class Inspect {
   static readonly OPEN_MS = 5000
   static readonly FIND_LIMIT = 3000
   static readonly DRAG_STEPS = 10
+  static readonly GLIDE_STEPS = 8
+  static readonly GLIDE_MS = 16
   static readonly INPUT_WAIT_MS = 10_000
   static readonly GENERIC = new Set([
     ...['generic', 'filler', 'panel', 'section', 'unknown', 'redundant-object', 'split-pane', 'layered-pane'],
@@ -45,6 +47,7 @@ export class Inspect {
   readonly #native = new Map<number, Aliases>()
   readonly #seen = new Map<string, Line[]>()
   #headers = ''
+  #at: { x: number; y: number } | null = null
   #next = 1
 
   constructor(host: InspectHost) {
@@ -319,6 +322,7 @@ export class Inspect {
   async #webAct(window: InspectWindow, node: number, action: InspectAction, arg: InspectArg): Promise<ActResult> {
     const rpc = this.#host.web(window.id)
     if (!rpc) return { ok: false, text: this.#absent(window) }
+    if (Inspect.KEYBOARD.has(action) || action === 'select') await this.#reach(window, await this.#measure(window, rpc, node))
     switch (action) {
       case 'type':
       case 'settext': {
@@ -364,6 +368,8 @@ export class Inspect {
       const [x, y, w, h] = entry.rect
       return [window.rect[0] + x + w / 2, window.rect[1] + y + h / 2]
     }
+    const spot = at()
+    if (spot) await this.#reach(window, { x: spot[0] - window.rect[0], y: spot[1] - window.rect[1] })
     switch (action) {
       case 'click':
         if (access && (await access.act(entry.key, 'click').catch(() => false))) return { ok: true, text: `clicked ${window.ref}.${node}` }
@@ -405,7 +411,7 @@ export class Inspect {
     if (!pressed) return { ok: false, text: `unsupported action ${action}` }
     const down = held.map((key): PlayEvent => ({ type: 'keydown', ...key }))
     const up = held.toReversed().map((key): PlayEvent => ({ type: 'keyup', ...key }))
-    await this.#host.shell.play([{ type: 'move', x, y }, ...down, ...pressed.events, ...up])
+    await this.#host.shell.play([...this.#glide(x, y), ...down, ...pressed.events, ...up])
     const at = `${Math.round(x)},${Math.round(y)}`
     return { ok: true, text: `${pressed.done} ${at}${held.length ? ` (holding ${String(arg)})` : ''}` }
   }
@@ -454,8 +460,10 @@ export class Inspect {
     if ('error' in target) return { ok: false, text: `cannot drop: ${target.error}` }
     const path = Array.from({ length: Inspect.DRAG_STEPS }, (_, i) => (i + 1) / Inspect.DRAG_STEPS)
       .map((t): InspectInput => ({ type: 'move', x: x + (target.x - x) * t, y: y + (target.y - y) * t }))
-    const events: InspectInput[] = [{ type: 'move', x, y }, { type: 'down', x, y }, ...path, { type: 'up', x: target.x, y: target.y }]
-    await this.#play(events, null, (e) => ({ x: e.x, y: e.y }))
+    const events: InspectInput[] = [{ type: 'down', x, y }, ...path, { type: 'up', x: target.x, y: target.y }]
+    const glide = this.#glide(x, y)
+    await this.#host.shell.play([...glide, ...events.map((e) => Inspect.#playEvent(e, (p) => ({ x: p.x, y: p.y })))])
+    this.#at = { x: target.x, y: target.y }
     return { ok: true, text: `dragged from ${Math.round(x)},${Math.round(y)} to ${to} (${Math.round(target.x)},${Math.round(target.y)})` }
   }
 
@@ -474,6 +482,21 @@ export class Inspect {
     if (!rpc) return { error: this.#absent(window) }
     const point = await this.#measure(window, rpc, parsed.node)
     return 'error' in point ? point : this.#uncovered(window, wx + point.x, wy + point.y)
+  }
+
+  #glide(x: number, y: number): PlayEvent[] {
+    const from = this.#at
+    this.#at = { x, y }
+    if (!from || (from.x === x && from.y === y)) return [{ type: 'move', x, y }]
+    return Array.from({ length: Inspect.GLIDE_STEPS }, (_, i) => (i + 1) / Inspect.GLIDE_STEPS).flatMap((t): PlayEvent[] => [
+      { type: 'move', x: from.x + (x - from.x) * t, y: from.y + (y - from.y) * t },
+      ...(t < 1 ? [{ type: 'wait', ms: Inspect.GLIDE_MS } as PlayEvent] : []),
+    ])
+  }
+
+  async #reach(window: InspectWindow, point: PagePoint): Promise<void> {
+    if ('error' in point || window.hidden) return
+    await this.#host.shell.play(this.#glide(window.rect[0] + point.x, window.rect[1] + point.y))
   }
 
   async #measure(window: InspectWindow, rpc: Rpc, node: number): Promise<PagePoint> {

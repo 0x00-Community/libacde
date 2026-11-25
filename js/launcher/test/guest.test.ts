@@ -389,8 +389,25 @@ describe('the keyboard follows the driver to the desktop', () => {
   test('a key on a desktop element asks for the keyboard first, then presses', async () => {
     const { inspect, log } = desktop()
     assert.equal((await inspect.act('w0.4', 'key', 'Enter')).ok, true)
-    assert.equal(log[0], 'focus 0', 'the desktop is focused before the key goes')
-    assert.deepEqual(log.slice(1, 3), ['keydown 28', 'keyup 28'])
+    assert.equal(log[0], 'play move', 'the Agent pointer comes to the element first')
+    assert.equal(log[1], 'focus 0', 'the desktop is focused before the key goes')
+    assert.deepEqual(log.slice(2, 4), ['keydown 28', 'keyup 28'])
+  })
+
+  test('the Agent pointer comes to every element it acts on and glides between them', async () => {
+    const points = [{ x: 20, y: 30 }, { x: 20, y: 30 }, { x: 120, y: 90 }]
+    const played: (readonly PlayEvent[])[] = []
+    const rpc = { call: async (_service: string, method: string) => (method === 'point' ? points.shift() : method === 'tree' ? { nodes: [] } : null) } as never
+    const plain = base(0, [])
+    const shell = { ...plain.shell, windows: () => [desktopRow], focus: () => {}, inject: () => {}, play: async (events: readonly PlayEvent[]) => void played.push(events) }
+    const inspect = new Inspect({ ...plain, shell, web: (w) => (w === 0 ? rpc : null), record: () => null })
+    assert.equal((await inspect.act('w0.4', 'click', null)).ok, true)
+    assert.equal((await inspect.act('w0.4', 'focus', null)).ok, true)
+    assert.equal((await inspect.act('w0.5', 'focus', null)).ok, true)
+    assert.deepEqual(played.map((events) => events.map((e) => e.type).join(' ')).slice(0, 2), ['move down up', 'move'], 'the same spot needs no glide')
+    const glide = played[2]!
+    assert.equal(glide.filter((e) => e.type === 'move').length, Inspect.GLIDE_STEPS)
+    assert.deepEqual(glide.at(-1), { type: 'move', x: desktopRow.x + 120, y: desktopRow.y + 90 })
   })
 
   test('a click on a desktop element is one real pointer sequence', async () => {
