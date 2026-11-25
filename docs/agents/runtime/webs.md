@@ -143,7 +143,7 @@
     所以页面重载后 `list()` 和事件里的 `key` 都齐. 每个包都按这里注入 (没有 `apiLevel` 的包根本不加载).
     SDK 类型分层: `@acde/api/app` 只声明应用层, `@acde/api/shell` 再加外壳层; 包根声明全部.
 - **原生应用** (`launcher.ts`, 只有桌面和声明了 `packages` 的系统应用能调): `acde.packages.natives()` 列可见的 `.desktop` (`{id, name, comment, icon (绝对路径, 按 hicolor /
-  breeze / Adwaita 找), keywords, wmClass}`, 缓存到 applications 目录的 mtime 变了), `runNative(id)` 用 `gio launch` 起.
+  breeze / Adwaita 找; `Icon=` 写的绝对路径不在图标目录里时是管家读出来的 `data:` 地址, 因为 `/acde-icons` 只放行图标目录), keywords, wmClass}`, 缓存到 applications 目录的 mtime 变了), `runNative(id)` 用 `gio launch` 起.
 - **应用清单** (`acde.apps`, 解析 acde-host `apps.ts`, 校验 acde-api `validate.ts`): `id`、`label`、`icon`、`entry` (默认导出 `WindowApp` 的
   模块, 或 HTML)、`capabilities` (只放系统能力: `SYSTEM_CAPABILITIES` 加外壳模块; 不认识的名字和服务名都是错误)、
   `optional` (capabilities 里可以缺的几项, 每项也要在 capabilities 里)、`services` (用到的桌面服务名, 不能是 `RESERVED_NAMES`)、
