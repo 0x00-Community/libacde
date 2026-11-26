@@ -401,3 +401,139 @@ fn a_shorter_preedit_leaves_the_vacated_part_of_the_ime_float_clear() {
     assert_eq!(at((3.0, 8.0)), 0, "nor in the float rect around the preedit");
     assert_eq!(at((100.0, 40.0)), 255, "the candidates are still drawn");
 }
+
+fn styled(page: &Page, parent: u32, style: &str) -> u32 {
+    let id = page.doc.create_element("div").unwrap();
+    page.doc.set_attribute(id, "style", style).unwrap();
+    page.doc.append_child(parent, id).unwrap();
+    id
+}
+
+fn segments(frame: &Frame) -> Vec<u8> {
+    let scenes = if frame.plane.layers.is_empty() { vec![frame.plane.drawing.scene()] } else { frame.plane.layers.iter().map(|l| l.drawing.scene()).collect() };
+    raster(frame.size, scenes)
+}
+
+#[test]
+fn a_filter_inside_a_filtered_element_is_drawn_with_its_own_effects() {
+    let page = Page::new(1.0);
+    let outer = styled(&page, page.body, "position: absolute; left: 0; top: 0; width: 400px; height: 200px; filter: grayscale(1)");
+    styled(&page, outer, "position: absolute; left: 100px; top: 60px; width: 60px; height: 60px; background: #f00; filter: blur(6px)");
+    let frame = page.frame();
+    let layer = frame.plane.layers.iter().find(|l| l.filter.is_some()).expect("the grayscale element is its own segment");
+    let alone = raster(frame.size, vec![layer.drawing.scene()]);
+    let width = frame.size.0;
+    assert!(pixel(&alone, width, (96, 90))[3] > 20, "the inner blur spills past the square: {:?}", pixel(&alone, width, (96, 90)));
+    assert!(pixel(&alone, width, (101, 90))[3] < 250, "the square's edge is soft: {:?}", pixel(&alone, width, (101, 90)));
+    assert_eq!(pixel(&alone, width, (130, 90))[0], 255, "the middle stays red before the outer grayscale");
+}
+
+#[test]
+fn a_drop_shadow_inside_a_filtered_element_is_drawn() {
+    let page = Page::new(2.0);
+    let outer = styled(&page, page.body, "position: absolute; left: 0; top: 0; width: 400px; height: 200px; filter: blur(0.5px)");
+    styled(&page, outer, "position: absolute; left: 100px; top: 60px; width: 40px; height: 40px; background: #fff; filter: drop-shadow(0 10px 0 #000)");
+    let frame = page.frame();
+    let layer = frame.plane.layers.iter().find(|l| l.filter.is_some()).expect("the blurred element is its own segment");
+    let alone = raster(frame.size, vec![layer.drawing.scene()]);
+    let under = pixel(&alone, frame.size.0, (240, 214));
+    assert!(under[3] > 200 && under[0] < 40, "the shadow 10 css px below the box, at device scale 2: {under:?}");
+}
+
+#[test]
+fn a_backdrop_filter_inside_a_filtered_element_blurs_what_the_element_drew_below_it() {
+    let page = Page::new(1.0);
+    let outer = styled(&page, page.body, "position: absolute; left: 0; top: 0; width: 400px; height: 200px; filter: grayscale(1)");
+    styled(&page, outer, "position: absolute; left: 0; top: 0; width: 200px; height: 200px; background: #000");
+    styled(&page, outer, "position: absolute; left: 150px; top: 50px; width: 100px; height: 100px; backdrop-filter: blur(10px)");
+    let frame = page.frame();
+    let layer = frame.plane.layers.iter().find(|l| l.filter.is_some()).expect("the grayscale element is its own segment");
+    let alone = raster(frame.size, vec![layer.drawing.scene()]);
+    let width = frame.size.0;
+    let edge = pixel(&alone, width, (205, 100));
+    assert!(edge[3] > 20 && edge[3] < 250, "the black edge is blurred into the glass, and only inside it: {edge:?}");
+    assert_eq!(pixel(&alone, width, (260, 100))[3], 0, "outside the glass nothing is drawn");
+    assert_eq!(pixel(&alone, width, (160, 40)), [0, 0, 0, 255], "above the glass the black is sharp");
+}
+
+fn list_under_a_mask(scale: f32) -> (Vec<u8>, u32) {
+    let page = Page::new(scale);
+    page.doc.set_attribute(page.body, "style", "background: #fff").unwrap();
+    let list = styled(
+        &page,
+        page.body,
+        "position: absolute; left: 10px; top: 10px; width: 100px; height: 120px; overflow: auto; \
+         -webkit-mask-image: linear-gradient(#000 calc(100% - 28px), transparent); mask-image: linear-gradient(#000 calc(100% - 28px), transparent)",
+    );
+    styled(&page, list, "height: 400px; background: #000");
+    let frame = page.frame();
+    (segments(&frame), frame.size.0)
+}
+
+#[test]
+fn a_scrolling_list_fades_out_under_its_mask() {
+    for scale in [1u32, 2] {
+        let (pixels, width) = list_under_a_mask(scale as f32);
+        let at = |x: u32, y: u32| pixel(&pixels, width, (x * scale, y * scale));
+        assert_eq!(at(50, 60), [0, 0, 0, 255], "above the fade the list is drawn (scale {scale})");
+        assert!(at(50, 104)[0] < 120, "the fade starts 28 css px above the bottom (scale {scale}): {:?}", at(50, 104));
+        assert!(at(50, 126)[0] > 150, "near the bottom it has faded out (scale {scale}): {:?}", at(50, 126));
+        assert_eq!(at(50, 140), [255, 255, 255, 255], "below the box nothing of the list shows (scale {scale})");
+    }
+}
+
+fn panel_pixels(glass: bool) -> (Vec<u8>, u32) {
+    let page = Page::new(2.0);
+    page.doc.set_attribute(page.body, "style", "background: #fff").unwrap();
+    let pad =
+        styled(&page, page.body, "position: absolute; left: 0; top: 0; width: 200px; height: 180px; display: flex; flex-direction: column; isolation: isolate");
+    if glass {
+        styled(&page, pad, "flex: none; height: 20px; background: rgba(255, 255, 255, .5); backdrop-filter: blur(8px)");
+    }
+    let list = styled(
+        &page,
+        pad,
+        "flex: 1; min-height: 0; margin: 10px; overflow: auto; \
+         -webkit-mask-image: linear-gradient(#000 calc(100% - 28px), transparent); mask-image: linear-gradient(#000 calc(100% - 28px), transparent)",
+    );
+    styled(&page, list, "height: 400px; background: #000");
+    page.doc.dom.set_panel(pad, Some([0.0, 0.0, 200.0, 180.0])).unwrap();
+    let frame = page.frame();
+    let panel = frame.panels.iter().find(|p| p.id == pad).expect("the pinned panel");
+    let scenes = if panel.plane.layers.is_empty() { vec![panel.plane.drawing.scene()] } else { panel.plane.layers.iter().map(|l| l.drawing.scene()).collect() };
+    (raster(panel.size, scenes), panel.size.0)
+}
+
+#[test]
+fn a_masked_list_in_a_pinned_panel_fades_out() {
+    for glass in [false, true] {
+        let (pixels, width) = panel_pixels(glass);
+        let bottom = 170;
+        let at = |y: u32| pixel(&pixels, width, (100, y * 2));
+        assert_eq!(at(bottom - 60)[3], 255, "above the fade the list is drawn (glass {glass}): {:?}", at(bottom - 60));
+        assert!(at(bottom - 3)[3] < 100, "the bottom of the list has faded out (glass {glass}): {:?}", at(bottom - 3));
+    }
+}
+
+#[test]
+fn a_masked_list_fades_out_its_filtered_children_too() {
+    for scale in [1u32, 2] {
+        let page = Page::new(scale as f32);
+        page.doc.set_attribute(page.body, "style", "background: #fff").unwrap();
+        let list = styled(
+            &page,
+            page.body,
+            "position: absolute; left: 10px; top: 10px; width: 100px; height: 120px; overflow: auto; \
+             mask-image: linear-gradient(#000 calc(100% - 28px), transparent)",
+        );
+        for _ in 0..8 {
+            styled(&page, list, "height: 50px; background: #000; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .3))");
+        }
+        let frame = page.frame();
+        let pixels = segments(&frame);
+        let at = |y: u32| pixel(&pixels, frame.size.0, (50 * scale, y * scale));
+        assert_eq!(at(30), [0, 0, 0, 255], "above the fade a child is drawn (scale {scale})");
+        assert!(at(126)[0] > 150, "a filtered child fades out with the list (scale {scale}): {:?}", at(126));
+        assert_eq!(at(140), [255, 255, 255, 255], "nothing below the list (scale {scale})");
+    }
+}

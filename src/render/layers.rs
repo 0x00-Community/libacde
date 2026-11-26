@@ -13,7 +13,8 @@ use acde_scene::glass::{Appearance, Glass, Membership};
 use kurbo::{Affine, BezPath, PathEl, Rect, Shape};
 
 use crate::render::commands::{Builder, Commands};
-use crate::render::damage::{Damage, Kind};
+use crate::render::damage::{Damage, Kind, draw_bounds};
+use crate::render::nested::{Flatten, has_effects};
 
 #[derive(Default)]
 pub struct Drawing {
@@ -238,10 +239,6 @@ fn unsupported(filter: &Filter) {
     once(filter, || log::warn!("backdrop-filter: drop-shadow() is not supported and is left out ({:?})", filter.effects()));
 }
 
-fn nested(filter: &Filter, what: &str) {
-    once(filter, || log::warn!("{what} inside an element with a filter is not supported yet and is left out ({:?})", filter.effects()));
-}
-
 fn once(filter: &Filter, warn: impl FnOnce()) {
     let mut logged = LOGGED.lock().unwrap_or_else(|e| e.into_inner());
     if logged.len() < LOGGED_FILTERS && !logged.contains(filter) {
@@ -276,6 +273,7 @@ pub(crate) struct Split<'a> {
     filter: Option<LayerFilter>,
     filter_depth: Option<usize>,
     masked_until: Option<usize>,
+    skip_to: Option<usize>,
     tolerance: f64,
     device: f64,
     viewport: Rect,
@@ -305,11 +303,15 @@ impl<'a> Split<'a> {
             filter: None,
             filter_depth: None,
             masked_until: None,
+            skip_to: None,
             tolerance,
             device,
             viewport,
         };
         for ((i, (command, t)), (&this, &kind)) in commands.iter().enumerate().zip(draw.iter().zip(kinds)) {
+            if split.skip_to.is_some_and(|end| i <= end) {
+                continue;
+            }
             (split.this, split.this_kind) = (this, kind);
             split.command(i, command, t);
         }
@@ -358,16 +360,36 @@ impl<'a> Split<'a> {
                 self.filter_depth = Some(self.open.len());
                 self.masked_until = masked;
                 self.push_plain(command, t, |l| l.filter = None);
-            }
-            RenderCommand::PushLayer(l) if l.filter.is_some() || l.backdrop_filter.is_some() => {
-                if let Some(filter) = &l.filter {
-                    nested(filter, "filter");
+                if let Some(end) = self.closing(i)
+                    && has_effects(self.source.iter_range(i + 1..end).map(|(c, _)| c))
+                {
+                    let body: Vec<RenderCommand> = self.source.iter_range(i + 1..end).map(|(c, t)| Commands::placed(c, t)).collect();
+                    for c in self.flatten().run(&body) {
+                        self.owned_draw(c);
+                    }
+                    self.skip_to = Some(end - 1);
                 }
-                if let Some(filter) = &l.backdrop_filter {
-                    nested(filter, "backdrop-filter");
-                }
-                self.push(Pushed::At(i), self.this_kind);
             }
+            RenderCommand::PushLayer(l) if l.filter.is_some() || l.backdrop_filter.is_some() => match self.closing(i) {
+                Some(end) => {
+                    let subtree: Vec<RenderCommand> = self.source.iter_range(i..end + 1).map(|(c, t)| Commands::placed(c, t)).collect();
+                    for c in self.flatten().run(&subtree) {
+                        self.owned_draw(c);
+                    }
+                    self.skip_to = Some(end);
+                }
+                None => self.push(Pushed::At(i), self.this_kind),
+            },
+            RenderCommand::PushLayer(l) if self.splits() && l.alpha < 1.0 => match self.masks_effects(i) {
+                Some(end) => {
+                    let subtree: Vec<RenderCommand> = self.source.iter_range(i..end + 1).map(|(c, t)| Commands::placed(c, t)).collect();
+                    for c in self.flatten().run(&subtree) {
+                        self.owned_draw(c);
+                    }
+                    self.skip_to = Some(end);
+                }
+                None => self.push(Pushed::At(i), self.this_kind),
+            },
             RenderCommand::PushLayer(_) | RenderCommand::PushClipLayer(_) => self.push(Pushed::At(i), self.this_kind),
             RenderCommand::PopLayer => {
                 self.current.source(i);
@@ -409,26 +431,62 @@ impl<'a> Split<'a> {
         self.filter_depth.is_none() && self.masked_until.is_none()
     }
 
+    fn closing(&self, from: usize) -> Option<usize> {
+        let mut depth = 0usize;
+        (from..self.source.len()).find(|&j| match self.source.get(j) {
+            Some((RenderCommand::PushLayer(_) | RenderCommand::PushClipLayer(_), _)) => {
+                depth += 1;
+                false
+            }
+            Some((RenderCommand::PopLayer, _)) => {
+                depth = depth.saturating_sub(1);
+                depth == 0
+            }
+            _ => false,
+        })
+    }
+
     fn masked_after(&self, pushed: usize) -> Option<usize> {
-        let closing = |from: usize| {
-            let mut depth = 0usize;
-            (from..self.source.len()).find(|&j| match self.source.get(j) {
-                Some((RenderCommand::PushLayer(_) | RenderCommand::PushClipLayer(_), _)) => {
-                    depth += 1;
-                    false
-                }
-                Some((RenderCommand::PopLayer, _)) => {
-                    depth = depth.saturating_sub(1);
-                    depth == 0
-                }
-                _ => false,
-            })
-        };
-        let after = closing(pushed)? + 1;
+        let after = self.closing(pushed)? + 1;
         match self.source.get(after) {
-            Some((RenderCommand::PushLayer(l), _)) if l.blend.compose == peniko::Compose::DestIn => closing(after),
+            Some((RenderCommand::PushLayer(l), _)) if l.blend.compose == peniko::Compose::DestIn => self.closing(after),
             _ => None,
         }
+    }
+
+    fn masks_effects(&self, push: usize) -> Option<usize> {
+        let end = self.closing(push)?;
+        let mut depth = 0usize;
+        let (mut masks, mut effects) = (false, false);
+        for (j, (c, _)) in self.source.iter_range(push + 1..end).enumerate() {
+            match c {
+                RenderCommand::PushLayer(l) => {
+                    masks |= depth == 0 && l.blend.compose == peniko::Compose::DestIn;
+                    effects |= (l.filter.is_some() || l.backdrop_filter.is_some()) && self.masked_after(push + 1 + j).is_none();
+                    depth += 1;
+                }
+                RenderCommand::PushClipLayer(_) => depth += 1,
+                RenderCommand::PopLayer => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+        (masks && effects).then_some(end)
+    }
+
+    fn flatten(&self) -> Flatten {
+        Flatten { device: self.device, tolerance: self.tolerance, viewport: self.viewport }
+    }
+
+    fn owned_draw(&mut self, command: RenderCommand) {
+        let kind = Kind::of(&command, Affine::IDENTITY);
+        let draw = match kind {
+            Kind::Draw => draw_bounds(&command, Affine::IDENTITY),
+            _ => Rect::ZERO,
+        };
+        self.current.owned(command);
+        self.current_draws |= kind == Kind::Draw;
+        self.current_draw.push(draw);
+        self.current_kinds.push(kind);
     }
 
     fn draws(&mut self, i: usize) {

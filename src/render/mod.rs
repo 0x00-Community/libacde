@@ -12,6 +12,7 @@ mod geometry;
 pub mod gpu;
 mod hud;
 mod layers;
+mod nested;
 mod net;
 mod parse;
 mod region;

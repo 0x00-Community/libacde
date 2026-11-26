@@ -26,8 +26,15 @@
   `Dom::set_panel` 钉住的元素 `Panel {id, size, plane, extent, reach}`: extent 是面板里实际画到的范围 (物理像素, 相对这一帧的面板矩形), reach 是同一块换成页面坐标 (CSS 像素, 用这一帧画面板时的矩形和缩放算, 前端报 `panelmove` 用它, 不拿自己记的矩形去拼: 缩放切换时两边不同步, 拼出来的位置是错的; 尺寸或缩放和窗口现在的不一样的帧是改之前画的, 前端不报它的范围, 不然页面会拿旧布局的范围去并新的盒子). `Plane {drawing, layers, damage, damage_rects (最多 8 块), bounds}`;
   layers 是有 backdrop-filter / filter 时切成的段, 每段 `{drawing, bounds, backdrop, filter}` (`Drawing` 出 `scene` / `scene_for`): backdrop 先处理画布上已画的那块再画这段, filter
   先画进临时纹理再合成. 光栅化方 (src/vello) 做 filter 的 drop-shadow、模糊、颜色矩阵, backdrop 的模糊和所有颜色函数 (`Backdrop::effect`:
-  按顺序合成一个颜色矩阵, 几个 blur 按平方和开方合并); backdrop-filter 里的 drop-shadow 不做; 只切最外层: 已有 filter 的元素里面再有 filter / backdrop-filter 时不做 (#46);
-  这两种同一组滤镜只记一次 warn (最多记 64 组).
+  按顺序合成一个颜色矩阵, 几个 blur 按平方和开方合并); backdrop-filter 里的 drop-shadow 不做 (同一组滤镜只记一次 warn, 最多记 64 组). 只切最外层; 已有 filter 的元素 (或并进滤镜段的遮罩) 里面再有
+  filter / backdrop-filter 时 (#46), `Split` 把里面那棵子树交给 `render/nested.rs` 的 `Flatten` 就地画成图: filter 的子树 (去掉滤镜和混合模式的那层加里面的内容,
+  更深的嵌套先展开) 经 `render::gpu::filtered` 离屏画进「内容盒加滤镜外扩、截到视口」的纹理再套滤镜 (参数乘设备缩放), 换成一条画这张图的 Fill
+  (有混合模式时外包一层带它的图层); backdrop-filter 的背景按规范只到最近的滤镜祖先 (Backdrop Root): 把这棵子树里它之前已画的部分 (补齐没关的层) 离屏画出、
+  套滤镜, 裁到元素的形状, 画在元素内容下面. 外层滤镜段里有嵌套效果时整段一次展开. 离屏图按 (命令、滤镜、区域) 留最近 24 张, 内容没变的帧不重画.
+  嵌套的 backdrop-filter 只做滤镜本身, 不带系统玻璃 (`--acde-glass`) 的形状和折射; 超过 4096² 的区域不套滤镜, 照原样画.
+  带 `mask-image` 的元素 (隔离层的不透明度略小于 1, 直接子层里有 DestIn 遮罩层) 里面的后代有 filter / backdrop-filter 时, 原来这些后代各自切成段,
+  遮罩只落在最后一段, 前面几段不受遮罩 (dopame 启动台的应用图标带 drop-shadow, 网格底部的淡出整个不见); 现在整棵带遮罩的子树一次展开成图, 留在同一段里,
+  遮罩照规范盖在滤镜之后 (遮罩元素自己的 filter 仍走上面的 `masked_after`). 测试在 `tests/render_layers.rs`.
   同一元素既有 `mask-image` 又有 filter (AC/libacde#5): 规范的顺序是先滤镜、再遮罩、最后 clip-path, 但段模型里滤镜由前端在合成时套用, 没有"滤镜之后
   再套遮罩"这一步; 原来滤镜层弹出就切段, 遮罩的 DestIn 落进下一段新开的空隔离层, 遮罩丢掉, 整块显示 (dopame 菜单栏充电闪电成白方块). 现在 `Split` 在滤镜层之后紧跟着
   DestIn 层时 (`masked_after`) 把这层遮罩并进滤镜那一段 (段到遮罩层弹出为止), 并去掉滤镜里的 drop-shadow (`unshadowed`; 只剩 drop-shadow 时不切段).
@@ -35,8 +42,8 @@
   按规范的完整修法见 AC/libacde#5 (跨 libacde、acdes、acdev: Part 加滤镜之后的遮罩, 各合成器先把阴影和内容画到临时图上再套遮罩), 留作后续.
   回归测试在 `tests/render_layers.rs` (遮罩外的像素和没有这个元素时相同; 模糊保留、遮罩在段内).
   `text-shadow` (vendor/blitz `blitz-paint/src/text/shadow.rs`): 每个阴影是同一段字形按偏移再画一遍, 颜色用阴影的, 写在后面的画在下面, 都在文字之前;
-  有模糊时这段字形放进一个 GaussianBlur 滤镜图层 (标准差为模糊半径的一半, 同 box-shadow 和 drop-shadow), 所以带模糊的文字阴影也走上面的 filter 段, 受同样的限制
-  (已有 filter 的元素里面不做); 装饰线和 "…" 不带阴影, `background-clip: text` 的蒙版不画阴影.
+  有模糊时这段字形放进一个 GaussianBlur 滤镜图层 (标准差为模糊半径的一半, 同 box-shadow 和 drop-shadow), 所以带模糊的文字阴影也走上面的 filter 段
+  (已有 filter 的元素里面同样就地画成图); 装饰线和 "…" 不带阴影, `background-clip: text` 的蒙版不画阴影.
   窗口之间的毛玻璃 (`setBackdrop`、面板的 `backdrops`) 仍只带 blur / saturate / brightness.
   磨砂的角形: blitz-paint 推带 `backdrop-filter` 的图层时用 `push_shaped_layer` 带上元素的 `Corners {radius, exponent}`
   (`acde-scene` 的 `corner`; `exponent` 是超椭圆指数 `n = 2^k`, 2 是圆弧, CSS `squircle` 是 4), `render::Backdrop` 记下它: `radius()` 有声明时
